@@ -137,3 +137,19 @@ Compiler error on line 3: error[E0596]: Cannot mutate `config` while it is immut
 | `2` | Syntax / Lexer Error | Source file failed lexical tokenization or recursive-descent parsing. |
 | `3` | Type Error | Unification failure in strict static mode (`--strict-types` or `--static`). |
 | `101` | Panic Exit | Explicit `panic()` invocation with backtrace dump. |
+
+---
+
+## C.5 C Public API Result Codes (`AKSResult`)
+
+When embedding AKS via the native C interface (`include/aks.h`), all public execution APIs return standardized `AKSResult` status codes:
+
+| Enum Constant | Value | Description |
+| :--- | :--- | :--- |
+| `AKS_OK` | `0` | Execution completed successfully without error. |
+| `AKS_PARSE_ERROR` | `1` | Lexical tokenization or syntax parsing failure. |
+| `AKS_COMPILE_ERROR` | `2` | Semantic analysis, type checking, or bytecode generation failure. |
+| `AKS_RUNTIME_ERROR` | `3` | Uncaught runtime exception, fiber panic, or assertion failure. |
+| `AKS_MEMORY_ERROR` | `4` | Heap memory allocation failure / out of memory. |
+| `AKS_FATAL` | `-1` | Unrecoverable engine error. |
+
