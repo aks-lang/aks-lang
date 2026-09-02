@@ -1,0 +1,29 @@
+fn RunConditionVariableTests() {
+    let cv = ConditionVariable.New();
+    assert_eq(cv.cv_id != 0, true);
+
+    let rw = ReadWriteLock.New();
+    assert_eq(rw.lock_id != 0, true);
+
+    // Acquire lock and wait with short timeout
+    rw.LockExclusive();
+    let waitOk = cv.WaitSRW(rw, 10, false);
+    // Timeout expected (returns false)
+    assert_eq(waitOk, false);
+    rw.UnlockExclusive();
+
+    // Signal / Broadcast
+    let n1Ok = cv.NotifyOne();
+    assert_eq(n1Ok, true);
+
+    let nAllOk = cv.NotifyAll();
+    assert_eq(nAllOk, true);
+
+    // Cleanup
+    cv.Destroy();
+    rw.Destroy();
+
+    println("OS condition variable rendezvous tests passed successfully");
+}
+
+RunConditionVariableTests();

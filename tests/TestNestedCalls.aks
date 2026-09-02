@@ -1,0 +1,8 @@
+fn bar() {
+    print("in bar");
+}
+fn foo() {
+    print("in foo");
+    bar();
+}
+foo();

@@ -1,0 +1,46 @@
+println("Exhaustive Concurrency Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Atomic Memory Operations (atomget, atomset, atomadd, atomsub, atomcas)
+println("\n1. Atomic Operations & Memory Ordering");
+
+let atomic_arr = [0];
+assert_eq(AtomGet(atomic_arr, 0, "relaxed"), 0, "atomget initial relaxed == 0", stats);
+assert_eq(AtomSet(atomic_arr, 0, 42, "release"), 0, "atomset release returns old value 0", stats);
+assert_eq(AtomGet(atomic_arr, 0, "acquire"), 42, "atomget acquire reads 42", stats);
+assert_eq(AtomAdd(atomic_arr, 0, 8, "seq_cst"), 42, "atomadd seq_cst returns old value 42", stats);
+assert_eq(AtomSub(atomic_arr, 0, 10, "relaxed"), 50, "atomsub relaxed returns old value 50", stats);
+assert_eq(AtomGet(atomic_arr, 0), 40, "atomget un-ordered reads 40", stats);
+assert_eq(AtomCompareAndSwap(atomic_arr, 0, 40, 100, "seq_cst"), true, "atomcas 40 -> 100 succeeds", stats);
+assert_eq(AtomGet(atomic_arr, 0), 100, "atomget reads 100 after CAS", stats);
+assert_eq(AtomCompareAndSwap(atomic_arr, 0, 50, 200), false, "atomcas 50 -> 200 fails", stats);
+assert_eq(AtomGet(atomic_arr, 0), 100, "atomget remains 100", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " concurrency subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

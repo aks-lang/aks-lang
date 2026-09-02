@@ -1,0 +1,10 @@
+fn wrap(f) {
+    fn w() {print("wrapped!");
+        return f();
+    }
+    return w;
+}
+fn foo() {print("original");
+}
+foo = wrap(foo);
+foo();

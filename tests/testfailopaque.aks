@@ -1,0 +1,3 @@
+opaque type UserID = int;
+let uid: UserID = 42;
+print(uid as int);

@@ -1,0 +1,30 @@
+// Test Hardware AVX2 Saturated 8-bit Integer Vector Arithmetic
+fn Main() {
+    // 16 bytes: fe (254) and 05 (5) -> saturating add gives ff (255)
+    let a_hex = "fe1000ff800000000000000000000000";
+    let b_hex = "05100002100000000000000000000000";
+
+    let add_sat = SimdVec16u8Saturating.Adds(a_hex, b_hex);
+    // fe + 05 = ff (saturated), 10 + 10 = 20, 00 + 00 = 00, ff + 02 = ff (saturated), 80 + 10 = 90
+    if (add_sat[0] != "f" || add_sat[1] != "f" || add_sat[2] != "2" || add_sat[3] != "0") {
+        print("Saturating adds mismatch: " + add_sat);
+        return 1;
+    }
+
+    let sub_sat = SimdVec16u8Saturating.Subs(a_hex, b_hex);
+    // fe - 05 = f9, 10 - 10 = 00, 00 - 00 = 00, ff - 02 = fd, 80 - 10 = 70
+    if (sub_sat[0] != "f" || sub_sat[1] != "9" || sub_sat[2] != "0" || sub_sat[3] != "0") {
+        print("Saturating subs mismatch: " + sub_sat);
+        return 1;
+    }
+
+    let avg = SimdVec16u8Saturating.Avg(a_hex, b_hex);
+    // avg(fe, 05) = (254 + 5 + 1) / 2 = 260 / 2 = 130 = 0x82
+    if (avg[0] != "8" || avg[1] != "2") {
+        print("Saturating avg mismatch: " + avg);
+        return 1;
+    }
+
+    print("TestSimdVec16u8Saturating passed");
+    return 0;
+}

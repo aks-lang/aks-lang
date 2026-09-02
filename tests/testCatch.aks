@@ -1,0 +1,12 @@
+let caught = false;
+try {
+    throw "test exception";
+}catch (e) {
+    print("caught: " + e);
+    caught = true;
+}
+if (caught) {
+    print("SUCCESS");
+}else {
+    print("FAIL");
+}

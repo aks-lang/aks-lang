@@ -1,0 +1,22 @@
+fn RunHiResTimerTests() {
+    let t0 = HiResTimer.NowNanos();
+    assert_eq(t0 > 0, true);
+
+    let m0 = HiResTimer.NowMicros();
+    assert_eq(m0 > 0, true);
+
+    let ms0 = HiResTimer.NowMillis();
+    assert_eq(ms0 > 0, true);
+
+    sleep(10);
+
+    let t1 = HiResTimer.NowNanos();
+    assert_eq(t1 > t0, true);
+
+    let diffMicros = (t1 - t0) / 1000;
+    assert_eq(diffMicros >= 5000, true);
+
+    println("High-resolution timer and nanosecond clock tests passed successfully");
+}
+
+RunHiResTimerTests();

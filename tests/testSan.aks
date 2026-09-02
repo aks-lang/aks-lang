@@ -1,0 +1,3 @@
+print("hello");
+let htmlsan = html("<script>alert('hello') & \"world\"</script>");
+print("html: " + htmlsan);

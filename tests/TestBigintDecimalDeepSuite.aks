@@ -1,0 +1,61 @@
+println("Exhaustive Bigint & Decimal Subsystem");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// BigInt Arbitrary Precision Integer Math
+println("\n1. Bigint Subsystem");
+
+let n1 = BigIntNew("1000000000000000000");
+let n2 = BigIntNew("2000000000000000000");
+
+let sum_big = n1.Add(n2);
+assert_eq(sum_big.ToString(), "3000000000000000000", "BigInt.add() sum", stats);
+
+let prod_big = n1.Mul(BigIntNew("3"));
+assert_eq(prod_big.ToString(), "3000000000000000000", "BigInt.mul() product", stats);
+
+assert_eq(n2.Gt(n1), true, "BigInt.gt() n2 > n1", stats);
+assert_eq(n1.Lt(n2), true, "BigInt.lt() n1 < n2", stats);
+assert_eq(n1.Eq(BigIntNew("1000000000000000000")), true, "BigInt.eq() equality", stats);
+
+// Decimal Fixed/Arbitrary Precision Float Math
+println("\n2. Decimal Subsystem");
+
+let d1 = DecimalNew("10.50");
+let d2 = DecimalNew("5.25");
+
+let sum_dec = d1.Add(d2);
+assert_eq(sum_dec.ToString(), "15.75", "Decimal.add() sum == 15.75", stats);
+
+let sub_dec = d1.Sub(d2);
+assert_eq(sub_dec.ToString(), "5.25", "Decimal.sub() difference == 5.25", stats);
+
+assert_eq(d1.Eq(DecimalNew("10.50")), true, "Decimal.eq() equality check", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " bigint & decimal tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

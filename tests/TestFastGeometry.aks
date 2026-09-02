@@ -1,0 +1,30 @@
+fn RunFastGeometryTests() {
+    let a = [1.0, 2.0, 3.0];
+    let b = [4.0, 5.0, 6.0];
+
+    // Dot product: 1*4 + 2*5 + 3*6 = 4 + 10 + 18 = 32.0
+    let dot = FastGeometry.Dot3(a, b);
+    assert_eq(dot, 32.0);
+
+    // Cross product: [2*6 - 3*5, 3*4 - 1*6, 1*5 - 2*4] = [-3.0, 6.0, -3.0]
+    let cross = FastGeometry.Cross3(a, b);
+    assert_eq(Length(cross), 3);
+    assert_eq(cross[0], -3.0);
+    assert_eq(cross[1], 6.0);
+    assert_eq(cross[2], -3.0);
+
+    // Normalization of [3.0, 0.0, 4.0] -> [0.6, 0.0, 0.8]
+    let norm = FastGeometry.Normalize3([3.0, 0.0, 4.0]);
+    assert_eq(Length(norm), 3);
+    assert_eq(norm[0], 0.6);
+    assert_eq(norm[1], 0.0);
+    assert_eq(norm[2], 0.8);
+
+    // Distance between [1.0, 2.0, 3.0] and [4.0, 6.0, 3.0] -> sqrt(9 + 16 + 0) = 5.0
+    let dist = FastGeometry.Distance3([1.0, 2.0, 3.0], [4.0, 6.0, 3.0]);
+    assert_eq(dist, 5.0);
+
+    println("SIMD 3D vector geometry engine tests passed successfully");
+}
+
+RunFastGeometryTests();

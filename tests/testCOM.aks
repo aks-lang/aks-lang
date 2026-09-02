@@ -1,0 +1,55 @@
+let lib_h = FFILoad("tests/MockCom.dll");
+if (lib_h == 0) {
+    print("FAIL: failed to load tests/MockCom.dll");
+    exit(1);
+}
+
+// Call CreateMockCOMObject to instantiate the mock COM interface
+let create_obj_fn = "CreateMockCOMObject";
+let obj_ptr = FFICall(lib_h, create_obj_fn, "p()", []);
+if (obj_ptr == 0) {
+    print("FAIL: CreateMockCOMObject returned null");
+    exit(1);
+}
+
+print("Mock COM object pointer: " + String(obj_ptr));
+
+// Index 0: AddRef (returns new ref count, should be 2)
+let ref_count = COMCall(obj_ptr, 0, "i()", []);
+if (ref_count == 2) {
+    print("PASS: AddRef() returned 2");
+} else {
+    print("FAIL: AddRef() returned " + String(ref_count));
+    exit(1);
+}
+
+// Index 2: Add(a, b) (returns sum, e.g. 15 + 25 = 40)
+let sum_val = COMCall(obj_ptr, 2, "i(ii)", [15, 25]);
+if (sum_val == 40) {
+    print("PASS: Add(15, 25) returned 40");
+} else {
+    print("FAIL: Add(15, 25) returned " + String(sum_val));
+    exit(1);
+}
+
+// Index 3: GetVal(x) (returns double x * 2.0, e.g. 5.5 * 2.0 = 11.0)
+let double_val = COMCall(obj_ptr, 3, "d(d)", [5.5]);
+if (double_val == 11.0) {
+    print("PASS: GetVal(5.5) returned 11.0");
+} else {
+    print("FAIL: GetVal(5.5) returned " + String(double_val));
+    exit(1);
+}
+
+// Index 1: Release (decrements ref count, should be 1)
+let ref_count_after = COMCall(obj_ptr, 1, "i()", []);
+if (ref_count_after == 1) {
+    print("PASS: Release() returned 1");
+} else {
+    print("FAIL: Release() returned " + String(ref_count_after));
+    exit(1);
+}
+
+// Clean up: Release one more time to free the memory
+COMCall(obj_ptr, 1, "i()", []);
+print("All COM test assertions passed!");

@@ -1,0 +1,18 @@
+// Test suite for OS Virtual Memory Physical RAM Page Locking
+fn main() {
+    let buf = AlignedBuffer.Alloc(4096, 4096);
+    let ptr = buf.ptr_id;
+    assert(ptr != 0);
+
+    // Lock page into RAM (requires privilege or standard working set limit)
+    let locked = VirtualMemoryLock.Lock(ptr, 4096);
+    if (locked) {
+        let unlocked = VirtualMemoryLock.Unlock(ptr, 4096);
+        assert(unlocked == true);
+    }
+
+    buf.Free();
+    print("TestVirtualMemoryLock passed");
+}
+
+main();

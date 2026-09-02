@@ -1,0 +1,25 @@
+fn RunSharedRingBufferTests() {
+    let rb = SharedRingBuffer.Create("Local\\AksTestRingBuffer", 512);
+    assert_eq(rb.map_id != 0, true);
+    assert_eq(rb.view_id != 0, true);
+
+    // Initial write
+    let written = rb.Write("0102030405");
+    assert_eq(written, 5);
+
+    // Available read
+    let availRead = rb.AvailableRead();
+    assert_eq(availRead >= 5, true);
+
+    // Read back
+    let hexData = rb.Read(5);
+    assert_eq(hexData, "0102030405");
+
+    // Destroy
+    let destroyOk = rb.Destroy();
+    assert_eq(destroyOk, true);
+
+    println("Inter-process shared circular ring buffer tests passed successfully");
+}
+
+RunSharedRingBufferTests();

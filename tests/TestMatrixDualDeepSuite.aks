@@ -1,0 +1,64 @@
+println("Exhaustive Matrix & Dual Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Matrix Subsystem (Matrix_new, Matrix_from, get, set)
+println("\n1. Matrix Subsystem");
+
+let m = MatrixFrom(2, 2, [1.0, 2.0, 3.0, 4.0]);
+
+assert_eq(m.Get(0, 0), 1.0, "Matrix m.get(0, 0) == 1.0", stats);
+assert_eq(m.Get(1, 1), 4.0, "Matrix m.get(1, 1) == 4.0", stats);
+
+m.Set(0, 1, 9.0);
+assert_eq(m.Get(0, 1), 9.0, "Matrix m.set(0, 1, 9.0) updated cell", stats);
+
+let m2 = MatrixNew(2, 2);
+assert_eq(m2.Get(0, 0), 0.0, "Matrix_new(2, 2) initialized cell == 0.0", stats);
+
+// Dual Numbers & Automatic Differentiation (Dual_new, add, mul, dual_sin)
+println("\n2. Dual Numbers & Auto-diff");
+
+// Dual number representing x = 3.0 with derivative dx = 1.0
+let x = DualNew(3.0, 1.0);
+let y = DualNew(2.0, 0.0);
+
+let sum_dual = x.Add(y);
+assert_eq(sum_dual.val, 5.0, "Dual x + y value == 5.0", stats);
+assert_eq(sum_dual.deriv, 1.0, "Dual x + y derivative == 1.0", stats);
+
+let mul_dual = x.Mul(y);
+assert_eq(mul_dual.val, 6.0, "Dual x * y value == 6.0", stats);
+assert_eq(mul_dual.deriv, 2.0, "Dual x * y derivative == 2.0", stats);
+
+let sin_dual = DualSin(x);
+assert_eq(sin_dual.val, sin(3.0), "dual_sin(x) value == sin(3.0)", stats);
+assert_eq(sin_dual.deriv, cos(3.0), "dual_sin(x) derivative == cos(3.0)", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " matrix & dual subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

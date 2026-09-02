@@ -1,0 +1,12 @@
+let caught = false;
+try {
+    let x = 1 / 0;
+}catch (e) {
+    print("caught: " + e);
+    caught = true;
+}
+if (caught) {
+    print("SUCCESS");
+}else {
+    print("FAIL");
+}

@@ -1,0 +1,14 @@
+fn RunCpuTopologyTests() {
+    let physicalCores = CpuTopology.PhysicalCores();
+    assert_eq(physicalCores >= 1, true);
+
+    let logicalCores = CpuTopology.LogicalCores();
+    assert_eq(logicalCores >= physicalCores, true);
+
+    let pageSize = CpuTopology.PageSize();
+    assert_eq(pageSize >= 4096, true);
+
+    println("Hardware CPU topology and page size telemetry tests passed successfully");
+}
+
+RunCpuTopologyTests();

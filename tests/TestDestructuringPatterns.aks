@@ -1,0 +1,72 @@
+// Destructuring Patterns and Guards Test Suite
+//
+/// ```aks
+/// let x = 100;
+/// let y = 200;
+/// if (x + y != 300) { throw "Doc-test failed"; }
+/// ```
+
+println("Destructuring Patterns and Guards Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Array exact pattern matching
+let arr1 = [10, 20];
+let r1 = match arr1 {
+    [a, b] => a + b,
+    _ => 0
+};
+assert_eq(r1, 30, "Array exact destructuring [a, b] => 30", stats);
+
+// Array slice / rest pattern matching
+let arr2 = [1, 2, 3, 4, 5];
+let r2 = match arr2 {
+    [first, ..rest] => first * 10 + Length(rest),
+    _ => 0
+};
+assert_eq(r2, 14, "Array rest pattern [first, ..rest] => 1*10 + 4 == 14", stats);
+
+// Destructuring with Guard
+let val = 42;
+let r3 = match val {
+    x if x > 50 => "greater",
+    x if x > 40 => "medium",
+    _ => "small"
+};
+assert_eq(r3, "medium", "Pattern match with if guard => medium", stats);
+
+// Struct pattern with guard
+struct Point {
+    x: int;
+    y: int;
+}
+let p = new Point();
+p.x = 15;
+p.y = 25;
+
+let r4 = match p {
+    Point { x, y } if x > 20 => "large_x",
+    Point { x, y } if y > 20 => "large_y",
+    _ => "default"
+};
+assert_eq(r4, "large_y", "Struct destructuring with if guard => large_y", stats);
+
+println("Results: " + String(stats[0]) + " passed, " + String(stats[1]) + " failed.");

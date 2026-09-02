@@ -1,0 +1,115 @@
+print("testing advanced features");
+
+// First-Class Functions and Higher-Order Calls
+fn greet(name) {
+    return "Hello, " + name + "!";
+}
+
+fn applyfunc(f, val) {
+    return f(val);
+}
+
+let refgreet = greet;
+print("Ref call direct:");
+print(refgreet("World"));
+
+print("Higher-order function call:");
+let greeting = applyfunc(refgreet, "Developer");
+print(greeting);
+
+// Structs as Dynamic Maps (String-based Indexing)
+struct Map {}
+
+let mydict = new Map();
+mydict["name"] = "AKS Engine";
+mydict["version"] = 2.0;
+mydict["isfast"] = true;
+
+print("Dynamic map field reads:");
+print(mydict["name"]);
+print(mydict["version"]);
+print(mydict["isfast"]);
+
+// checking field update
+mydict["version"] = 3.0;
+print("Updated version:");
+print(mydict["version"]);
+
+// New Math Standard Library Functions
+print("Math tests:");
+print("pow(2, 10) (Expected: 1024):");
+print(Power(2, 10));
+
+print("sin(0) (Expected: 0):");
+print(sin(0));
+
+print("cos(0) (Expected: 1):");
+print(cos(0));
+
+print("log(2.71828) (Expected: ~1):");
+print(Ceiling(log(2.71828)));
+// logs e is 1
+
+print("ceil(4.1) (Expected: 5):");
+print(Ceiling(4.1));
+
+print("floor(4.9) (Expected: 4):");
+print(floor(4.9));
+
+print("min(12, 8.5) (Expected: 8.5):");
+print(Minimum(12, 8.5));
+
+print("max(12, 8.5) (Expected: 12):");
+print(Maximum(12, 8.5));
+
+// Array Standard Library Helper Functions
+print("Array operations:");
+let numbers = [10, 20, 30];
+print("Initial numbers array:");
+print(numbers);
+
+print("Popping last element (Expected: 30):");
+let popped = pop(numbers);
+print(popped);
+print("Array after pop:");
+print(numbers);
+
+print("Inserting 99 at index 1:");
+insert(numbers, 1, 99);
+print(numbers);
+// expected: [10, 99, 20]
+
+print("Removing element at index 0 (Expected: 10):");
+let removed = remove(numbers, 0);
+print(removed);
+print("Array after remove:");
+print(numbers);
+// expected: [99, 20]
+
+print("Slicing array from index 0 to 2:");
+let subset = slice(numbers, 0, 2);
+print(subset);
+// expected: [99, 20]
+
+// String and Utility Helper Functions
+print("String and utility helpers:");
+let phrase = "Developer";
+print("ord() of first char 'D' (Expected: 68):");
+print(Ordinal(phrase));
+
+print("chr() of 68 (Expected: 'D'):");
+print(Character(68));
+
+print("substr(phrase, 4, 5) (Expected: 'loper'):");
+print(Substring(phrase, 4, 5));
+
+print("type() of phrase (Expected: 'string'):");
+print(type(phrase));
+
+print("type() of numbers (Expected: 'array'):");
+print(type(numbers));
+
+print("type() of refgreet (Expected: 'fn'):");
+print(type(refgreet));
+
+print("advanced tests passed");

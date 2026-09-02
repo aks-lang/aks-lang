@@ -1,0 +1,69 @@
+println("EXHAUSTIVE BOX, RC & ARC SMART POINTER SUITE");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Box Smart Pointer (Box, get, set)
+println("\n1. box Smart Pointer");
+
+let b = new Box();
+b.val = 42;
+assert_eq(b.Get(), 42, "Box.get() == 42", stats);
+
+b.Set(100);
+assert_eq(b.Get(), 100, "Box.set(100) updated inner value", stats);
+
+// Rc Smart Pointer (Rc, clone, strong_count, get)
+println("\n2. rc Smart Pointer");
+
+let r1 = new Rc();
+r1.val = "Shared Heap Data";
+r1.ref_count = 1;
+
+assert_eq(r1.Get(), "Shared Heap Data", "Rc.get() == 'Shared Heap Data'", stats);
+assert_eq(r1.StrongCount(), 1, "Rc.strong_count() == 1", stats);
+
+let r2 = r1.Clone();
+assert_eq(r2.Get(), "Shared Heap Data", "Cloned Rc.get() matches original", stats);
+assert_eq(r1.StrongCount(), 2, "Rc.strong_count() == 2 after clone", stats);
+
+// Arc Smart Pointer (Arc, clone, strong_count, get)
+println("\n3. arc Smart Pointer");
+
+let a1 = new Arc();
+a1.val = 3.14159;
+a1.ref_count = 1;
+
+assert_eq(a1.Get(), 3.14159, "Arc.get() == 3.14159", stats);
+assert_eq(a1.StrongCount(), 1, "Arc.strong_count() == 1", stats);
+
+let a2 = a1.Clone();
+assert_eq(a2.Get(), 3.14159, "Cloned Arc.get() matches original", stats);
+assert_eq(a1.StrongCount(), 2, "Arc.strong_count() == 2 after clone", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " smart pointer tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

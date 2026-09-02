@@ -1,0 +1,30 @@
+// Test SipHash-2-4 Keyed Cryptographic Hash Built-ins
+fn Main() {
+    // 16-byte key: 000102030405060708090a0b0c0d0e0f
+    let key_hex = "000102030405060708090a0b0c0d0e0f";
+    let data = "Hello, world! SipHash fast keyed hashing.";
+
+    let h64 = CryptoSipHash.Hash64(key_hex, data);
+    if (Length(h64) != 16) {
+        print("Invalid SipHash-64 digest length: " + Length(h64));
+        return 1;
+    }
+
+    let h128 = CryptoSipHash.Hash128(key_hex, data);
+    if (Length(h128) != 32) {
+        print("Invalid SipHash-128 digest length: " + Length(h128));
+        return 1;
+    }
+
+    // Hash consistency check
+    let h64_again = CryptoSipHash.Hash64(key_hex, data);
+    if (h64 != h64_again) {
+        print("SipHash-64 digest mismatch across repeated runs");
+        return 1;
+    }
+
+    print("TestCryptoSipHash passed");
+    return 0;
+}
+
+Main();

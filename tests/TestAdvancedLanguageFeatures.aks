@@ -1,0 +1,73 @@
+fn Assert(cond, msg) {
+    if (!cond) {
+        panic(msg);
+    }
+}
+
+fn AssertEq(actual, expected, msg) {
+    if (actual != expected) {
+        panic(msg);
+    }
+}
+
+struct HeaderRecord {
+    magic: int;
+    version: int;
+}
+
+fn TestReinterpretCast() {
+    let raw_buf = [1234, 2];
+    let hdr = ReinterpretCast("HeaderRecord", raw_buf, 0);
+    Assert(hdr != null, "Reinterpret cast should create struct");
+    AssertEq(hdr.magic, 1234, "Header magic matches buffer");
+    AssertEq(hdr.version, 2, "Header version matches buffer");
+}
+
+fn WorkerTask(msg) {
+    return "Processed: " + String(msg);
+}
+
+fn TestActorCluster() {
+    let cluster = ActorCluster { nodes: [] };
+    cluster.RegisterNode("127.0.0.1:8080");
+    cluster.RegisterNode("127.0.0.1:8081");
+    let nodes = cluster.GetNodes();
+    AssertEq(Length(nodes), 2, "Cluster registered 2 nodes");
+    
+    let actor = cluster.SpawnOn("127.0.0.1:8080", WorkerTask);
+    Assert(actor != null, "Remote actor spawned successfully");
+    AssertEq(actor.node, "127.0.0.1:8080", "Remote actor node address matches");
+}
+
+fn TestComptimeConstant() {
+    let computed = comptime {
+        let val = 100;
+        let mult = 4;
+        return val * mult;
+    };
+    AssertEq(computed, 400, "Comptime computed value matches");
+}
+
+fn AddOne(x) {
+    return x + 1;
+}
+
+fn Triple(x) {
+    return x * 3;
+}
+
+fn TestPipelineIntegration() {
+    let result = 10 |> AddOne |> Triple;
+    AssertEq(result, 33, "Pipeline chaining matches");
+}
+
+fn Main() {
+    print("Running Advanced Language Feature Tests");
+    TestReinterpretCast();
+    TestActorCluster();
+    TestComptimeConstant();
+    TestPipelineIntegration();
+    print("Advanced Language Feature Tests Passed");
+}
+
+Main();

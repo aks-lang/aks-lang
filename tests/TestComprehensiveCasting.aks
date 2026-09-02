@@ -1,0 +1,134 @@
+print("Comprehensive Type Casting Test Suite");
+let stats = [0, 0]; // [0] = pass, [1] = fail
+
+fn assert_eq(actual, expected, test_name, st) {
+    if (actual == expected) {
+        print("  PASS: " + test_name);
+        st[0] = st[0] + 1;
+    } else {
+        print("  FAIL: " + test_name + " (expected " + String(expected) + ", got " + String(actual) + ")");
+        st[1] = st[1] + 1;
+    }
+}
+
+fn assert_throws(fn_to_run, test_name, st) {
+    try {
+        fn_to_run();
+        print("  FAIL: " + test_name + " (expected exception but none was thrown)");
+        st[1] = st[1] + 1;
+    } catch (err) {
+        print("  PASS: " + test_name + " (caught: " + err + ")");
+        st[0] = st[0] + 1;
+    }
+}
+
+// Int casting (as int)
+print("\n1. Testing 'as Int'");
+assert_eq(42 as int, 42, "int -> int (positive)", stats);
+assert_eq((-100) as int, -100, "int -> int (negative)", stats);
+assert_eq(0 as int, 0, "int -> int (zero)", stats);
+
+assert_eq(3.14 as int, 3, "float -> int (positive truncation)", stats);
+assert_eq((-3.99) as int, -3, "float -> int (negative truncation)", stats);
+assert_eq(0.0 as int, 0, "float -> int (zero)", stats);
+
+assert_eq(true as int, 1, "bool -> int (true)", stats);
+assert_eq(false as int, 0, "bool -> int (false)", stats);
+
+assert_eq(null as int, 0, "null -> int", stats);
+
+assert_eq("42" as int, 42, "str -> int (\"42\")", stats);
+assert_eq("-10" as int, -10, "str -> int (\"-10\")", stats);
+assert_eq("+100" as int, 100, "str -> int (\"+100\")", stats);
+assert_eq("0" as int, 0, "str -> int (\"0\")", stats);
+assert_eq("  45  " as int, 45, "str -> int (\"  45  \" with spaces)", stats);
+assert_eq("2.14" as int, 2, "str -> int (\"2.14\" float prefix)", stats);
+assert_eq("-3.99" as int, -3, "str -> int (\"-3.99\" float prefix)", stats);
+
+assert_throws(fn() { let x = "fefe" as int; }, "str -> int (\"fefe\" non-numeric string)", stats);
+assert_throws(fn() { let x = "abc" as int; }, "str -> int (\"abc\" letters)", stats);
+assert_throws(fn() { let x = "" as int; }, "str -> int (\"\" empty string)", stats);
+assert_throws(fn() { let x = "   " as int; }, "str -> int (\"   \" whitespace)", stats);
+assert_throws(fn() { let x = "true" as int; }, "str -> int (\"true\" boolean string)", stats);
+assert_throws(fn() { let x = "--5" as int; }, "str -> int (\"--5\" invalid sign)", stats);
+
+// Float casting (as float)
+print("\n2. Testing 'as Float'");
+assert_eq(3.14 as float, 3.14, "float -> float", stats);
+assert_eq((-0.001) as float, -0.001, "float -> float (negative)", stats);
+
+assert_eq(42 as float, 42.0, "int -> float (42)", stats);
+assert_eq((-10) as float, -10.0, "int -> float (-10)", stats);
+assert_eq(0 as float, 0.0, "int -> float (0)", stats);
+
+assert_eq(true as float, 1.0, "bool -> float (true)", stats);
+assert_eq(false as float, 0.0, "bool -> float (false)", stats);
+
+assert_eq(null as float, 0.0, "null -> float", stats);
+
+assert_eq("3.14" as float, 3.14, "str -> float (\"3.14\")", stats);
+assert_eq("-0.001" as float, -0.001, "str -> float (\"-0.001\")", stats);
+assert_eq("+42.5" as float, 42.5, "str -> float (\"+42.5\")", stats);
+assert_eq("42" as float, 42.0, "str -> float (\"42\")", stats);
+assert_eq("  12.34  " as float, 12.34, "str -> float (\"  12.34  \")", stats);
+
+assert_throws(fn() { let x = "fefe" as float; }, "str -> float (\"fefe\" non-numeric)", stats);
+assert_throws(fn() { let x = "abc" as float; }, "str -> float (\"abc\" letters)", stats);
+assert_throws(fn() { let x = "" as float; }, "str -> float (\"\" empty string)", stats);
+
+// Bool casting (as bool)
+print("\n3. Testing 'as Bool'");
+assert_eq(true as bool, true, "bool -> bool (true)", stats);
+assert_eq(false as bool, false, "bool -> bool (false)", stats);
+
+assert_eq(1 as bool, true, "int -> bool (1)", stats);
+assert_eq((-5) as bool, true, "int -> bool (-5 non-zero)", stats);
+assert_eq(0 as bool, false, "int -> bool (0)", stats);
+
+assert_eq(1.5 as bool, true, "float -> bool (1.5)", stats);
+assert_eq(0.0 as bool, false, "float -> bool (0.0)", stats);
+
+assert_eq(null as bool, false, "null -> bool", stats);
+
+assert_eq("1" as bool, true, "str -> bool (\"1\")", stats);
+assert_eq("true" as bool, true, "str -> bool (\"true\")", stats);
+assert_eq("TRUE" as bool, true, "str -> bool (\"TRUE\")", stats);
+
+assert_eq("0" as bool, false, "str -> bool (\"0\")", stats);
+assert_eq("false" as bool, false, "str -> bool (\"false\")", stats);
+assert_eq("FALSE" as bool, false, "str -> bool (\"FALSE\")", stats);
+
+assert_throws(fn() { let x = "maybe" as bool; }, "str -> bool (\"maybe\")", stats);
+assert_throws(fn() { let x = "yes" as bool; }, "str -> bool (\"yes\")", stats);
+assert_throws(fn() { let x = "abc" as bool; }, "str -> bool (\"abc\")", stats);
+assert_throws(fn() { let x = "2" as bool; }, "str -> bool (\"2\")", stats);
+assert_throws(fn() { let x = "" as bool; }, "str -> bool (\"\" empty string)", stats);
+
+// String casting (as str)
+print("\n4. Testing 'as Str'");
+assert_eq(42 as str, "42", "int -> str (42)", stats);
+assert_eq((-100) as str, "-100", "int -> str (-100)", stats);
+
+assert_eq(3.14 as str, "3.14", "float -> str (3.14)", stats);
+
+assert_eq(true as str, "true", "bool -> str (true)", stats);
+assert_eq(false as str, "false", "bool -> str (false)", stats);
+
+assert_eq(null as str, "null", "null -> str", stats);
+assert_eq("hello" as str, "hello", "str -> str", stats);
+
+// Chained & nested casting
+print("\n5. Testing Chained & Nested Casts");
+assert_eq(("123" as int) as float, 123.0, "chained: (\"123\" as int) as float", stats);
+assert_eq((("3.14" as float) as int) as str, "3", "chained: ((\"3.14\" as float) as int) as str", stats);
+assert_eq(("true" as bool) as int, 1, "chained: (\"true\" as bool) as int", stats);
+
+// Summary
+print("Total Passed: " + String(stats[0]));
+print("Total Failed: " + String(stats[1]));
+if (stats[1] > 0) {
+    print("SUITE FAILED!");
+    exit(1);
+} else {
+    print("All 48 comprehensive casting tests passed successfully.");
+}

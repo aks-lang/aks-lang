@@ -1,0 +1,71 @@
+println("Exhaustive Persistent Collections Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// PersistentList Subsystem (persistent_list)
+println("\n1. Persistentlist (immutable Singly-linked List)");
+
+let pl1 = PersistentList();
+assert_eq(pl1.Len(), 0, "persistent_list initial len == 0", stats);
+
+let pl2 = pl1.Prepend(10);
+let pl3 = pl2.Prepend(20);
+
+assert_eq(pl1.Len(), 0, "Original pl1 remains unmodified (length 0)", stats);
+assert_eq(pl2.Len(), 1, "pl2 length == 1", stats);
+assert_eq(pl3.Len(), 2, "pl3 length == 2", stats);
+
+assert_eq(pl3.HeadVal(), 20, "pl3.head_val() == 20", stats);
+let tail3 = pl3.TailList();
+assert_eq(tail3.HeadVal(), 10, "pl3.tail_list().head_val() == 10", stats);
+
+// PersistentMap Subsystem (persistent_map)
+println("\n2. Persistentmap (immutable Hash Trie Map)");
+
+let pm1 = PersistentMap();
+assert_eq(pm1.Len(), 0, "persistent_map initial len == 0", stats);
+
+let pm2 = pm1.Put("a", 100);
+let pm3 = pm2.Put("b", 200);
+
+assert_eq(pm1.Len(), 0, "Original pm1 remains unmodified (length 0)", stats);
+assert_eq(pm2.Len(), 1, "pm2 length == 1", stats);
+assert_eq(pm3.Len(), 2, "pm3 length == 2", stats);
+
+assert_eq(pm3.Get("a"), 100, "pm3.get('a') == 100", stats);
+assert_eq(pm3.Get("b"), 200, "pm3.get('b') == 200", stats);
+assert_eq(pm3.ContainsKey("b"), true, "pm3.contains_key('b') == true", stats);
+assert_eq(pm3.ContainsKey("c"), false, "pm3.contains_key('c') == false", stats);
+
+let pm4 = pm3.Remove("a");
+assert_eq(pm4.Len(), 1, "pm4 length after remove == 1", stats);
+assert_eq(pm4.ContainsKey("a"), false, "pm4.contains_key('a') == false", stats);
+assert_eq(pm3.ContainsKey("a"), true, "Original pm3 still contains 'a'", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " persistent collections tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

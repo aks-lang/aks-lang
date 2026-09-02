@@ -1,0 +1,44 @@
+fn test_assertions() {
+    assert!(1 == 1);
+    assert_eq!(2 + 2, 4);
+    assert_ne!(3 * 3, 10);
+
+    // Test assert_throws macro
+    let fail_fn = fn() {
+        throw "Expected error";
+    };
+    assert_throws!(fail_fn);
+}
+
+fn test_snapshots() {
+    let result = "Hello, Snapshot!";
+    AssertSnapshot("my_cool_snapshot", result);
+}
+
+// Property-based testing target
+fn prop_addition(a, b) {
+    return (a + b) == (b + a);
+}
+
+// Micro-benchmark target
+fn bench_fib() {
+    let a = 0;
+    let b = 1;
+    let i = 0;
+    while (i < 20) {
+        let temp = a + b;
+        a = b;
+        b = temp;
+        i = i + 1;
+    }
+}
+
+// Fuzz testing target
+fn fuzz_target(data) {
+    if (Length(data) >= 3) {
+        if (data[0] == 65 && data[1] == 66 && data[2] == 67) {
+            // Throw exception to indicate crash caught by fuzz runner
+            throw "Fuzz target crash trigger: ABC found!";
+        }
+    }
+}

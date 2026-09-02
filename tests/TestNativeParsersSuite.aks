@@ -1,0 +1,53 @@
+// Test Suite: Native Parsers & Serialization Subsystems
+
+fn assert_true(cond, msg) {
+    if (!cond) {
+        print("FAIL: " + msg);
+        panic(msg);
+    }
+}
+
+fn assert_eq(a, b, msg) {
+    if (a != b) {
+        print("FAIL: " + msg + " expected " + String(b) + " got " + String(a));
+        panic(msg);
+    }
+}
+
+// 1. CSV
+let csv_data = CSVParseC("id,name,role\n1,Alice,Dev\n2,Bob,QA");
+assert_eq(Length(csv_data), 3, "CSV rows count");
+assert_eq(csv_data[1][1], "Alice", "CSV row 1 column 1");
+
+// 2. TOML
+let toml_obj = TOMLParseC("title = \"App\"\nport = 8080\n[database]\nenabled = true");
+assert_eq(toml_obj.title, "App", "TOML root key");
+assert_eq(toml_obj.port, 8080, "TOML integer");
+
+// 3. INI
+let ini_obj = IniParseC("[Server]\nHost=127.0.0.1\nPort=8000");
+assert_eq(ini_obj.Server.Host, "127.0.0.1", "INI Host parameter");
+
+// 4. Regex (RegexMatchC, RegexReplaceC, RegexSplitC)
+assert_eq(RegexMatchC("[0-9]+", "Hello 2026 World"), true, "Regex match digits");
+assert_eq(RegexReplaceC("-", ":", "a-b-c"), "a:b:c", "Regex replace delimiter");
+let r_parts = RegexSplitC(",", "one,two,three");
+assert_eq(Length(r_parts), 3, "Regex split length");
+assert_eq(r_parts[1], "two", "Regex split part 1");
+
+// 5. Base32 & Base85 (Base32EncodeC, Base32DecodeC, Base85EncodeC, Base85DecodeC)
+let b32_enc = Base32EncodeC("Hello");
+assert_eq(Base32DecodeC(b32_enc), "Hello", "Base32 round-trip");
+
+let b85_enc = Base85EncodeC("Testing 123");
+assert_eq(Base85DecodeC(b85_enc), "Testing 123", "Base85 round-trip");
+
+// 6. MessagePack (MsgPackEncodeC)
+let mp_hex = MsgPackEncodeC("TestPayload");
+assert_true(Length(mp_hex) > 0, "MsgPack encoded hex string");
+
+// 7. CBOR (CborEncode, CborDecode)
+let cbor_hex = CborEncode("HelloCBOR");
+assert_eq(CborDecode(cbor_hex), "HelloCBOR", "CBOR round-trip decode");
+
+print("PASS: Native Parsers & Serialization Subsystems");

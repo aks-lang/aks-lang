@@ -1,0 +1,70 @@
+print("testing system stdlib and prelude");
+
+// Native file i/o
+print("Testing filesystem wrtfile and rdfile");
+let filename = "SystemOutput.txt";
+let testdata = "Line 1: AKS language is complete.\nLine 2: Built-in File I/O works.";
+let writestatus = WriteFile(filename, testdata);
+print("File write success status (Expected: true):");
+print(writestatus);
+
+let readdata = ReadFile(filename);
+print("Read file contents:");
+print(readdata);
+RemoveFile(filename);
+
+// OS command execution
+print("Testing OS command execution using exec()");
+// run echo using cmd.exe shell on Windows
+let cmdout = Execute("cmd.exe /c echo OS Shell Execution Success!");
+print("Command Output:");
+print(cmdout);
+
+// Random and Round
+print("Testing rand() and round()");
+let randval = Random();
+print("Random value (between 0.0 and 1.0):");
+print(randval);
+
+print("round(8.7) (Expected: 9):");
+print(round(8.7));
+
+print("round(8.3) (Expected: 8):");
+print(round(8.3));
+
+// Standard Prelude Iterators
+print("Testing Standard Prelude Iterators");
+let nums = range(1, 6);
+print("Generated numbers range(1, 6):");
+print(nums);
+// expected: [1, 2, 3, 4, 5]
+
+print("Doubling items using map():");
+let doubled = map(nums, fn(x) {return x * 2;
+});
+print(doubled);
+// expected: [2, 4, 6, 8, 10]
+
+print("Filtering even items using filter():");
+let evens = filter(nums, fn(x) {return x % 2 == 0;
+});
+print(evens);
+// expected: [2, 4]
+
+print("Summing elements using reduce() (Expected: 15):");
+let sumval = reduce(nums, fn(acc, x) {return acc + x;
+}, 0);
+print(sumval);
+
+print("Summing elements using sum() prelude shortcut (Expected: 15):");
+print(sum(nums));
+
+print("Reversing array using reverse():");
+print(reverse(nums));
+// expected: [5, 4, 3, 2, 1]
+
+print("Joining array with '-' separator (Expected: '1-2-3-4-5'):");
+let joined = join(nums, "-");
+print(joined);
+
+print("system and prelude verified");

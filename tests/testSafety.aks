@@ -1,0 +1,142 @@
+struct TestObj {
+    x: any;
+}
+
+print("Starting Safety Tests");
+
+// Use After Free (UAF) Detection on arrays
+try {
+    let arr = [1, 2, 3];
+    free(arr);
+    // Print/use to prevent DCE optimization
+    let v = arr[0];
+    print("FAILED: UAF array read was not caught! (value: " + String(v) + ")");
+}catch (e) {
+    print("SUCCESS: Caught expected UAF read exception: " + e);
+}
+
+try {
+    let arr2 = [1, 2, 3];
+    free(arr2);
+    arr2[0] = 99;
+    // Should throw UseAfterFreeError
+    print("FAILED: UAF array write was not caught!");
+}catch (e) {
+    print("SUCCESS: Caught expected UAF write exception: " + e);
+}
+
+// Use After Free (UAF) Detection on structs
+try {
+    let obj = new TestObj();
+    obj.x = 42;
+    free(obj);
+    let v = obj.x;
+    // Should throw UseAfterFreeError
+    print("FAILED: UAF struct field read was not caught! (value: " + String(v) + ")");
+}catch (e) {
+    print("SUCCESS: Caught expected UAF struct read exception: " + e);
+}
+
+// Null Pointer Dereference Exceptions
+try {
+    let n = null;
+    let v = n.x;
+    // Should throw NullPointerException
+    print("FAILED: Null pointer field read was not caught! (value: " + String(v) + ")");
+}catch (e) {
+    print("SUCCESS: Caught expected null exception (field read): " + e);
+}
+
+try {
+    let n2 = null;
+    let v = n2[0];
+    // Should throw NullPointerException
+    print("FAILED: Null pointer array read was not caught! (value: " + String(v) + ")");
+}catch (e) {
+    print("SUCCESS: Caught expected null exception (array read): " + e);
+}
+
+// Division by zero (using runtime variable to bypass compile-time folding and DCE)
+try {
+    let z = 0;
+    let x = 10 / z;
+    print("FAILED: Division by zero was not caught! (value: " + String(x) + ")");
+}catch (e) {
+    print("SUCCESS: Caught division by zero: " + e);
+}
+
+// Modulo by zero (using runtime variable to bypass compile-time folding and DCE)
+try {
+    let z = 0;
+    let x = 10 % z;
+    print("FAILED: Modulo by zero was not caught! (value: " + String(x) + ")");
+}catch (e) {
+    print("SUCCESS: Caught modulo by zero: " + e);
+}
+
+// Arena Allocations and bulk freeing
+try {
+    let arena = MakeArena();
+    let a1 = ArenaAllocArray(arena, 5);
+    a1[0] = "hello";
+    a1[1] = "world";
+
+    let s1 = ArenaAllocStruct(arena, "TestObj");
+    s1.foo = "bar";
+
+    print("Arena objects created successfully.");
+    print("a1[0] = " + a1[0]);
+    print("s1.foo = " + s1.foo);
+
+    ArenaFree(arena);
+    print("Arena bulk-freed successfully.");
+
+    // Accessing arena objects after arena_free should throw UseAfterFreeError
+    try {
+        let v = a1[0];
+        print("FAILED: Accessing array after arena_free was not caught! (value: " + String(v) + ")");
+    }catch (e2) {
+        print("SUCCESS: Caught expected UAF on arena array: " + e2);
+    }
+
+    try {
+        let v = s1.foo;
+        print("FAILED: Accessing struct after arena_free was not caught! (value: " + String(v) + ")");
+    }catch (e2) {
+        print("SUCCESS: Caught expected UAF on arena struct: " + e2);
+    }
+}catch (e) {
+    print("FAILED: Arena allocation test failed: " + e);
+}
+
+// Division/modulo/negation overflow (INT48_MIN edge cases)
+// Use a runtime variable for -1/negation to prevent compile-time evaluation.
+try {
+    let min_int =-140737488355328;
+    let divisor =-1;
+    let x = min_int / divisor;
+    print("Division INT48_MIN/-1 result (promoted or strict): " + String(x));
+}catch (e) {
+    print("SUCCESS: Caught division overflow exception: " + e);
+}
+
+try {
+    let min_int =-140737488355328;
+    let divisor =-1;
+    let x = min_int % divisor;
+    print("Modulo INT48_MIN%-1 result (promoted or strict): " + String(x));
+}catch (e) {
+    print("SUCCESS: Caught modulo overflow exception: " + e);
+}
+
+try {
+    let min_int =-140737488355328;
+    // For unary negation, since the optimizer or parser might fold it if it is a literal,
+    // let's perform negation on a variable.
+    let x =-min_int;
+    print("Negation INT48_MIN result (promoted or strict): " + String(x));
+}catch (e) {
+    print("SUCCESS: Caught negation overflow exception: " + e);
+}
+
+print("Safety Tests Finished");

@@ -1,0 +1,16 @@
+fn RunThreadBarrierTests() {
+    let barrier = ThreadBarrier.New(1);
+    assert_eq(barrier.barrier_id != 0, true);
+
+    // Single-thread barrier wait returns leader
+    let isLeader = barrier.Wait();
+    assert_eq(isLeader, true);
+
+    // Destroy
+    let destroyOk = barrier.Destroy();
+    assert_eq(destroyOk, true);
+
+    println("Thread barrier synchronization tests passed successfully");
+}
+
+RunThreadBarrierTests();

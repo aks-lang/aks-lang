@@ -1,0 +1,15 @@
+fn RunCompressionTests() {
+    let original = "AKS High Performance Systems Language - Native Compression Test Stream - Fast Data Processing Engine";
+    let origLen = Length(original);
+
+    let compressedHex = Compression.Deflate(original);
+    assert_eq(Length(compressedHex) > 0, true);
+
+    let decompressed = Compression.Inflate(compressedHex, origLen);
+    assert_eq(decompressed, original);
+    assert_eq(Length(decompressed), origLen);
+
+    println("Data compression and decompression engine tests passed successfully");
+}
+
+RunCompressionTests();

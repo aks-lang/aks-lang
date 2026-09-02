@@ -1,0 +1,35 @@
+fn teststrengthreduction() {
+    let x = 1024;
+    let r1 = x * 8;
+    let r2 = x / 4;
+    let r3 = x % 16;
+    let y = 1025;
+    let r4 = y % 8;
+    print("teststrengthreduction: " + String(r1) + " " + String(r2) + " " + String(r3) + " " + String(r4));
+}
+
+fn testcse() {
+    let x = 10;
+    let y = 20;
+    let a = (x + y) * (x + y);
+    let b = (x - y) + (x - y);
+    print("testcse: " + String(a) + " " + String(b));
+}
+
+fn testtracingjit() {
+    let sum = 0;
+    let i = 0;
+    while (i < 100) {
+        sum = sum + i;
+        i = i + 1;
+    }
+    print("testtracingjit sum: " + String(sum));
+}
+
+fn main() {
+    teststrengthreduction();
+    testcse();
+    testtracingjit();
+}
+
+main();

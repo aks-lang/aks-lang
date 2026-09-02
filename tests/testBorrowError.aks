@@ -1,0 +1,5 @@
+let x: array = [1, 2];
+let y = x;
+// x is moved to y
+print(x);
+// x cannot be accessed anymore!

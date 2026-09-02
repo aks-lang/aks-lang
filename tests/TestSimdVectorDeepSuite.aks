@@ -1,0 +1,61 @@
+println("Exhaustive SIMD Vector Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// SIMD Vector Operations (simd_add, simd_sub, simd_mul, simd_div)
+println("\n1. SIMD Vector Arithmetic");
+
+let vec_a = [1.0, 2.0, 3.0, 4.0];
+let vec_b = [10.0, 20.0, 30.0, 40.0];
+
+let res_add = SimdAdd(vec_a, vec_b);
+assert_eq(res_add[0], 11.0, "simd_add element 0 == 11.0", stats);
+assert_eq(res_add[3], 44.0, "simd_add element 3 == 44.0", stats);
+
+let res_sub = SimdSub(vec_b, vec_a);
+assert_eq(res_sub[0], 9.0, "simd_sub element 0 == 9.0", stats);
+assert_eq(res_sub[3], 36.0, "simd_sub element 3 == 36.0", stats);
+
+let res_mul = SimdMul(vec_a, vec_b);
+assert_eq(res_mul[0], 10.0, "simd_mul element 0 == 10.0", stats);
+assert_eq(res_mul[3], 160.0, "simd_mul element 3 == 160.0", stats);
+
+let res_div = SimdDiv(vec_b, vec_a);
+assert_eq(res_div[0], 10.0, "simd_div element 0 == 10.0", stats);
+assert_eq(res_div[3], 10.0, "simd_div element 3 == 10.0", stats);
+
+// Fused Multiply Add (simd_fma)
+println("\n2. SIMD Fused Multiply add");
+
+let vec_c = [5.0, 5.0, 5.0, 5.0];
+let res_fma = SimdFma(vec_a, vec_b, vec_c);
+assert_eq(res_fma[0], 15.0, "simd_fma element 0 (1*10 + 5) == 15.0", stats);
+assert_eq(res_fma[3], 165.0, "simd_fma element 3 (4*40 + 5) == 165.0", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " simd subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

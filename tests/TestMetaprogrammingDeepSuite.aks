@@ -1,0 +1,74 @@
+println("Exhaustive Metaprogramming Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// AST Macros (Declaration & Invocation)
+println("\n1. AST Macros");
+
+macro squaremacro(x) {
+    return x * x;
+}
+
+assert_eq(squaremacro!(5), 25, "squaremacro!(5) == 25", stats);
+
+macro greetmacro(n) {
+    return "Hello, " + n + "!";
+}
+
+assert_eq(greetmacro!("AKS"), "Hello, AKS!", "greetmacro!('AKS') == 'Hello, AKS!'", stats);
+
+// String Code Evaluation (eval)
+println("\n2. String Code Evaluation (eval)");
+
+let eval_res = Evaluate("let x = 40; let y = 2; x + y;");
+assert_eq(eval_res, 42, "eval('let x = 40; let y = 2; x + y;') == 42", stats);
+
+// Struct Reflection API (fields, has, get, set)
+println("\n3. Struct Reflection API");
+
+struct User {
+    name: string,
+    age: int
+}
+
+let u = new User();
+u.name = "developer";
+u.age = 25;
+
+assert_eq(has(u, "name"), true, "has(u, 'name') == true", stats);
+assert_eq(has(u, "gender"), false, "has(u, 'gender') == false", stats);
+assert_eq(get(u, "age"), 25, "get(u, 'age') == 25", stats);
+
+set(u, "age", 30);
+assert_eq(get(u, "age"), 30, "get(u, 'age') after set(u, 'age', 30) == 30", stats);
+
+let f_list = fields(u);
+assert_eq(Length(f_list) >= 2, true, "fields(u) returns field list", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " metaprogramming tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

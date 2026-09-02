@@ -1,0 +1,13 @@
+fn RunNetworkInterfaceTests() {
+    let primaryIp = NetworkInterface.PrimaryIp();
+    assert_eq(primaryIp != null, true);
+    assert_eq(Length(primaryIp) >= 7, true);
+
+    let primaryMac = NetworkInterface.PrimaryMac();
+    assert_eq(primaryMac != null, true);
+    assert_eq(Length(primaryMac) >= 12, true);
+
+    println("Network adapter and hardware MAC address telemetry tests passed successfully");
+}
+
+RunNetworkInterfaceTests();

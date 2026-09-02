@@ -1,0 +1,16 @@
+fn RunThreadPoolWorkTests() {
+    let work = ThreadPoolWork.Create();
+    assert_eq(work.work_id != 0, true);
+
+    let subOk = work.Submit();
+    assert_eq(subOk, true);
+
+    let waitOk = work.Wait(false);
+    assert_eq(waitOk, true);
+
+    work.Close();
+
+    println("OS threadpool work engine tests passed successfully");
+}
+
+RunThreadPoolWorkTests();

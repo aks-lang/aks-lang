@@ -1,0 +1,67 @@
+// Test CircularByteBuffer Lock-Free Ring Buffer Subsystem
+fn Main() {
+    print("Testing CircularByteBuffer Lock-Free Ring Buffer Subsystem");
+
+    let ring = CircularByteBuffer.New(64);
+    if (ring == null || ring.Capacity() != 64 || ring.Available() != 0) {
+        print("Ring buffer initialization mismatch");
+        return 1;
+    }
+
+    // Write data into ring buffer
+    let written1 = ring.Write("Hello ");
+    if (written1 != 6 || ring.Available() != 6) {
+        print("Written count mismatch: " + written1);
+        return 1;
+    }
+
+    let written2 = ring.Write("World!");
+    if (written2 != 6 || ring.Available() != 12) {
+        print("Written count 2 mismatch");
+        return 1;
+    }
+
+    // Read partial chunk
+    let chunk1 = ring.Read(5);
+    if (chunk1 != "Hello" || ring.Available() != 7) {
+        print("Read chunk1 mismatch: " + chunk1);
+        return 1;
+    }
+
+    // Read remaining chunk
+    let chunk2 = ring.Read(7);
+    if (chunk2 != " World!" || ring.Available() != 0) {
+        print("Read chunk2 mismatch: " + chunk2);
+        return 1;
+    }
+
+    // Test wrap-around behavior across boundary
+    let long_payload = "1234567890123456789012345678901234567890";
+    let written3 = ring.Write(long_payload);
+    if (written3 != 40) {
+        print("Wrap-around write mismatch: " + written3);
+        return 1;
+    }
+    let read3 = ring.Read(40);
+    if (read3 != long_payload || ring.Available() != 0) {
+        print("Wrap-around read mismatch");
+        return 1;
+    }
+
+    // Test reset
+    ring.Write("ABC");
+    if (ring.Available() != 3) {
+        print("Available before reset mismatch");
+        return 1;
+    }
+    ring.Reset();
+    if (ring.Available() != 0) {
+        print("Available after reset mismatch");
+        return 1;
+    }
+
+    print("TestCircularByteBuffer passed");
+    return 0;
+}
+
+Main();

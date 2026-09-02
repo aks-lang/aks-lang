@@ -1,0 +1,10 @@
+fn double_val(x) {
+    return x * 2;
+}
+
+fn add_val(x, y) {
+    return x + y;
+}
+
+let x = 10 |> add_val(5) |> double_val;
+print(x);

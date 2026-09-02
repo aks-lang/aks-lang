@@ -1,0 +1,25 @@
+print("Bool Cast Tests");
+let a = "1" as bool;
+print("'1' as bool: " + String(a));
+
+let b = "0" as bool;
+print("'0' as bool: " + String(b));
+
+let c = "true" as bool;
+print("'true' as bool: " + String(c));
+
+let d = "false" as bool;
+print("'false' as bool: " + String(d));
+
+try {
+    let e = "abc" as bool;
+    print("'abc' as bool: " + String(e));
+} catch (err) {
+    print("Caught invalid bool cast");
+}
+
+let f = 1 as bool;
+print("1 as bool: " + String(f));
+
+let g = 0 as bool;
+print("0 as bool: " + String(g));

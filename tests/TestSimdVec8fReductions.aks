@@ -1,0 +1,22 @@
+// Test suite for Hardware SIMD 256-Bit 8-Way Float Horizontal Reductions
+fn main() {
+    let v = SimdVec8f.New([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
+    
+    let sum = v.Sum();
+    assert_eq(sum, 36.0);
+
+    let min_el = v.MinElement();
+    assert_eq(min_el, 1.0);
+
+    let max_el = v.MaxElement();
+    assert_eq(max_el, 8.0);
+
+    let norm = v.Norm();
+    // sqrt(1^2 + 2^2 + 3^2 + 4^2 + 5^2 + 6^2 + 7^2 + 8^2) = sqrt(204) ~= 14.282856857
+    assert(norm > 14.28 && norm < 14.29);
+
+    v.Free();
+    print("TestSimdVec8fReductions passed");
+}
+
+main();

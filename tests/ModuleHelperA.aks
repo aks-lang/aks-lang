@@ -1,0 +1,4 @@
+module helper_a {
+    pub fn get_val() { return 100; }
+    fn get_secret() { return 999; }
+}

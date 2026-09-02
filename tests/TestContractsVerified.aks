@@ -1,0 +1,46 @@
+fn SafeDivide(a: int, b: int) -> int
+    requires b != 0
+    ensures result != null
+{
+    return a / b;
+}
+
+fn Clamp(val: int, minVal: int, maxVal: int) -> int
+    requires minVal <= maxVal
+    ensures result >= minVal
+    ensures result <= maxVal
+{
+    if (val < minVal) {
+        return minVal;
+    }
+    if (val > maxVal) {
+        return maxVal;
+    }
+    return val;
+}
+
+fn RunContractsVerifiedTests() {
+    let res1 = SafeDivide(10, 2);
+    assert_eq(res1, 5);
+
+    let res2 = Clamp(15, 0, 10);
+    assert_eq(res2, 10);
+
+    let res3 = Clamp(-5, 0, 10);
+    assert_eq(res3, 0);
+
+    let res4 = Clamp(7, 0, 10);
+    assert_eq(res4, 7);
+
+    assert_throws(fn() {
+        SafeDivide(10, 0);
+    });
+
+    assert_throws(fn() {
+        Clamp(5, 10, 0);
+    });
+
+    println("Verified function contracts tests passed successfully");
+}
+
+RunContractsVerifiedTests();

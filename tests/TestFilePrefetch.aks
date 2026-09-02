@@ -1,0 +1,18 @@
+// Test suite for OS Virtual Memory and File Prefetch Advisory
+fn main() {
+    let buf = AlignedBuffer.Alloc(65536, 4096);
+    let ptr = buf.ptr_id;
+    assert(ptr != 0);
+
+    let prefetched = FilePrefetch.PrefetchVirtualRange(ptr, 65536);
+    // OS may return true or false depending on privilege/support, verify method invocation
+    assert(prefetched == true || prefetched == false);
+
+    let adv = FilePrefetch.SetAdvice("tests", "sequential");
+    assert(adv == true);
+
+    buf.Free();
+    print("TestFilePrefetch passed");
+}
+
+main();

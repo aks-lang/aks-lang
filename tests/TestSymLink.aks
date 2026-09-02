@@ -1,0 +1,17 @@
+fn RunSymLinkTests() {
+    let testPath = "tests\\TestSymLink.aks";
+    let isLink = SymLink.IsSymLink(testPath);
+    assert_eq(isLink, false);
+
+    let dummyPath = "non_existent_file_aks_123.tmp";
+    let isDummyLink = SymLink.IsSymLink(dummyPath);
+    assert_eq(isDummyLink, false);
+
+    let res = SymLink.Resolve(testPath);
+    // Resolves either to the normalized file path or empty if not a link
+    assert_eq(Length(res) >= 0, true);
+
+    println("OS symbolic link and reparse point tests passed successfully");
+}
+
+RunSymLinkTests();

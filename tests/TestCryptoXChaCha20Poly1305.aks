@@ -1,0 +1,35 @@
+// Test Extended-Nonce XChaCha20-Poly1305 AEAD Authenticated Encryption
+fn Main() {
+    // 32-byte key (64 hex characters)
+    let key_hex = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+    // 24-byte extended nonce (48 hex characters)
+    let nonce_hex = "00000000000102030405060708090a0b0c0d0e0f10111213";
+    let aad = "Header metadata authenticate only";
+    let plaintext = "Secret highly confidential payload encrypted with 192-bit nonce!";
+
+    let enc = CryptoXChaCha20Poly1305.Encrypt(key_hex, nonce_hex, aad, plaintext);
+    if (Length(enc.ciphertext) == 0 || Length(enc.tag) != 32) {
+        print("Invalid encryption result length");
+        return 1;
+    }
+
+    // Decrypt and verify
+    let decrypted = CryptoXChaCha20Poly1305.Decrypt(key_hex, nonce_hex, aad, enc.ciphertext, enc.tag);
+    if (decrypted != plaintext) {
+        print("Decryption plaintext mismatch: " + decrypted);
+        return 1;
+    }
+
+    // Tampered tag must fail verification
+    let bad_tag = "00000000000000000000000000000000";
+    let bad_dec = CryptoXChaCha20Poly1305.Decrypt(key_hex, nonce_hex, aad, enc.ciphertext, bad_tag);
+    if (bad_dec != null) {
+        print("Tampered tag must return null");
+        return 1;
+    }
+
+    print("TestCryptoXChaCha20Poly1305 passed");
+    return 0;
+}
+
+Main();

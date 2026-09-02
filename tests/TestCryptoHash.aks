@@ -1,0 +1,18 @@
+fn RunCryptoHashTests() {
+    let sha256Hello = CryptoHash.Sha256("hello");
+    assert_eq(Length(sha256Hello), 64);
+    assert_eq(sha256Hello, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+
+    let sha512Hello = CryptoHash.Sha512("hello");
+    assert_eq(Length(sha512Hello), 128);
+
+    let hmacVal = CryptoHash.HmacSha256("secret_key", "message_payload");
+    assert_eq(Length(hmacVal), 64);
+
+    let sha256Empty = CryptoHash.Sha256("");
+    assert_eq(sha256Empty, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+
+    println("Cryptographic SHA-256, SHA-512, and HMAC hash engine tests passed successfully");
+}
+
+RunCryptoHashTests();

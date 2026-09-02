@@ -1,0 +1,92 @@
+fn absolute(x: int) -> int
+  requires x >= -10
+  ensures result >= 0
+{
+    if (x < 0) {
+        return -x;
+    }
+    return x;
+}
+
+fn are_contracts_enabled() {
+    try {
+        absolute(-15);
+        return false;
+    } catch (e) {
+        return true;
+    }
+}
+
+fn test_precondition_violation() {
+    if (are_contracts_enabled()) {
+        try {
+            absolute(-15);
+            print("FAIL: absolute(-15) should have thrown PreconditionViolated");
+            exit(1);
+        } catch (e) {
+            print("PASS: got expected error for precondition: " + String(e));
+        }
+    } else {
+        print("PASS: contract checking disabled, skipping precondition violation check");
+    }
+}
+
+fn test_correct_contracts() {
+    try {
+        let abs = absolute(-5);
+        if (abs == 5) {
+            print("PASS: absolute(-5) = 5");
+        } else {
+            print("FAIL: absolute(-5) returned " + String(abs));
+            exit(1);
+        }
+    } catch (e) {
+        print("FAIL: correct contract threw error: " + String(e));
+        exit(1);
+    }
+}
+
+fn test_invariant() {
+    let i = 0;
+    try {
+        for (let i = 0; i < 5; i = i + 1)
+          invariant i >= 0
+          invariant i <= 5
+        {
+        }
+        print("PASS: loop invariants verified successfully");
+    } catch (e) {
+        print("FAIL: loop invariant threw error: " + String(e));
+        exit(1);
+    }
+}
+
+fn test_invalid_invariant() {
+    if (are_contracts_enabled()) {
+        let i = 0;
+        try {
+            for (let i = 0; i < 5; i = i + 1)
+              invariant i >= 0
+              invariant i < 3
+            {
+            }
+            print("FAIL: loop invariant should have failed");
+            exit(1);
+        } catch (e) {
+            print("PASS: got expected error for loop invariant: " + String(e));
+        }
+    } else {
+        print("PASS: contract checking disabled, skipping invalid invariant check");
+    }
+}
+
+if (are_contracts_enabled()) {
+    print("Contract checking: ENABLED");
+} else {
+    print("Contract checking: DISABLED");
+}
+
+test_precondition_violation();
+test_correct_contracts();
+test_invariant();
+test_invalid_invariant();

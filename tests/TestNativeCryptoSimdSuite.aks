@@ -1,0 +1,56 @@
+// Test Suite: Native Crypto & SIMD Subsystems
+
+fn assert_true(cond, msg) {
+    if (!cond) {
+        print("FAIL: " + msg);
+        panic(msg);
+    }
+}
+
+fn assert_eq(a, b, msg) {
+    if (a != b) {
+        print("FAIL: " + msg + " expected " + String(b) + " got " + String(a));
+        panic(msg);
+    }
+}
+
+// 1. CRC32 & xxHash3 (CryptoCrc32C, CryptoXxHashC)
+let crc = CryptoCrc32C("123456789");
+assert_eq(crc, 3421780262, "CRC-32 standard check value");
+
+let xxh = CryptoXxHashC("The quick brown fox jumps over the lazy dog");
+assert_true(xxh != 0, "xxHash3 64-bit non-zero hash");
+
+// 2. TOTP (CryptoTotpC)
+let totp_code = CryptoTotpC("12345678901234567890", 59);
+assert_true(totp_code >= 0 && totp_code <= 999999, "TOTP 6-digit passcode format");
+
+// 3. PBKDF2 (CryptoPbkdf2C)
+let pbkdf_key = CryptoPbkdf2C("password", "salt", 1000, 32);
+assert_eq(Length(pbkdf_key), 64, "PBKDF2 32-byte derived key hex length");
+
+// 4. AES-CBC (CryptoAesCbcEncryptC, CryptoAesCbcDecryptC)
+let aes_key = "1234567890123456";
+let aes_iv  = "abcdefghijklmnop";
+let aes_ct = CryptoAesCbcEncryptC(aes_key, aes_iv, "ConfidentialData");
+assert_true(Length(aes_ct) > 0, "AES-CBC ciphertext generated");
+let aes_pt = CryptoAesCbcDecryptC(aes_key, aes_iv, aes_ct);
+assert_eq(aes_pt, "ConfidentialData", "AES-CBC decrypted plaintext matches");
+
+// 5. X25519 DH Key Exchange (CryptoX25519C)
+let x25_pub = CryptoX25519C("0000000000000000000000000000000000000000000000000000000000000001", "0000000000000000000000000000000000000000000000000000000000000002");
+assert_true(x25_pub != null, "X25519 DH public key generated");
+
+// 6. SIMD Hardware Acceleration (SimdCrc32cC, SimdBroadcastC, SimdConvertIntToFloatC)
+let crc32c_val = SimdCrc32cC("123456789");
+assert_true(crc32c_val != 0, "SSE4.2 hardware CRC32C calculated");
+
+let bcast = SimdBroadcastC(3.14);
+assert_eq(Length(bcast), 8, "AVX broadcast length");
+assert_true(bcast[0] > 3.13 && bcast[0] < 3.15, "AVX broadcast value");
+
+let conv_flts = SimdConvertIntToFloatC([10, 20, 30, 40, 50, 60, 70, 80]);
+assert_eq(Length(conv_flts), 8, "AVX2 int-to-float converted elements");
+assert_true(conv_flts[0] == 10.0, "AVX2 converted float 0");
+
+print("PASS: Native Crypto & SIMD Subsystems");

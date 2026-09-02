@@ -1,0 +1,39 @@
+fn assert(cond, msg) {
+    if (!cond) {
+        print("FAIL: " + msg);
+        exit(1);
+    }
+}
+
+// clipboard
+ClipboardSet("AKSTest");
+assert(ClipboardGet() == "AKSTest", "clipboard");
+
+// notification & Tray
+notify("AKS", "Test");
+TrayAdd("icon", "tooltip");
+TrayRemove();
+
+// Gui Window & Button
+let window = win("Test", 100, 100);
+assert(window != null, "window");
+let button = Button(window, "Click", 10, 10, 50, 20);
+assert(button != null, "button");
+// msgbox("AKS", "Test message");
+// loop();
+
+// Sdl graphics
+SdlInit();
+let gfx = SdlWin("Render", 100, 100);
+assert(gfx != null, "graphics window");
+SdlClear(0, 0, 0);
+SdlRect(10, 10, 20, 20, 255, 255, 255);
+SdlCircle(50, 50, 10, 255, 0, 0);
+SdlEvent();
+
+// drag & Drop & DOM
+GuiDrag(window);
+let root = DomGet("root");
+DomSet(root, "<h1>Test</h1>");
+
+print("Platform tests passed");

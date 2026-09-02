@@ -1,0 +1,61 @@
+// Test RadixTree Associative Structure Subsystem
+fn Main() {
+    print("Testing RadixTree Associative Structure Subsystem");
+
+    let tree = RadixTree.New();
+    if (tree == null || tree.Count() != 0) {
+        print("RadixTree initialization mismatch");
+        return 1;
+    }
+
+    // Insert keys
+    tree.Insert("apple", 101);
+    tree.Insert("app", 102);
+    tree.Insert("application", 103);
+    tree.Insert("banana", 201);
+    tree.Insert("band", 202);
+    tree.Insert("bandit", 203);
+
+    if (tree.Count() != 6) {
+        print("Inserted count mismatch: " + tree.Count());
+        return 1;
+    }
+
+    // Lookup keys
+    if (tree.Lookup("apple") != 101 || tree.Lookup("app") != 102 || tree.Lookup("application") != 103) {
+        print("Lookup apple/app/application failed");
+        return 1;
+    }
+    if (tree.Lookup("banana") != 201 || tree.Lookup("band") != 202 || tree.Lookup("bandit") != 203) {
+        print("Lookup banana/band/bandit failed");
+        return 1;
+    }
+    if (tree.Lookup("unknown") != null) {
+        print("Lookup unknown key should return null");
+        return 1;
+    }
+
+    // Prefix Search
+    let app_matches = tree.PrefixSearch("app");
+    if (app_matches == null || Length(app_matches) != 3) {
+        print("Prefix search 'app' returned mismatch: " + Length(app_matches));
+        return 1;
+    }
+
+    let ban_matches = tree.PrefixSearch("band");
+    if (ban_matches == null || Length(ban_matches) != 2) {
+        print("Prefix search 'band' returned mismatch");
+        return 1;
+    }
+
+    let none_matches = tree.PrefixSearch("cat");
+    if (none_matches == null || Length(none_matches) != 0) {
+        print("Prefix search 'cat' returned mismatch");
+        return 1;
+    }
+
+    print("TestRadixTree passed");
+    return 0;
+}
+
+Main();

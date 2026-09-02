@@ -1,0 +1,8 @@
+fn getmagicnumber() {
+    return 42;
+}
+
+fn multiplybymagic(x) {
+    let magic = getmagicnumber();
+    return x * magic;
+}

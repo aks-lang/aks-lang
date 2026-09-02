@@ -1,0 +1,18 @@
+print("Enter an integer:");
+input(intText);
+let intValue = intText as int;
+print("Integer read: " + String(intValue));
+
+print("Enter a float:");
+input(floatText);
+let floatValue = floatText as float;
+print("Float read: " + String(floatValue));
+
+print("Enter a bool (1/0/true/false):");
+input(boolText);
+let boolValue = boolText as bool;
+print("Bool read: " + String(boolValue));
+
+print("Enter a string:");
+input(strValue);
+print("String read: " + strValue);

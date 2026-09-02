@@ -1,0 +1,35 @@
+fn main() {
+    print("Testing Numeric Literals");
+    
+    // Decimal with separators
+    let dec = 1_000_000;
+    print("dec: " + String(dec));
+    if (dec != 1000000) {
+        print("FAIL: dec separator");
+    }
+
+    // Float with separators
+    let flt = 1_000.50_1;
+    print("flt: " + String(flt));
+    if (flt != 1000.501) {
+        print("FAIL: float separator");
+    }
+
+    // Hex with separators
+    let hex = 0xFF_AA;
+    print("hex: " + String(hex));
+    if (hex != 65450) {
+        print("FAIL: hex separator");
+    }
+
+    // Binary with separators
+    let bin = 0b1010_1100;
+    print("bin: " + String(bin));
+    if (bin != 172) {
+        print("FAIL: bin separator");
+    }
+
+    print("Numeric Literals Tests Pass");
+}
+
+main();

@@ -1,0 +1,159 @@
+print("testing metaprogramming");
+
+// AST Macros (Declaration & Invocation)
+print("\nast macros");
+macro squaremacro(x) {
+    return x * x;
+}
+print("squaremacro!(5) (Expected: 25):");
+print(squaremacro!(5));
+
+macro greetmacro(name) {
+    return "Hello, " + name + "!";
+}
+print("greetmacro!(\"Anoop\") (Expected: Hello, Anoop!):");
+print(greetmacro!("Anoop"));
+
+// Method Missing Handler
+print("\ntesting method missing");
+struct DynamicObject {}
+
+fn dynamicmethodmissing(self, name, args) {
+    print("methodmissing hook triggered for: " + name);
+    print("Args count: " + String(Length(args)));
+    return args[0] * args[1];
+}
+
+let dynobj = new DynamicObject();
+dynobj.methodmissing = dynamicmethodmissing;
+print("Result of dynobj.multiply(7, 8) (Expected: 56):");
+let missingres = dynobj.multiply(7, 8);
+print(missingres);
+
+// Eval() & Code Generation from Strings
+print("\ntesting eval");
+let evalcode = "let x = 40; let y = 2; x + y;";
+print("Evaluating code: " + evalcode);
+let evalres = Evaluate(evalcode);
+print("Eval result (Expected: 42):");
+print(evalres);
+
+// Reflection API
+print("\ntesting reflection");
+struct User {
+    name: string;
+    age: int;
+}
+let userobj = new User();
+userobj.name = "developer";
+userobj.age = 25;
+
+print("fields(userobj):");
+print(fields(userobj));
+
+print("has(userobj, \"name\") (Expected: true):");
+print(has(userobj, "name"));
+
+print("has(userobj, \"gender\") (Expected: false):");
+print(has(userobj, "gender"));
+
+print("get(userobj, \"age\") (Expected: 25):");
+print(get(userobj, "age"));
+
+set(userobj, "age", 26);
+print("get(userobj, \"age\") after set (Expected: 26):");
+print(get(userobj, "age"));
+
+set(userobj, "role", "lead coder");
+print("fields(userobj) after set role:");
+print(fields(userobj));
+print("get(userobj, \"role\") (Expected: lead coder):");
+print(get(userobj, "role"));
+
+fn testfn(x) {return x + 10;
+}
+print("fnname(testfn) (Expected: testfn):");
+print(FunctionName(testfn));
+
+print("getfn(\"testfn\"):");
+let resolvedfn = GetFunction("testfn");
+print(FunctionName(resolvedfn));
+
+GLOBALTESTVAR = 100;
+print("globals() contains GLOBALTESTVAR (Expected: true):");
+let globlist = globals();
+print(contains(globlist, "GLOBALTESTVAR"));
+
+print("section 4 passed");
+
+// Dynamic Method Creation
+print("\ntesting dynamic methods");
+struct DynamicMethodObj {}
+let dynmethobj = new DynamicMethodObj();
+set(dynmethobj, "dynamicadd", testfn);
+print("Result of dynmethobj.dynamicadd(5) (Expected: 15):");
+print(dynmethobj.dynamicadd(5));
+
+// Operator Overloading
+print("\ntesting operator overloading");
+struct Point {
+    x: int;
+    y: int;
+}
+fn pointadd(self, other) {
+    let newpt = new Point();
+    newpt.x = self.x + other.x;
+    newpt.y = self.y + other.y;
+    return newpt;
+}
+fn pointeq(self, other) {
+    return self.x == other.x && self.y == other.y;
+}
+
+let p1 = new Point();
+p1.x = 10;
+p1.y = 20;
+p1.opadd = pointadd;
+p1.opeq = pointeq;
+
+let p2 = new Point();
+p2.x = 5;
+p2.y = 7;
+
+let p3 = p1 + p2;
+print("p3.x (Expected: 15):");
+print(p3.x);
+print("p3.y (Expected: 27):");
+print(p3.y);
+
+let p4 = new Point();
+p4.x = 10;
+p4.y = 20;
+p4.opeq = pointeq;
+print("p1 == p4 (Expected: true):");
+print(p1 == p4);
+print("p1 == p2 (Expected: false):");
+print(p1 == p2);
+
+// Compile-Time Function Execution (CTFE)
+print("\ntesting compile-time execution");
+fn fib(n) {
+    if (n <= 1) {return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+let ctfeval = ctfe(fib(10));
+print("ctfe(fib(10)) (Expected: 55):");
+print(ctfeval);
+
+// Template / Generic System
+print("\ntesting templates");
+fn identity < T > (x: T) -> T {
+    return x;
+}
+print("identity<int>(5) (Expected: 5):");
+print(identity < int > (5));
+print("identity<string>(\"AKS\") (Expected: AKS):");
+print(identity < string > ("AKS"));
+
+print("metaprogramming verified");

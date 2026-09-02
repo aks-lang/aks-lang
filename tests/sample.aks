@@ -1,0 +1,34 @@
+// Automatically generated AKS FFI bindings for 'sample.dll'
+
+let _ffi_lib = FFILoad("sample.dll");
+
+let _sym_add = "";
+if (platform() == "windows") {
+    _sym_add = "?add@@YAHHH@Z";
+} else {
+    _sym_add = "_Z3addii";
+}
+fn add(p0, p1) {
+    return FFICall(_ffi_lib, _sym_add, "i(ii)", [p0, p1]);
+}
+
+let _sym_subtract = "";
+if (platform() == "windows") {
+    _sym_subtract = "?subtract@@YANNN@Z";
+} else {
+    _sym_subtract = "_Z8subtractdd";
+}
+fn subtract(p0, p1) {
+    return FFICall(_ffi_lib, _sym_subtract, "d(dd)", [p0, p1]);
+}
+
+let _sym_printMsg = "";
+if (platform() == "windows") {
+    _sym_printMsg = "?printMsg@@YAXPEBD@Z";
+} else {
+    _sym_printMsg = "_Z8printMsgPKc";
+}
+fn printMsg(p0) {
+    return FFICall(_ffi_lib, _sym_printMsg, "v(s)", [p0]);
+}
+

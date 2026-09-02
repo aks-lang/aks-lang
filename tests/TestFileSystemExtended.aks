@@ -1,0 +1,39 @@
+fn RunFileSystemExtendedTests() {
+    let srcFile = "test_fs_src.tmp";
+    let dstFile = "test_fs_dst.tmp";
+
+    // Write a test file
+    let okWrite = FileSystem.WriteText(srcFile, "Hello Extended FileSystem Capabilities");
+    assert_eq(okWrite, true);
+
+    // Read test file
+    let readBack = FileSystem.ReadText(srcFile);
+    assert_eq(readBack, "Hello Extended FileSystem Capabilities");
+
+    // IsFile and IsDir
+    assert_eq(FileSystem.IsFile(srcFile), true);
+    assert_eq(FileSystem.IsDir(srcFile), false);
+    assert_eq(FileSystem.IsDir("src"), true);
+
+    // File Size
+    let sz = FileSystem.Size(srcFile);
+    assert_eq(sz > 0, true);
+
+    // Modified Time (Unix ms)
+    let mtime = FileSystem.ModifiedTime(srcFile);
+    assert_eq(mtime > 0, true);
+
+    // Copy File
+    let okCopy = FileSystem.Copy(srcFile, dstFile);
+    assert_eq(okCopy, true);
+    assert_eq(FileSystem.IsFile(dstFile), true);
+    assert_eq(FileSystem.Size(dstFile), sz);
+
+    // Clean up temp files
+    FileSystem.Delete(srcFile);
+    FileSystem.Delete(dstFile);
+
+    println("Extended file system metadata and copy operations tests passed successfully");
+}
+
+RunFileSystemExtendedTests();

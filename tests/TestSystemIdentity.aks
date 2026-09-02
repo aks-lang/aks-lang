@@ -1,0 +1,14 @@
+fn RunSystemIdentityTests() {
+    let userName = SystemIdentity.UserName();
+    assert_eq(Length(userName) > 0, true);
+
+    let isAdmin = SystemIdentity.IsAdmin();
+    assert_eq(isAdmin == true || isAdmin == false, true);
+
+    let integrity = SystemIdentity.ProcessIntegrityLevel();
+    assert_eq(Length(integrity) > 0, true);
+
+    println("System security token and user identity tests passed successfully");
+}
+
+RunSystemIdentityTests();

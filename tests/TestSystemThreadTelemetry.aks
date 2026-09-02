@@ -1,0 +1,23 @@
+// Test suite for OS Per-Thread Execution Telemetry & Cycle Profiling
+fn main() {
+    let times = SystemThreadTelemetry.GetCurrentThreadTimes();
+    assert(times.kernel_time_us >= 0);
+    assert(times.user_time_us >= 0);
+
+    let cycles = SystemThreadTelemetry.GetCurrentThreadCycles();
+    assert(cycles >= 0);
+
+    // Burn some cycles
+    let sum = 0;
+    for (let i = 0; i < 10000; i = i + 1) {
+        sum = sum + i;
+    }
+    assert(sum > 0);
+
+    let cycles_after = SystemThreadTelemetry.GetCurrentThreadCycles();
+    assert(cycles_after >= cycles);
+
+    print("TestSystemThreadTelemetry passed");
+}
+
+main();

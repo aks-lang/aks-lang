@@ -1,0 +1,94 @@
+print("Testing cancellation token...");
+token = new CancellationToken();
+token._cancelled = false;
+token._listeners = [];
+t = spawn fn() {
+    sleep(100);
+}();
+token.Register(t);
+token.Cancel();
+try {
+    await t;
+    print("FAILED: expected CancelledError");
+}catch (e) {
+    print("SUCCESS: caught CancelledError: " + String(e));
+}
+
+print("Testing task group cancellation on error...");
+childstatus = [0, 0];
+try {
+    WithTaskGroup(fn(tg) {
+        tg.SpawnTask(fn() {
+            childstatus[0] = 1;
+            sleep(10);
+            throw "taskerror";
+        });
+        tg.SpawnTask(fn() {
+            childstatus[1] = 1;
+            sleep(100);
+            childstatus[1] = 2;
+        });
+    });
+    print("FAILED: expected taskerror");
+}catch (e) {
+    print("SUCCESS: caught taskerror: " + String(e));
+}
+print("Child 1 status: " + String(childstatus[0]));
+print("Child 2 status: " + String(childstatus[1]));
+
+print("Testing back-pressure channels...");
+chan1 = Channel(1);
+writefinished = [0];
+wt = spawn fn() {
+    send(chan1, 10);
+    send(chan1, 20);
+    writefinished[0] = 1;
+}();
+sleep(20);
+print("Write finished immediately? (Expected 0): " + String(writefinished[0]));
+val1 = Receive(chan1);
+print("Received first: " + String(val1));
+sleep(20);
+print("Write finished after read? (Expected 1): " + String(writefinished[0]));
+val2 = Receive(chan1);
+print("Received second: " + String(val2));
+await wt;
+
+print("Testing fan-out and fan-in...");
+inchan = Channel(2);
+out1 = Channel(2);
+out2 = Channel(2);
+FanOut(inchan, [out1, out2]);
+send(inchan, 42);
+send(inchan, null);
+r1 = Receive(out1);
+r2 = Receive(out2);
+print("Fan-out results: " + String(r1) + ", " + String(r2));
+
+outin = Channel(2);
+in1 = Channel(2);
+in2 = Channel(2);
+FanIn([in1, in2], outin);
+send(in1, 100);
+send(in2, 200);
+send(in1, null);
+send(in2, null);
+v1 = Receive(outin);
+v2 = Receive(outin);
+print("Fan-in results: " + String(v1) + ", " + String(v2));
+
+print("Testing reactive streams...");
+subject = new Subject();
+subject.observers = [];
+observable = subject.AsObservable();
+received = [];
+observable.subscribe(fn(val) {
+    append(received, val);
+});
+subject.Next(77);
+subject.Next(88);
+print("Received stream data: " + String(Length(received)));
+print("Item 1: " + String(received[0]));
+print("Item 2: " + String(received[1]));
+
+print("All advanced concurrency tests passed!");

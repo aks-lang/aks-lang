@@ -1,0 +1,32 @@
+fn RunStopwatchTests() {
+    let sw = Stopwatch.StartNew();
+    assert_eq(sw.IsRunning(), true);
+    assert_eq(sw.frequency > 0, true);
+
+    // Sleep for 10ms
+    sleep(10);
+
+    sw.Stop();
+    assert_eq(sw.IsRunning(), false);
+
+    let ms = sw.ElapsedMilliseconds();
+    assert_eq(ms >= 5, true);
+
+    let us = sw.ElapsedMicroseconds();
+    assert_eq(us > 0, true);
+
+    let ns = sw.ElapsedNanoseconds();
+    assert_eq(ns > 0, true);
+
+    sw.Reset();
+    assert_eq(sw.ElapsedMilliseconds(), 0);
+    assert_eq(sw.IsRunning(), false);
+
+    sw.Restart();
+    assert_eq(sw.IsRunning(), true);
+    sw.Stop();
+
+    println("High-precision monotonic stopwatch tests passed successfully");
+}
+
+RunStopwatchTests();

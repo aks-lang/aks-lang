@@ -1,0 +1,1 @@
+FanOut(Channel(1), [Channel(1)]);

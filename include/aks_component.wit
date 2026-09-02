@@ -1,0 +1,9 @@
+package aks:runtime;
+
+world aks-runner {
+    // Typed imports that the WebAssembly module imports from the host environment
+    import print: func(msg: string);
+
+    // Typed exports that the WebAssembly module exposes to the host environment
+    export run-source: func(source: string) -> s32;
+}

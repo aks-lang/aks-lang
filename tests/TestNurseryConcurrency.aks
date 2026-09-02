@@ -1,0 +1,60 @@
+println("Structured Concurrency Nursery Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Direct Nursery struct instance lifecycle
+let n = NurseryNew();
+assert_eq(Length(n.tasks), 0, "NurseryNew creates empty tasks array", stats);
+
+// Nursery scoped block execution
+let executed = [];
+nursery n_scope {
+    append(executed, 10);
+    append(executed, 20);
+    append(executed, 100);
+}
+assert_eq(Length(executed), 3, "Nursery block executed 3 sequential steps", stats);
+assert_eq(executed[0] + executed[1] + executed[2], 130, "Nursery block steps sum == 130", stats);
+
+// Nursery task tracking & cancellation
+let n2 = NurseryNew();
+let ch = Channel(5);
+
+async fn async_worker(c) {
+    try {
+        sleep(100);
+        send(c, 999);
+    } catch (err) {
+        // Cancelled task handled cleanly
+    }
+}
+
+let t = spawn async_worker(ch);
+n2.Track(t);
+assert_eq(Length(n2.tasks), 1, "Nursery tracked spawned async task", stats);
+
+n2.CancelAll();
+assert_eq(IsCancelled(t), true, "Nursery CancelAll cancelled child task", stats);
+try {
+    await t;
+} catch (err) {}
+
+println("Results: " + String(stats[0]) + " passed, " + String(stats[1]) + " failed.");

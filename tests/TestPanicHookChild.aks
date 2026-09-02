@@ -1,0 +1,27 @@
+fn my_panic_handler(p) {
+    print("HOOK TRIGGERED: " + p.message);
+    let bt = p.backtrace;
+    print("BACKTRACE SIZE: " + String(Length(bt)));
+    let i = 0;
+    while (i < Length(bt)) {
+        let f = bt[i];
+        print("  frame " + String(i) + ": fn=" + f.function + ", file=" + f.file + ", line=" + String(f.line));
+        i++;
+    }
+}
+
+SetPanicHook(my_panic_handler);
+
+fn bar() {
+    print("Inside bar");
+    panic("my panic msg");
+}
+
+fn foo() {
+    print("Inside foo");
+    bar();
+}
+
+print("Before foo call");
+foo();
+print("After foo call");

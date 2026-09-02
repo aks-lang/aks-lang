@@ -1,0 +1,36 @@
+// Test IcmpPingEngine Win32 Subsystem
+fn Main() {
+    print("Testing IcmpPingEngine Win32 Subsystem");
+
+    // Direct Win32 ICMP echo request to local loopback (127.0.0.1)
+    let ping_res = IcmpPing.Ping("127.0.0.1", 1000);
+    if (ping_res == null) {
+        print("Ping result must not be null");
+        return 1;
+    }
+    if (ping_res.success != true) {
+        print("Loopback ICMP ping must succeed");
+        return 1;
+    }
+    if (ping_res.rtt_ms < 0) {
+        print("Round trip time ms must be non-negative");
+        return 1;
+    }
+    if (ping_res.status != 0) {
+        print("ICMP status IP_SUCCESS (0)");
+        return 1;
+    }
+    if (ping_res.bytes != 32) {
+        print("Sent 32 echo request payload bytes");
+        return 1;
+    }
+    if (ping_res.ttl <= 0) {
+        print("Time-to-live must be greater than zero");
+        return 1;
+    }
+
+    print("TestIcmpPingEngine passed");
+    return 0;
+}
+
+Main();

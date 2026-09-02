@@ -1,0 +1,61 @@
+print("testing exceptions");
+
+// Basic Throw and Catch
+print("\ntesting basic try/catch");
+try {
+    print("Inside try block");
+    throw "This is a custom user error!";
+    print("This line should NOT be reached");
+}catch (err) {
+    print("Caught expected exception: " + err);
+}
+
+// Catching VM Runtime Errors
+print("\ntesting VM runtime errors");
+try {
+    print("Attempting division by zero");
+    let result = 10 / 0;
+    print("This line should NOT be reached (result: " + String(result) + ")");
+}catch (err) {
+    print("Gracefully caught division by zero: " + err);
+}
+
+try {
+    print("Attempting array index out-of-bounds");
+    let arr = [1, 2, 3];
+    let val = arr[99];
+    print("This line should NOT be reached (val: " + String(val) + ")");
+}catch (err) {
+    print("Gracefully caught array bounds error: " + err);
+}
+
+try {
+    print("Attempting increment on non-numeric value");
+    let name = "AKS Language";
+    name++;
+    print("This line should NOT be reached");
+}catch (err) {
+    print("Gracefully caught increment error: " + err);
+}
+
+// Nested Try-Catch and Stack Unwinding
+print("\ntesting nested try/catch");
+try {
+    print("Outer try start");
+    try {
+        print("  Inner try start");
+        let a = [1];
+        let b = a[5];
+        // triggers out-of-bounds error
+        print("  This line should NOT be reached");
+    }catch (innererr) {
+        print("  Inner catch handled: " + innererr);
+        print("  Throwing custom escalation");
+        throw "Escalated: " + innererr;
+    }
+    print("Outer try end - should NOT be reached");
+}catch (outererr) {
+    print("Outer catch handled escalation: " + outererr);
+}
+
+print("exceptions verified");

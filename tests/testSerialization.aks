@@ -1,0 +1,181 @@
+print("Running Serialization & Derive Macros Test Suite");
+
+// Streaming JSON
+print("\n[Test 1] Streaming JSON");
+let item1 = { id: 1, val: 100 };
+let item2 = { id: 2, val: 200 };
+let item3 = { id: 3, val: 300 };
+let json_stream_data = JsonStringify(item1) + " " + JsonStringify(item2) + "\n" + JsonStringify(item3);
+let parsed_stream = JsonParseStream(json_stream_data);
+print("  Parsed stream item count (Expected: 3): " + String(Length(parsed_stream)));
+if (Length(parsed_stream) != 3 || parsed_stream[0].id != 1 || parsed_stream[1].id != 2 || parsed_stream[2].id != 3) {
+    print("  FAILED: Streaming JSON mismatch!");
+    exit(1);
+}
+print("  Streaming JSON passed.");
+
+// CBOR serialization
+print("\n[Test 2] CBOR Binary Serialization");
+struct TestData {
+    name: string;
+    score: int;
+    active: bool;
+}
+let inst = new TestData();
+inst.name = "CBOR Test";
+inst.score = 99;
+inst.active = true;
+
+let cbor_bytes = CborEncode(inst);
+let decoded_cbor = CborDecode(cbor_bytes);
+print("  Decoded name (Expected: CBOR Test): " + String(decoded_cbor.name));
+print("  Decoded score (Expected: 99): " + String(decoded_cbor.score));
+print("  Decoded active (Expected: true): " + String(decoded_cbor.active));
+if (decoded_cbor.name != "CBOR Test" || decoded_cbor.score != 99 || !decoded_cbor.active) {
+    print("  FAILED: CBOR roundtrip mismatch!");
+    exit(1);
+}
+print("  CBOR Serialization passed.");
+
+// MessagePack
+print("\n[Test 3] MessagePack Binary Serialization");
+let msgpack_bytes = MessagePackEncode(inst);
+let decoded_msgpack = MessagePackDecode(msgpack_bytes);
+print("  Decoded name (Expected: CBOR Test): " + String(decoded_msgpack.name));
+print("  Decoded score (Expected: 99): " + String(decoded_msgpack.score));
+print("  Decoded active (Expected: true): " + String(decoded_msgpack.active));
+if (decoded_msgpack.name != "CBOR Test" || decoded_msgpack.score != 99 || !decoded_msgpack.active) {
+    print("  FAILED: MessagePack roundtrip mismatch!");
+    exit(1);
+}
+print("  MessagePack Serialization passed.");
+
+// CSV parse / stringify
+print("\n[Test 4] CSV Parse & Stringify");
+struct Item {
+    id: int;
+    desc: string;
+}
+let item1 = new Item();
+item1.id = 10;
+item1.desc = "Item A";
+let item2 = new Item();
+item2.id = 20;
+item2.desc = "Item B, with comma";
+let items_arr = [item1, item2];
+
+let csv_str = CsvStringify(items_arr);
+print("  Stringified CSV:\n" + csv_str);
+let parsed_csv = CsvParse(csv_str);
+print("  Parsed row 1 id (Expected: 10): " + String(parsed_csv[0].id));
+print("  Parsed row 2 desc (Expected: Item B, with comma): " + String(parsed_csv[1].desc));
+if (parsed_csv[0].id != "10" || parsed_csv[1].desc != "Item B, with comma") {
+    print("  FAILED: CSV roundtrip mismatch!");
+    exit(1);
+}
+print("  CSV Parse & Stringify passed.");
+
+// TOML parse / stringify
+print("\n[Test 5] TOML Parse & Stringify");
+struct Config {
+    title: string;
+    owner: string;
+}
+let conf = new Config();
+conf.title = "AKS Project";
+conf.owner = "Developer";
+
+let toml_str = TomlStringify(conf);
+print("  Stringified TOML:\n" + toml_str);
+let parsed_toml = TomlParse(toml_str);
+print("  Parsed title (Expected: AKS Project): " + String(parsed_toml.title));
+print("  Parsed owner (Expected: Developer): " + String(parsed_toml.owner));
+if (parsed_toml.title != "AKS Project" || parsed_toml.owner != "Developer") {
+    print("  FAILED: TOML roundtrip mismatch!");
+    exit(1);
+}
+print("  TOML Parse & Stringify passed.");
+
+// XML parse / stringify
+print("\n[Test 6] XML Parse & Stringify");
+struct Book {
+    title: string;
+    author: string;
+}
+let b = new Book();
+b.title = "AKS Language Guide";
+b.author = "Anoop";
+
+let xml_str = XmlStringify(b);
+print("  Stringified XML:\n" + xml_str);
+let parsed_xml = XmlParse(xml_str);
+print("  Parsed title (Expected: AKS Language Guide): " + String(parsed_xml.Book.title));
+print("  Parsed author (Expected: Anoop): " + String(parsed_xml.Book.author));
+if (parsed_xml.Book.title != "AKS Language Guide" || parsed_xml.Book.author != "Anoop") {
+    print("  FAILED: XML roundtrip mismatch!");
+    exit(1);
+}
+print("  XML Parse & Stringify passed.");
+
+// Protobuf Object Encoding / Decoding
+print("\n[Test 7] Protobuf Object-Level Encoding & Decoding");
+struct ProtoUser {
+    id: int;
+    name: string;
+}
+let pu = new ProtoUser();
+pu.id = 42;
+pu.name = "Alice";
+
+struct ProtoUserMapping {}
+let mapping = new ProtoUserMapping();
+set(mapping, "1", "id");
+set(mapping, "2", "name");
+
+let pu_bytes = ProtobufEncodeObj(pu, mapping);
+let decoded_pu = ProtobufDecodeObj(pu_bytes, mapping, "ProtoUser");
+print("  Decoded ProtoUser id (Expected: 42): " + String(decoded_pu.id));
+print("  Decoded ProtoUser name (Expected: Alice): " + String(decoded_pu.name));
+if (decoded_pu.id != 42 || decoded_pu.name != "Alice") {
+    print("  FAILED: Protobuf object-level roundtrip mismatch!");
+    exit(1);
+}
+print("  Protobuf Object-Level passed.");
+
+// Struct-level serialize / deserialize derive macro
+print("\n[Test 8] Struct decorators @serialize and @deserialize");
+@serialize
+@deserialize
+struct Point {
+    x: int;
+    y: int;
+}
+
+let pt = new Point();
+pt.x = 7;
+pt.y = 12;
+
+let pt_json = Point.to_json(pt);
+print("  to_json: " + pt_json);
+let pt_cbor = Point.to_cbor(pt);
+let pt_msgpack = Point.to_msgpack(pt);
+let pt_toml = Point.to_toml(pt);
+print("  to_toml:\n" + pt_toml);
+
+let decoded_pt_json = Point.from_json(pt_json);
+let decoded_pt_toml = Point.from_toml(pt_toml);
+let decoded_pt_cbor = Point.from_cbor(pt_cbor);
+let decoded_pt_msgpack = Point.from_msgpack(pt_msgpack);
+
+print("  decoded_pt_json.x (Expected: 7): " + String(decoded_pt_json.x));
+print("  decoded_pt_toml.y (Expected: 12): " + String(decoded_pt_toml.y));
+print("  decoded_pt_cbor.x (Expected: 7): " + String(decoded_pt_cbor.x));
+print("  decoded_pt_msgpack.y (Expected: 12): " + String(decoded_pt_msgpack.y));
+
+if (decoded_pt_json.x != 7 || decoded_pt_toml.y != 12 || decoded_pt_cbor.x != 7 || decoded_pt_msgpack.y != 12) {
+    print("  FAILED: Derived serialize/deserialize mismatch!");
+    exit(1);
+}
+print("  Struct decorators @serialize and @deserialize passed.");
+
+print("\nAll Serialization Tests Passed Successfully!");

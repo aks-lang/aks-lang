@@ -1,0 +1,35 @@
+fn RunReadWriteLockTests() {
+    let rw = ReadWriteLock.New();
+    assert_eq(rw.lock_id != 0, true);
+
+    // Shared read lock
+    let lockSharedOk = rw.LockShared();
+    assert_eq(lockSharedOk, true);
+
+    let unlockSharedOk = rw.UnlockShared();
+    assert_eq(unlockSharedOk, true);
+
+    // Exclusive write lock
+    let lockExOk = rw.LockExclusive();
+    assert_eq(lockExOk, true);
+
+    let unlockExOk = rw.UnlockExclusive();
+    assert_eq(unlockExOk, true);
+
+    // Non-blocking try locks
+    let trySharedOk = rw.TryLockShared();
+    assert_eq(trySharedOk, true);
+    rw.UnlockShared();
+
+    let tryExOk = rw.TryLockExclusive();
+    assert_eq(tryExOk, true);
+    rw.UnlockExclusive();
+
+    // Destroy
+    let destroyOk = rw.Destroy();
+    assert_eq(destroyOk, true);
+
+    println("Slim Reader-Writer (SRW) lock tests passed successfully");
+}
+
+RunReadWriteLockTests();

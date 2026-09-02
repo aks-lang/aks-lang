@@ -1,0 +1,25 @@
+fn RunFastMemSearchTests() {
+    // byte hex string (exceeds 32-byte AVX boundary)
+    // Bytes: 0x01, 0x02, ..., 0x20, 0xAA, 0xBB
+    let hexData = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1faabb";
+
+    // Find byte 0xAA (offset 32)
+    let idx = FastMemSearch.FindByte(hexData, 0xAA);
+    assert_eq(idx, 32);
+
+    // Find non-existent byte 0xFF (-1)
+    let missing = FastMemSearch.FindByte(hexData, 0xFF);
+    assert_eq(missing, -1);
+
+    // Find sequence 0xaabb (offset 32)
+    let seqIdx = FastMemSearch.FindSequence(hexData, "aabb");
+    assert_eq(seqIdx, 32);
+
+    // Count byte 0x00 (present 1 time)
+    let cnt = FastMemSearch.CountByte(hexData, 0x00);
+    assert_eq(cnt, 1);
+
+    println("SIMD fast memory block search tests passed successfully");
+}
+
+RunFastMemSearchTests();

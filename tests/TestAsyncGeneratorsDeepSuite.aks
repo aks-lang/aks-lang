@@ -1,0 +1,55 @@
+println("Exhaustive Async & Generator Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Async File I/O (wrtfile_async, rdfile_async, await)
+println("\n1. Async File I/o");
+
+async fn test_async_io() {
+    let filename = "AsyncIoDeepOutput.txt";
+    let content = "Hello, AKS Async I/O Engine!";
+    
+    let write_task = WriteFileAsync(filename, content);
+    let write_res = await write_task;
+    
+    let read_task = ReadFileAsync(filename);
+    let read_res = await read_task;
+    
+    RemoveFile(filename);
+    return read_res;
+}
+
+async fn main_async(st) {
+    let io_res = await test_async_io();
+    assert_eq(io_res, "Hello, AKS Async I/O Engine!", "Async write/read file roundtrip", st);
+}
+
+await main_async(stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " async & generator tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

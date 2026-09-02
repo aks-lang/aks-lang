@@ -1,0 +1,397 @@
+// Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
+#ifndef VALH
+#define VALH
+
+
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+
+#ifdef _MSC_VER
+#include <intrin.h>
+#define AtomicIncrement(ptr) _InterlockedIncrement((volatile long*)(ptr))
+#define AtomicDecrement(ptr) _InterlockedDecrement((volatile long*)(ptr))
+#elif defined(__GNUC__) || defined(__clang__)
+#define AtomicIncrement(ptr) __sync_add_and_fetch(ptr, 1)
+#define AtomicDecrement(ptr) __sync_sub_and_fetch(ptr, 1)
+#else
+#define AtomicIncrement(ptr) (++(*(ptr)))
+#define AtomicDecrement(ptr) (--(*(ptr)))
+#endif
+
+typedef enum {
+    VALFLOAT = 0,
+    VALINT = 1,
+    VALBOOL = 2,
+    VALNULL = 3,
+    VALSTR = 4,
+    VALARR = 5,
+    VALSTRUCT = 6,
+    VALFN = 7,
+    VALTASK = 8,
+    VALCHANNEL = 9,
+    VALMUTEX = 10,
+    VALSEM = 11,
+    VALBOUNDMETHOD = 12,
+    VALARENA = 13,
+    VALTUPLE = 14
+} ValType;
+
+#define ValToTuple(v) ValToArr(v)
+
+typedef uint64_t AKSValue;
+typedef struct AKSString AKSString;
+typedef struct AKSArray AKSArray;
+typedef struct AKSStruct AKSStruct;
+typedef struct VMTask VMTask;
+typedef struct VMChannel VMChannel;
+typedef struct VMMutex VMMutex;
+typedef struct VMSemaphore VMSemaphore;
+typedef struct AKSBoundMethod AKSBoundMethod;
+
+struct AKSString {
+    char *data;
+    int len;
+    int refcount;
+};
+
+struct AKSBoundMethod {
+    int refcount;
+    AKSValue *receiver;
+    char *name;
+};
+
+typedef struct AKSArena AKSArena;
+struct AKSArena {
+    int refcount;
+    void **allocations;
+    int *alloc_types;
+    int count;
+    int capacity;
+    int invalidated;
+};
+
+static inline AKSArena *ValToArena(AKSValue v) {
+    return (AKSArena*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
+}
+
+static inline AKSValue ValArena(AKSArena *a) {
+    return (0xFFFDULL << 48) | ((uintptr_t)a & 0x0000FFFFFFFFFFFFULL);
+}
+
+#define VALFLOATLIMIT 0xFFF1000000000000ULL
+
+static inline ValType ValKind(AKSValue v) {
+    if (v < VALFLOATLIMIT) return VALFLOAT;
+    uint64_t tag = (v >> 48) - 0xFFF0ULL;
+    if (tag > 14) return VALFLOAT;
+    return (ValType)tag;
+}
+
+static inline int64_t ValToInt(AKSValue v) {
+    uint64_t payload = v & 0x0000FFFFFFFFFFFFULL;
+    if (payload & 0x0000800000000000ULL) {
+        return (int64_t)(payload | 0xFFFF000000000000ULL);
+    }
+    return (int64_t)payload;
+}
+
+static inline int64_t ValToIntUnchecked(AKSValue v) {
+    uint64_t payload = v & 0x0000FFFFFFFFFFFFULL;
+    if (payload & 0x0000800000000000ULL) {
+        return (int64_t)(payload | 0xFFFF000000000000ULL);
+    }
+    return (int64_t)payload;
+}
+
+static inline double ValToFloat(AKSValue v) {
+    union { uint64_t u; double d; } u;
+    u.u = v;
+    return u.d;
+}
+
+static inline int ValToBool(AKSValue v) {
+    return (int)(v & 1);
+}
+
+static inline int ValToFn(AKSValue v) {
+    return (int)(v & 0xFFFFFFFFULL);
+}
+
+static inline AKSString *ValToStrPtr(AKSValue v) {
+    return (AKSString*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
+}
+
+static inline AKSArray *ValToArr(AKSValue v) {
+    return (AKSArray*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
+}
+
+static inline AKSStruct *ValToObj(AKSValue v) {
+    return (AKSStruct*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
+}
+
+static inline VMTask *ValToTask(AKSValue v) {
+    return (VMTask*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
+}
+
+static inline VMChannel *ValToChan(AKSValue v) {
+    return (VMChannel*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
+}
+
+static inline VMMutex *ValToMutex(AKSValue v) {
+    return (VMMutex*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
+}
+
+static inline VMSemaphore *ValToSem(AKSValue v) {
+    return (VMSemaphore*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
+}
+
+static inline AKSBoundMethod *ValToBoundMethod(AKSValue v) {
+    return (AKSBoundMethod*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
+}
+
+static inline AKSValue ValInt(int64_t i) {
+    return (0xFFF1ULL << 48) | ((uint64_t)i & 0x0000FFFFFFFFFFFFULL);
+}
+
+static inline AKSValue ValFloat(double f) {
+    union { uint64_t u; double d; } u;
+    u.d = f;
+    if ((u.u & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL) {
+        u.u = 0x7FF8000000000000ULL;
+    }
+    return u.u;
+}
+
+static inline AKSValue ValBool(int b) {
+    return (0xFFF2ULL << 48) | (b ? 1 : 0);
+}
+
+static inline AKSValue ValNull(void) {
+    return (0xFFF3ULL << 48);
+}
+
+static inline AKSValue ValFn(int fnid) {
+    return (0xFFF7ULL << 48) | (uint32_t)fnid;
+}
+
+#include <limits.h>
+
+struct AKSArray {
+    AKSValue *items;
+    int count;
+    int capacity;
+    int refcount;
+    int invalidated;
+    int isstack;
+    int isslice;
+    AKSValue parent;
+    void *arena;
+};
+
+struct AKSStruct {
+    char *typename;
+    int fieldcount;
+    char **fieldnames;
+    AKSValue *fieldvals;
+    int refcount;
+    int invalidated;
+    int isstack;
+    void *arena;
+};
+
+static inline int ChkAddOvf(int64_t a, int64_t b, int64_t *res) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_add_overflow(a, b, res);
+#else
+    if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b)) {
+        return 1;
+    }
+    *res = a + b;
+    return 0;
+#endif
+}
+
+static inline int ChkSubOvf(int64_t a, int64_t b, int64_t *res) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_sub_overflow(a, b, res);
+#else
+    if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b)) {
+        return 1;
+    }
+    *res = a - b;
+    return 0;
+#endif
+}
+
+static inline int ChkMulOvf(int64_t a, int64_t b, int64_t *res) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_mul_overflow(a, b, res);
+#else
+    if (a == 0 || b == 0) {
+        *res = 0;
+        return 0;
+    }
+    if (a > 0) {
+        if (b > 0) {
+            if (b > INT64_MAX / a) return 1;
+        } else {
+            if (b < INT64_MIN / a) return 1;
+        }
+    } else {
+        if (b > 0) {
+            if (a < INT64_MIN / b) return 1;
+        } else {
+            /* Both negative: product is positive. Overflow if |a*b| > INT64_MAX.
+               Equivalently: b < INT64_MIN / a  (a < 0, so division flips sign). */
+            if (b < INT64_MIN / a) return 1;
+        }
+    }
+    *res = a * b;
+    return 0;
+#endif
+}
+
+static inline AKSValue ValAddIntInt(AKSValue a, AKSValue b) {
+    int64_t res;
+    if (ChkAddOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &res)) {
+        return ValFloat((double)ValToIntUnchecked(a) + (double)ValToIntUnchecked(b));
+    }
+    return ValInt(res);
+}
+
+static inline AKSValue ValAddFloatFloat(AKSValue a, AKSValue b) {
+    return ValFloat(ValToFloat(a) + ValToFloat(b));
+}
+
+static inline AKSValue ValSubFloatFloat(AKSValue a, AKSValue b) {
+    return ValFloat(ValToFloat(a) - ValToFloat(b));
+}
+
+static inline AKSValue ValMulFloatFloat(AKSValue a, AKSValue b) {
+    return ValFloat(ValToFloat(a) * ValToFloat(b));
+}
+
+static inline AKSValue ValDivFloatFloat(AKSValue a, AKSValue b) {
+    return ValFloat(ValToFloat(a) / ValToFloat(b));
+}
+
+static inline AKSValue ValSubIntInt(AKSValue a, AKSValue b) {
+    int64_t res;
+    if (ChkSubOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &res)) {
+        return ValFloat((double)ValToIntUnchecked(a) - (double)ValToIntUnchecked(b));
+    }
+    return ValInt(res);
+}
+
+static inline AKSValue ValMulIntInt(AKSValue a, AKSValue b) {
+    int64_t res;
+    if (ChkMulOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &res)) {
+        return ValFloat((double)ValToIntUnchecked(a) * (double)ValToIntUnchecked(b));
+    }
+    return ValInt(res);
+}
+
+static inline AKSValue ValDivIntInt(AKSValue a, AKSValue b) {
+    int64_t ib = ValToIntUnchecked(b);
+    if (ib == 0) {
+        fprintf(stderr, "Runtime error: division by zero\n");
+        return ValNull();
+    }
+    return ValInt(ValToIntUnchecked(a) / ib);
+}
+
+static inline AKSValue ValModIntInt(AKSValue a, AKSValue b) {
+    int64_t ib = ValToIntUnchecked(b);
+    if (ib == 0) {
+        fprintf(stderr, "Runtime error: modulo by zero\n");
+        return ValNull();
+    }
+    return ValInt(ValToIntUnchecked(a) % ib);
+}
+
+extern int gStaticSafeMode;
+
+static inline int ValIsInvalidated(AKSValue v) {
+    if (gStaticSafeMode) return 0;
+    if (ValKind(v) == VALARR && ValToArr(v) && ValToArr(v)->invalidated) return 1;
+    if (ValKind(v) == VALSTRUCT && ValToObj(v) && ValToObj(v)->invalidated) return 1;
+    return 0;
+}
+
+extern volatile int gActiveStrs;
+extern volatile int gactivearrs;
+extern volatile int gactivestructs;
+
+AKSValue ValInt(int64_t i);
+AKSValue ValFloat(double f);
+AKSValue ValBool(int b);
+AKSValue ValNull(void);
+AKSValue ValStr(const char *s);
+AKSValue ValStrLen(const char *s, int len);
+AKSValue ValArr(int cap);
+AKSValue ValStruct(const char *typename);
+AKSValue ValArrStack(VMTask *task, int cap);
+AKSValue ValTuple(int cap);
+AKSValue ValTupleStack(VMTask *task, int cap);
+AKSValue ValStructStack(VMTask *task, const char *typename);
+AKSValue ValFn(int fnid);
+AKSValue ValTask(VMTask *t);
+AKSValue ValChannel(VMChannel *c);
+AKSValue ValMutex(VMMutex *m);
+AKSValue ValSem(VMSemaphore *s);
+AKSValue ValBoundmethod(AKSValue receiver, const char *name);
+AKSValue ValTypeof(AKSValue v);
+AKSValue ValCastInt(AKSValue val, int *ok);
+AKSValue ValCastFloat(AKSValue val, int *ok);
+AKSValue ValCastBool(AKSValue val, int *ok);
+AKSValue ValCastStr(AKSValue val);
+
+void ValFreeFunc(AKSValue *v);
+#define ValFree(v) do { if ((v) && ValKind(*(v)) >= VALSTR) ValFreeFunc(v); } while(0)
+AKSValue ValCopySlow(AKSValue v);
+static inline AKSValue ValCopy(AKSValue v) {
+    if (v < VALFLOATLIMIT) return v;
+    uint64_t tag = (v >> 48) - 0xFFF0ULL;
+    if (tag < (uint64_t)VALSTR || tag > 14) return v;
+    return ValCopySlow(v);
+}
+int ValIsTruthy(AKSValue v);
+
+AKSValue ValAdd(AKSValue a, AKSValue b);
+AKSValue ValSub(AKSValue a, AKSValue b);
+AKSValue ValMul(AKSValue a, AKSValue b);
+AKSValue ValDiv(AKSValue a, AKSValue b);
+AKSValue ValMod(AKSValue a, AKSValue b);
+AKSValue ValNeg(AKSValue a);
+
+AKSValue ValLt(AKSValue a, AKSValue b);
+AKSValue ValGt(AKSValue a, AKSValue b);
+AKSValue ValLte(AKSValue a, AKSValue b);
+AKSValue ValGte(AKSValue a, AKSValue b);
+AKSValue ValEq(AKSValue a, AKSValue b);
+AKSValue ValNeq(AKSValue a, AKSValue b);
+AKSValue ValAnd(AKSValue a, AKSValue b);
+AKSValue ValOr(AKSValue a, AKSValue b);
+AKSValue ValNot(AKSValue a);
+
+AKSValue ValToStr(AKSValue a);
+void ValPrint(AKSValue v);
+void ValPrintln(AKSValue v);
+const char *ValTypeName(ValType t);
+AKSValue ValArrArena(int cap, void *arena);
+AKSValue ValStructArena(const char *typename, void *arena);
+void *AslrmAlloc(size_t size);
+void *AslrReAlloc(void *ptr, size_t size);
+void AslrFree(void *ptr);
+char *AslrStrDup(const char *s);
+void *AslrcAlloc(size_t num, size_t size);
+
+#define malloc(sz) AslrmAlloc(sz)
+#define realloc(ptr, sz) AslrReAlloc(ptr, sz)
+#define free(ptr) AslrFree(ptr)
+#define strdup(s) AslrStrDup(s)
+#define calloc(n, sz) AslrcAlloc(n, sz)
+
+#endif // Valh

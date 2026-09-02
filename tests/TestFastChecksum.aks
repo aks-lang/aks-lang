@@ -1,0 +1,24 @@
+fn RunFastChecksumTests() {
+    let testStr = "123456789";
+
+    // Hardware sse4.2 crc32-c checksum
+    let crc = FastChecksum.Crc32c(testStr);
+    assert_eq(crc != 0, true);
+
+    // Incremental crc32-c
+    let crcPart1 = FastChecksum.Crc32c("12345");
+    let crcFull = FastChecksum.Crc32cUpdate(crcPart1, "6789");
+    assert_eq(crcFull, crc);
+
+    // Adler-32
+    let adler = FastChecksum.Adler32("Wikipedia");
+    assert_eq(adler != 0, true);
+
+    // bit FNV-1a Hash
+    let fnv = FastChecksum.Fnv1a64("Hello AKS Language Checksum");
+    assert_eq(fnv != 0, true);
+
+    println("Hardware CRC32-C and fast checksum engine tests passed successfully");
+}
+
+RunFastChecksumTests();

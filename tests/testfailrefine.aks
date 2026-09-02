@@ -1,0 +1,5 @@
+type Pos = int where x >= 0;
+type StrictPos = int where x >= 5;
+let b: Pos = 2 as Pos;
+let c: StrictPos = b;
+print(c as int);

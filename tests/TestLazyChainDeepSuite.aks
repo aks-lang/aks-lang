@@ -1,0 +1,52 @@
+println("Exhaustive Lazy Chain Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// LazyChain Pipeline (ArrayIterator -> Filter -> Map -> Take -> Collect)
+println("\n1. Lazychain Pipeline");
+
+let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+let ai = new ArrayIterator();
+ai.arr = nums;
+ai.idx = 0;
+
+let pipeline = lazy(ai)
+    .Filter(fn(x) { return x % 2 == 0; })
+    .Map(fn(x) { return x * 10; })
+    .Take(3);
+
+let result = pipeline.Collect();
+
+assert_eq(Length(result), 3, "LazyChain result length == 3", stats);
+assert_eq(result[0], 20, "LazyChain result[0] == 20 (2 * 10)", stats);
+assert_eq(result[1], 40, "LazyChain result[1] == 40 (4 * 10)", stats);
+assert_eq(result[2], 60, "LazyChain result[2] == 60 (6 * 10)", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " lazy chain subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

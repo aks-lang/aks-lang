@@ -1,0 +1,23 @@
+// Test suite for Hardware-Accelerated Bit and Endian Permutation
+fn main() {
+    let v32 = 0x12345678;
+    let b32 = FastBitPermute.Bswap32(v32);
+    assert_eq(b32, 0x78563412);
+
+    let v16 = 0x1234;
+    let b16 = FastBitPermute.Bswap16(v16);
+    assert_eq(b16, 0x3412);
+
+    let rev32 = FastBitPermute.Bswap32(b32);
+    assert_eq(rev32, v32);
+
+    let rev16 = FastBitPermute.Bswap16(b16);
+    assert_eq(rev16, v16);
+
+    let r64 = FastBitPermute.Rbit64(0x0000000100000000);
+    assert(r64 > 0);
+
+    print("TestFastBitPermute passed");
+}
+
+main();

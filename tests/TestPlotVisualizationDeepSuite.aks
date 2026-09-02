@@ -1,0 +1,54 @@
+println("Exhaustive Plot Visualization Subsystem");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Plot Creation & SVG Generation (Plot_new, line, scatter, to_svg)
+println("\n1. Plot Creation & Svg Generation");
+
+let p = PlotNew("Performance Benchmark Results");
+
+let xs = [1.0, 2.0, 3.0, 4.0];
+let ys = [10.0, 25.0, 40.0, 85.0];
+
+p.Line(xs, ys, "blue");
+p.Scatter(xs, ys, "red");
+
+let svg_code = p.ToSvg();
+
+assert_eq(Length(svg_code) > 0, true, "p.to_svg() generated non-empty SVG text", stats);
+assert_eq(Length(split(svg_code, "<svg")) > 1, true, "SVG output contains '<svg' tag", stats);
+assert_eq(Length(split(svg_code, "</svg>")) > 1, true, "SVG output contains '</svg>' closing tag", stats);
+assert_eq(Length(split(svg_code, "Performance Benchmark Results")) > 1, true, "SVG output contains plot title", stats);
+
+// Save SVG to file
+let save_res = p.SaveSvg("PlotOutput.svg");
+assert_eq(save_res, "PlotOutput.svg", "p.save_svg() returned filename on success", stats);
+RemoveFile("PlotOutput.svg");
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " plot visualization tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

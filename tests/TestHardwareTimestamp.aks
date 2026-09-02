@@ -1,0 +1,21 @@
+fn RunHardwareTimestampTests() {
+    let t1 = HardwareTimestamp.Rdtsc();
+    assert_eq(t1 > 0, true);
+
+    let info = HardwareTimestamp.Rdtscp();
+    assert_eq(info.cycles > 0, true);
+    assert_eq(info.core_id >= 0, true);
+
+    let freq = HardwareTimestamp.TicksPerSecond();
+    assert_eq(freq > 0, true);
+
+    let ns1 = HardwareTimestamp.Nanoseconds();
+    assert_eq(ns1 > 0, true);
+
+    let ns2 = HardwareTimestamp.Nanoseconds();
+    assert_eq(ns2 >= ns1, true);
+
+    println("Hardware timestamp counter and monotonic clock tests passed successfully");
+}
+
+RunHardwareTimestampTests();

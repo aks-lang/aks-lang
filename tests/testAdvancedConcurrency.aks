@@ -1,0 +1,161 @@
+fn assert(cond, msg) {
+    if (!cond) {
+        print("ASSERTION FAILED: " + msg);
+        exit(1);
+    }
+}
+
+print("Starting Advanced Concurrency Primitive Tests...");
+
+// Test Task Cancellation on sleep
+print("Test 1: Task Cancellation on sleep...");
+t1_done = false;
+fn t1_helper() {
+    try {
+        sleep(2000);
+    }catch (err) {
+        assert(err == "CancelledError: task was cancelled", "expected CancelledError");
+        t1_done = true;
+    }
+}
+let t1 = spawn t1_helper();
+sleep(50);
+cancel(t1);
+await t1;
+assert(t1_done, "t1 catch block should have run");
+assert(IsCancelled(t1), "is_cancelled should return true");
+print("Test 1 passed.");
+
+// Test Zero-Capacity Rendezvous Channels / Back-pressure
+print("Test 2: Zero-capacity rendezvous channels...");
+ch = Channel(0);
+step = 0;
+fn t2_helper() {
+    sleep(100);
+    step = 1;
+    send(ch, 100);
+    step = 2;
+}
+let t2 = spawn t2_helper();
+
+assert(step == 0, "sender should not have run yet");
+let val = Receive(ch);
+assert(val == 100, "received value should be 100");
+assert(step == 1 || step == 2, "sender should have started");
+await t2;
+assert(step == 2, "sender should have completed send");
+print("Test 2 passed.");
+
+// Let's test sender blocking on zero-capacity
+print("Test 2b: Sender blocking on zero-capacity...");
+ch_b = Channel(0);
+sender_done = false;
+fn t2b_helper() {
+    send(ch_b, 99);
+    sender_done = true;
+}
+let t2b = spawn t2b_helper();
+sleep(50);
+assert(!sender_done, "sender must block on 0-cap channel");
+let val2 = Receive(ch_b);
+assert(val2 == 99, "received 99");
+sleep(50);
+assert(sender_done, "sender should now be unblocked");
+await t2b;
+print("Test 2b passed.");
+
+// Test Task Groups with Scoped automatic cancellation on error
+print("Test 3: Task Groups automatic cancellation on error...");
+sibling_cancelled = false;
+
+try {
+    WithTaskGroup(fn(tg) {
+        // Sibling task that sleeps
+        tg.SpawnTask(fn() {
+            try {
+                sleep(2000);
+            }catch (err) {
+                print("Sibling caught err: " + String(err) + "\n");
+                if (err == "CancelledError: task was cancelled") {
+                    sibling_cancelled = true;
+                }
+            }
+        });
+
+        // Sibling task that fails immediately
+        tg.SpawnTask(fn() {
+            sleep(50);
+            throw "IntentionalError";
+        });
+    });
+}catch (err) {
+    print("Test 3 caught error: " + String(err) + "\n");
+    assert(err == "IntentionalError", "should catch IntentionalError");
+}
+
+print("Debug: sibling_cancelled value is " + String(sibling_cancelled) + "\n");
+assert(sibling_cancelled, "sibling task should have been cancelled automatically");
+print("Test 3 passed.");
+
+// Test Pipeline Fan-out and Fan-in
+print("Test 4: Pipeline Fan-out & Fan-in...");
+let in_c = Channel(10);
+let out1 = Channel(10);
+let out2 = Channel(10);
+
+FanOut(in_c, [out1, out2]);
+
+send(in_c, 5);
+send(in_c, 10);
+close(in_c);
+
+let v1 = Receive(out1);
+let v2 = Receive(out1);
+let v3 = Receive(out2);
+let v4 = Receive(out2);
+
+assert(v1 == 5, "v1 should be 5");
+assert(v2 == 10, "v2 should be 10");
+assert(v3 == 5, "v3 should be 5");
+assert(v4 == 10, "v4 should be 10");
+
+// Now test fan-in
+let ch_a = Channel(10);
+let ch_b = Channel(10);
+let ch_out = Channel(10);
+
+FanIn([ch_a, ch_b], ch_out);
+
+send(ch_a, 42);
+send(ch_b, 100);
+
+let r1 = Receive(ch_out);
+let r2 = Receive(ch_out);
+assert((r1 == 42 && r2 == 100) || (r1 == 100 && r2 == 42), "should receive both values");
+print("Test 4 passed.");
+
+// Test Reactive Streams (Subject / Observable)
+print("Test 5: Reactive Streams Subject & Observable...");
+let sub = new Subject();
+sub.observers = [];
+// initialize array
+
+received1 = 0;
+received2 = 0;
+
+sub.Subscribe(fn(x) {
+    received1 = x;
+});
+
+let obs = sub.AsObservable();
+obs.subscribe(fn(x) {
+    received2 = x * 2;
+});
+
+sub.Next(10);
+
+assert(received1 == 10, "received1 should be 10");
+assert(received2 == 20, "received2 should be 20");
+print("Test 5 passed.");
+
+print("All TESTS PASSED SUCCESSFULLY!");

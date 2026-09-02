@@ -1,0 +1,3 @@
+const x = 10;
+x = 20;
+// should trigger: ConstAssignError: assignment to const variable 'x'

@@ -1,0 +1,32 @@
+// Test OS Shared Named Mutex Inter-Process Synchronization
+fn Main() {
+    let mutex_name = "AksTestSharedMutex_" + HardwareTimestamp.Tsc();
+    let m = OsNamedMutex.Create(mutex_name);
+    if (m.mutex_handle == 0) {
+        print("Failed to create named mutex");
+        return 1;
+    }
+
+    let ok = m.Acquire(1000);
+    if (!ok) {
+        print("Failed to acquire named mutex");
+        m.Close();
+        return 1;
+    }
+
+    let rel_ok = m.Release();
+    if (!rel_ok) {
+        print("Failed to release named mutex");
+        m.Close();
+        return 1;
+    }
+
+    let close_ok = m.Close();
+    if (!close_ok) {
+        print("Failed to close named mutex");
+        return 1;
+    }
+
+    print("TestOsSharedMemoryMutex passed");
+    return 0;
+}

@@ -1,0 +1,18 @@
+// Test suite for OS Filesystem Sparse File Engine
+fn main() {
+    let sparse_file = "tests/sparse_test.tmp";
+    RemoveFile(sparse_file);
+
+    // Allocate a 10MB sparse file on disk (virtually expanded without physical block footprint)
+    let ok = SparseFile.AllocateSparse(sparse_file, 10 * 1024 * 1024);
+    assert(ok == true);
+
+    // Verify sparse attribute can be re-asserted
+    let set_ok = SparseFile.SetSparse(sparse_file);
+    assert(set_ok == true);
+
+    RemoveFile(sparse_file);
+    print("TestSparseFile passed");
+}
+
+main();

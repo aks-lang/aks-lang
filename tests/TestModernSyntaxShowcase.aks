@@ -1,0 +1,35 @@
+println("AKS Modern Syntax Showcase Test Suite");
+
+// Function with parameter types and explicit return type annotation (-> int)
+fn add(a: int, b: int) -> int {
+    return a + b;
+}
+
+println("Function Return Type Annotation: add(10, 20) -> " + String(add(10, 20)));
+
+// Struct Definition with Comma Separators and impl block
+struct Rectangle {
+    width: float,
+    height: float
+}
+
+impl Rectangle {
+    fn area(self) -> float {
+        return self.width * self.height;
+    }
+}
+
+// Struct Instantiation without 'new'
+let rect = Rectangle { width: 5.0, height: 4.0 };
+println("Struct Instance Method: rect.area() == " + String(rect.area()));
+
+// Array Dot-Properties (.len)
+let items = ["apple", "banana", "cherry"];
+println("Array Dot-Property: items.len == " + String(items.len));
+
+if (add(10, 20) == 30 && rect.area() == 20.0 && items.len == 3) {
+    println("\nAll modern syntax showcase tests passed successfully.");
+} else {
+    println("\nTest failed.");
+    exit(1);
+}

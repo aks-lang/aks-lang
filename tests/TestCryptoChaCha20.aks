@@ -1,0 +1,24 @@
+fn RunCryptoChaCha20Tests() {
+    let key = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+    let nonce = "000000000000000000000001";
+    let aad = "feedfacedeadbeef";
+    let plaintext = "48656c6c6f20436861436861323021"; // "Hello ChaCha20!"
+
+    // Encrypt
+    let enc = CryptoChaCha20.Encrypt(key, nonce, aad, plaintext);
+    assert_eq(Length(enc.ciphertext) > 0, true);
+    assert_eq(Length(enc.tag), 32);
+
+    // Decrypt
+    let dec = CryptoChaCha20.Decrypt(key, nonce, aad, enc.ciphertext, enc.tag);
+    assert_eq(dec.ok, true);
+    assert_eq(dec.plaintext, plaintext);
+
+    // Tampered tag failure
+    let decFail = CryptoChaCha20.Decrypt(key, nonce, aad, enc.ciphertext, "00000000000000000000000000000000");
+    assert_eq(decFail.ok, false);
+
+    println("Cryptographic ChaCha20-Poly1305 AEAD tests passed successfully");
+}
+
+RunCryptoChaCha20Tests();

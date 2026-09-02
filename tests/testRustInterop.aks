@@ -1,0 +1,38 @@
+// Verification script for Rust cdylib interop.
+// 
+// Rust setup:
+// Cargo.toml:
+//    [lib]
+//    crate-type = ["cdylib"]
+//
+// src/lib.rs:
+// [no_mangle]
+//    pub extern "C" fn rust_add(a: i64, b: i64) -> i64 { a + b }
+// [no_mangle]
+//    pub extern "C" fn rust_multiply(a: f64, b: f64) -> f64 { a * b }
+
+let lib_h = FFILoad("tests/RustCdylibMock.dll");
+if (lib_h == 0) {
+    print("FAIL: failed to load tests/RustCdylibMock.dll");
+    exit(1);
+}
+
+// Call rust_add (returns i64, e.g. 100 + 200 = 300)
+let res_add = FFICall(lib_h, "rust_add", "i(ii)", [100, 200]);
+if (res_add == 300) {
+    print("PASS: rust_add(100, 200) returned 300");
+} else {
+    print("FAIL: rust_add(100, 200) returned " + String(res_add));
+    exit(1);
+}
+
+// Call rust_multiply (returns f64, e.g. 2.5 * 4.0 = 10.0)
+let res_mul = FFICall(lib_h, "rust_multiply", "d(dd)", [2.5, 4.0]);
+if (res_mul == 10.0) {
+    print("PASS: rust_multiply(2.5, 4.0) returned 10.0");
+} else {
+    print("FAIL: rust_multiply(2.5, 4.0) returned " + String(res_mul));
+    exit(1);
+}
+
+print("All Rust cdylib interop tests passed successfully!");

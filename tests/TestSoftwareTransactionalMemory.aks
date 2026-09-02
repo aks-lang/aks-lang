@@ -1,0 +1,32 @@
+fn RunStmTests() {
+    let accA = TVar.New(100);
+    let accB = TVar.New(50);
+
+    assert_eq(accA.Read(), 100);
+    assert_eq(accB.Read(), 50);
+
+    atomic {
+        let vA = accA.Read();
+        let vB = accB.Read();
+        accA.Write(vA - 30);
+        accB.Write(vB + 30);
+    }
+
+    assert_eq(accA.Read(), 70);
+    assert_eq(accB.Read(), 80);
+
+    let counter = TVar.New(0);
+    let i = 0;
+    while (i < 10) {
+        atomic {
+            let cur = counter.Read();
+            counter.Write(cur + 1);
+        }
+        i++;
+    }
+
+    assert_eq(counter.Read(), 10);
+    println("Software transactional memory and atomic blocks tests passed successfully");
+}
+
+RunStmTests();

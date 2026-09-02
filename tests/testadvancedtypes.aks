@@ -1,0 +1,93 @@
+fn getOption(val: int) -> Option < int > {
+    if (val > 0) {
+        return Option.Some(val);
+    }
+    return Option.None;
+}
+
+fn propagateOption(val: int) -> Option < int > {
+    let opt = getOption(val);
+    print("opt type is: " + type(opt));
+    print("opt is: " + String(opt));
+    let inner = opt?;
+    print("inner is: " + String(inner));
+    return Option.Some(inner + 1);
+}
+
+fn getResult(val: int) -> Result < int, string > {
+    if (val > 0) {
+        return Result.Ok(val);
+    }
+    return Result.Err("error");
+}
+
+fn propagateResult(val: int) -> Result < int, string > {
+    let res = getResult(val);
+    let inner = res?;
+    return Result.Ok(inner + 10);
+}
+
+type Pair < T > = (T, T);
+
+opaque type UserID = int;
+
+type Pos = int where x >= 0;
+type StrictPos = int where x >= 5;
+
+fn read() -> string!IO {
+    return "data";
+}
+
+fn process() -> string!IO {
+    let s = read();
+    return s;
+}
+
+fn main()!IO {
+    print("running advanced type positive tests");
+
+    let opt = propagateOption(5);
+    match (opt) {
+        Option.Some(v) => print("Option success: " + String(v)),
+        Option.None => print("Option none")
+    }
+
+    let optnone = propagateOption(0);
+    match (optnone) {
+        Option.Some(v) => print("Option success none: " + String(v)),
+        Option.None => print("Option none success")
+    }
+
+    let res = propagateResult(5);
+    match (res) {
+        Result.Ok(v) => print("Result success: " + String(v)),
+        Result.Err(e) => print("Result error: " + e)
+    }
+
+    let reserr = propagateResult(0);
+    match (reserr) {
+        Result.Ok(v) => print("Result success err: " + String(v)),
+        Result.Err(e) => print("Result error success: " + e)
+    }
+
+    let p: Pair < int > = (10, 20);
+    print("Pair: " + String(p[0]) + ", " + String(p[1]));
+
+    let uid: UserID = 42 as UserID;
+    let idval: int = uid as int;
+    print("Opaque id: " + String(idval));
+
+    let a: StrictPos = 10 as StrictPos;
+    let b: Pos = a;
+    print("Refinement: " + String(b));
+
+    let arr: Array < int, 3 > = [1, 2, 3];
+    print("Array size check: " + String(Length(arr)));
+
+    let data = process();
+    print("Effect data: " + data);
+
+    print("all positive tests passed");
+}
+
+main();

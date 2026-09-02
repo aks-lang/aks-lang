@@ -1,0 +1,303 @@
+fn assert(cond, msg) {
+    if (!cond) {
+        print("ASSERTION FAILED: " + msg);
+        exit(1);
+    }
+}
+
+print("Running Collections Test Suite");
+
+// HashMap Test
+print("[Test] HashMap");
+let hm = HashMap();
+assert(hm.Len() == 0, "hm initial len should be 0");
+hm.Put("a", 100);
+hm.Put("b", 200);
+hm.Put("c", 300);
+assert(hm.Len() == 3, "hm len should be 3");
+assert(hm.Get("a") == 100, "hm get a");
+assert(hm.Get("b") == 200, "hm get b");
+assert(hm.Get("c") == 300, "hm get c");
+assert(hm.ContainsKey("b"), "hm contains b");
+assert(!hm.ContainsKey("d"), "hm contains d");
+
+// HashMap updates
+hm.Put("b", 250);
+assert(hm.Get("b") == 250, "hm update b");
+assert(hm.Len() == 3, "hm len after update should be 3");
+
+// HashMap removes
+let r = hm.Remove("b");
+assert(r == 250, "hm remove returned value");
+assert(!hm.ContainsKey("b"), "hm contains b after remove");
+assert(hm.Len() == 2, "hm len after remove should be 2");
+
+// HashMap keys and values
+let keys = hm.Keys();
+let vals = hm.Values();
+assert(Length(keys) == 2, "keys len");
+assert(Length(vals) == 2, "vals len");
+assert((keys[0] == "a" && keys[1] == "c") || (keys[0] == "c" && keys[1] == "a"), "keys content");
+
+// Hashing other types
+hm.Put(123, "integer");
+hm.Put(true, "boolean");
+hm.Put(null, "nulltype");
+assert(hm.Get(123) == "integer", "hm integer key");
+assert(hm.Get(true) == "boolean", "hm boolean key");
+assert(hm.Get(null) == "nulltype", "hm null key");
+
+// Dynamic Resizing Test
+let i = 0;
+while (i < 100) {
+    hm.Put("key" + String(i), i);
+    i++;
+}
+assert(hm.Len() == 105, "hm size after adding 100 elements");
+assert(hm.Get("key50") == 50, "hm get resizing check");
+
+print("  HashMap passed.");
+
+// BTreeMap Test
+print("[Test] BTreeMap");
+let bm = BTreeMap();
+assert(bm.Len() == 0, "btree initial len should be 0");
+bm.Put("banana", 2);
+bm.Put("apple", 1);
+bm.Put("cherry", 3);
+assert(bm.Len() == 3, "btree len should be 3");
+assert(bm.Get("apple") == 1, "btree get apple");
+assert(bm.Get("banana") == 2, "btree get banana");
+assert(bm.Get("cherry") == 3, "btree get cherry");
+
+// BTreeMap keys (should be sorted!)
+let bkeys = bm.Keys();
+assert(Length(bkeys) == 3, "btree keys len");
+assert(bkeys[0] == "apple", "btree sort 1");
+assert(bkeys[1] == "banana", "btree sort 2");
+assert(bkeys[2] == "cherry", "btree sort 3");
+
+// balancing check: AVL updates
+bm.Put("date", 4);
+bm.Put("elderberry", 5);
+assert(bm.Len() == 5, "btree size after inserts");
+assert(bm.ContainsKey("date"), "contains date");
+
+// BTreeMap removal
+bm.Remove("banana");
+assert(bm.Len() == 4, "btree size after remove");
+assert(!bm.ContainsKey("banana"), "btree contains banana after remove");
+let bkeys2 = bm.Keys();
+assert(bkeys2[0] == "apple", "btree sort after remove 1");
+assert(bkeys2[1] == "cherry", "btree sort after remove 2");
+assert(bkeys2[2] == "date", "btree sort after remove 3");
+assert(bkeys2[3] == "elderberry", "btree sort after remove 4");
+
+print("  BTreeMap passed.");
+
+// Set & FrozenSet Test
+print("[Test] Set & FrozenSet");
+let s = HashSet();
+assert(s.Len() == 0, "set initial len");
+s.Add("x");
+s.Add("y");
+s.Add("z");
+assert(s.Len() == 3, "set len after add");
+assert(s.Contains("y"), "set contains y");
+assert(!s.Add("y"), "adding existing element should return false");
+assert(s.Len() == 3, "set len unchanged");
+
+s.Remove("y");
+assert(!s.Contains("y"), "set contains after remove");
+assert(s.Len() == 2, "set len after remove");
+
+// union, intersect, difference
+let s1 = HashSet();
+s1.Add(1);
+s1.Add(2);
+s1.Add(3);
+let s2 = HashSet();
+s2.Add(3);
+s2.Add(4);
+s2.Add(5);
+
+let sunion = s1.Union(s2);
+assert(sunion.Len() == 5, "union len");
+assert(sunion.Contains(1) && sunion.Contains(5), "union content");
+
+let sinter = s1.Intersect(s2);
+assert(sinter.Len() == 1, "intersect len");
+assert(sinter.Contains(3), "intersect content");
+
+let sdiff = s1.Difference(s2);
+assert(sdiff.Len() == 2, "difference len");
+assert(sdiff.Contains(1) && sdiff.Contains(2) && !sdiff.Contains(3), "difference content");
+
+// FrozenSet
+let fs = FrozenSet([10, 20, 30]);
+assert(fs.Len() == 3, "frozenset len");
+assert(fs.Contains(20), "frozenset contains");
+let fs_elements = fs.Elements();
+assert(Length(fs_elements) == 3, "frozenset elements count");
+
+print("  Set & FrozenSet passed.");
+
+// Deque Test
+print("[Test] Deque");
+let dq = Deque();
+assert(dq.Len() == 0, "deque len");
+dq.PushBack(1);
+dq.PushBack(2);
+dq.PushFront(0);
+assert(dq.Len() == 3, "deque len after push");
+assert(dq.PeekFront() == 0, "deque peek front");
+assert(dq.PeekBack() == 2, "deque peek back");
+
+assert(dq.PopFront() == 0, "deque pop front");
+assert(dq.PopBack() == 2, "deque pop back");
+assert(dq.Len() == 1, "deque len after pop");
+assert(dq.PopFront() == 1, "deque pop front remaining");
+assert(dq.PopFront() == null, "deque pop empty");
+
+print("  Deque passed.");
+
+// PriorityQueue Test
+print("[Test] PriorityQueue");
+let pq = PriorityQueue(null);
+pq.Push(50);
+pq.Push(10);
+pq.Push(30);
+pq.Push(20);
+assert(pq.Len() == 4, "pq len");
+assert(pq.Peek() == 10, "pq peek");
+assert(pq.Pop() == 10, "pq pop 1");
+assert(pq.Pop() == 20, "pq pop 2");
+assert(pq.Pop() == 30, "pq pop 3");
+assert(pq.Pop() == 50, "pq pop 4");
+assert(pq.Len() == 0, "pq empty");
+
+// Custom comparator (Max Heap)
+fn max_cmp(a, b) {
+    if (a > b) {return -1;
+    }
+    if (a < b) {return 1;
+    }
+    return 0;
+}
+let pq_max = PriorityQueue(max_cmp);
+pq_max.Push(10);
+pq_max.Push(50);
+pq_max.Push(30);
+assert(pq_max.Pop() == 50, "max pq pop 1");
+assert(pq_max.Pop() == 30, "max pq pop 2");
+assert(pq_max.Pop() == 10, "max pq pop 3");
+
+print("  PriorityQueue passed.");
+
+// LinkedList Test
+print("[Test] LinkedList");
+let ll = LinkedList();
+ll.PushBack(10);
+ll.PushBack(20);
+ll.PushFront(5);
+assert(ll.Len() == 3, "ll len");
+let ll_arr = ll.ToArray();
+assert(ll_arr[0] == 5 && ll_arr[1] == 10 && ll_arr[2] == 20, "ll array conversion");
+
+assert(ll.PopFront() == 5, "ll pop front");
+assert(ll.PopBack() == 20, "ll pop back");
+assert(ll.Len() == 1, "ll len remaining");
+
+print("  LinkedList passed.");
+
+// Trie Test
+print("[Test] Trie");
+let tr = Trie();
+assert(tr.Len() == 0, "trie initial len");
+tr.Put("apple", "fruit");
+tr.Put("app", "application");
+assert(tr.Len() == 2, "trie len");
+assert(tr.Contains("apple"), "trie contains apple");
+assert(tr.Contains("app"), "trie contains app");
+assert(!tr.Contains("ap"), "trie contains ap should be false");
+assert(tr.Get("apple") == "fruit", "trie get apple");
+
+assert(tr.StartsWith("ap"), "trie starts_with ap");
+assert(tr.StartsWith("app"), "trie starts_with app");
+assert(!tr.StartsWith("ban"), "trie starts_with ban");
+
+tr.Remove("apple");
+assert(!tr.Contains("apple"), "trie contains apple after remove");
+assert(tr.Contains("app"), "trie contains app after apple remove");
+assert(tr.Len() == 1, "trie len after remove");
+
+print("  Trie passed.");
+
+// Persistent / Immutable Collections Test (Structural Sharing)
+print("[Test] Persistent Collections");
+let pl0 = PersistentList();
+let pl1 = pl0.Prepend(10);
+let pl2 = pl1.Prepend(20);
+
+assert(pl0.Len() == 0, "pl0 unchanged");
+assert(pl1.Len() == 1, "pl1 size");
+assert(pl1.HeadVal() == 10, "pl1 head");
+assert(pl2.Len() == 2, "pl2 size");
+assert(pl2.HeadVal() == 20, "pl2 head");
+assert(pl2.TailList().HeadVal() == 10, "pl2 tail list head");
+
+let pm0 = PersistentMap();
+let pm1 = pm0.Put("k1", "v1");
+let pm2 = pm1.Put("k2", "v2");
+let pm3 = pm2.Put("k1", "updated");
+
+assert(pm0.Len() == 0, "pm0 size");
+assert(pm1.Len() == 1, "pm1 size");
+assert(pm1.Get("k1") == "v1", "pm1 val");
+assert(pm2.Len() == 2, "pm2 size");
+assert(pm2.Get("k1") == "v1", "pm2 shares pm1 val");
+assert(pm2.Get("k2") == "v2", "pm2 val");
+assert(pm3.Get("k1") == "updated", "pm3 updated val");
+assert(pm2.Get("k1") == "v1", "pm2 val remains unmodified (pure persistence)");
+
+let pm4 = pm3.Remove("k2");
+assert(pm4.Len() == 1, "pm4 size");
+assert(!pm4.ContainsKey("k2"), "pm4 contains k2");
+assert(pm3.ContainsKey("k2"), "pm3 still contains k2");
+
+print("  Persistent Collections passed.");
+
+// Iterator protocol & Lazy chains Test
+print("[Test] Iterator Protocol & Lazy evaluation chains");
+let it = iter([1, 2, 3, 4, 5]);
+let lazy_ch = lazy(it);
+
+fn double_it(x) {return x * 2;
+}
+fn is_even(x) {return x % 2 == 0;
+}
+
+let result_arr = lazy_ch.Map(double_it).Filter(is_even).Take(3).Collect();
+assert(Length(result_arr) == 3, "result_arr len");
+assert(result_arr[0] == 2, "result_arr[0]");
+assert(result_arr[1] == 4, "result_arr[1]");
+assert(result_arr[2] == 6, "result_arr[2]");
+
+// Iterator on set
+let myset = HashSet();
+myset.Add("hello");
+myset.Add("world");
+let set_result = lazy(iter(myset)).Collect();
+assert(Length(set_result) == 2, "set result len");
+assert((set_result[0] == "hello" && set_result[1] == "world") || (set_result[0] == "world" && set_result[1] == "hello"), "set iterator content");
+
+// Iterator on HashMap
+let mymap = HashMap();
+mymap.Put("k1", "v1");
+let map_result = lazy(iter(mymap)).Collect();
+assert(Length(map_result) == 1, "map result len");
+assert(map_result[0][0] == "k1" && map_result[0][1] == "v1", "map entry");
+
+print("  Iterator protocol & Lazy chains passed.");
+
+print("\nAll COLLECTIONS TESTS PASSED SUCCESSFULLY!");

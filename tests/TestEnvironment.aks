@@ -1,0 +1,23 @@
+fn RunEnvironmentTests() {
+    let testVar = "AKS_CUSTOM_ENV_TEST_VAR";
+    let testVal = "systems_value_12345";
+
+    // Set variable
+    let okSet = Environment.Set(testVar, testVal);
+    assert_eq(okSet, true);
+
+    // Get variable
+    let readVal = Environment.Get(testVar);
+    assert_eq(readVal, testVal);
+
+    // Working directory
+    let cwd = Environment.Cwd();
+    assert_eq(Length(cwd) > 0, true);
+
+    // Clean up environment variable
+    Environment.Set(testVar, null);
+
+    println("Process environment variables and directory tests passed successfully");
+}
+
+RunEnvironmentTests();

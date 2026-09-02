@@ -1,0 +1,7 @@
+fn positiveSquare(x: int {val: val > 0}) -> int {res: res > x} {
+    return x * x + 1;
+}
+
+// this should trigger a compile-time type error:
+// "TypeError: value does not satisfy refinement condition 'val > 0'"
+positiveSquare(-5);

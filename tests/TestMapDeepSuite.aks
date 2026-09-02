@@ -1,0 +1,72 @@
+println("Exhaustive Hashmap Subsystem Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// HashMap Creation & Indexing
+println("\n1. Hashmap Creation & Indexing");
+
+let m = {"a": 10, "b": 20, "c": 30};
+assert_eq(typeof(m), "Object", "typeof map == 'Object'", stats);
+assert_eq(m["a"], 10, "m['a'] == 10", stats);
+assert_eq(m["b"], 20, "m['b'] == 20", stats);
+assert_eq(m["c"], 30, "m['c'] == 30", stats);
+
+// HashMap Key Mutation & Insertion
+println("\n2. key Mutation & Insertion");
+
+m["a"] = 100;
+assert_eq(m["a"], 100, "m['a'] mutated to 100", stats);
+
+m["d"] = 400;
+assert_eq(m["d"], 400, "m['d'] inserted as 400", stats);
+
+// HashMap Methods (keys, values, existence)
+println("\n3. Hashmap Methods");
+
+let k_arr = keys(m);
+assert_eq(Length(k_arr), 4, "keys(m) length == 4", stats);
+
+let v_arr = values(m);
+assert_eq(Length(v_arr), 4, "values(m) length == 4", stats);
+
+assert_eq(m["a"] != null, true, "m['a'] != null (key exists)", stats);
+assert_eq(m["nonexistent"] == null, true, "m['nonexistent'] == null (key missing)", stats);
+
+// Nested HashMaps
+println("\n4. Nested Hashmaps");
+
+let nested = {
+    "user1": {"name": "Alice", "age": 25},
+    "user2": {"name": "Bob", "age": 30}
+};
+
+assert_eq(nested["user1"]["name"], "Alice", "nested['user1']['name'] == 'Alice'", stats);
+assert_eq(nested["user2"]["age"], 30, "nested['user2']['age'] == 30", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " hashmap subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

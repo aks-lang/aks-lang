@@ -1,0 +1,61 @@
+// Test Http11Parser Streaming HTTP/1.1 Subsystem
+fn Main() {
+    print("Testing Http11Parser Streaming HTTP/1.1 Subsystem");
+
+    // Test HTTP/1.1 Request Parsing
+    let raw_req = "GET /api/v1/resource?query=aks HTTP/1.1\r\nHost: api.aks-lang.org\r\nAccept: application/json\r\n\r\n";
+    let req = Http11Parser.ParseRequest(raw_req);
+    if (req == null) {
+        print("Parsed request object null");
+        return 1;
+    }
+    if (req.method != "GET" || req.path != "/api/v1/resource?query=aks" || req.version != "HTTP/1.1") {
+        print("Request line parsing mismatch");
+        return 1;
+    }
+    if (req.headers == null || req.headers.Host != "api.aks-lang.org") {
+        print("Host header mismatch");
+        return 1;
+    }
+    if (req.body != "") {
+        print("GET body should be empty");
+        return 1;
+    }
+
+    // Test HTTP/1.1 POST Request with Body
+    let raw_post = "POST /submit HTTP/1.1\r\nHost: localhost\r\nContent-Length: 26\r\n\r\nstatus=active&format=json";
+    let post_req = Http11Parser.ParseRequest(raw_post);
+    if (post_req == null || post_req.method != "POST" || post_req.path != "/submit") {
+        print("POST request parsing mismatch");
+        return 1;
+    }
+    if (post_req.body != "status=active&format=json") {
+        print("POST body parsing mismatch: " + post_req.body);
+        return 1;
+    }
+
+    // Test HTTP/1.1 Response Parsing
+    let raw_resp = "HTTP/1.1 200 OK\r\nServer: AksServer/1.0\r\nContent-Type: text/plain\r\n\r\nHello Aks World!";
+    let resp = Http11Parser.ParseResponse(raw_resp);
+    if (resp == null) {
+        print("Parsed response object null");
+        return 1;
+    }
+    if (resp.version != "HTTP/1.1" || resp.status_code != 200 || resp.status_text != "OK") {
+        print("Response status mismatch");
+        return 1;
+    }
+    if (resp.headers == null || resp.headers.Server != "AksServer/1.0") {
+        print("Response header mismatch");
+        return 1;
+    }
+    if (resp.body != "Hello Aks World!") {
+        print("Response body mismatch: " + resp.body);
+        return 1;
+    }
+
+    print("TestHttp11Parser passed");
+    return 0;
+}
+
+Main();

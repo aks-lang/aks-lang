@@ -1,0 +1,55 @@
+import "ModuleHelperB.aks";
+import "ModuleHelperA.aks"; // Deduplication test: importing helper_a again should not define duplicate symbols/compile again.
+
+// Test namespaced modules
+module math {
+    pub fn add(a, b) { return a + b; }
+    fn secret() { return 42; }
+    pub module nested {
+        pub fn sub(a, b) { return a - b; }
+    }
+}
+
+// Use alias
+use math::add;
+use math::nested::sub;
+
+fn test_modules() {
+    // Namespaced call
+    let r1 = math::add(5, 10);
+    if (r1 != 15) {
+        print("FAIL: math::add(5, 10) = " + String(r1));
+        exit(1);
+    }
+
+    // Nested module call
+    let r2 = math::nested::sub(10, 4);
+    if (r2 != 6) {
+        print("FAIL: math::nested::sub(10, 4) = " + String(r2));
+        exit(1);
+    }
+
+    // Alias use
+    let r3 = add(3, 4);
+    if (r3 != 7) {
+        print("FAIL: alias add(3, 4) = " + String(r3));
+        exit(1);
+    }
+
+    let r4 = sub(10, 2);
+    if (r4 != 8) {
+        print("FAIL: alias sub(10, 2) = " + String(r4));
+        exit(1);
+    }
+
+    // Imported module call
+    let r5 = helper_b::double_val();
+    if (r5 != 200) {
+        print("FAIL: helper_b::double_val() = " + String(r5));
+        exit(1);
+    }
+
+    print("testModules: All passed");
+}
+
+test_modules();

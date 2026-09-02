@@ -1,0 +1,58 @@
+println("EXHAUSTIVE IPC, SHM & CRYPTO SECURITY SUITE");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Security Constant Time Compare (constanttimecompare)
+println("\n1. Constant Time Security Compare");
+
+let cmp_true = ConstantTimeCompare("secret_token_12345", "secret_token_12345");
+assert_eq(cmp_true, true, "constanttimecompare matching tokens == true", stats);
+
+let cmp_false = ConstantTimeCompare("secret_token_12345", "wrong_token_123456");
+assert_eq(cmp_false, false, "constanttimecompare mismatching tokens == false", stats);
+
+// DNS resolution (dns_resolve)
+println("\n2. Dns Resolution");
+
+let localhost_ip = DnsResolve("localhost");
+assert_eq(typeof(localhost_ip), "string", "dns_resolve('localhost') returns IP string", stats);
+assert_eq(Length(localhost_ip) > 0, true, "dns_resolve returns non-empty string", stats);
+
+// Channels & Message Passing (chan, chansend, chanclose)
+println("\n3. Channel Operations");
+
+let ch = Channel(5);
+ChannelSend(ch, "Channel Message Payload");
+let msg = Receive(ch);
+assert_eq(msg, "Channel Message Payload", "chansend and recv payload roundtrip", stats);
+
+ChannelClose(ch);
+pass("chanclose() completed cleanly", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " ipc & security tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

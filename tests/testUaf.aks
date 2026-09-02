@@ -1,0 +1,14 @@
+let arr = [1, 2, 3];
+free(arr);
+
+try {
+    print(arr[0]);
+}catch (e) {
+    print("Caught expected UAF exception on get: " + e);
+}
+
+try {
+    arr[0] = 99;
+}catch (e) {
+    print("Caught expected UAF exception on set: " + e);
+}

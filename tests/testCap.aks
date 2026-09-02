@@ -1,0 +1,2 @@
+let cap = GetCap("fs", "read", "test.txt");
+print("cap resource: " + cap.resource);

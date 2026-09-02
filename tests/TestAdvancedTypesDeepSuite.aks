@@ -1,0 +1,59 @@
+println("Exhaustive Advanced Types Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// First-Class Tuples (Creation, Indexing, Type)
+println("\n1. First-class Tuples");
+
+let t = (100, "AKS Language", 3.14);
+assert_eq(typeof(t) == "tuple" || type(t) == "tuple", true, "typeof(t) == 'tuple'", stats);
+assert_eq(t[0], 100, "Tuple index 0 == 100", stats);
+assert_eq(t[1], "AKS Language", "Tuple index 1 == 'AKS Language'", stats);
+assert_eq(t[2], 3.14, "Tuple index 2 == 3.14", stats);
+
+// Tuple Destructuring
+println("\n2. Tuple Destructuring");
+
+let (val_id, val_name, val_score) = t;
+assert_eq(val_id, 100, "Destructured tuple element 0 == 100", stats);
+assert_eq(val_name, "AKS Language", "Destructured tuple element 1 == 'AKS Language'", stats);
+assert_eq(val_score, 3.14, "Destructured tuple element 2 == 3.14", stats);
+
+// Tuple Immutability Verification
+println("\n3. Tuple Immutability");
+
+let tuple_mutation_caught = false;
+try {
+    t[0] = 999;
+} catch (e) {
+    tuple_mutation_caught = true;
+}
+assert_eq(tuple_mutation_caught, true, "Tuple mutation throws runtime error (immutable)", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " advanced types tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

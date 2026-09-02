@@ -1,0 +1,61 @@
+fn main() {
+    print("Testing First-class Tuples");
+    let t = (1, "hello");
+    print("t is: " + String(t));
+
+    // Verify indexing
+    let first = t[0];
+    let second = t[1];
+    print("first: " + String(first) + ", second: " + second);
+    if (first != 1) {
+        print("FAIL: first index should be 1");
+    }
+    if (second != "hello") {
+        print("FAIL: second index should be hello");
+    }
+
+    // Verify type
+    let type_str = type(t);
+    print("type(t) is: " + type_str);
+    if (type_str != "tuple") {
+        print("FAIL: type(t) should be tuple");
+    }
+
+    // Verify destructuring
+    let (t1, t2) = t;
+    print("destructured: " + String(t1) + ", " + t2);
+    if (t1 != 1 || t2 != "hello") {
+        print("FAIL: destructuring mismatch");
+    }
+
+    // Verify matching
+    let matched = false;
+    match (t) {
+        case (1, s) => {
+            print("matched tuple: 1 and " + s);
+            matched = true;
+        }
+        case _ => {
+            print("FAIL: should have matched pattern");
+        }
+    }
+    if (!matched) {
+        print("FAIL: matched flag not set");
+    }
+
+    // Verify mutation fails at runtime
+    let mutation_caught = false;
+    try {
+        t[0] = 99;
+    } catch (e) {
+        print("mutation caught (expected): " + e);
+        mutation_caught = true;
+    }
+    if (!mutation_caught) {
+        print("FAIL: mutating tuple should throw TypeError");
+    }
+
+    print("First-class Tuples Tests Pass");
+}
+
+main();

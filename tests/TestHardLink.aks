@@ -1,0 +1,29 @@
+// Test suite for OS Filesystem Hardlink & Link Count Engine
+fn main() {
+    let base_file = "tests/hardlink_src.tmp";
+    let link_file = "tests/hardlink_dst.tmp";
+
+    // Clean any remnants
+    RemoveFile(base_file);
+    RemoveFile(link_file);
+
+    // Create source file using built-in WriteFile
+    WriteFile(base_file, "HardLink Test Content");
+
+    // Check link count before hardlink (should be 1)
+    let count_before = HardLink.GetCount(base_file);
+    assert(count_before >= 1);
+
+    // Create hardlink
+    let ok = HardLink.Create(base_file, link_file);
+    if (ok) {
+        let count_after = HardLink.GetCount(base_file);
+        assert_eq(count_after, count_before + 1);
+        RemoveFile(link_file);
+    }
+
+    RemoveFile(base_file);
+    print("TestHardLink passed");
+}
+
+main();

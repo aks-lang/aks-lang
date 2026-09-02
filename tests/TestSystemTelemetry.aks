@@ -1,0 +1,17 @@
+fn RunSystemTelemetryTests() {
+    let cpuCount = SystemInfo.CpuCount();
+    assert_eq(cpuCount >= 1, true);
+
+    let totalMem = SystemInfo.TotalMemory();
+    assert_eq(totalMem > 0, true);
+
+    let availMem = SystemInfo.AvailableMemory();
+    assert_eq(availMem > 0, true);
+
+    let pid = SystemInfo.ProcessId();
+    assert_eq(pid > 0, true);
+
+    println("System telemetry and hardware inspection tests passed successfully");
+}
+
+RunSystemTelemetryTests();

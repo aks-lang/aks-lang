@@ -1,0 +1,106 @@
+enum Option {
+    Some(any),
+    None
+};
+
+enum Color {
+    Red,
+    Green,
+    Blue
+};
+
+struct Point {
+    x: any;
+    y: any;
+}
+
+// Guard clauses and ADT patterns
+fn testGuardAndAdt(opt: Option) {
+    match (opt) {
+        case Option.Some(v)if v > 10 => {
+            print("some greater than 10");
+        }
+        case Option.Some(v) => {
+            print("some other");
+        }
+        case Option.None => {
+            print("none");
+        }
+    }
+}
+
+// Or patterns and nested patterns
+fn testOrAndNested(p: Point) {
+    match (p) {
+        case Point {x: 1 | 2, y: yval} => {
+            print("point x is 1 or 2 with y = " + String(yval));
+        }
+        case Point {x: xval, y: 10} => {
+            print("point y is 10 with x = " + String(xval));
+        }
+        case _ => {
+            print("other point");
+        }
+    }
+}
+
+// Tuple patterns
+fn testTuple(t: (int, string)) {
+    match (t) {
+        case(1, s) => {
+            print("one and " + s);
+        }
+        case(2, "two") => {
+            print("two and two");
+        }
+        case _ => {
+            print("other tuple");
+        }
+    }
+}
+
+// Irrefutable destructuring in let bindings
+fn testLetDestructuring() {
+    let p = new Point();
+    p.x = 100;
+    p.y = 200;
+    print("p is " + String(p));
+    let {x: px, y: py} = p;
+    print("destructured point: " + String(px) + ", " + String(py));
+
+    let t = (10, "hello");
+    print("t is " + String(t));
+    let (t1, t2) = t;
+    print("destructured tuple: " + String(t1) + ", " + t2);
+}
+
+fn main() {
+    print("running pattern matching tests");
+
+    testGuardAndAdt(Option.Some(15));
+    testGuardAndAdt(Option.Some(5));
+    testGuardAndAdt(Option.None);
+
+    let p1 = new Point();
+    p1.x = 2;
+    p1.y = 20;
+    let p2 = new Point();
+    p2.x = 5;
+    p2.y = 10;
+    let p3 = new Point();
+    p3.x = 5;
+    p3.y = 20;
+    testOrAndNested(p1);
+    testOrAndNested(p2);
+    testOrAndNested(p3);
+
+    testTuple((1, "hello"));
+    testTuple((2, "two"));
+    testTuple((3, "three"));
+
+    testLetDestructuring();
+
+    print("pattern matching tests passed");
+}
+
+main();

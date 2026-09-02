@@ -1,0 +1,18 @@
+fn RunFileWatcherTests() {
+    let watcher = FileWatcher.Watch("tests");
+    assert_eq(watcher.watcher_id != 0, true);
+
+    // Create a temporary file inside tests to trigger file notification
+    WriteFile("tests/temp_watch_test.txt", "trigger_notification");
+    sleep(50);
+
+    let changed = watcher.Poll(100);
+    assert_eq(changed, true);
+
+    watcher.Close();
+    RemoveFile("tests/temp_watch_test.txt");
+
+    println("File system directory change watcher tests passed successfully");
+}
+
+RunFileWatcherTests();

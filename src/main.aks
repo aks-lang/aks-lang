@@ -1,0 +1,2 @@
+// Main entrypoint for package .
+print("Hello from .!");

@@ -1,0 +1,27 @@
+fn RunFileLockTests() {
+    let testPath = "tests\\test_lock_dummy.tmp";
+    FileSystem.WriteText(testPath, "File Lock Dummy Content For Testing");
+
+    // Acquire shared lock
+    let shLock = FileLock.LockShared(testPath, 0, 100, 1000);
+    assert_eq(shLock != null, true);
+
+    // Release shared lock
+    let unl1 = shLock.Unlock();
+    assert_eq(unl1, true);
+
+    // Acquire exclusive lock
+    let exLock = FileLock.LockExclusive(testPath, 0, 100, 1000);
+    assert_eq(exLock != null, true);
+
+    // Release exclusive lock
+    let unl2 = exLock.Unlock();
+    assert_eq(unl2, true);
+
+    // Clean up temporary test file
+    FileSystem.Delete(testPath);
+
+    println("Native range-based file locking tests passed successfully");
+}
+
+RunFileLockTests();

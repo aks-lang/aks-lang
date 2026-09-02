@@ -1,0 +1,79 @@
+println("Exhaustive Contracts & Exceptions Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Try / Catch Exception Handling & Throw
+println("\n1. try / Catch Exception Handling");
+
+let custom_throw_caught = false;
+try {
+    throw "CustomUserError";
+} catch (err) {
+    custom_throw_caught = (err == "CustomUserError");
+}
+assert_eq(custom_throw_caught, true, "Caught custom string 'throw' in try/catch", stats);
+
+let struct_throw_caught = false;
+try {
+    throw "ResourceNotFoundCode404";
+} catch (err) {
+    struct_throw_caught = (contains(split(err, "Code"), "404") || String(err) == "ResourceNotFoundCode404");
+}
+assert_eq(struct_throw_caught, true, "Caught descriptive 'throw' error in try/catch", stats);
+
+fn divide_safe(a, b) {
+    if (b == 0) {
+        throw "DivisionByZero";
+    }
+    return a / b;
+}
+
+let safe_throw_caught = false;
+try {
+    divide_safe(10, 0);
+} catch (e) {
+    safe_throw_caught = (e == "DivisionByZero");
+}
+assert_eq(safe_throw_caught, true, "Caught 'throw DivisionByZero' inside function", stats);
+assert_eq(divide_safe(10, 2), 5, "divide_safe(10, 2) == 5", stats);
+
+// Design-by-Contract Functions (Requires & Ensures)
+println("\n2. Design-by-contract Functions");
+
+fn compute_positive_square(x: int) -> int
+    requires x >= 0
+    ensures result >= 0
+{
+    return x * x;
+}
+
+assert_eq(compute_positive_square(5), 25, "compute_positive_square(5) contract pass", stats);
+assert_eq(compute_positive_square(0), 0, "compute_positive_square(0) contract pass", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " contracts & exceptions tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

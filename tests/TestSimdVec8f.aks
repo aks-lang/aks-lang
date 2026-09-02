@@ -1,0 +1,35 @@
+fn RunSimdVec8fTests() {
+    let a1 = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+    let a2 = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0];
+
+    let v1 = SimdVec8f.New(a1);
+    let v2 = SimdVec8f.New(a2);
+
+    let vSum = v1.Add(v2);
+    let sumArr = vSum.ToArray();
+    assert_eq(sumArr[0], 11.0);
+    assert_eq(sumArr[7], 88.0);
+
+    let vMul = v1.Mul(v2);
+    let mulArr = vMul.ToArray();
+    assert_eq(mulArr[0], 10.0);
+    assert_eq(mulArr[7], 640.0);
+
+    let vFma = v1.Fmadd(v2, v1); // (v1 * v2) + v1
+    let fmaArr = vFma.ToArray();
+    assert_eq(fmaArr[0], 11.0);
+    assert_eq(fmaArr[7], 648.0);
+
+    let totalSum = v1.Sum();
+    assert_eq(totalSum, 36.0); // +2+3+4+5+6+7+8 = 36
+
+    v1.Free();
+    v2.Free();
+    vSum.Free();
+    vMul.Free();
+    vFma.Free();
+
+    println("Hardware AVX2 256-bit SIMD vector arithmetic tests passed successfully");
+}
+
+RunSimdVec8fTests();

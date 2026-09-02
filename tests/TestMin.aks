@@ -1,0 +1,29 @@
+let side_effect_called = false;
+fn side_effect() {
+    side_effect_called = true;
+    return 15;
+}
+
+fn main() {
+    print("Testing Chained Comparisons & Short-circuiting");
+    let a = 1;
+    let b = 5;
+    let c = 10;
+    
+    // true path
+    let ok = a < b < c;
+    print("ok: " + String(ok));
+    
+    // false path 1: 5 < 1 is false, should not call side_effect()
+    side_effect_called = false;
+    let ok2 = b < a < side_effect();
+    print("ok2: " + String(ok2));
+    print("side_effect_called: " + String(side_effect_called));
+
+    // false path 2: 1 < 5 is true, should call side_effect()
+    side_effect_called = false;
+    let ok3 = a < b < side_effect();
+    print("ok3: " + String(ok3));
+    print("side_effect_called: " + String(side_effect_called));
+}
+main();

@@ -1,0 +1,136 @@
+print("Running Panics and Errors Verification Suite");
+
+// Result Propagation with ? Operator
+fn test_result_propagate_ok() {
+    let r = Result.Ok(42);
+    let v = r?;
+    return Result.Ok(v + 1);
+}
+
+fn test_result_propagate_err() {
+    let r = Result.Err("error sentinel");
+    let v = r?;
+    return Result.Ok(v + 1); // should not be reached
+}
+
+print("Testing Result propagation...");
+let res1 = test_result_propagate_ok();
+match (res1) {
+    Result.Ok(val) => {
+        if (val == 43) {
+            print("  Result.Ok propagation: PASS");
+        } else {
+            print("  Result.Ok propagation: FAIL (val=" + String(val) + ")");
+        }
+    },
+    Result.Err(e) => {
+        print("  Result.Ok propagation: FAIL (returned Err)");
+    }
+}
+
+let res2 = test_result_propagate_err();
+match (res2) {
+    Result.Ok(val) => {
+        print("  Result.Err propagation: FAIL (returned Ok)");
+    },
+    Result.Err(e) => {
+        if (e == "error sentinel") {
+            print("  Result.Err propagation: PASS");
+        } else {
+            print("  Result.Err propagation: FAIL (wrong err=" + String(e) + ")");
+        }
+    }
+}
+
+// Option Propagation with ? Operator
+fn test_option_propagate_some() {
+    let o = Option.Some(100);
+    let v = o?;
+    return Option.Some(v + 5);
+}
+
+fn test_option_propagate_none() {
+    let o = Option.None;
+    let v = o?;
+    return Option.Some(v + 5); // should not be reached
+}
+
+print("Testing Option propagation...");
+let opt1 = test_option_propagate_some();
+match (opt1) {
+    Option.Some(val) => {
+        if (val == 105) {
+            print("  Option.Some propagation: PASS");
+        } else {
+            print("  Option.Some propagation: FAIL (val=" + String(val) + ")");
+        }
+    },
+    Option.None => {
+        print("  Option.Some propagation: FAIL (returned None)");
+    }
+}
+
+let opt2 = test_option_propagate_none();
+match (opt2) {
+    Option.Some(val) => {
+        print("  Option.None propagation: FAIL (returned Some)");
+    },
+    Option.None => {
+        print("  Option.None propagation: PASS");
+    }
+}
+
+// Custom Error Types and Wrapping
+print("Testing custom Error struct and cause chaining...");
+let root_err = WrapError("database connection failed", null);
+let app_err = WrapError("failed to fetch user", root_err);
+
+if (app_err.message == "failed to fetch user") {
+    print("  Custom Error struct instantiation: PASS");
+} else {
+    print("  Custom Error struct instantiation: FAIL");
+}
+
+let c_method = app_err.Cause();
+if (c_method != null && c_method.message == "database connection failed") {
+    print("  Error method .cause(): PASS");
+} else {
+    print("  Error method .cause(): FAIL");
+}
+
+let c_builtin = cause(app_err);
+if (c_builtin != null && c_builtin.message == "database connection failed") {
+    print("  Built-in function cause(): PASS");
+} else {
+    print("  Built-in function cause(): FAIL");
+}
+
+// Panic and Panic Hook Execution
+print("Testing Panic Hook & Structured Backtraces via child process...");
+let child_cmd = "cmd.exe /c \".\\aks.exe run tests\\test_panic_hook_child.aks 2>&1 || echo EXIT_CODE_101\"";
+let child_output = Execute(child_cmd);
+
+// Verify hook triggers, message, backtrace size, and exit code 101
+let verified_hook = RegexSearch("HOOK TRIGGERED: my panic msg", child_output) != null;
+let verified_bt = RegexSearch("BACKTRACE SIZE: 3", child_output) != null;
+let verified_exit = RegexSearch("EXIT_CODE_101", child_output) != null;
+
+if (verified_hook) {
+    print("  Panic hook execution: PASS");
+} else {
+    print("  Panic hook execution: FAIL");
+}
+
+if (verified_bt) {
+    print("  Structured backtrace capture: PASS");
+} else {
+    print("  Structured backtrace capture: FAIL");
+}
+
+if (verified_exit) {
+    print("  Panic exit code (101): PASS");
+} else {
+    print("  Panic exit code (101): FAIL");
+}
+
+print("Panics and Errors Verification Suite Finished");

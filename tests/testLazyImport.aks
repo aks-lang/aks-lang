@@ -1,0 +1,15 @@
+// Test lazy module loading: symbols are known at compile time but
+// the module body is compiled only on first use.
+lazy import "ModuleHelperA.aks";
+
+fn use_it() {
+    // First reference to helper_a::get_val triggers lazy compilation
+    return helper_a::get_val();
+}
+
+let r = use_it();
+if (r != 100) {
+    print("FAIL: expected 100, got " + String(r));
+    exit(1);
+}
+print("testLazyImport: PASS");

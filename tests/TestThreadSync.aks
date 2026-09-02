@@ -1,0 +1,23 @@
+fn RunThreadSyncTests() {
+    let mutex = ThreadSync.CreateMutex();
+    assert_eq(mutex.mutex_id != 0, true);
+
+    let okLock1 = mutex.Lock();
+    assert_eq(okLock1, true);
+
+    let okUnlock1 = mutex.Unlock();
+    assert_eq(okUnlock1, true);
+
+    let okLock2 = mutex.Lock();
+    assert_eq(okLock2, true);
+
+    let okUnlock2 = mutex.Unlock();
+    assert_eq(okUnlock2, true);
+
+    let okDestroy = mutex.Destroy();
+    assert_eq(okDestroy, true);
+
+    println("User-mode critical section synchronization tests passed successfully");
+}
+
+RunThreadSyncTests();

@@ -1,0 +1,7 @@
+let s = "fefe";
+try {
+    let x = s as int;
+    print("no cast error: " + String(x));
+} catch (err) {
+    print("Caught cast: " + err);
+}

@@ -1,0 +1,24 @@
+fn RunAlignedBufferTests() {
+    let buf = AlignedBuffer.Alloc(256, 64);
+    assert_eq(buf.ptr_id != 0, true);
+
+    // Verify 64-byte alignment
+    let isAligned = buf.IsAligned(64);
+    assert_eq(isAligned, true);
+
+    // Write binary hex data: 0xdeadbeefcafebabe
+    let writeOk = buf.WriteBytes(0, "deadbeefcafebabe");
+    assert_eq(writeOk, true);
+
+    // Read back bytes
+    let readHex = buf.ReadBytes(0, 8);
+    assert_eq(readHex, "deadbeefcafebabe");
+
+    // Free buffer
+    let freeOk = buf.Free();
+    assert_eq(freeOk, true);
+
+    println("Cache-aligned memory buffer tests passed successfully");
+}
+
+RunAlignedBufferTests();

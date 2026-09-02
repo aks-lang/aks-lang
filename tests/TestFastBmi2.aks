@@ -1,0 +1,25 @@
+// Test suite for Hardware Bit Manipulation Instruction Set 2 (BMI2)
+fn main() {
+    // Parallel Bit Extract (PEXT)
+    // val:  0b1010_1100 (172)
+    // mask: 0b0011_0100 (52)
+    // Selected bits from val at mask positions: bit 2 (1), bit 4 (0), bit 5 (1) -> 0b101 = 5
+    let pext_res = FastBmi2.Pext(172, 52);
+    assert_eq(pext_res, 5);
+
+    // Parallel Bit Deposit (PDEP)
+    // val:  0b101 (5)
+    // mask: 0b0011_0100 (52)
+    // Result should reconstruct selected mask bits: bit 2 (1), bit 4 (0), bit 5 (1) -> 0b0010_0100 = 36 + 4 = 40 (or 0b100100 = 36)
+    let pdep_res = FastBmi2.Pdep(5, 52);
+    assert_eq(FastBmi2.Pext(pdep_res, 52), 5);
+
+    // Zero High Bits Starting from Specified Bit Position (BZHI)
+    // val: 0b1111_1111 (255), index: 4 -> lowest 4 bits = 0b1111 = 15
+    let bzhi_res = FastBmi2.Bzhi(255, 4);
+    assert_eq(bzhi_res, 15);
+
+    print("TestFastBmi2 passed");
+}
+
+main();

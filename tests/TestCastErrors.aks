@@ -1,0 +1,51 @@
+print("Valid Casts");
+let a = "42" as int;
+print("'42' as int: " + String(a));
+
+let b = "3.14" as float;
+print("'3.14' as float: " + String(b));
+
+let c = "true" as bool;
+print("'true' as bool: " + String(c));
+
+let d = "0" as bool;
+print("'0' as bool: " + String(d));
+
+print("");
+print("Error: 'fefe' as int");
+try {
+    let bad = "fefe" as int;
+    print("ERROR: should have thrown!");
+} catch (err) {
+    print("Caught: " + err);
+}
+
+print("");
+print("Error: 'abc' as Float");
+try {
+    let bad2 = "abc" as float;
+    print("ERROR: should have thrown!");
+} catch (err) {
+    print("Caught: " + err);
+}
+
+print("");
+print("Error: 'maybe' as Bool");
+try {
+    let bad3 = "maybe" as bool;
+    print("ERROR: should have thrown!");
+} catch (err) {
+    print("Caught: " + err);
+}
+
+print("");
+print("Error: '2.14' as int (decimal is not Int)");
+try {
+    let bad4 = "2.14" as int;
+    print("ERROR: should have thrown!");
+} catch (err) {
+    print("Caught: " + err);
+}
+
+print("");
+print("All cast error tests passed!");

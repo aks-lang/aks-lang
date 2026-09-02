@@ -1,0 +1,23 @@
+fn RunCryptoHmacTests() {
+    let key = "SuperSecretKeyForHmacAuth";
+    let data = "Message payload to authenticate with HMAC";
+
+    // Hmac-sha256
+    let hmac256 = CryptoHmac.Sha256(key, data);
+    assert_eq(Length(hmac256), 64);
+
+    // Verify hmac-sha256
+    let verifyOk = CryptoHmac.Verify(key, data, hmac256);
+    assert_eq(verifyOk, true);
+
+    let verifyBad = CryptoHmac.Verify("WrongKey", data, hmac256);
+    assert_eq(verifyBad, false);
+
+    // Hmac-sha512
+    let hmac512 = CryptoHmac.Sha512(key, data);
+    assert_eq(Length(hmac512), 128);
+
+    println("Cryptographic HMAC (SHA-256 / SHA-512) tests passed successfully");
+}
+
+RunCryptoHmacTests();

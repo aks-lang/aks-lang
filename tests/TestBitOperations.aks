@@ -1,0 +1,35 @@
+fn RunBitOperationsTests() {
+    // PopCount tests
+    assert_eq(BitOps.PopCount(0), 0);
+    assert_eq(BitOps.PopCount(1), 1);
+    assert_eq(BitOps.PopCount(7), 3);
+    assert_eq(BitOps.PopCount(255), 8);
+
+    // CountLeadingZeros tests
+    assert_eq(BitOps.CountLeadingZeros(1), 63);
+    assert_eq(BitOps.CountLeadingZeros(2), 62);
+    assert_eq(BitOps.CountLeadingZeros(0), 64);
+
+    // CountTrailingZeros tests
+    assert_eq(BitOps.CountTrailingZeros(1), 0);
+    assert_eq(BitOps.CountTrailingZeros(2), 1);
+    assert_eq(BitOps.CountTrailingZeros(8), 3);
+    assert_eq(BitOps.CountTrailingZeros(0), 64);
+
+    // RotateLeft and RotateRight tests
+    let rotVal = BitOps.RotateLeft(1, 4);
+    assert_eq(rotVal, 16);
+
+    let rotrVal = BitOps.RotateRight(16, 4);
+    assert_eq(rotrVal, 1);
+
+    // ByteSwap tests
+    let swapped = BitOps.ByteSwap(1);
+    assert_eq(swapped != 1, true);
+    let swapBack = BitOps.ByteSwap(swapped);
+    assert_eq(swapBack, 1);
+
+    println("Hardware CPU bit manipulation intrinsic tests passed successfully");
+}
+
+RunBitOperationsTests();

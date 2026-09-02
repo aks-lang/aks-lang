@@ -1,0 +1,31 @@
+actor CounterActor {
+    count: int;
+
+    fn Increment(amount) {
+        self.count = self.count + amount;
+        return self.count;
+    }
+
+    fn Get() {
+        return self.count;
+    }
+}
+
+fn RunActorModelTests() {
+    let aref = CounterActor.Spawn({ count: 10 });
+    assert_eq(aref.IsAlive(), true);
+
+    let res1 = aref.Call({ type: "Increment", amount: 5 }, 1000);
+    assert_eq(res1, 15);
+
+    aref.Send({ type: "Increment", amount: 20 });
+    let res2 = aref.Call({ type: "Get" }, 1000);
+    assert_eq(res2, 35);
+
+    aref.Stop();
+    assert_eq(aref.IsAlive(), false);
+
+    println("Actor model concurrency tests passed successfully");
+}
+
+RunActorModelTests();

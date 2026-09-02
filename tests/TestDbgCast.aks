@@ -1,0 +1,11 @@
+let raw_inputs = [];
+let cnt = 0;
+while (cnt < 8) {
+    input(line);
+    append(raw_inputs, line);
+    cnt++;
+}
+let s0 = raw_inputs[0];
+print("s0 raw: '" + String(s0) + "', type: " + type(s0));
+let int1 = s0 as int;
+print("int1: " + String(int1) + ", type: " + type(int1));

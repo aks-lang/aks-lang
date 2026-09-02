@@ -1,0 +1,35 @@
+fn RunMemoryPoolTests() {
+    let pool = MemoryPool.New(64, 16);
+    assert_eq(pool.pool_id != 0, true);
+
+    let initialAvail = pool.Available();
+    assert_eq(initialAvail, 16);
+
+    let b1 = pool.Alloc();
+    assert_eq(b1 != 0, true);
+    assert_eq(pool.Available(), 15);
+
+    let b2 = pool.Alloc();
+    assert_eq(b2 != 0, true);
+    assert_eq(b2 != b1, true);
+    assert_eq(pool.Available(), 14);
+
+    // Free b2 back to pool
+    pool.Free(b2);
+    assert_eq(pool.Available(), 15);
+
+    // Re-allocating gets b2 back from free list
+    let b3 = pool.Alloc();
+    assert_eq(b3, b2);
+    assert_eq(pool.Available(), 14);
+
+    pool.Free(b1);
+    pool.Free(b3);
+    assert_eq(pool.Available(), 16);
+
+    pool.Destroy();
+
+    println("Fixed-size block memory slab pool allocator tests passed successfully");
+}
+
+RunMemoryPoolTests();

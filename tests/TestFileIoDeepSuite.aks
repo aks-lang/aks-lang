@@ -1,0 +1,73 @@
+println("Exhaustive File I/o & System Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// File I/O (wrtfile, rdfile)
+println("\n1. File I/o Functions");
+
+let filename = "TestIoOutput.txt";
+let sample_content = "Line 1: AKS Language File I/O Test\nLine 2: High Performance Engine.";
+
+let write_status = WriteFile(filename, sample_content);
+assert_eq(write_status, true, "wrtfile() returned true", stats);
+
+let read_content = replace(ReadFile(filename), "\r", "");
+assert_eq(read_content, sample_content, "rdfile() matches written content", stats);
+RemoveFile(filename);
+
+// System Command Execution (exec)
+println("\n2. Os Command Execution");
+
+let echo_output = Execute("cmd.exe /c echo AKS_EXEC_TEST_OK");
+assert_eq(Length(echo_output) > 0, true, "exec() returned non-empty output", stats);
+
+// Prelude Range & Higher Order Iterators (range, map, filter, reduce, sum)
+println("\n3. Prelude Range & Iterators");
+
+let r_arr = range(1, 6);
+assert_eq(Length(r_arr), 5, "range(1, 6) length == 5", stats);
+assert_eq(r_arr[0], 1, "range(1, 6)[0] == 1", stats);
+assert_eq(r_arr[4], 5, "range(1, 6)[4] == 5", stats);
+
+let doubled_arr = map(r_arr, fn(x) { return x * 2; });
+assert_eq(doubled_arr[0], 2, "map() doubled element 0 == 2", stats);
+assert_eq(doubled_arr[4], 10, "map() doubled element 4 == 10", stats);
+
+let evens = filter(r_arr, fn(x) { return x % 2 == 0; });
+assert_eq(Length(evens), 2, "filter() evens length == 2", stats);
+assert_eq(evens[0], 2, "evens[0] == 2", stats);
+assert_eq(evens[1], 4, "evens[1] == 4", stats);
+
+let reduced_sum = reduce(r_arr, fn(acc, x) { return acc + x; }, 0);
+assert_eq(reduced_sum, 15, "reduce() sum (1..5) == 15", stats);
+
+let sum_shortcut = sum(r_arr);
+assert_eq(sum_shortcut, 15, "sum() prelude shortcut == 15", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " FILE I/ o & system subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

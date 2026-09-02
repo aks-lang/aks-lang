@@ -1,0 +1,28 @@
+println("Testing Type Aliases ('type' and 'typedef')");
+
+// Rust/TypeScript-style 'type' alias
+type UserID = int;
+let id1: UserID = 1001;
+println("type UserID = int -> id1 = " + String(id1));
+
+// C-style 'typedef' alias
+typedef AccountID = int;
+let acc1: AccountID = 5005;
+println("typedef AccountID = int -> acc1 = " + String(acc1));
+
+// Tuple Type Alias
+type Coordinate = (int, int);
+let pos: Coordinate = (10, 20);
+println("type Coordinate = (int, int) -> pos[0] = " + String(pos[0]) + ", pos[1] = " + String(pos[1]));
+
+// String Alias
+typedef Name = string;
+let u_name: Name = "Alice";
+println("typedef Name = string -> u_name = " + u_name);
+
+if (id1 == 1001 && acc1 == 5005 && pos[0] == 10 && pos[1] == 20 && u_name == "Alice") {
+    println("\nBOTH 'type' AND 'typedef' ALIASES WORK PERFECTLY!");
+} else {
+    println("\nTest failed.");
+    exit(1);
+}

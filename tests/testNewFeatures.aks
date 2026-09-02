@@ -1,0 +1,101 @@
+fn my_map(arr, f) {
+    let res = [];
+    for (let i = 0; i < Length(arr); i = i + 1) {
+        append(res, f(arr[i]));
+    }
+    return res;
+}
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+struct Runner {
+    prefix: string;
+    run: any;
+}
+
+fn main() {
+    print("Testing String Interpolation");
+    let name = "World";
+    let score = 99;
+    let s = f"Hello {name}, score: {score + 1}";
+    print("s is: " + s);
+    if (s != "Hello World, score: 100") {
+        print("FAIL: string interpolation");
+    }
+
+    print("Testing Numeric Separators");
+    let dec = 1_000_000;
+    let flt = 1_000.50_1;
+    let hex = 0xFF_AA;
+    let bin = 0b1010_1100;
+    if (dec != 1000000) { print("FAIL: dec separator"); }
+    if (flt != 1000.501) { print("FAIL: float separator"); }
+    if (hex != 65450) { print("FAIL: hex separator"); }
+    if (bin != 172) { print("FAIL: bin separator"); }
+
+    print("Testing Range Literals");
+    let r = 1..10;
+    print("r.start: " + String(r.start) + ", r.end: " + String(r.end));
+    if (r.start != 1 || r.end != 10) {
+        print("FAIL: range bounds");
+    }
+    let r_len = Length(r);
+    print("len(r): " + String(r_len));
+    if (r_len != 9) {
+        print("FAIL: range len");
+    }
+
+    print("Testing Chained Comparisons");
+    let a = 1;
+    let b = 5;
+    let c = 10;
+    let ok1 = a < b < c;
+    let ok2 = c > b > a;
+    let ok3 = a < b < 3;
+    print("ok1: " + String(ok1) + ", ok2: " + String(ok2) + ", ok3: " + String(ok3));
+    if (!ok1) { print("FAIL: ok1"); }
+    if (!ok2) { print("FAIL: ok2"); }
+    if (ok3) { print("FAIL: ok3"); }
+
+    print("Testing Struct Update Syntax");
+    let p1 = Point { x: 10, y: 20 };
+    let p2 = Point { ...p1, y: 30 };
+    print("p2: " + String(p2.x) + ", " + String(p2.y));
+    if (p2.x != 10 || p2.y != 30) {
+        print("FAIL: named struct update");
+    }
+    
+    let p3 = { ...p1, x: 100 };
+    print("p3: " + String(p3.x) + ", " + String(p3.y));
+    if (p3.x != 100 || p3.y != 20) {
+        print("FAIL: anonymous struct update");
+    }
+
+    print("Testing Trailing Lambdas");
+    // Calling standard function with parentheses
+    let doubled = my_map([1, 2, 3]) { x => x * 2 };
+    print("doubled: " + String(doubled));
+    if (Length(doubled) != 3 || doubled[0] != 2 || doubled[1] != 4 || doubled[2] != 6) {
+        print("FAIL: standard trailing lambda");
+    }
+
+    // Calling member function on struct without parentheses
+    let rnr = Runner {
+        prefix: "Item",
+        run: fn(f) {
+            return f(100);
+        }
+    };
+    let lam_res = rnr.run { x => x + 5 };
+    print("lam_res: " + String(lam_res));
+    if (lam_res != 105) {
+        print("FAIL: member trailing lambda");
+    }
+
+    print("All new Features Verified Successfully!");
+}
+
+main();

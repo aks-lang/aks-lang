@@ -1,0 +1,106 @@
+// Test Suite: Native Math & Numerics Subsystems
+
+fn assert_true(cond, msg) {
+    if (!cond) {
+        print("FAIL: " + msg);
+        panic(msg);
+    }
+}
+
+fn assert_eq(a, b, msg) {
+    if (a != b) {
+        print("FAIL: " + msg + " expected " + String(b) + " got " + String(a));
+        panic(msg);
+    }
+}
+
+fn assert_near(a, b, eps, msg) {
+    let diff = a - b;
+    if (diff < 0.0) { diff = 0.0 - diff; }
+    if (diff > eps) {
+        print("FAIL: " + msg + " expected " + String(b) + " got " + String(a));
+        panic(msg);
+    }
+}
+
+// 1. Complex Arithmetic (Complex128NewC, Complex128AddC, Complex128MulC, Complex128AbsC, Complex128SqrtC)
+let c1 = Complex128NewC(3.0, 4.0);
+let c2 = Complex128NewC(1.0, 2.0);
+let c_sum = Complex128AddC(c1, c2);
+assert_near(c_sum.re, 4.0, 0.0001, "Complex add real");
+assert_near(c_sum.im, 6.0, 0.0001, "Complex add imag");
+
+let c_mul = Complex128MulC(c1, c2);
+assert_near(c_mul.re, -5.0, 0.0001, "Complex mul real");
+assert_near(c_mul.im, 10.0, 0.0001, "Complex mul imag");
+
+let c_abs = Complex128AbsC(c1);
+assert_near(c_abs, 5.0, 0.0001, "Complex abs");
+
+let c_sqrt = Complex128SqrtC(Complex128NewC(4.0, 0.0));
+assert_near(c_sqrt.re, 2.0, 0.0001, "Complex sqrt real");
+
+// 2. Rational Arithmetic (RationalNewC, RationalAddC, RationalMulC, RationalDivC, RationalToFloatC)
+let r1 = RationalNewC(1, 2);
+let r2 = RationalNewC(1, 3);
+let r_add = RationalAddC(r1, r2);
+assert_eq(r_add.p, 5, "Rational 1/2 + 1/3 numerator");
+assert_eq(r_add.q, 6, "Rational 1/2 + 1/3 denominator");
+
+let r_flt = RationalToFloatC(r_add);
+assert_near(r_flt, 0.833333, 0.001, "Rational to float");
+
+// 3. FFT (FftRaw)
+let real_arr = [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0];
+let imag_arr = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+let fft_res = FftRaw(real_arr, imag_arr, false);
+assert_eq(Length(fft_res[0]), 8, "FFT forward output length");
+let ifft_res = FftRaw(fft_res[0], fft_res[1], true);
+assert_near(ifft_res[0][0], 1.0, 0.001, "FFT inverse reconstruct real 0");
+
+// 4. Descriptive Statistics (StatMeanC, StatVarianceC, StatStddevC, StatSkewnessC, StatKurtosisC, StatPercentileC)
+let sdata = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
+let s_mean = StatMeanC(sdata);
+assert_near(s_mean, 5.0, 0.0001, "Stat Mean");
+let s_var = StatVarianceC(sdata);
+assert_near(s_var, 4.57143, 0.001, "Stat Variance");
+let s_std = StatStddevC(sdata);
+assert_near(s_std, 2.13809, 0.001, "Stat StdDev");
+let s_p50 = StatPercentileC(sdata, 50.0);
+assert_near(s_p50, 4.5, 0.5, "Stat Median Percentile");
+
+// 5. Running Stats (RunningStatsNewC, RunningStatsAddC, RunningStatsMeanC, RunningStatsVarC)
+let rs = RunningStatsNewC();
+RunningStatsAddC(rs, 10.0);
+RunningStatsAddC(rs, 20.0);
+RunningStatsAddC(rs, 30.0);
+assert_near(RunningStatsMeanC(rs), 20.0, 0.0001, "Running stats mean");
+
+// 6. Mersenne Twister (MTNewC, MTNextU64C, MTNextFloatC)
+let mt = MTNewC(42);
+let u1 = MTNextU64C(mt);
+let u2 = MTNextU64C(mt);
+assert_true(u1 != u2, "Mersenne Twister uniqueness");
+let flt1 = MTNextFloatC(mt);
+assert_true(flt1 >= 0.0 && flt1 <= 1.0, "Mersenne Twister float range");
+
+// 7. Miller-Rabin Primality (MillerRabinC, MillerRabinNextPrimeC)
+assert_eq(MillerRabinC(2, 10), true, "2 is prime");
+assert_eq(MillerRabinC(17, 10), true, "17 is prime");
+assert_eq(MillerRabinC(104729, 10), true, "104729 is prime");
+assert_eq(MillerRabinC(100, 10), false, "100 is composite");
+assert_eq(MillerRabinNextPrimeC(100), 101, "Next prime after 100 is 101");
+
+// 8. Matrix / Linear Solver (LinearSolveC, LagrangeInterpC, GaussQuadC)
+// System: 2x + 1y = 5, 1x + 3y = 5 -> x=2, y=1
+let sol = LinearSolveC([2.0, 1.0, 1.0, 3.0], [5.0, 5.0]);
+assert_near(sol[0], 2.0, 0.0001, "LinearSolve x");
+assert_near(sol[1], 1.0, 0.0001, "LinearSolve y");
+
+let li_val = LagrangeInterpC([0.0, 1.0, 2.0], [0.0, 1.0, 4.0], 1.5);
+assert_near(li_val, 2.25, 0.0001, "Lagrange interpolation");
+
+let gq_val = GaussQuadC([0.0, 0.5, 1.0], [0.0, 0.75, 3.0], 2);
+assert_near(gq_val, 1.125, 0.1, "Gauss integration trapezoid approximation");
+
+print("PASS: Native Math & Numerics Subsystems");

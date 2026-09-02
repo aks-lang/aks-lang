@@ -1,0 +1,7 @@
+fn main() {
+    let x = 42;
+    let r1 = & x;
+    x = 100;
+    print(String(r1));
+}
+main();

@@ -1,0 +1,21 @@
+fn RunUuidTests() {
+    let id1 = Uuid.Generate();
+    let id2 = Uuid.Generate();
+
+    assert_eq(id1 != null, true);
+    assert_eq(id2 != null, true);
+    assert_eq(id1 != id2, true);
+    assert_eq(Length(id1) >= 32, true);
+
+    // Validate valid formatted UUID
+    assert_eq(Uuid.IsValid(id1), true);
+    assert_eq(Uuid.IsValid(id2), true);
+
+    // Validate invalid strings
+    assert_eq(Uuid.IsValid("invalid-uuid-string"), false);
+    assert_eq(Uuid.IsValid(""), false);
+
+    println("Universally unique identifier generation and validation tests passed successfully");
+}
+
+RunUuidTests();

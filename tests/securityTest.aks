@@ -1,0 +1,53 @@
+fn assert(cond, msg) {
+    if (!cond) {
+        print("FAIL: " + msg);
+        exit(1);
+    }
+}
+
+// sanitization
+let htmlsan = html("<script>alert('hello') & \"world\"</script>");
+assert(htmlsan == "&lt;script&gt;alert(&#x27;hello&#x27;) &amp; &quot;world&quot;&lt;/script&gt;", "html sanitization");
+
+let shellsan = shell("echo hello; rm -rf /; & ls");
+assert(shellsan == "echo hello rm -rf /  ls", "shell sanitization");
+
+let pathsan = path("../etc/passwd");
+assert(pathsan == "etc/passwd", "path sanitization");
+
+// capabilities
+let cap = GetCap("fs", "read", "test.txt");
+assert(cap != null, "capability");
+assert(cap.resource == "fs", "cap resource");
+assert(cap.permission == "read", "cap permission");
+assert(cap.path == "test.txt", "cap path");
+
+// restricted eval
+let res = Evaluate("1 + 2 * 3;", true);
+assert(res == 7, "restricted eval");
+
+let writefailed = false;
+try {
+    Evaluate("""WriteFile("restricttest.txt", "forbidden");""", true);
+} catch (e) {
+    writefailed = true;
+}
+assert(writefailed, "restricted eval block write");
+
+// secure String & Crypto
+let ss = SecureString("mysupersecretpassword");
+assert(ss != null, "secure string");
+assert(ss.data == "mysupersecretpassword", "secure string data");
+
+assert(CryptCompare("hello", "hello") == true, "crypto compare equal");
+assert(CryptCompare("hello", "world") == false, "crypto compare diff");
+
+// stack canary & recursion
+fn factorial(n) {
+    if (n <= 1) {return 1;
+    }
+    return n * factorial(n - 1);
+}
+assert(factorial(5) == 120, "factorial");
+
+print("Security tests passed");

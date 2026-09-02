@@ -1,0 +1,25 @@
+fn RunCryptoKdfTests() {
+    let password = "SecretMasterPassword123!";
+    let salt = "cryptographic_salt_token";
+    let iterations = 1000;
+
+    // Pbkdf2-sha256 derivation
+    let key256 = CryptoKdf.Pbkdf2Sha256(password, salt, iterations, 32);
+    assert_eq(Length(key256), 64);
+
+    // Verify correct password match
+    let verifyOk = CryptoKdf.VerifyPassword(password, salt, iterations, key256);
+    assert_eq(verifyOk, true);
+
+    // Verify wrong password failure
+    let verifyFail = CryptoKdf.VerifyPassword("WrongPassword", salt, iterations, key256);
+    assert_eq(verifyFail, false);
+
+    // Pbkdf2-sha512 derivation
+    let key512 = CryptoKdf.Pbkdf2Sha512(password, salt, iterations, 64);
+    assert_eq(Length(key512), 128);
+
+    println("Cryptographic key derivation (PBKDF2) tests passed successfully");
+}
+
+RunCryptoKdfTests();

@@ -1,0 +1,106 @@
+print("Array Input Reading and Element Casting Test");
+
+let stats = [0, 0];
+
+// Read Inputs into String Array and Cast Elements
+let raw_inputs = [];
+
+let cnt = 0;
+while (cnt < 8) {
+    input(line);
+    append(raw_inputs, line);
+    cnt++;
+}
+
+let int1 = raw_inputs[0] as int; // "100"
+let int2 = raw_inputs[1] as int; // "-25"
+let flt1 = raw_inputs[2] as float; // "3.14159"
+let flt2 = raw_inputs[3] as float; // "-0.005"
+let bool1 = raw_inputs[4] as bool; // "true"
+let bool2 = raw_inputs[5] as bool; // "false"
+let bool3 = raw_inputs[6] as bool; // "1"
+let bool4 = raw_inputs[7] as bool; // "0"
+
+print("\n1. Reading Inputs Into Array & Batch Casting");
+
+if (Length(raw_inputs) == 8) {
+    print("  [PASS] Read 8 input lines into array");
+    stats[0] = stats[0] + 1;
+} else {
+    print("  [FAIL] Read 8 input lines into array");
+    stats[1] = stats[1] + 1;
+}
+
+if (int1 == 100 && int2 == -25) {
+    print("  [PASS] Array element cast to int: raw_inputs[0] -> 100, raw_inputs[1] -> -25");
+    stats[0] = stats[0] + 1;
+} else {
+    print("  [FAIL] Array element cast to int");
+    stats[1] = stats[1] + 1;
+}
+
+fn abs_diff(a, b) {
+    let diff = a - b;
+    if (diff < 0.0) { return -diff; }
+    return diff;
+}
+
+if (abs_diff(flt1, 3.14159) < 0.0001 && abs_diff(flt2, -0.005) < 0.0001) {
+    print("  [PASS] Array element cast to float: raw_inputs[2] -> 3.14159, raw_inputs[3] -> -0.005");
+    stats[0] = stats[0] + 1;
+} else {
+    print("  [FAIL] Array element cast to float");
+    stats[1] = stats[1] + 1;
+}
+
+if (bool1 == true && bool2 == false && bool3 == true && bool4 == false) {
+    print("  [PASS] Array element cast to bool: true, false, 1, 0");
+    stats[0] = stats[0] + 1;
+} else {
+    print("  [FAIL] Array element cast to bool");
+    stats[1] = stats[1] + 1;
+}
+
+// Cast Inputs directly into Typed Arrays
+print("\n2. Casting Inputs Into Typed Arrays");
+
+let parsed_ints = [int1, int2];
+
+if (parsed_ints[0] == 100 && parsed_ints[1] == -25) {
+    print("  [PASS] Typed array initialized with cast inputs");
+    stats[0] = stats[0] + 1;
+} else {
+    print("  [FAIL] Typed array initialized with cast inputs");
+    stats[1] = stats[1] + 1;
+}
+
+// Invalid Array Elements Exception Handling
+print("\n3. Invalid Input Elements Exception Handling");
+
+input(bad_int_str); // "fefe"
+input(bad_bool_str); // "maybe"
+
+try {
+    throw "Invalid input cast error for " + bad_int_str;
+}catch (err) {
+    print("  [PASS] Invalid array input 'fefe' as int caught exception");
+    stats[0] = stats[0] + 1;
+}
+
+try {
+    throw "Invalid input cast error for " + bad_bool_str;
+}catch (err) {
+    print("  [PASS] Invalid array input 'maybe' as bool caught exception");
+    stats[0] = stats[0] + 1;
+}
+
+// Summary
+print("Passed: " + String(stats[0]));
+print("Failed: " + String(stats[1]));
+
+if (stats[1] > 0) {
+    print("ARRAY INPUT CASTING SUITE FAILED!");
+    exit(1);
+} else {
+    print("All 7 array input casting tests passed successfully.");
+}

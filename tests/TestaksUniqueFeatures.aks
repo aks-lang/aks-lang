@@ -1,0 +1,35 @@
+println("AKS Unique & Simple Syntax Test Suite");
+
+// Unparenthesized match expression with 'else =>' default fallback arm
+let val = 2;
+let name = match val {
+    1 => "One",
+    2 => "Two",
+    else => "Unknown"
+};
+println("Unparenthesized match result: " + name);
+
+// Struct Literal & Impl Method Grouping
+struct Circle {
+    radius: float
+}
+
+impl Circle {
+    fn area(self) -> float {
+        return 3.14159 * self.radius * self.radius;
+    }
+}
+
+let c = Circle { radius: 10.0 };
+println("Circle area: " + String(c.area()));
+
+// Array Dot-Properties (.len)
+let nums = [1, 2, 3, 4, 5];
+println("Array dot-len: " + String(nums.len));
+
+if (name == "Two" && c.area() > 314.0 && nums.len == 5) {
+    println("\nAKS UNIQUE & SIMPLE SYNTAX IS 100% PERFECT!");
+} else {
+    println("\nTest failed.");
+    exit(1);
+}

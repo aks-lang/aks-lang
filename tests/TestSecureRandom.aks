@@ -1,0 +1,25 @@
+fn RunSecureRandomTests() {
+    let randBytes = SecureRandom.Bytes(16);
+    assert_eq(Length(randBytes), 32); // bytes = 32 hex chars
+
+    let randInt1 = SecureRandom.Int64();
+    let randInt2 = SecureRandom.Int64();
+    assert_eq(randInt1 != randInt2, true);
+
+    let uuid1 = SecureRandom.UuidV4();
+    let uuid2 = SecureRandom.UuidV4();
+    assert_eq(Length(uuid1), 36);
+    assert_eq(Length(uuid2), 36);
+    assert_eq(uuid1 != uuid2, true);
+
+    // Verify UUID format xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+    assert_eq(uuid1[8], "-");
+    assert_eq(uuid1[13], "-");
+    assert_eq(uuid1[14], "4");
+    assert_eq(uuid1[18], "-");
+    assert_eq(uuid1[23], "-");
+
+    println("Cryptographic secure random number generator and UUIDv4 tests passed successfully");
+}
+
+RunSecureRandomTests();

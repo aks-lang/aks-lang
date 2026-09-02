@@ -1,0 +1,82 @@
+print("Exhaustive Type Casting Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    print("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    print("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Primitive & String Conversions with 'as int' / 'as float'
+print("\n1. Type Conversions With 'as'");
+assert_eq(123.89 as int, 123, "Float 123.89 as int == 123", stats);
+assert_eq(1 as bool, true, "Int 1 as bool == true", stats);
+assert_eq(0 as bool, false, "Int 0 as bool == false", stats);
+assert_eq(true as int, 1, "Bool true as int == 1", stats);
+assert_eq(false as int, 0, "Bool false as int == 0", stats);
+assert_eq("123" as int, 123, "String '123' as int == 123", stats);
+assert_eq(("123" as float) + 0.45, 123.45, "String '123' as float + 0.45 == 123.45", stats);
+
+// Chained Type Casts & Conversions
+print("\n2. Chained Type Casts & Conversions");
+let chained1 = ("3.1415" as float) as int;
+assert_eq(chained1, 3, "'3.1415' as float as int == 3", stats);
+
+let chained2 = (99.88 as int) as float;
+assert_eq(chained2, 99.0, "99.88 as int as float == 99.0", stats);
+
+let chained3 = ((1 as bool) as int) as float;
+assert_eq(chained3, 1.0, "1 as bool as int as float == 1.0", stats);
+
+// Type Inspection with typeof()
+print("\n3. Type Inspection With Typeof()");
+assert_eq(typeof(42), "int", "typeof(42) == 'int'", stats);
+assert_eq(typeof(3.14), "float", "typeof(3.14) == 'float'", stats);
+assert_eq(typeof("hello"), "string", "typeof('hello') == 'string'", stats);
+assert_eq(typeof(true), "bool", "typeof(true) == 'bool'", stats);
+assert_eq(typeof([1, 2]), "array", "typeof([1,2]) == 'array'", stats);
+
+// Dynamic Type Dispatch Pattern
+print("\n4. Dynamic Type Dispatch Pattern");
+
+fn describeValue(val) {
+    let t = typeof(val);
+    if (t == "int") {
+        return "int:" + String(val * 2);
+    } else if (t == "float") {
+        return "float:" + String(floor(val));
+    } else if (t == "string") {
+        return "string:" + upper(val);
+    } else if (t == "bool") {
+        return "bool:" + String(!val);
+    }
+    return "unknown";
+}
+
+assert_eq(describeValue(7), "int:14", "describeValue(7) int multiplier", stats);
+assert_eq(describeValue(12.89), "float:12", "describeValue(12.89) float truncation", stats);
+assert_eq(describeValue("hello"), "string:HELLO", "describeValue('hello') upper", stats);
+assert_eq(describeValue(false), "bool:true", "describeValue(false) inverted", stats);
+
+print("Passed: " + String(stats[0]));
+print("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    print("All " + String(stats[0]) + " type casting subsystem tests passed successfully.");
+} else {
+    print("Test suite failed.");
+    exit(1);
+}

@@ -1,0 +1,20 @@
+// Test suite for OS Threadpool Timer Engine
+fn main() {
+    let t = ThreadPoolTimer.New();
+    assert(t.timer_id != 0);
+
+    // Set timer due in 10ms with 0 period
+    let s = t.Set(10, 0);
+    assert(s == true);
+
+    // Wait with cancel pending false
+    let w = t.Wait(false);
+    assert(w == true);
+
+    t.Close();
+    assert(t.timer_id == 0);
+
+    print("TestThreadPoolTimer passed");
+}
+
+main();

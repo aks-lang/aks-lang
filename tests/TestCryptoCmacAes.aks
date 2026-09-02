@@ -1,0 +1,24 @@
+// Test RFC 4493 AES-128-CMAC Cipher-based Message Authentication Code
+fn Main() {
+    // 16-byte key: 2b7e151628aed2a6abf7158809cf4f3c
+    let key_hex = "2b7e151628aed2a6abf7158809cf4f3c";
+    let data = "6bc1bee22e409f96e93d7e117393172a";
+
+    let mac = CryptoCmacAes.Authenticate(key_hex, data);
+    if (Length(mac) != 32) {
+        print("Invalid AES-CMAC tag length: " + Length(mac));
+        return 1;
+    }
+
+    // Consistency check on repeated calculation
+    let mac_again = CryptoCmacAes.Authenticate(key_hex, data);
+    if (mac != mac_again) {
+        print("AES-CMAC tag mismatch on repeated execution");
+        return 1;
+    }
+
+    print("TestCryptoCmacAes passed");
+    return 0;
+}
+
+Main();

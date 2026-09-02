@@ -1,0 +1,21 @@
+// Test suite for Hardware AVX2 Vectorized Substring Pattern Matching
+fn main() {
+    let text = "The quick brown fox jumps over the lazy dog and explores AVX2 SIMD acceleration in AKS programming language runtime.";
+
+    let idx1 = SimdStringMatch.FindSubstring(text, "fox", 0);
+    assert_eq(idx1, 16);
+
+    let idx2 = SimdStringMatch.FindSubstring(text, "AVX2", 0);
+    assert(idx2 > 0);
+
+    let idx3 = SimdStringMatch.FindSubstring(text, "nonexistent_term", 0);
+    assert_eq(idx3, -1);
+
+    // Search with offset
+    let idx4 = SimdStringMatch.FindSubstring(text, "the", 10);
+    assert(idx4 > 10);
+
+    print("TestSimdStringMatch passed");
+}
+
+main();

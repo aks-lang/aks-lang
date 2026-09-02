@@ -1,0 +1,32 @@
+fn RunOsEventTests() {
+    let evt = OsEvent.Create(true, false, null);
+    assert_eq(evt.event_id != 0, true);
+
+    // Initial state is non-signaled -> wait with 10ms timeout should fail
+    let wait1 = evt.Wait(10);
+    assert_eq(wait1, false);
+
+    // Signal event
+    let setOk = evt.Set();
+    assert_eq(setOk, true);
+
+    // Now wait should succeed immediately
+    let wait2 = evt.Wait(100);
+    assert_eq(wait2, true);
+
+    // Reset event
+    let rstOk = evt.Reset();
+    assert_eq(rstOk, true);
+
+    // Now wait should timeout again
+    let wait3 = evt.Wait(10);
+    assert_eq(wait3, false);
+
+    // Destroy
+    let destOk = evt.Destroy();
+    assert_eq(destOk, true);
+
+    println("Native OS event signaling tests passed successfully");
+}
+
+RunOsEventTests();

@@ -1,0 +1,7 @@
+import "ModuleHelperA.aks";
+
+module helper_b {
+    pub fn double_val() {
+        return helper_a::get_val() * 2;
+    }
+}

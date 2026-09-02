@@ -1,0 +1,33 @@
+// Test FIPS 180-4 SHA-512/256 Truncated Cryptographic Hash
+fn Main() {
+    let msg = "The quick brown fox jumps over the lazy dog";
+    let digest = CryptoSha512_256.Hash(msg);
+    if (Length(digest) != 64) {
+        print("Invalid SHA-512/256 digest length: " + Length(digest));
+        return 1;
+    }
+
+    // Official FIPS 180-4 test vector for "The quick brown fox jumps over the lazy dog"
+    if (digest != "745ee892b4dd99654937c7a6115e0046c42e935329f897a84ab336d07d0d9e8e") {
+        print("SHA-512/256 digest mismatch: " + digest);
+        return 1;
+    }
+
+    // Consistency check on empty string
+    let empty_digest = CryptoSha512_256.Hash("");
+    if (Length(empty_digest) != 64) {
+        print("Invalid empty string digest length: " + Length(empty_digest));
+        return 1;
+    }
+
+    let empty_digest2 = CryptoSha512_256.Hash("");
+    if (empty_digest != empty_digest2) {
+        print("SHA-512/256 empty string digest mismatch on repeated run");
+        return 1;
+    }
+
+    print("TestCryptoSha512_256 passed");
+    return 0;
+}
+
+Main();

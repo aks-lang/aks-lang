@@ -1,0 +1,57 @@
+print("testing language suite");
+
+// Basic Arithmetic and Variable Declarations
+let numA = 10;
+let numB = 20;
+let resultSum = numA + numB;
+print("Sum of 10 and 20:");
+print(resultSum);
+
+// Control Flow: If-Else conditions
+if (resultSum > 25) {
+    print("Sum is greater than 25 (Expected)");
+}else {
+    print("Sum is 25 or less (Unexpected)");
+}
+
+// Functions
+fn calculateFactorial(n) {
+    let result = 1;
+    let i = 1;
+    while (i <= n) {
+        result = result * i;
+        i++;
+    }
+    return result;
+}
+
+let factFive = calculateFactorial(5);
+print("Factorial of 5 (Expected: 120):");
+print(factFive);
+
+// Arrays
+let numberArray = [10, 20, 30];
+print("Array length is 3. Second element is:");
+print(numberArray[1]);
+
+print("Updating second element to 99");
+numberArray[1] = 99;
+print("Updated second element:");
+print(numberArray[1]);
+
+// Structs
+struct Coordinate {
+    x: int;
+    y: int;
+}
+
+let coordPoint = new Coordinate();
+coordPoint.x = 100;
+coordPoint.y = 200;
+
+print("Point coordinate X:");
+print(coordPoint.x);
+print("Point coordinate Y:");
+print(coordPoint.y);
+
+print("language suite complete");

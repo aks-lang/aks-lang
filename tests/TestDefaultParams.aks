@@ -1,0 +1,30 @@
+fn greet(name: string = "world", msg: string = "hello") {
+    print(msg + " " + name);
+    return msg + " " + name;
+}
+
+fn main() {
+    print("Testing Default Parameters");
+    
+    // Call with both args
+    let r1 = greet("alice", "hi");
+    if (r1 != "hi alice") {
+        print("FAIL: both args");
+    }
+
+    // Call with one arg (first)
+    let r2 = greet("bob");
+    if (r2 != "hello bob") {
+        print("FAIL: first arg only");
+    }
+
+    // Call with no args
+    let r3 = greet();
+    if (r3 != "hello world") {
+        print("FAIL: no args");
+    }
+
+    print("Default Parameters Tests Pass");
+}
+
+main();

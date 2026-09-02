@@ -1,0 +1,26 @@
+// Test suite for OS Direct I/O and Non-Buffered Storage Engine
+fn main() {
+    let test_file = "tests/direct_io_temp.dat";
+    
+    // Allocate sector-aligned buffer (4096 bytes)
+    let buf = AlignedBuffer.Alloc(4096, 4096);
+    let ptr = buf.ptr_id;
+    assert(ptr != 0);
+
+    // Open file with direct non-buffered flag
+    let dio = DirectIo.Open(test_file, "w+");
+    if (dio.io_handle != -1 && dio.io_handle != 0) {
+        let written = dio.Write(ptr, 4096);
+        assert(written >= 0);
+        dio.Close();
+    }
+
+    buf.Free();
+    
+    // Cleanup temporary file if created
+    RemoveFile(test_file);
+
+    print("TestDirectIo passed");
+}
+
+main();

@@ -1,0 +1,33 @@
+fn RunSimdVec16sTests() {
+    let a = SimdVec16s.New([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+    let b = SimdVec16s.New([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160]);
+
+    // Addition
+    let sum = a.Add(b);
+    let sumArr = sum.ToArray();
+    assert_eq(Length(sumArr), 16);
+    assert_eq(sumArr[0], 11);
+    assert_eq(sumArr[15], 176);
+
+    // Subtraction
+    let diff = b.Sub(a);
+    let diffArr = diff.ToArray();
+    assert_eq(diffArr[0], 9);
+    assert_eq(diffArr[15], 144);
+
+    // Multiplication
+    let mul = a.Mul(SimdVec16s.New([2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]));
+    let mulArr = mul.ToArray();
+    assert_eq(mulArr[0], 2);
+    assert_eq(mulArr[15], 32);
+
+    // Saturated addition (30000 + 10000 clamps to 32767 for 16-bit signed)
+    let s1 = SimdVec16s.New([30000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let s2 = SimdVec16s.New([10000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let satAdd = s1.AddSaturated(s2);
+    assert_eq(satAdd.ToArray()[0], 32767);
+
+    println("Hardware SIMD 256-bit short integer tests passed successfully");
+}
+
+RunSimdVec16sTests();

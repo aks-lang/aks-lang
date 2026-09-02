@@ -1,0 +1,16 @@
+// Test suite for OS Persistent File Storage Synchronization
+fn main() {
+    let test_file = "tests/commit_test.tmp";
+    RemoveFile(test_file);
+
+    WriteFile(test_file, "Transactional Database Commit Log Payload");
+
+    // Flush kernel buffers directly to physical media
+    let flushed = FileMemoryCommit.Flush(test_file);
+    assert(flushed == true);
+
+    RemoveFile(test_file);
+    print("TestFileMemoryCommit passed");
+}
+
+main();

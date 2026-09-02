@@ -1,0 +1,58 @@
+// Test Suite: Native Win32 & OS Subsystems
+
+fn assert_true(cond, msg) {
+    if (!cond) {
+        print("FAIL: " + msg);
+        panic(msg);
+    }
+}
+
+// 1. Clipboard (OsClipboardSetC, OsClipboardGetC)
+OsClipboardSetC("AKSTestClipboardData_2026");
+let clip_val = OsClipboardGetC();
+assert_true(clip_val == "AKSTestClipboardData_2026", "Clipboard Get/Set round-trip");
+
+// 2. Process Snapshot (OsProcessSnapshotC)
+let procs = OsProcessSnapshotC();
+assert_true(Length(procs) > 0, "Toolhelp32 process list non-empty");
+
+// 3. Module Enumeration (OsModuleEnumC)
+let mods = OsModuleEnumC(SystemPid());
+assert_true(Length(mods) > 0, "Current process module enumeration");
+
+// 4. Window Enumeration (OsWindowEnumC)
+let wins = OsWindowEnumC();
+assert_true(Length(wins) >= 0, "Window enumeration returned list");
+
+// 5. Console Raw Mode (OsConsoleRawModeC)
+let prev_raw = OsConsoleRawModeC(0);
+assert_true(prev_raw == true || prev_raw == false, "Console raw mode query");
+
+// 6. Win32 Fiber (OsFiberCreateC)
+let fib = OsFiberCreateC(65536);
+assert_true(fib >= 0, "Win32 Fiber allocation");
+
+// 7. Token Privileges (OsTokenPrivilegesC)
+let privs = OsTokenPrivilegesC();
+assert_true(Length(privs) >= 0, "Process token privileges queried");
+
+// 8. Heap Walk (OsHeapWalkC)
+let heap_blocks = OsHeapWalkC();
+assert_true(Length(heap_blocks) >= 0, "Private heap blocks traversed");
+
+// 9. Page Protect & Virtual Query (OsVirtualProtectC, OsVirtualQueryC)
+let vq = OsVirtualQueryC(0);
+assert_true(vq.state >= 0, "VirtualQuery page state query");
+
+// 10. Wow64 Query (OsWow64QueryC)
+let w64 = OsWow64QueryC();
+assert_true(w64.native_cpu_arch >= 0, "Wow64 machine architecture queried");
+
+// 11. Named Event (OsNamedEventCreateC, OsNamedEventSetC, OsNamedEventWaitC, OsNamedEventCloseC)
+let ev_h = OsNamedEventCreateC("Global\\AKSTestEvent_2026", 1);
+assert_true(ev_h != 0, "Cross-process named event creation");
+OsNamedEventSetC(ev_h);
+assert_true(OsNamedEventWaitC(ev_h, 100) == true, "Named event signaled wait");
+OsNamedEventCloseC(ev_h);
+
+print("PASS: Native Win32 & OS Subsystems");

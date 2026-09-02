@@ -1,0 +1,686 @@
+fn assert(cond, msg) {
+    print("ASSERT: cond=");
+    print(cond);
+    print(" msg=");
+    print(msg);
+    print("\n");
+    if (!cond) {
+        print("ASSERTION FAILED: " + msg + "\n");
+        exit(1);
+    }
+}
+
+print("Starting Advanced Concurrency Primitives Test Suite...");
+
+// Atomics Memory Ordering Verification
+print("Verification 1: VM Atomic Operations with Memory Ordering...");
+let atomic_arr = [0];
+print("Check 1: atomget");
+assert(AtomGet(atomic_arr, 0, "relaxed") == 0, "relaxed get should be 0");
+print("Check 2: atomset");
+assert(AtomSet(atomic_arr, 0, 42, "release") == 0, "release set should return old value 0");
+print("Check 3: atomget");
+assert(AtomGet(atomic_arr, 0, "acquire") == 42, "acquire get should read 42");
+print("Check 4: atomadd");
+assert(AtomAdd(atomic_arr, 0, 8, "seq_cst") == 42, "seq_cst add should return old value 42");
+print("Check 5: atomsub");
+assert(AtomSub(atomic_arr, 0, 10, "relaxed") == 50, "relaxed sub should return old value 50");
+print("Check 6: atomget");
+assert(AtomGet(atomic_arr, 0) == 40, "get should read 40");
+print("Check 7: atomcas");
+assert(AtomCompareAndSwap(atomic_arr, 0, 40, 100, "seq_cst") == true, "cas from 40 to 100 should succeed");
+print("Check 8: atomget");
+assert(AtomGet(atomic_arr, 0) == 100, "get should read 100");
+print("Check 9: atomcas");
+assert(AtomCompareAndSwap(atomic_arr, 0, 50, 200) == false, "cas from 50 should fail");
+print("Check 10: atomget");
+assert(AtomGet(atomic_arr, 0) == 100, "get should still be 100");
+print("Atomics verification passed.");
+
+// Lock-free Treiber Stack
+struct StackNode {
+    val: any;
+    next: any;
+}
+
+struct LockFreeStack {
+    head: array;
+}
+
+fn new_lock_free_stack() -> LockFreeStack {
+    let s = new LockFreeStack();
+    s.head = [null];
+    return s;
+}
+
+fn LockFreeStack.Push(self, val) {
+    let node = new StackNode();
+    node.val = val;
+    while (true) {
+        let old_head = AtomGet(self.head, 0, "relaxed");
+        node.next = old_head;
+        if (AtomCompareAndSwap(self.head, 0, old_head, node, "release")) {
+            break;
+        }
+    }
+}
+
+fn LockFreeStack.Pop(self) {
+    while (true) {
+        let old_head = AtomGet(self.head, 0, "acquire");
+        if (old_head == null) {
+            return null;
+        }
+        let next_node = old_head.next;
+        if (AtomCompareAndSwap(self.head, 0, old_head, next_node, "acquire")) {
+            return old_head.val;
+        }
+    }
+}
+
+print("Verification 2: Lock-free Stack (Treiber)...");
+let stack = new_lock_free_stack();
+let results_stack = Channel(20);
+
+fn pusher(stack, val) {
+    stack.Push(val);
+}
+
+fn popper(stack, out_ch) {
+    while (true) {
+        let v = stack.Pop();
+        if (v != null) {
+            send(out_ch, v);
+            break;
+        }
+        sleep(1);
+    }
+}
+
+let t1 = spawn pusher(stack, 111);
+let t2 = spawn pusher(stack, 222);
+let t3 = spawn pusher(stack, 333);
+let t4 = spawn popper(stack, results_stack);
+let t5 = spawn popper(stack, results_stack);
+let t6 = spawn popper(stack, results_stack);
+
+await t1;
+await t2;
+await t3;
+await t4;
+await t5;
+await t6;
+
+let v1 = Receive(results_stack);
+let v2 = Receive(results_stack);
+let v3 = Receive(results_stack);
+let sum_stack = v1 + v2 + v3;
+assert(sum_stack == 666, "Treiber stack sum of popped values must be 666");
+print("Lock-free stack passed.");
+
+// Lock-free Michael-Scott Queue
+struct QueueNode {
+    val: any;
+    next: array;
+}
+
+struct LockFreeQueue {
+    head: array;
+    tail: array;
+}
+
+fn new_lock_free_queue() -> LockFreeQueue {
+    let dummy = new QueueNode();
+    dummy.val = null;
+    dummy.next = [null];
+    let q = new LockFreeQueue();
+    q.head = [dummy];
+    q.tail = [dummy];
+    return q;
+}
+
+fn LockFreeQueue.enqueue(self, val) {
+    let node = new QueueNode();
+    node.val = val;
+    node.next = [null];
+    while (true) {
+        let tail = AtomGet(self.tail, 0, "relaxed");
+        let next = AtomGet(tail.next, 0, "acquire");
+        if (tail == AtomGet(self.tail, 0, "relaxed")) {
+            if (next == null) {
+                if (AtomCompareAndSwap(tail.next, 0, null, node, "release")) {
+                    AtomCompareAndSwap(self.tail, 0, tail, node, "release");
+                    break;
+                }
+            }else {
+                AtomCompareAndSwap(self.tail, 0, tail, next, "release");
+            }
+        }
+    }
+}
+
+fn LockFreeQueue.dequeue(self) {
+    while (true) {
+        let head = AtomGet(self.head, 0, "acquire");
+        let tail = AtomGet(self.tail, 0, "relaxed");
+        let next = AtomGet(head.next, 0, "acquire");
+        if (head == AtomGet(self.head, 0, "acquire")) {
+            if (head == tail) {
+                if (next == null) {
+                    return null;
+                }
+                AtomCompareAndSwap(self.tail, 0, tail, next, "release");
+            }else {
+                let val = next.val;
+                if (AtomCompareAndSwap(self.head, 0, head, next, "acquire")) {
+                    return val;
+                }
+            }
+        }
+    }
+}
+
+print("Verification 3: Lock-free Queue (Michael-Scott)...");
+let queue = new_lock_free_queue();
+let results_queue = Channel(20);
+
+fn enqueuer(queue, val) {
+    queue.enqueue(val);
+}
+
+fn dequeuer(queue, out_ch) {
+    while (true) {
+        let v = queue.dequeue();
+        if (v != null) {
+            send(out_ch, v);
+            break;
+        }
+        sleep(1);
+    }
+}
+
+let q1 = spawn enqueuer(queue, 10);
+let q2 = spawn enqueuer(queue, 20);
+let q3 = spawn enqueuer(queue, 30);
+let q4 = spawn dequeuer(queue, results_queue);
+let q5 = spawn dequeuer(queue, results_queue);
+let q6 = spawn dequeuer(queue, results_queue);
+
+await q1;
+await q2;
+await q3;
+await q4;
+await q5;
+await q6;
+
+let qv1 = Receive(results_queue);
+let qv2 = Receive(results_queue);
+let qv3 = Receive(results_queue);
+let sum_queue = qv1 + qv2 + qv3;
+assert(sum_queue == 60, "Michael-Scott queue sum of dequeued values must be 60");
+print("Lock-free queue passed.");
+
+// Lock-free Bounded Ring Buffer
+struct LockFreeRingBuffer {
+    buffer: array;
+    capacity: int;
+    head: array;
+    tail: array;
+}
+
+fn new_ring_buffer(capacity) -> LockFreeRingBuffer {
+    let rb = new LockFreeRingBuffer();
+    rb.capacity = capacity;
+    rb.buffer = [];
+    let i = 0;
+    while (i < capacity) {
+        append(rb.buffer, null);
+        i++;
+    }
+    rb.head = [0];
+    rb.tail = [0];
+    return rb;
+}
+
+fn LockFreeRingBuffer.Push(self, val) {
+    while (true) {
+        let head = AtomGet(self.head, 0, "acquire");
+        let tail = AtomGet(self.tail, 0, "acquire");
+        if (tail - head >= self.capacity) {
+            return false;
+        }
+        if (AtomCompareAndSwap(self.tail, 0, tail, tail + 1, "release")) {
+            let idx = tail % self.capacity;
+            if (AtomCompareAndSwap(self.buffer, idx, null, val, "release")) {
+                return true;
+            }
+        }
+    }
+}
+
+fn LockFreeRingBuffer.Pop(self) {
+    while (true) {
+        let head = AtomGet(self.head, 0, "acquire");
+        let tail = AtomGet(self.tail, 0, "acquire");
+        if (head == tail) {
+            return null;
+        }
+        let idx = head % self.capacity;
+        let val = AtomGet(self.buffer, idx, "acquire");
+        if (val != null) {
+            if (AtomCompareAndSwap(self.head, 0, head, head + 1, "release")) {
+                AtomSet(self.buffer, idx, null, "release");
+                return val;
+            }
+        }
+    }
+}
+
+print("Verification 4: Lock-free Bounded Ring Buffer...");
+let rb = new_ring_buffer(2);
+assert(rb.Push(1) == true, "pushing 1 should succeed");
+assert(rb.Push(2) == true, "pushing 2 should succeed");
+assert(rb.Push(3) == false, "pushing 3 should fail (buffer full)");
+assert(rb.Pop() == 1, "pop should return 1");
+assert(rb.Push(3) == true, "pushing 3 should now succeed");
+assert(rb.Pop() == 2, "pop should return 2");
+assert(rb.Pop() == 3, "pop should return 3");
+assert(rb.Pop() == null, "pop should return null (buffer empty)");
+print("Lock-free Ring Buffer passed.");
+
+// Software Transactional Memory (STM)
+struct TVar {
+    _val: array;
+    _version: array;
+}
+
+fn new_tvar(val) -> TVar {
+    let tv = new TVar();
+    tv._val = [val];
+    tv._version = [1];
+    return tv;
+}
+
+struct Transaction {
+    read_log: array;
+    write_log: array;
+    env: array;
+    aborted: any;
+}
+
+fn Transaction.read(self, tv) {
+    let i = 0;
+    while (i < Length(self.write_log)) {
+        if (self.write_log[i][0] == tv) {
+            return self.write_log[i][1];
+        }
+        i++;
+    }
+    let ver = AtomGet(tv._version, 0, "acquire");
+    if (ver < 0) {
+        self.aborted = true;
+    }
+    let val = AtomGet(tv._val, 0, "acquire");
+    let found = false;
+    i = 0;
+    while (i < Length(self.read_log)) {
+        if (self.read_log[i][0] == tv) {
+            found = true;
+            break;
+        }
+        i++;
+    }
+    if (!found) {
+        append(self.read_log, [tv, ver, val]);
+    }
+    return val;
+}
+
+fn Transaction.write(self, tv, val) {
+    let i = 0;
+    let found = false;
+    while (i < Length(self.write_log)) {
+        if (self.write_log[i][0] == tv) {
+            self.write_log[i][1] = val;
+            found = true;
+            break;
+        }
+        i++;
+    }
+    if (!found) {
+        append(self.write_log, [tv, val]);
+    }
+}
+
+fn stm_atomically(fn_block, env) {
+    while (true) {
+        let tx = new Transaction();
+        tx.read_log = [];
+        tx.write_log = [];
+        tx.env = env;
+        tx.aborted = false;
+        let res = fn_block(tx);
+        let locked_tvars = [];
+        let valid = true;
+        if (tx.aborted) {
+            valid = false;
+        }
+        let i = 0;
+        while (i < Length(tx.write_log)) {
+            let tv = tx.write_log[i][0];
+            let locked = false;
+            while (true) {
+                let ver = AtomGet(tv._version, 0, "relaxed");
+                if (ver < 0) {
+                    valid = false;
+                    break;
+                }
+                if (AtomCompareAndSwap(tv._version, 0, ver,-ver, "acquire")) {
+                    append(locked_tvars, [tv, ver]);
+                    locked = true;
+                    break;
+                }
+            }
+            if (!valid) {break;
+            }
+            i++;
+        }
+        if (valid) {
+            let j = 0;
+            while (j < Length(tx.read_log)) {
+                let tv = tx.read_log[j][0];
+                let expected_ver = tx.read_log[j][1];
+                let cur_ver = AtomGet(tv._version, 0, "acquire");
+                if (cur_ver != expected_ver) {
+                    let locked_by_us = false;
+                    let k = 0;
+                    while (k < Length(locked_tvars)) {
+                        if (locked_tvars[k][0] == tv &&-cur_ver == locked_tvars[k][1]) {
+                            locked_by_us = true;
+                            break;
+                        }
+                        k++;
+                    }
+                    if (!locked_by_us) {
+                        valid = false;
+                        break;
+                    }
+                }
+                j++;
+            }
+        }
+        if (valid) {
+            let j = 0;
+            while (j < Length(tx.write_log)) {
+                let tv = tx.write_log[j][0];
+                let val = tx.write_log[j][1];
+                let orig_ver = 0;
+                let k = 0;
+                while (k < Length(locked_tvars)) {
+                    if (locked_tvars[k][0] == tv) {
+                        orig_ver = locked_tvars[k][1];
+                        break;
+                    }
+                    k++;
+                }
+                AtomSet(tv._val, 0, val, "release");
+                AtomSet(tv._version, 0, orig_ver + 1, "release");
+                j++;
+            }
+            return res;
+        }else {
+            let j = 0;
+            while (j < Length(locked_tvars)) {
+                let tv = locked_tvars[j][0];
+                let orig_ver = locked_tvars[j][1];
+                AtomSet(tv._version, 0, orig_ver, "release");
+                j++;
+            }
+            sleep(1);
+        }
+    }
+}
+
+fn transfer(from_acc, to_acc, amt) {
+    let env = [from_acc, to_acc, amt];
+    stm_atomically(fn(tx) {
+        let balance_from = tx.read(tx.env[0]);
+        let balance_to = tx.read(tx.env[1]);
+        tx.write(tx.env[0], balance_from - tx.env[2]);
+        tx.write(tx.env[1], balance_to + tx.env[2]);
+    }, env);
+}
+
+print("Verification 5: Software Transactional Memory (STM)...");
+let accA = new_tvar(100);
+let accB = new_tvar(100);
+
+let stm1 = spawn transfer(accA, accB, 20);
+let stm2 = spawn transfer(accB, accA, 50);
+
+await stm1;
+await stm2;
+
+let finals = stm_atomically(fn(tx) {
+    let a = tx.read(tx.env[0]);
+    let b = tx.read(tx.env[1]);
+    return [a, b];
+}, [accA, accB]);
+assert(finals[0] + finals[1] == 200, "STM total balance must remain invariant (200)");
+print("STM passed.");
+
+// Hazard Pointers
+struct HazardPointerRegistry {
+    slots: array;
+}
+
+fn new_hazard_pointer_registry() -> HazardPointerRegistry {
+    let r = new HazardPointerRegistry();
+    r.slots = [];
+    return r;
+}
+
+fn HazardPointerRegistry.protect(self, node) {
+    let t = CurrentTask();
+    let i = 0;
+    let found = false;
+    while (i < Length(self.slots)) {
+        if (self.slots[i][0] == t) {
+            self.slots[i][1] = node;
+            found = true;
+            break;
+        }
+        i++;
+    }
+    if (!found) {
+        append(self.slots, [t, node]);
+    }
+}
+
+fn HazardPointerRegistry.release(self) {
+    let t = CurrentTask();
+    let i = 0;
+    while (i < Length(self.slots)) {
+        if (self.slots[i][0] == t) {
+            self.slots[i][1] = null;
+            break;
+        }
+        i++;
+    }
+}
+
+fn HazardPointerRegistry.retire(self, node) {
+    let i = 0;
+    let safe = true;
+    while (i < Length(self.slots)) {
+        let active_node = self.slots[i][1];
+        let active_task = self.slots[i][0];
+        let cur_task = CurrentTask();
+        if ((active_node == node) && (active_task != cur_task)) {
+            safe = false;
+            break;
+        }
+        i++;
+    }
+    if (safe) {
+        free(node);
+        return true;
+    }
+    return false;
+}
+
+fn verify_hp() {
+    print("Verification 6: Hazard Pointers...");
+    let hp_reg = new_hazard_pointer_registry();
+    let raw_node = [99];
+    // GC-free structure
+    hp_reg.protect(raw_node);
+    assert(hp_reg.retire(raw_node) == true, "retiring owned node by same task is safe");
+    let node2 = [88];
+    append(hp_reg.slots, ["other_task", node2]);
+    assert(hp_reg.retire(node2) == false, "retiring node protected by another task should be blocked/prevented");
+    hp_reg.slots[1][1] = null;
+    assert(hp_reg.retire(node2) == true, "retiring should succeed once hazard pointer is released");
+    print("Hazard Pointers passed.");
+}
+verify_hp();
+
+// Epoch-based reclamation (ebr)
+struct EbrThreadNode {
+    task: any;
+    epoch: array;
+}
+
+struct EbrRegistry {
+    global_epoch: array;
+    threads: array;
+    retired: array;
+}
+
+fn new_ebr_registry() -> EbrRegistry {
+    let r = new EbrRegistry();
+    r.global_epoch = [0];
+    r.threads = [];
+    r.retired = [];
+    return r;
+}
+
+fn EbrRegistry.enter(self) {
+    let t = CurrentTask();
+    let i = 0;
+    let found = false;
+    while (i < Length(self.threads)) {
+        if (self.threads[i].task == t) {
+            let ge = AtomGet(self.global_epoch, 0, "acquire");
+            AtomSet(self.threads[i].epoch, 0, ge, "release");
+            found = true;
+            break;
+        }
+        i++;
+    }
+    if (!found) {
+        let tn = new EbrThreadNode();
+        tn.task = t;
+        let ge = AtomGet(self.global_epoch, 0, "acquire");
+        tn.epoch = [ge];
+        append(self.threads, tn);
+    }
+}
+
+fn EbrRegistry.leave(self) {
+    let t = CurrentTask();
+    let i = 0;
+    while (i < Length(self.threads)) {
+        if (self.threads[i].task == t) {
+            AtomSet(self.threads[i].epoch, 0,-1, "release");
+            break;
+        }
+        i++;
+    }
+}
+
+fn EbrRegistry.retire(self, node) {
+    let ge = AtomGet(self.global_epoch, 0, "acquire");
+    append(self.retired, [node, ge]);
+}
+
+fn EbrRegistry.reclaim(self) {
+    let ge = AtomGet(self.global_epoch, 0, "acquire");
+    let can_increment = true;
+    let i = 0;
+    while (i < Length(self.threads)) {
+        let te = AtomGet(self.threads[i].epoch, 0, "acquire");
+        if (te !=-1 && te != ge) {
+            can_increment = false;
+            break;
+        }
+        i++;
+    }
+    if (can_increment) {
+        let new_epoch = ge + 1;
+        AtomSet(self.global_epoch, 0, new_epoch, "release");
+        ge = new_epoch;
+    }
+    let new_retired = [];
+    let j = 0;
+    while (j < Length(self.retired)) {
+        let item = self.retired[j];
+        let node = item[0];
+        let retired_epoch = item[1];
+        if (retired_epoch <= ge - 2) {
+            free(node);
+        }else {
+            append(new_retired, item);
+        }
+        j++;
+    }
+    self.retired = new_retired;
+}
+
+fn verify_ebr() {
+    print("Verification 7: Epoch-Based Reclamation...");
+    let ebr = new_ebr_registry();
+    ebr.enter();
+
+    let node3 = [77];
+    ebr.retire(node3);
+    ebr.leave();
+    ebr.reclaim();
+    // global epoch matches, might increment to 1. But node retired in 0 is not ge - 2 yet.
+    assert(Length(ebr.retired) == 1, "node3 should still be in retired list");
+
+    ebr.reclaim();
+    // global epoch increments to 2
+    ebr.reclaim();
+    // global epoch increments to 3, now ge - 2 is 1 (retired epoch 0 <= 1, so reclaimed!)
+    assert(Length(ebr.retired) == 0, "node3 should have been safely reclaimed");
+    print("Epoch-Based Reclamation passed.");
+}
+verify_ebr();
+
+print("All ADVANCED CONCURRENCY PRIMITIVE VERIFICATIONS PASSED SUCCESSFULLY!");
+
+// Release all global references so VM reports 0 leaks at shutdown
+atomic_arr = null;
+stack = null;
+results_stack = null;
+t1 = null;
+t2 = null;
+t3 = null;
+t4 = null;
+t5 = null;
+t6 = null;
+queue = null;
+results_queue = null;
+q1 = null;
+q2 = null;
+q3 = null;
+q4 = null;
+q5 = null;
+q6 = null;
+rb = null;
+accA = null;
+accB = null;
+stm1 = null;
+stm2 = null;
+finals = null;

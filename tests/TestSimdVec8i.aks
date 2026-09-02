@@ -1,0 +1,40 @@
+fn RunSimdVec8iTests() {
+    let a = SimdVec8i.New([1, 2, 3, 4, 5, 6, 7, 8]);
+    let b = SimdVec8i.New([10, 20, 30, 40, 50, 60, 70, 80]);
+
+    // Addition
+    let sum = a.Add(b);
+    let sumArr = sum.ToArray();
+    assert_eq(Length(sumArr), 8);
+    assert_eq(sumArr[0], 11);
+    assert_eq(sumArr[7], 88);
+
+    // Subtraction
+    let diff = b.Sub(a);
+    let diffArr = diff.ToArray();
+    assert_eq(diffArr[0], 9);
+    assert_eq(diffArr[7], 72);
+
+    // Multiplication
+    let mul = a.Mul(b);
+    let mulArr = mul.ToArray();
+    assert_eq(mulArr[0], 10);
+    assert_eq(mulArr[7], 640);
+
+    // Bitwise and / or / xor
+    let v1 = SimdVec8i.New([0x0F, 0xF0, 0xFF, 0x00, 0xAA, 0x55, 0x12, 0x34]);
+    let v2 = SimdVec8i.New([0xFF, 0xFF, 0x00, 0x00, 0x55, 0xAA, 0x12, 0x00]);
+
+    let andRes = v1.BitwiseAnd(v2);
+    assert_eq(andRes.ToArray()[0], 0x0F);
+
+    let orRes = v1.BitwiseOr(v2);
+    assert_eq(orRes.ToArray()[0], 0xFF);
+
+    let xorRes = v1.BitwiseXor(v2);
+    assert_eq(xorRes.ToArray()[0], 0xF0);
+
+    println("Hardware SIMD 256-bit integer vector tests passed successfully");
+}
+
+RunSimdVec8iTests();

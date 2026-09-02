@@ -1,0 +1,133 @@
+let PI = 3.141592653589793;
+let E = 2.718281828459045;
+
+let circlearea = fn(r) {
+    return PI * r * r;
+};
+
+let circlecircumference = fn(r) {
+    return 2 * PI * r;
+};
+
+let spherevolume = fn(r) {
+    return (4.0 / 3.0) * PI * r * r * r;
+};
+
+let factorial = fn(n) {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+};
+
+let factorialiter = fn(n) {
+    let result = 1;
+    let i = 2;
+    while (i <= n) {
+        result = result * i;
+        i = i + 1;
+    }
+    return result;
+};
+
+let combinations = fn(n, r) {
+    return factorial(n) / (factorial(r) * factorial(n - r));
+};
+
+let permutations = fn(n, r) {
+    return factorial(n) / factorial(n - r);
+};
+
+let fibonacci = fn(n) {
+    if (n <= 1) {
+        return n;
+    }
+    let a = 0;
+    let b = 1;
+    let i = 2;
+    while (i <= n) {
+        let temp = a + b;
+        a = b;
+        b = temp;
+        i = i + 1;
+    }
+    return b;
+};
+
+let quadratic = fn(a, b, c) {
+    let disc = SquareRoot(b * b - 4 * a * c);
+    let x1 = (-b + disc) / (2 * a);
+    let x2 = (-b - disc) / (2 * a);
+    let result = [];
+    result = append(result, x1);
+    result = append(result, x2);
+    return result;
+};
+
+let iseven = fn(n) {
+    return n % 2 == 0;
+};
+
+let isodd = fn(n) {
+    return n % 2 == 1;
+};
+
+let isperfectsquare = fn(n) {
+    let root = floor(SquareRoot(n));
+    return root * root == n;
+};
+
+let gcd = fn(a, b) {
+    let x = a;
+    let y = b;
+    while (y != 0) {
+        let temp = y;
+        y = x % y;
+        x = temp;
+    }
+    if (x < 0) {
+        return -x;
+    }
+    return x;
+};
+
+let lcm = fn(a, b) {
+    return a * b / GreatestCommonDivisor(a, b);
+};
+
+let torad = fn(deg) {
+    return deg * PI / 180;
+};
+
+let todeg = fn(rad) {
+    return rad * 180 / PI;
+};
+
+let sec = fn(x) {
+    return 1 / cos(x);
+};
+
+let csc = fn(x) {
+    return 1 / sin(x);
+};
+
+let cot = fn(x) {
+    return 1 / tan(x);
+};
+
+let vectorlength = fn(x, y) {
+    return SquareRoot(x * x + y * y);
+};
+
+let dotproduct = fn(x1, y1, x2, y2) {
+    return x1 * x2 + y1 * y2;
+};
+
+let anglebetween = fn(x1, y1, x2, y2) {
+    let dot = dotproduct(x1, y1, x2, y2);
+    let mag1 = vectorlength(x1, y1);
+    let mag2 = vectorlength(x2, y2);
+    return acos(dot / (mag1 * mag2));
+};
+
+print("Math module loaded successfully");

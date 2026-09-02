@@ -1,0 +1,17 @@
+fn RunDiskVolumeTests() {
+    let drivePath = "C:\\";
+
+    let freeSpace = DiskVolume.FreeSpace(drivePath);
+    assert_eq(freeSpace > 0, true);
+
+    let totalSpace = DiskVolume.TotalSpace(drivePath);
+    assert_eq(totalSpace > 0, true);
+    assert_eq(totalSpace >= freeSpace, true);
+
+    let fsName = DiskVolume.FileSystemName(drivePath);
+    assert_eq(Length(fsName) > 0, true);
+
+    println("Storage drive and disk volume telemetry tests passed successfully");
+}
+
+RunDiskVolumeTests();

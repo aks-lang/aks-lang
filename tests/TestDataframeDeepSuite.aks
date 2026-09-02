@@ -1,0 +1,72 @@
+println("Exhaustive Dataframe Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// DataFrame Creation (DataFrame_from_rows)
+println("\n1. Dataframe Creation");
+
+let names = ["id", "score"];
+let rows = [
+    [1, 80],
+    [2, 90],
+    [3, 100]
+];
+
+let df = DataFrameFromRows(names, rows);
+let shape = df.Shape();
+
+assert_eq(shape[0], 3, "DataFrame rows count == 3", stats);
+assert_eq(shape[1], 2, "DataFrame cols count == 2", stats);
+
+// DataFrame Column & Math Methods (get_column, mean, describe)
+println("\n2. Dataframe Column & Math Methods");
+
+let scores = df.GetColumn("score");
+assert_eq(Length(scores), 3, "get_column('score') length == 3", stats);
+assert_eq(scores[0], 80, "scores[0] == 80", stats);
+assert_eq(scores[2], 100, "scores[2] == 100", stats);
+
+let mean_score = df.Mean("score");
+assert_eq(mean_score, 90.0, "df.mean('score') == 90.0", stats);
+
+let desc = df.Describe();
+assert_eq(Length(desc) > 0, true, "df.describe() returns non-empty summary string", stats);
+
+// DataFrame Head & Pick Subsets
+println("\n3. Dataframe Head & Pick");
+
+let h_df = df.Head(2);
+let h_shape = h_df.Shape();
+assert_eq(h_shape[0], 2, "df.head(2) returns 2 rows", stats);
+
+let p_df = df.Pick(["score"]);
+let p_shape = p_df.Shape();
+assert_eq(p_shape[1], 1, "df.pick(['score']) returns 1 column", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " dataframe subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

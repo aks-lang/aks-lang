@@ -1,0 +1,17 @@
+fn RunSystemLocaleTests() {
+    let loc = SystemLocale.CurrentLocaleName();
+    assert_eq(Length(loc) > 0, true);
+
+    let tz = SystemLocale.TimezoneName();
+    assert_eq(Length(tz) > 0, true);
+
+    let bias = SystemLocale.TimezoneBiasMinutes();
+    assert_eq(bias >= -840 && bias <= 840, true);
+
+    let isDst = SystemLocale.IsDaylightSaving();
+    assert_eq(isDst == true || isDst == false, true);
+
+    println("System locale and timezone telemetry tests passed successfully");
+}
+
+RunSystemLocaleTests();

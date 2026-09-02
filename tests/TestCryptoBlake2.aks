@@ -1,0 +1,32 @@
+// Test suite for Cryptographic RFC 7693 BLAKE2b & BLAKE2s Hash Engine
+fn main() {
+    let msg = "Hello, BLAKE2 Cryptographic Engine!";
+
+    // BLAKE2b 64-byte (512-bit)
+    let b2b_512 = CryptoBlake2.Blake2b(msg, 64);
+    assert(b2b_512 != "");
+    assert_eq(Length(b2b_512), 128);
+
+    // BLAKE2b 32-byte (256-bit)
+    let b2b_256 = CryptoBlake2.Blake2b(msg, 32);
+    assert(b2b_256 != "");
+    assert_eq(Length(b2b_256), 64);
+
+    // BLAKE2s 32-byte (256-bit)
+    let b2s_256 = CryptoBlake2.Blake2s(msg, 32);
+    assert(b2s_256 != "");
+    assert_eq(Length(b2s_256), 64);
+
+    // BLAKE2s 16-byte (128-bit)
+    let b2s_128 = CryptoBlake2.Blake2s(msg, 16);
+    assert(b2s_128 != "");
+    assert_eq(Length(b2s_128), 32);
+
+    // Repeatability test
+    let b2b_repeat = CryptoBlake2.Blake2b(msg, 64);
+    assert_eq(b2b_512, b2b_repeat);
+
+    print("TestCryptoBlake2 passed");
+}
+
+main();

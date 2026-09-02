@@ -1,0 +1,17 @@
+fn RunSystemPowerTests() {
+    let acStatus = SystemPower.AcLineStatus();
+    assert_eq(acStatus >= 0, true);
+
+    let batPct = SystemPower.BatteryLifePercent();
+    assert_eq(batPct >= 0, true);
+
+    let batLife = SystemPower.BatteryLifeTime();
+    assert_eq(batLife >= -1, true);
+
+    let isCharging = SystemPower.IsBatteryCharging();
+    assert_eq(isCharging == true || isCharging == false, true);
+
+    println("System power and battery telemetry tests passed successfully");
+}
+
+RunSystemPowerTests();

@@ -1,0 +1,1 @@
+let bad: int {x: x < 0} = 10;

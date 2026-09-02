@@ -1,0 +1,8 @@
+fn main() {
+    let x = 42;
+    let r1 = & mut x;
+    let r2 = & mut x;
+    print(String(r1));
+    print(String(r2));
+}
+main();

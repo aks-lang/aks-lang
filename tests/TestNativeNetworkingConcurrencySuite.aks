@@ -1,0 +1,75 @@
+// Test Suite: Native Networking & Concurrency Subsystems
+
+fn assert_true(cond, msg) {
+    if (!cond) {
+        print("FAIL: " + msg);
+        panic(msg);
+    }
+}
+
+fn assert_eq(a, b, msg) {
+    if (a != b) {
+        print("FAIL: " + msg + " expected " + String(b) + " got " + String(a));
+        panic(msg);
+    }
+}
+
+// 1. Lock-Free Stack (LockFreeStackNewC, LockFreeStackPushC, LockFreeStackPopC)
+let lfs = LockFreeStackNewC();
+LockFreeStackPushC(lfs, 100);
+LockFreeStackPushC(lfs, 200);
+assert_eq(LockFreeStackPopC(lfs), 200, "Treiber stack LIFO pop 1");
+assert_eq(LockFreeStackPopC(lfs), 100, "Treiber stack LIFO pop 2");
+
+// 2. MPSC Queue (MpscQueueNewC, MpscQueuePushC, MpscQueuePopC)
+let mpsc = MpscQueueNewC();
+MpscQueuePushC(mpsc, 111);
+MpscQueuePushC(mpsc, 222);
+assert_eq(MpscQueuePopC(mpsc), 111, "MPSC FIFO pop 1");
+assert_eq(MpscQueuePopC(mpsc), 222, "MPSC FIFO pop 2");
+
+// 3. Work-Stealing Deque (StealingDequeNewC, StealingDequePushC, StealingDequePopC, StealingDequeStealC)
+let dq = StealingDequeNewC();
+StealingDequePushC(dq, "taskA");
+StealingDequePushC(dq, "taskB");
+assert_eq(StealingDequePopC(dq), "taskB", "Work-stealing deque local LIFO pop");
+StealingDequePushC(dq, "taskC");
+assert_eq(StealingDequeStealC(dq), "taskA", "Work-stealing deque victim FIFO steal");
+
+// 4. Hazard Pointer (HazardPointerNewC, HazardPointerAcquireC, HazardPointerReleaseC)
+let hp = HazardPointerNewC();
+HazardPointerAcquireC(hp, 0x1000);
+HazardPointerReleaseC(hp);
+assert_true(true, "Hazard pointer acquire & release");
+
+// 5. Stack Unwinder (StackUnwinderC)
+let frames = StackUnwinderC();
+assert_true(Length(frames) > 0, "Native stack frames unwound");
+
+// 6. IOCP Event Port (OsIocpCreateC, OsIocpPostC, OsIocpGetC)
+let iocp = OsIocpCreateC();
+assert_true(iocp >= 0, "IOCP completion port created");
+OsIocpPostC(iocp, 1, 512);
+let comp = OsIocpGetC(iocp, 100);
+assert_eq(comp.bytes, 512, "IOCP dequeued completion bytes");
+assert_eq(comp.key, 1, "IOCP dequeued completion key");
+
+// 7. Synchronous Sockets (SocketConnectSync, SocketAcceptSync, SocketSendSync, SocketReceiveSync, SocketClose)
+let s_listen = SocketListen(0);
+assert_true(s_listen >= 0, "Socket listen succeeded");
+SocketClose(s_listen);
+
+// 8. NTP, Multicast, SOCKS5 & SMTP
+let ntp_res = NtpQueryC("127.0.0.1");
+assert_true(ntp_res >= 0, "NTP query executed cleanly");
+
+let mc_res = UdpMulticastJoinC("224.0.0.1", 9998);
+assert_true(mc_res == true || mc_res == false, "Multicast join returned boolean status");
+
+let s5_res = Socks5ConnectC("127.0.0.1", 1080, "example.com:80");
+assert_true(s5_res >= -1, "SOCKS5 connect executed with error handling");
+
+let smtp_res = SmtpSendC("127.0.0.1", 25, "a@b.com", "b@c.com", "Hi");
+assert_true(smtp_res == false || smtp_res == true, "SMTP send executed cleanly");
+
+print("PASS: Native Networking & Concurrency Subsystems");

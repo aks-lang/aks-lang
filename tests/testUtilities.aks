@@ -1,0 +1,59 @@
+print("testing utilities");
+
+// Hashing
+print("\ntesting hashes");
+let rawstr = "hello";
+print("Original string: '" + rawstr + "'");
+
+let hellomd5 = MD5(rawstr);
+print("MD5 (Expected: 5d41402abc4b2a76b9719d911017c592):");
+print(hellomd5);
+
+let hellosha256 = SHA256(rawstr);
+print("SHA-256 (Expected: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824):");
+print(hellosha256);
+
+// Base64
+print("\ntesting base64");
+let plaintext = "AKS Language is fast and secure.";
+print("Plain text: '" + plaintext + "'");
+
+let b64encoded = B64Enc(plaintext);
+print("Encoded string:");
+print(b64encoded);
+
+let b64decoded = B64Dec(b64encoded);
+print("Decoded string:");
+print(b64decoded);
+
+// Url Encoding & Decoding
+print("\ntesting URL encode/decode");
+let query = "name=Anoop Kumar Sharma&year=2026&status=complete+verified";
+print("Raw query: '" + query + "'");
+
+let urlencd = UrlEnc(query);
+print("URL Encoded:");
+print(urlencd);
+
+let urldecd = UrlDec(urlencd);
+print("URL Decoded:");
+print(urldecd);
+
+// Date and Time Formatting
+print("\ntesting date formatting");
+let nowts = time();
+print("Timestamp:");
+print(nowts);
+let formatteddate = date(nowts, "%Y-%m-%d %H:%M:%S");
+print("Formatted Local Date:");
+print(formatteddate);
+
+// System Information
+print("\ntesting system info");
+print("Platform name:");
+print(platform());
+
+print("Current Working Directory:");
+print(CurrentWorkingDirectory());
+
+print("utilities verified");

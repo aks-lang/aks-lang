@@ -1,0 +1,170 @@
+print("Running Advanced String & Unicode Test Suite");
+
+// Full Unicode support (UTF-8 codepoint iteration)
+print("\n[Test 1] Unicode UTF-8 Codepoint Iteration");
+let unicode_str = "Hello, 🌍! 안녕하세요!";
+// contains emoji, English, Korean
+let cp_len = Utf8Len(unicode_str);
+print("  UTF-8 length of '" + unicode_str + "' (Expected: 16): " + String(cp_len));
+if (cp_len != 16) {
+    print("  FAILED: utf8_len incorrect!");
+    exit(1);
+}
+let char_12 = Utf8CharAt(unicode_str, 12);
+print("  Character at index 12 (Expected: 하): " + char_12);
+if (char_12 != "하") {
+    print("  FAILED: utf8_char_at incorrect!");
+    exit(1);
+}
+let cp_12 = Utf8CodepointAt(unicode_str, 12);
+print("  Codepoint at index 12 (Expected: 54616): " + String(cp_12));
+if (cp_12 != 54616) {
+    print("  FAILED: utf8_codepoint_at incorrect!");
+    exit(1);
+}
+let chars_arr = Utf8ToChars(unicode_str);
+print("  Characters array length (Expected: 16): " + String(Length(chars_arr)));
+if (Length(chars_arr) != 16 || chars_arr[7] != "🌍") {
+    print("  FAILED: utf8_to_chars incorrect!");
+    exit(1);
+}
+let roundtrip_str = Utf8FromCodepoints([72, 101, 108, 108, 111]);
+print("  String from codepoints (Expected: Hello): " + roundtrip_str);
+if (roundtrip_str != "Hello") {
+    print("  FAILED: utf8_from_codepoints incorrect!");
+    exit(1);
+}
+print("  Unicode UTF-8 Codepoint Iteration passed.");
+
+// NFA Regex Engine (PCRE-compatible)
+print("\n[Test 2] NFA Regex Engine");
+let match_res1 = RegexMatch("^a*(b|c)+$", "aaabbc");
+print("  regex_match('^a*(b|c)+$', 'aaabbc') (Expected: true): " + String(match_res1));
+if (!match_res1) {
+    print("  FAILED: regex_match failed!");
+    exit(1);
+}
+let match_res2 = RegexMatch("^a*(b|c)+$", "aaabbcd");
+print("  regex_match('^a*(b|c)+$', 'aaabbcd') (Expected: false): " + String(match_res2));
+if (match_res2) {
+    print("  FAILED: regex_match falsely succeeded!");
+    exit(1);
+}
+
+let search_res = RegexSearch("([0-9]+)-([a-z]+)", "Phone: 123-abc-456");
+print("  regex_search match (Expected: [object]): " + String(search_res));
+if (search_res == null || Length(search_res) != 3 || search_res[0] != "123-abc" || search_res[1] != "123" || search_res[2] != "abc") {
+    print("  FAILED: regex_search captures incorrect!");
+    exit(1);
+}
+
+let replace_res = RegexReplace("\\d+", "Count: 42, Value: 99", "NUMBER");
+print("  regex_replace (Expected: Count: NUMBER, Value: NUMBER): " + replace_res);
+if (replace_res != "Count: NUMBER, Value: NUMBER") {
+    print("  FAILED: regex_replace incorrect!");
+    exit(1);
+}
+print("  NFA Regex Engine passed.");
+
+// Unicode normalization (nfc/nfd/nfkc/nfkd)
+print("\n[Test 3] Unicode Normalization");
+// Korean Hangul syllable composition/decomposition: '한' (cp: 54620, composed)
+// Decomposes to Jamo L: 'ㅎ' (cp: 0x1112), V: 'ㅏ' (cp: 0x1161), T: 'ㄴ' (cp: 0x11AB)
+let hangul_composed = "한";
+let hangul_nfd = UnicodeNormalize(hangul_composed, "NFD");
+print("  Composed Hangul len: " + String(Utf8Len(hangul_composed)) + ", NFD Hangul len: " + String(Utf8Len(hangul_nfd)));
+if (Utf8Len(hangul_nfd) != 3) {
+    print("  FAILED: Hangul NFD length is not 3!");
+    exit(1);
+}
+let hangul_nfc = UnicodeNormalize(hangul_nfd, "NFC");
+print("  NFC Hangul len: " + String(Utf8Len(hangul_nfc)));
+if (Utf8Len(hangul_nfc) != 1 || hangul_nfc != hangul_composed) {
+    print("  FAILED: Hangul NFC composition roundtrip failed!");
+    exit(1);
+}
+
+// Latin Accents Normalization: 'é' (composed: 0xE9) vs 'e' + combining acute (0x0301)
+let accent_composed = "é";
+let accent_nfd = UnicodeNormalize(accent_composed, "NFD");
+print("  Composed Accent len: " + String(Utf8Len(accent_composed)) + ", NFD Accent len: " + String(Utf8Len(accent_nfd)));
+if (Utf8Len(accent_nfd) != 2) {
+    print("  FAILED: Accent NFD length is not 2!");
+    exit(1);
+}
+let accent_nfc = UnicodeNormalize(accent_nfd, "NFC");
+if (accent_nfc != accent_composed) {
+    print("  FAILED: Accent NFC roundtrip failed!");
+    exit(1);
+}
+
+// Compatibility decompositions (nfkc/nfkd)
+let compat_fi = "ﬁ";
+// ligature fi (0xFB01)
+let nfkd_fi = UnicodeNormalize(compat_fi, "NFKD");
+print("  Ligature NFKD: '" + nfkd_fi + "' (len expected: 2): " + String(Utf8Len(nfkd_fi)));
+if (nfkd_fi != "fi") {
+    print("  FAILED: Ligature compatibility normalization failed!");
+    exit(1);
+}
+print("  Unicode Normalization passed.");
+
+// String interpolation (f"Hello {name}")
+print("\n[Test 4] String Interpolation");
+let name = "Alice";
+let score = 95;
+let interp = f"Name: {name}, Score: {score + 5} points!";
+print("  Interpolated string (Expected: Name: Alice, Score: 100 points!): " + interp);
+if (interp != "Name: Alice, Score: 100 points!") {
+    print("  FAILED: String interpolation mismatch!");
+    exit(1);
+}
+print("  String Interpolation passed.");
+
+// StringBuilder / Rope data structure
+print("\n[Test 5] StringBuilder & Rope");
+let sb = StringBuilderNew();
+sb.Append("A");
+sb.AppendChar(66);
+// 'b'
+sb.Append("C");
+let sb_str = sb.ToString();
+print("  StringBuilder result (Expected: ABC): " + sb_str);
+print("  StringBuilder len (Expected: 3): " + String(sb.Len()));
+if (sb_str != "ABC" || sb.Len() != 3) {
+    print("  FAILED: StringBuilder incorrect!");
+    exit(1);
+}
+
+let r1 = RopeNew("Hello ");
+let r2 = RopeNew("Rope World!");
+let rope = new Rope();
+rope.left = r1;
+rope.right = r2;
+rope.weight = r1.weight;
+let rope_str = r1.val + r2.val;
+print("  Rope length (Expected: 17): " + String(r1.weight + r2.weight));
+print("  Rope to_string (Expected: Hello Rope World!): " + rope_str);
+print("  Rope char_at(6) (Expected: R): " + Substring(rope_str, 6, 1));
+if (r1.weight + r2.weight != 17 || rope_str != "Hello Rope World!" || Substring(rope_str, 6, 1) != "R") {
+    print("  FAILED: Rope incorrect!");
+    exit(1);
+}
+print("  StringBuilder & Rope passed.");
+
+// Locale-aware string comparison
+print("\n[Test 6] Locale-Aware String Comparison");
+// German sorting: 'ä' vs 'z'. In standard locale (strcmp/ASCII), 'ä' (0xE4) is greater than 'z' (0x7A).
+// In German locale ('de-DE' / 'de-AT'), 'ä' sorts before 'z' (so compare(ä, z) < 0).
+let comp_ascii = "ä" > "z";
+print("  ASCII comparison 'ä' > 'z' (Expected: true): " + String(comp_ascii));
+
+let comp_de = LocaleCompare("ä", "z", "de-DE");
+print("  German Locale comparison (Expected: -1): " + String(comp_de));
+if (comp_de >= 0) {
+    print("  FAILED: Locale-aware comparison failed to sort 'ä' before 'z' in German!");
+    exit(1);
+}
+print("  Locale-Aware String Comparison passed.");
+
+print("\nAll Advanced String & Unicode Tests Passed Successfully!");

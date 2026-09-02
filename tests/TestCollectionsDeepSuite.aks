@@ -1,0 +1,81 @@
+println("Exhaustive Collections Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// HashMap Subsystem (hash_map)
+println("\n1. Hashmap Data Structure");
+
+let hm = HashMap();
+assert_eq(hm.Len(), 0, "hash_map initial len == 0", stats);
+
+hm.Put("a", 100);
+hm.Put("b", 200);
+hm.Put("c", 300);
+assert_eq(hm.Len(), 3, "hash_map len after puts == 3", stats);
+assert_eq(hm.Get("a"), 100, "hm.get('a') == 100", stats);
+assert_eq(hm.ContainsKey("b"), true, "hm.contains_key('b') == true", stats);
+assert_eq(hm.ContainsKey("d"), false, "hm.contains_key('d') == false", stats);
+
+let removed_val = hm.Remove("b");
+assert_eq(removed_val, 200, "hm.remove('b') returned 200", stats);
+assert_eq(hm.Len(), 2, "hm.len() after remove == 2", stats);
+
+// BTreeMap Subsystem (btree_map - sorted keys)
+println("\n2. Btreemap Data Structure");
+
+let bm = BTreeMap();
+bm.Put("banana", 2);
+bm.Put("apple", 1);
+bm.Put("cherry", 3);
+
+assert_eq(bm.Len(), 3, "btree_map len == 3", stats);
+assert_eq(bm.Get("apple"), 1, "bm.get('apple') == 1", stats);
+
+let bkeys = bm.Keys();
+assert_eq(bkeys[0], "apple", "btree_map sorted key 0 == 'apple'", stats);
+assert_eq(bkeys[1], "banana", "btree_map sorted key 1 == 'banana'", stats);
+assert_eq(bkeys[2], "cherry", "btree_map sorted key 2 == 'cherry'", stats);
+
+// HashSet Subsystem (hash_set)
+println("\n3. Hashset Data Structure");
+
+let s = HashSet();
+assert_eq(s.Len(), 0, "hash_set initial len == 0", stats);
+
+s.Add("x");
+s.Add("y");
+s.Add("z");
+assert_eq(s.Len(), 3, "hash_set len after adds == 3", stats);
+assert_eq(s.Contains("y"), true, "hash_set contains 'y'", stats);
+
+s.Remove("y");
+assert_eq(s.Contains("y"), false, "hash_set contains 'y' after remove is false", stats);
+assert_eq(s.Len(), 2, "hash_set len after remove == 2", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " collections subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

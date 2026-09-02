@@ -1,0 +1,15 @@
+fn RunNamedPipeTests() {
+    let pipeName = "\\\\.\\pipe\\aks_test_named_pipe";
+
+    // Create named pipe server instance
+    let serverHandle = NamedPipe.CreateServer(pipeName);
+    assert_eq(serverHandle != 0, true);
+
+    // Close named pipe server instance
+    let okClose = NamedPipe.Close(serverHandle);
+    assert_eq(okClose, true);
+
+    println("Inter-process named pipe communication tests passed successfully");
+}
+
+RunNamedPipeTests();

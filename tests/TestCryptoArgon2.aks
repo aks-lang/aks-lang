@@ -1,0 +1,22 @@
+// Test suite for RFC 9106 Argon2id Password Hashing Engine
+fn main() {
+    let password = "SuperSecretPassword2026!";
+    let salt = "random_salt_bytes_123456";
+
+    // 2 iterations, 64 KB memory, 1 lane, 32 bytes out
+    let hash1 = CryptoArgon2.Hash(password, salt, 2, 64, 1, 32);
+    assert(hash1 != "");
+    assert_eq(Length(hash1), 64); // 32 bytes in hex = 64 characters
+
+    // Determinism test
+    let hash2 = CryptoArgon2.Hash(password, salt, 2, 64, 1, 32);
+    assert_eq(hash1, hash2);
+
+    // Different password produces different hash
+    let hash3 = CryptoArgon2.Hash("OtherPassword", salt, 2, 64, 1, 32);
+    assert(hash1 != hash3);
+
+    print("TestCryptoArgon2 passed");
+}
+
+main();

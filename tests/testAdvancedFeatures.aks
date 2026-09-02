@@ -1,0 +1,98 @@
+fn double(x) {return x * 2;
+}
+fn addten(x) {return x + 10;
+}
+fn sumthree(a, b, c) {return a + b + c;
+}
+
+print("testing pipelines");
+let val = 5 |> double |> addten;
+print("5 |> double |> addten (Expected: 20):");
+print(val);
+
+let val2 = 3 |> sumthree(4, 5);
+// sumthree(3, 4, 5)
+print("3 |> sumthree(4, 5) (Expected: 12):");
+print(val2);
+
+// List Comprehensions
+print("testing list comprehensions");
+let inputlist = [1, 2, 3, 4, 5];
+let doubledevens = [x * 2 for x in inputlist if x % 2 == 0];
+print("doubledevens (Expected: [4, 8]):");
+print(doubledevens);
+
+// Spread / Rest Operators
+print("testing spread and rest");
+let basearr = [2, 3];
+let spreadarr = [1, ... basearr, 4];
+print("spreadarr (Expected: [1, 2, 3, 4]):");
+print(spreadarr);
+
+fn multiplythree(a, b, c) {return a * b * c;
+}
+let args = [2, 3, 4];
+let spreadcall = multiplythree( ... args);
+print("multiplythree(...args) (Expected: 24):");
+print(spreadcall);
+
+// Destructuring Assignment
+print("testing destructuring");
+let [a, b] = [10, 20];
+print("let [a, b] = [10, 20];");
+print(a);
+// expected: 10
+print(b);
+// expected: 20
+
+// swap destructuring
+[a, b] = [b, a];
+print("Swapped [a, b] = [b, a];");
+print(a);
+// expected: 20
+print(b);
+// expected: 10
+
+// object destructuring
+let myobj = {x: 100, y: 200, z: 300};
+let {x, y: aliasy} = myobj;
+print("let { x, y: aliasy } = myobj;");
+print(x);
+// expected: 100
+print(aliasy);
+// expected: 200
+
+// nested destructuring assignment
+let c = 0;
+let d = 0;
+let e = 0;
+[[c, d], {key: e}] = [[30, 40], {key: 50}];
+print("[[c, d], { key: e }] = [[30, 40], { key: 50 }];");
+print(c);
+// expected: 30
+print(d);
+// expected: 40
+print(e);
+// expected: 50
+
+// Generator Functions
+print("testing generators");
+fn*mygenerator(start, end) {
+    let i = start;
+    while (i < end) {
+        yield i;
+        i++;
+    }
+}
+
+let gen = mygenerator(1, 4);
+print("gen.next() (Expected: 1):");
+print(gen.next());
+print("gen.next() (Expected: 2):");
+print(gen.next());
+print("gen.next() (Expected: 3):");
+print(gen.next());
+print("gen.next() (Expected: null):");
+print(gen.next());
+
+print("advanced features verified");

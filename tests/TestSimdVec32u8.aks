@@ -1,0 +1,51 @@
+fn RunSimdVec32u8Tests() {
+    let arr1 = [
+        10, 20, 30, 40, 50, 60, 70, 80,
+        90, 100, 110, 120, 130, 140, 150, 160,
+        170, 180, 190, 200, 210, 220, 230, 240,
+        250, 200, 150, 100, 50, 25, 10, 5
+    ];
+    let arr2 = [
+        20, 20, 20, 20, 20, 20, 20, 20,
+        20, 20, 20, 20, 20, 20, 20, 20,
+        20, 20, 20, 20, 20, 20, 20, 20,
+        20, 20, 20, 20, 20, 20, 20, 20
+    ];
+
+    let v1 = SimdVec32u8.New(arr1);
+    let v2 = SimdVec32u8.New(arr2);
+
+    // Saturated addition (250 + 20 clamps to 255)
+    let sum = v1.AddSaturated(v2);
+    let sumArr = sum.ToArray();
+    assert_eq(Length(sumArr), 32);
+    assert_eq(sumArr[0], 30);
+    assert_eq(sumArr[24], 255); // + 20 -> 255
+
+    // Saturated subtraction (10 - 20 clamps to 0)
+    let diff = v1.SubSaturated(v2);
+    let diffArr = diff.ToArray();
+    assert_eq(diffArr[0], 0);  // 20 -> 0
+    assert_eq(diffArr[1], 0);  // 20 -> 0
+    assert_eq(diffArr[2], 10); // 20 -> 10
+
+    // Average ((10 + 20 + 1) / 2 = 15)
+    let avg = v1.Average(v2);
+    let avgArr = avg.ToArray();
+    assert_eq(avgArr[0], 15);
+
+    // Min & Max
+    let minV = v1.Min(v2);
+    let minArr = minV.ToArray();
+    assert_eq(minArr[0], 10);
+    assert_eq(minArr[24], 20);
+
+    let maxV = v1.Max(v2);
+    let maxArr = maxV.ToArray();
+    assert_eq(maxArr[0], 20);
+    assert_eq(maxArr[24], 250);
+
+    println("Hardware SIMD 256-bit 32-way unsigned byte vector tests passed successfully");
+}
+
+RunSimdVec32u8Tests();

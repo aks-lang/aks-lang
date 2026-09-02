@@ -1,0 +1,10 @@
+fn read() -> string!IO {
+    return "data";
+}
+
+fn processNoEffect() -> string {
+    let s = read();
+    return s;
+}
+
+print(processNoEffect());

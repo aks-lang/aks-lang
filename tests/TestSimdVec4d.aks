@@ -1,0 +1,50 @@
+fn RunSimdVec4dTests() {
+    let a = SimdVec4d.New([1.5, 2.5, 3.5, 4.5]);
+    let b = SimdVec4d.New([10.0, 20.0, 30.0, 40.0]);
+
+    // Addition
+    let sum = a.Add(b);
+    let sumArr = sum.ToArray();
+    assert_eq(Length(sumArr), 4);
+    assert_eq(sumArr[0], 11.5);
+    assert_eq(sumArr[3], 44.5);
+
+    // Subtraction
+    let diff = b.Sub(a);
+    let diffArr = diff.ToArray();
+    assert_eq(diffArr[0], 8.5);
+    assert_eq(diffArr[3], 35.5);
+
+    // Multiplication
+    let mul = a.Mul(b);
+    let mulArr = mul.ToArray();
+    assert_eq(mulArr[0], 15.0);
+    assert_eq(mulArr[3], 180.0);
+
+    // Division
+    let div = b.Div(SimdVec4d.New([2.0, 4.0, 5.0, 8.0]));
+    let divArr = div.ToArray();
+    assert_eq(divArr[0], 5.0);
+    assert_eq(divArr[1], 5.0);
+    assert_eq(divArr[2], 6.0);
+    assert_eq(divArr[3], 5.0);
+
+    // Square root
+    let v_sq = SimdVec4d.New([4.0, 9.0, 16.0, 25.0]);
+    let sq = v_sq.Sqrt();
+    let sqArr = sq.ToArray();
+    assert_eq(sqArr[0], 2.0);
+    assert_eq(sqArr[1], 3.0);
+    assert_eq(sqArr[2], 4.0);
+    assert_eq(sqArr[3], 5.0);
+
+    // Dot product: 1*2 + 2*3 + 3*4 + 4*5 = 2 + 6 + 12 + 20 = 40
+    let v1 = SimdVec4d.New([1.0, 2.0, 3.0, 4.0]);
+    let v2 = SimdVec4d.New([2.0, 3.0, 4.0, 5.0]);
+    let dot = v1.Dot(v2);
+    assert_eq(dot, 40.0);
+
+    println("Hardware SIMD 256-bit double vector tests passed successfully");
+}
+
+RunSimdVec4dTests();

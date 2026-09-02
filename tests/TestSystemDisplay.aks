@@ -1,0 +1,20 @@
+fn RunSystemDisplayTests() {
+    let prim = SystemDisplay.PrimaryResolution();
+    assert_eq(prim.width > 0, true);
+    assert_eq(prim.height > 0, true);
+
+    let virt = SystemDisplay.VirtualScreenBounds();
+    assert_eq(virt.width > 0, true);
+    assert_eq(virt.height > 0, true);
+
+    let work = SystemDisplay.WorkArea();
+    assert_eq(work.width > 0, true);
+    assert_eq(work.height > 0, true);
+
+    let monCount = SystemDisplay.MonitorCount();
+    assert_eq(monCount >= 1, true);
+
+    println("System display and multi-monitor telemetry tests passed successfully");
+}
+
+RunSystemDisplayTests();

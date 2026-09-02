@@ -1,0 +1,95 @@
+print("Exhaustive String Subsystem Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    print("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    print("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Basic String Functions (str, len, typeof)
+print("\n1. Basic String Functions");
+assert_eq(Length(""), 0, "Empty string len() == 0", stats);
+assert_eq(Length("hello"), 5, "Basic string len() == 5", stats);
+assert_eq(typeof("hello"), "string", "typeof string is 'string'", stats);
+assert_eq(String(42), "42", "str(int) == '42'", stats);
+assert_eq(String(3.14), "3.14", "str(float) == '3.14'", stats);
+assert_eq(String(true), "true", "str(bool) == 'true'", stats);
+assert_eq(String(false), "false", "str(bool) == 'false'", stats);
+
+// Casing Functions (upper, lower)
+print("\n2. Casing Functions");
+assert_eq(upper("hello"), "HELLO", "upper('hello') == 'HELLO'", stats);
+assert_eq(upper("AKS Language 123"), "AKS LANGUAGE 123", "upper with mixed chars", stats);
+assert_eq(lower("HELLO"), "hello", "lower('HELLO') == 'hello'", stats);
+assert_eq(lower("AKS Language 123"), "aks language 123", "lower with mixed chars", stats);
+
+// Substring & Trimming (substr, trim)
+print("\n3. Substring & Trimming");
+assert_eq(Substring("Hello World", 0, 5), "Hello", "substr prefix 0..5", stats);
+assert_eq(Substring("Hello World", 6, 5), "World", "substr middle 6..5", stats);
+assert_eq(trim("   hello   "), "hello", "trim leading and trailing spaces", stats);
+
+// Splitting, Replacing & Joining (split, replace, join)
+print("\n4. Splitting, Replacing & Joining");
+let parts = split("apple,banana,cherry", ",");
+assert_eq(Length(parts), 3, "split produce 3 elements", stats);
+assert_eq(parts[0], "apple", "split element 0", stats);
+assert_eq(parts[1], "banana", "split element 1", stats);
+assert_eq(parts[2], "cherry", "split element 2", stats);
+
+let rep = replace("foo bar foo baz", "foo", "qux");
+assert_eq(rep, "qux bar qux baz", "replace all occurrences", stats);
+
+let joined = join(["a", "b", "c"], "-");
+assert_eq(joined, "a-b-c", "join array with delimiter", stats);
+
+// UTF-8 & Unicode Functions (utf8_len, char_at, codepoint)
+print("\n5. Utf-8 & Unicode Functions");
+let ustr = "Hello 🌍";
+assert_eq(Utf8Len(ustr), 7, "utf8_len('Hello 🌍') == 7", stats);
+assert_eq(Utf8CharAt(ustr, 6), "🌍", "utf8_char_at emoji index 6", stats);
+let roundtrip = Utf8FromCodepoints([72, 101, 108, 108, 111]);
+assert_eq(roundtrip, "Hello", "utf8_from_codepoints([72,101,108,108,111]) == 'Hello'", stats);
+
+// Regex Engine (regex_match, regex_replace)
+print("\n6. Regex Engine");
+assert_eq(RegexMatch("^a*(b|c)+$", "aaabbc"), true, "regex_match valid pattern", stats);
+assert_eq(RegexMatch("^a*(b|c)+$", "aaabbcd"), false, "regex_match invalid pattern", stats);
+let reg_rep = RegexReplace("\\d+", "Count: 42, Value: 99", "NUM");
+assert_eq(reg_rep, "Count: NUM, Value: NUM", "regex_replace digits with 'NUM'", stats);
+
+// Advanced String Interpolation `${expr}` & f-strings
+print("\n7. String Interpolation `${expr}` & F-strings");
+let val_x = 10;
+let val_y = 20;
+let interp = "Sum of ${val_x} and ${val_y} is ${val_x + val_y}";
+assert_eq(interp, "Sum of 10 and 20 is 30", "String interpolation ${expr}", stats);
+
+let fname = "Alice";
+let fscore = 95;
+let fstr = f"Name: {fname}, Score: {fscore + 5}";
+assert_eq(fstr, "Name: Alice, Score: 100", "f-string interpolation", stats);
+
+print("Passed: " + String(stats[0]));
+print("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    print("All " + String(stats[0]) + " deep string subsystem tests passed successfully.");
+} else {
+    print("Test suite failed.");
+    exit(1);
+}

@@ -1,0 +1,26 @@
+fn RunThreadSchedulerTests() {
+    let procAffinity = ThreadScheduler.GetProcessAffinity();
+    assert_eq(procAffinity > 0, true);
+
+    // Set thread affinity to core 0 (mask 1)
+    let prevAffinity = ThreadScheduler.SetAffinity(1);
+    assert_eq(prevAffinity > 0, true);
+
+    // Restore affinity
+    ThreadScheduler.SetAffinity(procAffinity);
+
+    // Query and update thread priority
+    let origPrio = ThreadScheduler.GetPriority();
+    let setPrioOk = ThreadScheduler.SetPriority(1);
+    assert_eq(setPrioOk, true);
+
+    let curPrio = ThreadScheduler.GetPriority();
+    assert_eq(curPrio, 1);
+
+    // Restore priority
+    ThreadScheduler.SetPriority(origPrio);
+
+    println("OS thread affinity and priority scheduling tests passed successfully");
+}
+
+RunThreadSchedulerTests();

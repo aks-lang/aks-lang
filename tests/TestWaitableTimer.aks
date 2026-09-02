@@ -1,0 +1,24 @@
+fn RunWaitableTimerTests() {
+    let timer = WaitableTimer.Create(false, null);
+    assert_eq(timer.timer_id != 0, true);
+
+    // Arm timer to fire in 20ms
+    let setOk = timer.Set(20, 0);
+    assert_eq(setOk, true);
+
+    // Wait for timer with 200ms timeout
+    let waitOk = timer.Wait(200);
+    assert_eq(waitOk, true);
+
+    // Cancel timer
+    let cancelOk = timer.Cancel();
+    assert_eq(cancelOk, true);
+
+    // Destroy timer
+    let destroyOk = timer.Destroy();
+    assert_eq(destroyOk, true);
+
+    println("OS waitable kernel timer and periodic alarm tests passed successfully");
+}
+
+RunWaitableTimerTests();

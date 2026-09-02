@@ -1,0 +1,14 @@
+// Test suite for OS Physical & Virtual Memory Pressure Telemetry
+fn main() {
+    let p = MemoryPressureWatcher.QueryPressure();
+    assert(p.memory_load_pct >= 0);
+    assert(p.memory_load_pct <= 100);
+    assert(p.total_phys_bytes > 0);
+    assert(p.avail_phys_bytes > 0);
+    assert(p.total_pagefile_bytes > 0);
+    assert(p.avail_pagefile_bytes > 0);
+
+    print("TestMemoryPressureWatcher passed");
+}
+
+main();

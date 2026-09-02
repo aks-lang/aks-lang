@@ -1,0 +1,24 @@
+// Test suite for Cryptographic NIST FIPS 202 SHA-3 and Keccak Engine
+fn main() {
+    let msg = "Hello, AKS World!";
+    
+    let sha256_hash = CryptoSha3.Sha256(msg);
+    assert(sha256_hash != "");
+    assert_eq(Length(sha256_hash), 64);
+
+    let sha512_hash = CryptoSha3.Sha512(msg);
+    assert(sha512_hash != "");
+    assert_eq(Length(sha512_hash), 128);
+
+    let keccak_hash = CryptoSha3.Keccak256(msg);
+    assert(keccak_hash != "");
+    assert_eq(Length(keccak_hash), 64);
+
+    // Consistency check on repeated hashing
+    let sha256_repeat = CryptoSha3.Sha256(msg);
+    assert_eq(sha256_hash, sha256_repeat);
+
+    print("TestCryptoSha3 passed");
+}
+
+main();

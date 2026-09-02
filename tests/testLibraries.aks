@@ -1,0 +1,154 @@
+print("testing standard libraries");
+
+// JSON Parsing and Serialization
+print("\njson parser & serializer");
+let sample_data = { name: "AKS Language", version: 2026, info: { nested: true, ratio: 1.618, values: [10, null, 20] } };
+let rawjson = JsonStringify(sample_data);
+print("Original JSON string:");
+print(rawjson);
+
+let parsed = JsonParse(rawjson);
+print("Parsed struct keys:");
+let parsedkeys = keys(parsed);
+print(parsedkeys);
+// should contain name, version, info
+
+print("Accessing parsed values:");
+print(parsed.name);
+print(parsed.version);
+print(parsed.info.nested);
+print(parsed.info.ratio);
+print(parsed.info.values);
+
+let stringified = JsonStringify(parsed);
+print("Serialized JSON string:");
+print(stringified);
+
+// String Library
+print("\nstring library");
+let sentence = "   hello AKS compiler world   ";
+print("Original string: '" + sentence + "'");
+print("trim(): '" + trim(sentence) + "'");
+print("lower(): '" + lower(trim(sentence)) + "'");
+print("upper(): '" + upper(trim(sentence)) + "'");
+
+let csv = "apple,banana,cherry,date";
+print("Splitting string: " + csv);
+let fruits = split(csv, ",");
+print(fruits);
+
+print("Replacing 'banana' with 'blueberry':");
+let updatedcsv = replace(csv, "banana", "blueberry");
+print(updatedcsv);
+
+print("find('cherry') index (expected 13):");
+print(find(csv, "cherry"));
+
+print("starts('apple') (expected true):");
+print(starts(csv, "apple"));
+
+print("ends('date') (expected true):");
+print(ends(csv, "date"));
+
+// Array Library and Reflection
+print("\narray library & struct reflection");
+let unordered = [15, 3, 99,-2, 42, 8];
+print("Original array:");
+print(unordered);
+print("Sorted array:");
+print(sort(unordered));
+
+let firsthalf = [1, 2];
+let secondhalf = [3, 4];
+print("concat([1, 2], [3, 4]):");
+print(Concatenate(firsthalf, secondhalf));
+
+print("contains([1, 2], 2) (expected true):");
+print(contains(firsthalf, 2));
+print("contains([1, 2], 5) (expected false):");
+print(contains(firsthalf, 5));
+
+struct Configuration {}
+
+let cfg = new Configuration();
+cfg.port = 8080;
+cfg.host = "localhost";
+cfg.debug = false;
+
+print("Dynamic Struct configuration keys:");
+print(keys(cfg));
+print("Dynamic Struct configuration values:");
+print(values(cfg));
+
+// Extended Math Library
+print("\nextended math library");
+print("Mathematical constant PI:");
+print(acos(-1.0));
+print("Mathematical constant E:");
+print(exp(1.0));
+print("Trigonometric and hyperbolic functions:");
+print("asin(1.0) (Expected 1.570796):");
+print(asin(1.0));
+print("acos(0.0) (Expected 1.570796):");
+print(acos(0.0));
+print("atan(1.0) (Expected 0.785398):");
+print(atan(1.0));
+print("atan2(1.0, 1.0) (Expected 0.785398):");
+print(atan2(1.0, 1.0));
+print("sinh(1.0):");
+print(sinh(1.0));
+print("cosh(0.0) (Expected 1.0):");
+print(cosh(0.0));
+print("tanh(1.0):");
+print(tanh(1.0));
+
+print("Type conversion functions:");
+print("floor(5.7) (Expected 5):");
+print(floor(5.7));
+print("parse_int(\"123\") (Expected 123):");
+print("123" as int);
+print("parse_float(\"3.1415\") (Expected 3.1415):");
+print("3.1415" as float);
+
+// System Library
+print("\nsystem utilities");
+let curtime = time();
+print("Current Unix timestamp:");
+print(curtime);
+
+print("Sleeping for 50 milliseconds");
+sleep(50);
+print("Woke up!");
+
+print("Environment variable tests:");
+print("Setting env 'AKSENV' = 'development'");
+SetEnv("AKSENV", "development");
+print("Reading env 'AKSENV' (expected 'development'):");
+print(GetEnv("AKSENV"));
+
+print("Directory and File creation tests:");
+let testdir = "LibraryTestDir";
+let testfile = "LibraryTestDir/TestFile.txt";
+
+print("Directory exists initially? (Expected: false)");
+print(exists(testdir));
+
+print("Creating directory");
+MakeDirectory(testdir);
+print("Directory exists now? (Expected: true)");
+print(exists(testdir));
+
+print("Writing file inside new directory");
+WriteFile(testfile, "Standard library check");
+print("File exists now? (Expected: true)");
+print(exists(testfile));
+
+print("Cleaning up file");
+RemoveFile(testfile);
+print("File exists after cleanup? (Expected: false)");
+print(exists(testfile));
+
+print("Cleaning up directory");
+RemoveFile(testdir);
+
+print("standard libraries verified");

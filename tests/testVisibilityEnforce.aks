@@ -1,0 +1,6 @@
+module math {
+    pub fn add(a, b) { return a + b; }
+    fn secret() { return 42; }
+}
+let r = math::secret();
+print(r);

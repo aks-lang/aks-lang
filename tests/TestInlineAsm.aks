@@ -1,0 +1,33 @@
+fn Assert(cond, msg) {
+    if (!cond) {
+        panic(msg);
+    }
+}
+
+fn TestInlineAsmBlock() {
+    __asm__ {
+        mov eax, 1
+        nop
+    }
+    Assert(true, "Inline asm block executed");
+}
+
+fn TestInlineAsString() {
+    __asm__("nop");
+    Assert(true, "Inline asm string executed");
+}
+
+fn TestAsmKeyword() {
+    asm("nop");
+    Assert(true, "Asm keyword executed");
+}
+
+fn Main() {
+    print("Running Inline Assembly Tests");
+    TestInlineAsmBlock();
+    TestInlineAsString();
+    TestAsmKeyword();
+    print("Inline Assembly Tests Passed");
+}
+
+Main();

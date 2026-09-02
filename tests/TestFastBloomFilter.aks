@@ -1,0 +1,45 @@
+// Test Fast Bloom Filter Data Structure
+fn Main() {
+    let bf = FastBloomFilter.New(512, 4);
+
+    let items = [
+        "apple", "banana", "cherry", "date", "elderberry",
+        "fig", "grape", "honeydew", "kiwi", "lemon"
+    ];
+
+    for (let i = 0; i < Length(items); i = i + 1) {
+        bf.Add(items[i]);
+    }
+
+    // All inserted items must be present
+    for (let i = 0; i < Length(items); i = i + 1) {
+        if (!bf.Contains(items[i])) {
+            print("BloomFilter missing inserted item: " + items[i]);
+            return 1;
+        }
+    }
+
+    // Items that were not added
+    let non_items = [
+        "watermelon_nonexistent_12345",
+        "pineapple_nonexistent_67890",
+        "cantaloupe_nonexistent_abcde"
+    ];
+
+    let false_positives = 0;
+    for (let i = 0; i < Length(non_items); i = i + 1) {
+        if (bf.Contains(non_items[i])) {
+            false_positives = false_positives + 1;
+        }
+    }
+
+    if (false_positives == Length(non_items)) {
+        print("BloomFilter false positive rate unexpectedly 100%");
+        return 1;
+    }
+
+    print("TestFastBloomFilter passed");
+    return 0;
+}
+
+Main();

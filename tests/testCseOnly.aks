@@ -1,0 +1,8 @@
+fn testcse() {
+    let x = 10;
+    let y = 20;
+    let a = (x + y) * (x + y);
+    let b = (x - y) + (x - y);
+    print("testcse: " + String(a) + " " + String(b));
+}
+testcse();

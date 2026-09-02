@@ -1,0 +1,6 @@
+let min_int =-140737488355328;
+print("min_int = " + String(min_int));
+let divisor =-1;
+let res = min_int / divisor;
+print("type(res) = " + type(res));
+print("res = " + String(res));

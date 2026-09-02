@@ -1,0 +1,65 @@
+println("Exhaustive Crypto Subsystem Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Hex Encoding & Decoding
+println("\n1. hex Encoding / Decoding");
+
+let plain = "Hello Crypto World!";
+let hex_str = HexEncode(plain);
+let decoded_hex = HexDecode(hex_str);
+assert_eq(decoded_hex, plain, "hex_encode / hex_decode roundtrip", stats);
+
+// Cryptographic hash functions (sha-512, sha3-256, sha3-512)
+println("\n2. Sha-512 & Sha-3 Hashes");
+
+let msg = "hello";
+
+let h512 = SHA512(msg);
+assert_eq(Substring(h512, 0, 16), "9b71d224bd62f378", "SHA512('hello') prefix match", stats);
+
+let h3_256 = SHA3256(msg);
+assert_eq(Substring(h3_256, 0, 16), "3338be694f50c5f3", "sha3_256('hello') prefix match", stats);
+
+let h3_512 = SHA3512(msg);
+assert_eq(Substring(h3_512, 0, 16), "75d527c368f2efe8", "sha3_512('hello') prefix match", stats);
+
+// HMAC (hmac-sha256 & hmac-sha512)
+println("\n3. Hmac Signatures");
+
+let key = "secret_key";
+let payload = "message_to_sign";
+
+let mac256 = HMACSHA256(key, payload);
+assert_eq(Substring(mac256, 0, 16), "8ca2ba83d47f49fc", "hmac_sha256 signature prefix match", stats);
+
+let mac512 = HMACSHA512(key, payload);
+assert_eq(Substring(mac512, 0, 16), "6a73cc7c9316b3cc", "hmac_sha512 signature prefix match", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " crypto subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

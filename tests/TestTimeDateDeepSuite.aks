@@ -1,0 +1,55 @@
+println("Exhaustive Time & Date Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Unix Timestamp (time)
+println("\n1. Unix Timestamp (time)");
+
+let t1 = time();
+assert_eq(typeof(t1) == "int" || typeof(t1) == "float", true, "time() returns valid numeric timestamp", stats);
+assert_eq(t1 > 1600000000, true, "time() timestamp > year 2020", stats);
+
+// High-Precision Clock (clock)
+println("\n2. High-precision Clock (clock)");
+
+let c1 = clock();
+assert_eq(typeof(c1) == "float" || typeof(c1) == "int", true, "clock() returns valid float value", stats);
+assert_eq(c1 >= 0.0, true, "clock() returns non-negative value", stats);
+
+// Sleep & Duration Measurement (sleep)
+println("\n3. Sleep & Duration Measurement");
+
+let start_clock = clock();
+sleep(10); // Sleep for 10ms
+let end_clock = clock();
+let elapsed = end_clock - start_clock;
+
+assert_eq(elapsed >= 0.0, true, "Elapsed duration >= 0.0s", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " time & date subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

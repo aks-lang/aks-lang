@@ -1,0 +1,19 @@
+fn RunProcessPriorityTests() {
+    let original = ProcessPriority.GetClass();
+    assert_eq(Length(original) > 0, true);
+
+    // Set normal class
+    let setOk = ProcessPriority.SetClass("normal");
+    assert_eq(setOk, true);
+
+    let cur = ProcessPriority.GetClass();
+    assert_eq(cur, "normal");
+
+    // Test EcoMode toggle
+    let ecoOk = ProcessPriority.SetEcoMode(false);
+    assert_eq(ecoOk, true);
+
+    println("OS process priority and power scheduling tests passed successfully");
+}
+
+RunProcessPriorityTests();

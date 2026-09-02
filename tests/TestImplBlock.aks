@@ -1,0 +1,33 @@
+print("Testing Modern Language Features");
+
+struct Point {
+    x: int,
+    y: int
+}
+
+impl Point {
+    fn sum(self) {
+        return self.x + self.y;
+    }
+    
+    fn distance_sq(self) {
+        return self.x * self.x + self.y * self.y;
+    }
+}
+
+// Modern Struct Literal Instantiation (without new)
+let p = Point { x: 3, y: 4 };
+
+print("p.sum() == " + String(p.sum()));
+print("p.distance_sq() == " + String(p.distance_sq()));
+
+// Array Dot-Property (.len())
+let arr = [10, 20, 30, 40];
+print("arr.len() == " + String(arr.len));
+
+if (p.sum() == 7 && p.distance_sq() == 25 && arr.len == 4) {
+    print("MODERN SYNTAX & IMPL BLOCKS PASSED PERFECTLY!");
+} else {
+    print("Test failed.");
+    exit(1);
+}

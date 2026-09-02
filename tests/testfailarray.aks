@@ -1,0 +1,2 @@
+let arr: Array < int, 4 > = [1, 2, 3];
+print(Length(arr));

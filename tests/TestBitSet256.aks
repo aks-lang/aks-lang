@@ -1,0 +1,59 @@
+// Test 256-bit SIMD BitSet Data Structure
+fn Main() {
+    let bs = BitSet256.New();
+    if (bs.CountOnes() != 0) {
+        print("Initial BitSet256 popcount must be 0");
+        return 1;
+    }
+
+    // Set various bits
+    bs.Set(0, true);
+    bs.Set(63, true);
+    bs.Set(64, true);
+    bs.Set(127, true);
+    bs.Set(128, true);
+    bs.Set(255, true);
+
+    if (bs.CountOnes() != 6) {
+        print("Expected 6 set bits, got: " + bs.CountOnes());
+        return 1;
+    }
+
+    if (!bs.Test(0) || !bs.Test(63) || !bs.Test(64) || !bs.Test(127) || !bs.Test(128) || !bs.Test(255)) {
+        print("Bit testing failed for set bits");
+        return 1;
+    }
+
+    if (bs.Test(1) || bs.Test(62) || bs.Test(65) || bs.Test(254)) {
+        print("Unset bits incorrectly reported as true");
+        return 1;
+    }
+
+    // Test bitwise operations
+    let bs2 = BitSet256.New();
+    bs2.Set(0, true);
+    bs2.Set(1, true);
+
+    let and_res = bs.BitAnd(bs2);
+    if (and_res.CountOnes() != 1 || !and_res.Test(0)) {
+        print("BitAnd failed");
+        return 1;
+    }
+
+    let or_res = bs.BitOr(bs2);
+    if (or_res.CountOnes() != 7 || !or_res.Test(1)) {
+        print("BitOr failed");
+        return 1;
+    }
+
+    let xor_res = bs.BitXor(bs2);
+    if (xor_res.CountOnes() != 6 || xor_res.Test(0) || !xor_res.Test(1)) {
+        print("BitXor failed");
+        return 1;
+    }
+
+    print("TestBitSet256 passed");
+    return 0;
+}
+
+Main();

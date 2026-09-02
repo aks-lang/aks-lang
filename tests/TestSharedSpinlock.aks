@@ -1,0 +1,27 @@
+fn RunSharedSpinlockTests() {
+    let spin = SharedSpinlock.OpenOrCreate("Local\\AksTestSharedSpinlock");
+    assert_eq(spin.map_id != 0, true);
+    assert_eq(spin.view_id != 0, true);
+
+    // Try acquire
+    let tryOk = spin.TryAcquire();
+    assert_eq(tryOk, true);
+
+    // Release
+    let relOk = spin.Release();
+    assert_eq(relOk, true);
+
+    // Acquire with spin backoff
+    let acqOk = spin.Acquire(1000);
+    assert_eq(acqOk, true);
+
+    spin.Release();
+
+    // Destroy
+    let destroyOk = spin.Destroy();
+    assert_eq(destroyOk, true);
+
+    println("Inter-process shared memory spinlock tests passed successfully");
+}
+
+RunSharedSpinlockTests();

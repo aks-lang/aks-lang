@@ -1,0 +1,20 @@
+fn RunJobObjectTests() {
+    let job = JobObject.Create("Local\\AksTestJobObject");
+    assert_eq(job.job_id != 0, true);
+
+    // Assign current process
+    let assignOk = job.AssignProcess(0);
+    assert_eq(assignOk, true);
+
+    // Set 1GB memory limit
+    let limitOk = job.SetMemoryLimit(1073741824);
+    assert_eq(limitOk, true);
+
+    // Destroy
+    let destroyOk = job.Destroy();
+    assert_eq(destroyOk, true);
+
+    println("OS process job object tests passed successfully");
+}
+
+RunJobObjectTests();

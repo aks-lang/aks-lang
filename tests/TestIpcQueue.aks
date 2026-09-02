@@ -1,0 +1,35 @@
+fn RunIpcQueueTests() {
+    let qName = "Local\\AksIpcTestQueue";
+    let qHost = IpcQueue.Create(qName, 16);
+    assert_eq(qHost.queue_id != 0, true);
+
+    let qClient = IpcQueue.Open(qName);
+    assert_eq(qClient.queue_id != 0, true);
+
+    // Initial pop on empty queue is null
+    let emptyVal = qClient.Pop();
+    assert_eq(emptyVal, null);
+
+    // Host pushes messages
+    let ok1 = qHost.Push("MSG_ALPHA");
+    let ok2 = qHost.Push("MSG_BETA");
+    assert_eq(ok1, true);
+    assert_eq(ok2, true);
+
+    // Client pops in FIFO order
+    let pop1 = qClient.Pop();
+    let pop2 = qClient.Pop();
+    assert_eq(pop1, "MSG_ALPHA");
+    assert_eq(pop2, "MSG_BETA");
+
+    // Queue is empty again
+    let emptyAgain = qClient.Pop();
+    assert_eq(emptyAgain, null);
+
+    qClient.Close();
+    qHost.Close();
+
+    println("Inter-process shared memory ring buffer queue tests passed successfully");
+}
+
+RunIpcQueueTests();

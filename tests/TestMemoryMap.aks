@@ -1,0 +1,33 @@
+fn RunMemoryMapTests() {
+    let mmap = MMapFile.Anonymous(1024);
+    assert_eq(mmap.mmap_handle != null, true);
+
+    let written = mmap.Write(0, "Hello MMap World!");
+    assert_eq(written, 17);
+
+    let read_str = mmap.Read(0, 17);
+    assert_eq(read_str, "Hello MMap World!");
+
+    mmap.Write(100, "ZeroCopyOSSharedMemory");
+    let read_offset = mmap.Read(100, 22);
+    assert_eq(read_offset, "ZeroCopyOSSharedMemory");
+
+    mmap.Flush();
+    mmap.Close();
+
+    let fmap = MMapFile.Open("test_mmap.bin", "rw", 512);
+    fmap.Write(0, "PERSISTED_MMAP_DATA");
+    fmap.Flush();
+    assert_eq(fmap.Read(0, 19), "PERSISTED_MMAP_DATA");
+    fmap.Close();
+
+    let fmap2 = MMapFile.Open("test_mmap.bin", "rw", 512);
+    assert_eq(fmap2.Read(0, 19), "PERSISTED_MMAP_DATA");
+    fmap2.Close();
+
+    RemoveFile("test_mmap.bin");
+
+    println("Memory-mapped files and shared memory tests passed successfully");
+}
+
+RunMemoryMapTests();

@@ -1,0 +1,21 @@
+fn RunRegexDfaTests() {
+    let id_regex = Regex.Compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$");
+    assert_eq(id_regex.Matches("valid_identifier_123"), true);
+    assert_eq(id_regex.Matches("99invalid"), false);
+    assert_eq(id_regex.Matches("helloWorld"), true);
+
+    let num_regex = Regex.Compile(r"\d+");
+    let all_numbers = num_regex.FindAll("Order 42 has 99 items with 77 bonus");
+    assert_eq(Length(all_numbers), 3);
+    assert_eq(all_numbers[0], "42");
+    assert_eq(all_numbers[1], "99");
+    assert_eq(all_numbers[2], "77");
+
+    let rep_regex = Regex.Compile(r"[0-9]+");
+    let replaced_text = rep_regex.Replace("Port 8080 and Port 3000", "XXXX");
+    assert_eq(replaced_text, "Port XXXX and Port XXXX");
+
+    println("Compile-time regex and DFA state machine synthesis tests passed successfully");
+}
+
+RunRegexDfaTests();

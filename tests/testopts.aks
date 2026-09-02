@@ -1,0 +1,33 @@
+fn addone(x) {
+    return x + 1;
+}
+print(addone(5));
+
+fn specval(x, y) {
+    if (x > 0) {
+        return y * 2;
+    }else {
+        return y * 3;
+    }
+}
+print(specval(1, 10));
+print(specval(0, 10));
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+fn testpoint() {
+    let p = new Point();
+    p.x = 100;
+    p.y = 200;
+    print(p.x + p.y);
+}
+testpoint();
+
+fn testarr() {
+    let a = [10, 20, 30];
+    print(a[0] + a[1] + a[2]);
+}
+testarr();

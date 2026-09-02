@@ -1,0 +1,67 @@
+print("testing performance");
+
+// Tail Call Optimization (TCO)
+print("testing tail call optimization (tco)");
+fn recursetco(n, acc) {
+    if (n <= 0) {
+        return acc;
+    }else {
+        return recursetco(n - 1, acc + 1);
+    }
+}
+
+// calls exceeds MAXFRAMES (256) by a factor of 40
+// if TCO is working, it reuses the frame and runs successfully
+let tcores = recursetco(10000, 0);
+print("Tail recursion completed successfully. Result (Expected: 10000):");
+print(tcores);
+
+// SIMD vector operations
+print("\ntesting simd vector operations");
+let arr1 = [1.5, 2.5, 3.5, 4.5, 5.5];
+let arr2 = [10.0, 20.0, 30.0, 40.0, 50.0];
+
+let simdaddres = SimdAddRaw(arr1, arr2);
+print("simdadd result (Expected: [11.5, 22.5, 33.5, 44.5, 55.5]):");
+print(simdaddres);
+
+let simdmulres = SimdMulRaw(arr1, arr2);
+print("simdmul result (Expected: [15, 50, 105, 180, 275]):");
+print(simdmulres);
+
+// Constant Folding and Dead Code Elimination
+print("\ntesting constant folding & dead code elimination");
+// constant expressions will fold compile-time
+let foldedval = 10 + 20 * 5 - 30 / 2;
+print("Folded arithmetic result (Expected: 95):");
+print(foldedval);
+
+// dead code test function
+fn deadcodetest() {
+    let x = 42;
+    return x;
+    // the following code is dead/unreachable and stripped by optimizer
+    let y = 100 / 0;
+    // would crash if not stripped
+    print("This should never print!");
+}
+let dceres = deadcodetest();
+print("Dead code elimination test completed. Return value (Expected: 42):");
+print(dceres);
+
+// Hot Loop JIT Compilation
+print("\ntesting hot loop jit compilation");
+let sum = 0;
+let i = 0;
+let looplimit = 500;
+
+print("Running a loop with 500 iterations. JIT compiler should compile and run it");
+while (i < looplimit) {
+    sum = sum + i;
+    i++;
+}
+
+print("Hot Loop JIT computation completed. Result (Expected: 124750):");
+print(sum);
+
+print("performance suite complete");

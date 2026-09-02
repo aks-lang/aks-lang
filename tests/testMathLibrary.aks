@@ -1,0 +1,96 @@
+print("testing math library");
+
+// Discrete Math
+print("\ntesting discrete math");
+print("gcd(54, 24) (Expected: 6):");
+print(GreatestCommonDivisor(54, 24));
+
+print("lcm(54, 24) (Expected: 216):");
+print(LeastCommonMultiple(54, 24));
+
+print("fact(5) (Expected: 120):");
+print(Factorial(5));
+
+print("nPr(10, 3) (Permutations, Expected: 720):");
+print(nPr(10, 3));
+
+print("nCr(10, 3) (Combinations, Expected: 120):");
+print(nCr(10, 3));
+
+print("isprime(17) (Expected: true):");
+print(IsPrime(17));
+print("isprime(4) (Expected: false):");
+print(IsPrime(4));
+
+// Trigonometric, Hyperbolic & Transcendentals
+print("\ntesting transcendental functions");
+print("cbrt(27) (Expected: 3):");
+print(cbrt(27));
+
+print("hypot(3.0, 4.0) (Expected: 5):");
+print(Hypotenuse(3.0, 4.0));
+
+print("trunc(4.999) (Expected: 4):");
+print(trunc(4.999));
+
+print("exp(1.0) (Expected: 2.71828):");
+print(exp(1.0));
+
+print("log10(100) (Expected: 2):");
+print(log10(100));
+
+print("log2(64) (Expected: 6):");
+print(log2(64));
+
+print("asinh(1.0):");
+print(asinh(1.0));
+
+print("acosh(1.5):");
+print(acosh(1.5));
+
+print("atanh(0.5):");
+print(atanh(0.5));
+
+print("erf(0.5) (Error function):");
+print(erf(0.5));
+
+print("erfc(0.5) (Complementary error function):");
+print(erfc(0.5));
+
+print("tgamma(5) (Gamma function of 5, which is 4! = 24, Expected: 24):");
+print(tgamma(5));
+
+print("lgamma(5) (Log-gamma of 5, Expected: ln(24) ~ 3.17805):");
+print(lgamma(5));
+
+// Conversions
+print("\ntesting angular conversions");
+print("torad(180) (Expected: PI ~ 3.14159):");
+print(ToRadians(180));
+
+print("todeg(1.5707963) (Expected: ~90):");
+print(ToDegrees(1.5707963));
+
+// Statistics on Arrays
+print("\ntesting statistics");
+let data = [10.0, 20.0, 30.0, 40.0, 50.0];
+print("Dataset:");
+print(data);
+
+print("mean() (Expected: 30):");
+print(mean(data));
+
+print("median() (Expected: 30):");
+print(median(data));
+
+let evendata = [10.0, 20.0, 30.0, 40.0];
+print("Even dataset median() (Expected: 25):");
+print(median(evendata));
+
+print("variance() (Expected: 200):");
+print(variance(data));
+
+print("stddev() (Expected: sqrt(200) ~ 14.142):");
+print(StandardDeviation(data));
+
+print("math library tests passed");

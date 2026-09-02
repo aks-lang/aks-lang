@@ -1,0 +1,43 @@
+struct MyPoint {
+    x: any;
+    y: any;
+}
+
+fn MyPoint.drop(self) {
+    print("MyPoint dropped");
+}
+
+fn testSlice() {
+    let arr = [10, 20, 30, 40, 50];
+    let s = arr[1 .. 4];
+    print(String(Length(s)));
+    print(String(s[0]));
+    s[1] = 99;
+    print(String(arr[2]));
+}
+
+fn testBorrowSuccess() {
+    let x = 42;
+    let r1 = & x;
+    print(String(r1));
+    let r2 = & mut x;
+    r2 = 100;
+    print(String(x));
+}
+
+fn testDrop() {
+    let p = new MyPoint();
+    p.x = 1;
+    p.y = 2;
+    print("leaving testDrop");
+}
+
+fn main() {
+    print("running borrow and slice tests");
+    testSlice();
+    testBorrowSuccess();
+    testDrop();
+    print("all borrow tests completed");
+}
+
+main();

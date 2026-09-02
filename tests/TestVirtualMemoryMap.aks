@@ -1,0 +1,23 @@
+fn RunVirtualMemoryMapTests() {
+    let pageSize = VirtualMemoryMap.PageSize();
+    assert_eq(pageSize >= 4096, true);
+
+    let granularity = VirtualMemoryMap.AllocationGranularity();
+    assert_eq(granularity >= 4096, true);
+
+    // Allocate an aligned buffer to query its virtual address
+    let buf = AlignedBuffer.Alloc(4096, 4096);
+    assert_eq(buf.ptr_id != 0, true);
+
+    let info = VirtualMemoryMap.QueryAddress(buf.ptr_id);
+    assert_eq(info.base_addr != 0, true);
+    assert_eq(info.region_size >= 4096, true);
+    assert_eq(info.mem_state, "commit");
+    assert_eq(info.protect, "readwrite");
+
+    buf.Free();
+
+    println("Virtual memory map and page telemetry tests passed successfully");
+}
+
+RunVirtualMemoryMapTests();

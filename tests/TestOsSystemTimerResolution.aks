@@ -1,0 +1,23 @@
+// Test OS Multimedia System Timer Resolution Engine
+fn Main() {
+    let caps = SystemTimerResolution.GetCapabilities();
+    if (caps.min_period_ms < 1 || caps.max_period_ms < caps.min_period_ms) {
+        print("Invalid system timer capabilities: min=" + caps.min_period_ms + " max=" + caps.max_period_ms);
+        return 1;
+    }
+
+    let b_ok = SystemTimerResolution.BeginPeriod(caps.min_period_ms);
+    if (!b_ok) {
+        print("BeginPeriod failed");
+        return 1;
+    }
+
+    let e_ok = SystemTimerResolution.EndPeriod(caps.min_period_ms);
+    if (!e_ok) {
+        print("EndPeriod failed");
+        return 1;
+    }
+
+    print("TestOsSystemTimerResolution passed");
+    return 0;
+}

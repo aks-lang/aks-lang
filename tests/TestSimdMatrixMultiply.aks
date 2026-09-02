@@ -1,0 +1,40 @@
+// Test Hardware AVX2 4x4 Float Matrix Multiplication & Linear Algebra Engine
+fn Main() {
+    // Identity matrix
+    let identity = [
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0
+    ];
+
+    let m1 = SimdMatrix4x4.New(identity);
+    let det = m1.Determinant();
+    if (det < 0.99 || det > 1.01) {
+        print("Identity matrix determinant mismatch: " + det);
+        return 1;
+    }
+
+    let m2_data = [
+        2.0, 0.0, 0.0, 0.0,
+        0.0, 3.0, 0.0, 0.0,
+        0.0, 0.0, 4.0, 0.0,
+        0.0, 0.0, 0.0, 5.0
+    ];
+    let m2 = SimdMatrix4x4.New(m2_data);
+    let det2 = m2.Determinant();
+    // 2 * 3 * 4 * 5 = 120
+    if (det2 < 119.99 || det2 > 120.01) {
+        print("Diagonal matrix determinant mismatch: " + det2);
+        return 1;
+    }
+
+    let prod = m1.Mul(m2);
+    if (prod.Get(0, 0) != 2.0 || prod.Get(1, 1) != 3.0 || prod.Get(2, 2) != 4.0 || prod.Get(3, 3) != 5.0) {
+        print("Matrix multiplication mismatch");
+        return 1;
+    }
+
+    print("TestSimdMatrixMultiply passed");
+    return 0;
+}

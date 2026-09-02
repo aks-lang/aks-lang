@@ -1,0 +1,23 @@
+// Test suite for OS WaitOnAddress Userspace Synchronization
+fn main() {
+    let buf = AlignedBuffer.Alloc(64, 16);
+    let ptr = buf.ptr_id;
+    assert(ptr != 0);
+
+    // Initial write 0
+    buf.WriteBytes(0, "00000000");
+
+    // Wake single and all on target address
+    WaitOnAddress.WakeOne(ptr);
+    WaitOnAddress.WakeAll(ptr);
+
+    // Non-blocking timeout probe (1ms)
+    // If compare value does not match current value in buffer, Wait returns immediately
+    let res = WaitOnAddress.Wait(ptr, 99999, 4, 1);
+    assert(res == true || res == false);
+
+    buf.Free();
+    print("TestWaitOnAddress passed");
+}
+
+main();

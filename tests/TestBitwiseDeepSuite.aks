@@ -1,0 +1,66 @@
+println("Exhaustive Bitwise Subsystem Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Bitwise Infix Operators (&, |, ^, <<, >>)
+println("\n1. Bitwise Infix Operators");
+
+assert_eq(0b1100 & 0b1010, 0b1000, "0b1100 & 0b1010 == 0b1000 (8)", stats);
+assert_eq(0b1100 | 0b1010, 0b1110, "0b1100 | 0b1010 == 0b1110 (14)", stats);
+assert_eq(0b1100 ^ 0b1010, 0b0110, "0b1100 ^ 0b1010 == 0b0110 (6)", stats);
+assert_eq(1 << 4, 16, "1 << 4 == 16", stats);
+assert_eq(32 >> 3, 4, "32 >> 3 == 4", stats);
+
+// Bit Masking & Compound Assignments
+println("\n2. bit Masking & Compound Assignments");
+
+let flags = 0;
+let FLAG_READ = 1 << 0;  // 
+let FLAG_WRITE = 1 << 1; // 
+let FLAG_EXEC = 1 << 2;  // 
+
+// Turn on read and exec
+flags = flags | FLAG_READ;
+flags = flags | FLAG_EXEC;
+
+assert_eq((flags & FLAG_READ) != 0, true, "FLAG_READ is set", stats);
+assert_eq((flags & FLAG_WRITE) != 0, false, "FLAG_WRITE is not set", stats);
+assert_eq((flags & FLAG_EXEC) != 0, true, "FLAG_EXEC is set", stats);
+
+let counter = 10;
+counter += 5;
+assert_eq(counter, 15, "counter += 5 == 15", stats);
+counter -= 3;
+assert_eq(counter, 12, "counter -= 3 == 12", stats);
+counter *= 2;
+assert_eq(counter, 24, "counter *= 2 == 24", stats);
+counter /= 4;
+assert_eq(counter, 6, "counter /= 4 == 6", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " bitwise subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

@@ -1,0 +1,40 @@
+fn ValidatePort(p: int) {
+    return ConstrainRange(p, 1, 65535);
+}
+
+fn ValidateByte(b: int) {
+    return ConstrainRange(b, 0, 255);
+}
+
+fn RunDependentTypesTests() {
+    let p1 = ValidatePort(8080);
+    assert_eq(p1, 8080);
+
+    let p2 = ValidatePort(443);
+    assert_eq(p2, 443);
+
+    let b1 = ValidateByte(255);
+    assert_eq(b1, 255);
+
+    let b2 = ValidateByte(0);
+    assert_eq(b2, 0);
+
+    assert_eq(RangeCheck(50, 0, 100), true);
+    assert_eq(RangeCheck(150, 0, 100), false);
+
+    assert_throws(fn() {
+        ValidateByte(300);
+    });
+
+    assert_throws(fn() {
+        ValidatePort(70000);
+    });
+
+    assert_throws(fn() {
+        ValidateByte(-5);
+    });
+
+    println("Dependent types and const generic range tests passed successfully");
+}
+
+RunDependentTypesTests();

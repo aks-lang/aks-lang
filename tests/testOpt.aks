@@ -1,0 +1,10 @@
+fn teststrengthreduction() {
+    let x = 1024;
+    let r1 = x * 8;
+    let r2 = x / 4;
+    let r3 = x % 16;
+    let y = 1025;
+    let r4 = y % 8;
+    print("teststrengthreduction: " + String(r1) + " " + String(r2) + " " + String(r3) + " " + String(r4));
+}
+teststrengthreduction();

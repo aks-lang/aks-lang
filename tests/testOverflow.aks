@@ -1,0 +1,12 @@
+let large = 9223372036854775800;
+// Near int64max
+let overflowed = large + 100;
+print("Default promotion result: " + String(overflowed));
+
+// test strict overflow exception (this will be run with --strict-overflow flag)
+try {
+    let x = large + 100;
+    print("Should not print this in strict mode: " + String(x));
+}catch (e) {
+    print("Caught expected overflow exception: " + e);
+}

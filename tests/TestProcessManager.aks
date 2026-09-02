@@ -1,0 +1,14 @@
+fn RunProcessManagerTests() {
+    let ws = ProcessManager.WorkingSetMemory();
+    assert_eq(ws > 0, true);
+
+    let peakWs = ProcessManager.PeakWorkingSetMemory();
+    assert_eq(peakWs >= ws, true);
+
+    let cpuMs = ProcessManager.ProcessCpuTime();
+    assert_eq(cpuMs >= 0, true);
+
+    println("Process resource telemetry tests passed successfully");
+}
+
+RunProcessManagerTests();

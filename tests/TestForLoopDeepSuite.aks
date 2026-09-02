@@ -1,0 +1,88 @@
+println("Exhaustive For Loop Subsystem Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Single-expression function declaration as in examples
+def double_val(x) => x * 2;
+def square_val(x) => x * x;
+
+// Unparenthesized For-In Array Iteration
+println("\n1. Unparenthesized For-in Loop Iteration");
+
+let numbers = [10, 20, 30];
+let doubled_results = [];
+
+for item in numbers {
+    append(doubled_results, double_val(item));
+}
+
+assert_eq(Length(doubled_results), 3, "Length of doubled results array == 3", stats);
+assert_eq(doubled_results[0], 20, "Doubled element 0 == 20", stats);
+assert_eq(doubled_results[1], 40, "Doubled element 1 == 40", stats);
+assert_eq(doubled_results[2], 60, "Doubled element 2 == 60", stats);
+
+// Accumulation Loop with Transformation
+println("\n2. Accumulation Loop With Transformation");
+
+let dataset = [1, 2, 3, 4, 5];
+let sum_squares = 0;
+
+for val in dataset {
+    sum_squares = sum_squares + square_val(val);
+}
+
+assert_eq(sum_squares, 55, "Sum of squares (1+4+9+16+25 == 55)", stats);
+
+// Array Iteration Loop
+println("\n3. Array Iteration Loop");
+
+let range_arr = [0, 1, 2, 3, 4];
+let range_sum = 0;
+for i in range_arr {
+    range_sum = range_sum + i;
+}
+assert_eq(range_sum, 10, "Sum of array [0,1,2,3,4] == 10", stats);
+
+// Nested For Loops
+println("\n4. Nested for Loops");
+
+let grid_sum = 0;
+let row1 = [1, 2, 3];
+let row2 = [10, 20, 30];
+let matrix = [row1, row2];
+
+for row in matrix {
+    for cell in row {
+        grid_sum = grid_sum + cell;
+    }
+}
+
+assert_eq(grid_sum, 66, "Nested 2D matrix loop sum == 66", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " for loop subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

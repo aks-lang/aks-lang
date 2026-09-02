@@ -1,0 +1,97 @@
+println("Exhaustive Struct & Method Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// In-Struct Method Declarations with 'def' and '=>'
+println("\n1. In-struct Method Declarations");
+
+struct User {
+    name: string,
+    age: int,
+
+    def greeting(self) => "Hello ${self.name}, age ${self.age}";
+    def is_adult(self) => self.age >= 18;
+    def year_of_birth(self, current_year) => current_year - self.age;
+}
+
+let u1 = User { name: "Alice", age: 25 };
+assert_eq(u1.name, "Alice", "u1.name == 'Alice'", stats);
+assert_eq(u1.age, 25, "u1.age == 25", stats);
+assert_eq(u1.greeting(), "Hello Alice, age 25", "u1.greeting() in-struct method", stats);
+assert_eq(u1.is_adult(), true, "u1.is_adult() == true", stats);
+assert_eq(u1.year_of_birth(2026), 2001, "u1.year_of_birth(2026) == 2001", stats);
+
+let u2 = User { name: "Bob", age: 15 };
+assert_eq(u2.is_adult(), false, "u2.is_adult() == false", stats);
+
+// Geometry Struct with Arithmetic Methods
+println("\n2. Geometry Struct With Methods");
+
+struct Rectangle {
+    width: float,
+    height: float,
+
+    def area(self) => self.width * self.height;
+    def perimeter(self) => 2.0 * (self.width + self.height);
+    def is_square(self) => self.width == self.height;
+}
+
+let rect = Rectangle { width: 10.0, height: 5.0 };
+assert_eq(rect.area(), 50.0, "rect.area() == 50.0", stats);
+assert_eq(rect.perimeter(), 30.0, "rect.perimeter() == 30.0", stats);
+assert_eq(rect.is_square(), false, "rect.is_square() == false", stats);
+
+let sq = Rectangle { width: 7.0, height: 7.0 };
+assert_eq(sq.is_square(), true, "sq.is_square() == true", stats);
+
+// Nested Structs & Point Computations
+println("\n3. Nested Structs & Method Calls");
+
+struct Point {
+    x: float,
+    y: float,
+
+    def distance_from_origin(self) => SquareRoot(self.x * self.x + self.y * self.y);
+}
+
+struct Circle {
+    radius: float,
+
+    def area(self) => 3.14159265 * self.radius * self.radius;
+    def circumference(self) => 2.0 * 3.14159265 * self.radius;
+}
+
+let p = Point { x: 3.0, y: 4.0 };
+assert_eq(p.distance_from_origin(), 5.0, "Point distance from origin == 5.0", stats);
+
+let c = Circle { radius: 10.0 };
+assert_eq(c.area(), 314.159265, "Circle area() == 314.159265", stats);
+assert_eq(c.circumference(), 62.831853, "Circle circumference() == 62.831853", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " struct & method subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

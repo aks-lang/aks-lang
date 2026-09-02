@@ -1,0 +1,13 @@
+try {
+    let x = null;
+    print(x.field);
+}catch (e) {
+    print("Caught expected exception: " + e);
+}
+
+try {
+    let y = null;
+    print(y[0]);
+}catch (e) {
+    print("Caught expected exception: " + e);
+}

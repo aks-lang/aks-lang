@@ -1,0 +1,370 @@
+print("Math / SIMD / LinAlg / DataScience Suite\n");
+let PI = 3.141592653589793;
+
+// [1] Dense Matrix<T>
+print("[1] Matrix<T>");
+let m = MatrixNew(2, 2);
+m.Set(0, 0, 1.0);
+m.Set(0, 1, 2.0);
+m.Set(1, 0, 3.0);
+m.Set(1, 1, 4.0);
+if (m.Get(0, 0) != 1.0 || m.Get(1, 1) != 4.0) {
+    print("FAIL: Matrix get/set");
+    exit(1);
+}
+
+// Identity matrix
+let id = MatrixNew(2, 2);
+id.Set(0, 0, 1.0);
+id.Set(1, 1, 1.0);
+let mId = m.Mul(id);
+if (mId.Get(0, 0) != 1.0 || mId.Get(0, 1) != 2.0) {
+    print("FAIL: Matrix mul with identity");
+    exit(1);
+}
+print("  PASS");
+
+// [2] Matrix multiply
+print("[2] Matrix multiply");
+// A = [[1,2],[3,4]], B = [[5,6],[7,8]], C = [[19,22],[43,50]]
+let a = MatrixFrom(2, 2, [1.0, 2.0, 3.0, 4.0]);
+let b = MatrixFrom(2, 2, [5.0, 6.0, 7.0, 8.0]);
+let c = a.Mul(b);
+if (c.Get(0, 0) != 19.0 || c.Get(0, 1) != 22.0 || c.Get(1, 0) != 43.0 || c.Get(1, 1) != 50.0) {
+    print("FAIL: Matrix multiply result=" + c.ToString());
+    exit(1);
+}
+print("  PASS");
+
+// [3] Matrix transpose
+print("[3] Matrix transpose");
+// [[1,2,3],[4,5,6]]^t = [[1,4],[2,5],[3,6]]
+let t = MatrixFrom(2, 3, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+let tt = t.Transpose();
+if (tt.rows != 3 || tt.cols != 2) {
+    print("FAIL: Transpose dims " + String(tt.rows) + "x" + String(tt.cols));
+    exit(1);
+}
+if (tt.Get(0, 0) != 1.0 || tt.Get(1, 0) != 2.0 || tt.Get(0, 1) != 4.0) {
+    print("FAIL: Transpose values");
+    exit(1);
+}
+print("  PASS");
+
+// [4] Matrix inverse
+print("[4] Matrix inverse");
+// [[1,2],[3,4]] -> inv = [[-2,1],[1.5,-0.5]]
+let inv = a.Inverse();
+if (inv == null) {print("FAIL: Inverse returned null");
+    exit(1);
+}
+// Verify A * A^-1 ≈ I
+let should_be_id = a.Mul(inv);
+let eps = 0.0001;
+if (Absolute(should_be_id.Get(0, 0) - 1.0) > eps || Absolute(should_be_id.Get(1, 1) - 1.0) > eps) {
+    print("FAIL: Inverse roundtrip not identity");
+    exit(1);
+}
+if (Absolute(should_be_id.Get(0, 1)) > eps || Absolute(should_be_id.Get(1, 0)) > eps) {
+    print("FAIL: Inverse off-diagonal not zero");
+    exit(1);
+}
+print("  PASS");
+
+// [5] lu decomposition
+print("[5] LU decomposition");
+let lu_mat = MatrixFrom(2, 2, [3.0, 1.0, 1.0, 2.0]);
+let lu = lu_mat.Lu();
+let L = lu[0];
+let U = lu[1];
+let lu_product = L.Mul(U);
+if (Absolute(lu_product.Get(0, 0) - 3.0) > eps || Absolute(lu_product.Get(0, 1) - 1.0) > eps ||
+Absolute(lu_product.Get(1, 0) - 1.0) > eps || Absolute(lu_product.Get(1, 1) - 2.0) > eps) {
+    print("FAIL: LU product != original lu_mat: " + lu_product.ToString());
+    exit(1);
+}
+print("  PASS");
+
+// [6] Cholesky decomposition
+print("[6] Cholesky decomposition");
+// Symmetric PD matrix [[4,2],[2,3]]
+let spd = MatrixFrom(2, 2, [4.0, 2.0, 2.0, 3.0]);
+let cho = spd.Cholesky();
+if (cho == null) {print("FAIL: Cholesky returned null");
+    exit(1);
+}
+// Verify L * L^T ≈ A
+let lt = cho.Transpose();
+let ch_product = cho.Mul(lt);
+if (Absolute(ch_product.Get(0, 0) - 4.0) > eps || Absolute(ch_product.Get(0, 1) - 2.0) > eps) {
+    print("FAIL: Cholesky roundtrip");
+    exit(1);
+}
+print("  PASS");
+
+// [7] SIMD float array ops
+print("[7] SIMD-accelerated float array ops");
+let v1 = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+let v2 = [8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
+
+let vadd = SimdAdd(v1, v2);
+if (vadd[0] != 9.0 || vadd[7] != 9.0) {print("FAIL: simd_add");
+    exit(1);
+}
+
+let vsub = SimdSub(v1, v2);
+if (vsub[0] !=-7.0 || vsub[7] != 7.0) {print("FAIL: simd_sub");
+    exit(1);
+}
+
+let vmul = SimdMul(v1, v2);
+if (vmul[0] != 8.0 || vmul[3] != 20.0) {print("FAIL: simd_mul");
+    exit(1);
+}
+
+let vdiv = SimdDiv(v2, v1);
+if (Absolute(vdiv[0] - 8.0) > eps) {print("FAIL: simd_div");
+    exit(1);
+}
+
+// Fma: a*b + c
+let vc = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+let vfma = SimdFma(v1, v2, vc);
+// v1[0]*v2[0]+1 = 8+1=9
+if (Absolute(vfma[0] - 9.0) > eps) {print("FAIL: simd_fma[0]=" + String(vfma[0]));
+    exit(1);
+}
+// v1[3]*v2[3]+1 = 4*5+1=21
+if (Absolute(vfma[3] - 21.0) > eps) {print("FAIL: simd_fma[3]=" + String(vfma[3]));
+    exit(1);
+}
+print("  PASS");
+
+// [8] FFT (Fast Fourier Transform)
+print("[8] FFT (Fast Fourier Transform)");
+// Dc signal: all ones → FFT[0] = N, rest = 0
+let n = 8;
+let real_in = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+let imag_in = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+let fft_out = FftForward(real_in, imag_in);
+let fft_real = fft_out[0];
+let fft_imag = fft_out[1];
+
+// Dc component should be 8, others ~0
+if (Absolute(fft_real[0] - 8.0) > 0.001) {print("FAIL: FFT DC=" + String(fft_real[0]));
+    exit(1);
+}
+if (Absolute(fft_real[1]) > 0.001 || Absolute(fft_imag[1]) > 0.001) {
+    print("FAIL: FFT non-DC should be ~0");
+    exit(1);
+}
+
+// Inverse fft roundtrip
+let ifft_out = FftInverse(fft_real, fft_imag);
+let ifft_real = ifft_out[0];
+if (Absolute(ifft_real[0] - 1.0) > 0.001) {print("FAIL: IFFT roundtrip");
+    exit(1);
+}
+print("  PASS");
+
+// [9] Automatic Differentiation (forward-mode)
+print("[9] Automatic Differentiation (forward-mode Dual numbers)");
+// f(x) = x^2 + 3x + 1, f'(x) = 2x + 3
+// At x=2: f(2)=11, f'(2)=7
+let x = DualNew(2.0, 1.0);
+// x=2, dx=1
+let three = DualNew(3.0, 0.0);
+let one = DualNew(1.0, 0.0);
+let xsq = DualPow(x, 2.0);
+// x^2, deriv=2x
+let threex = three.Mul(x);
+// x, deriv=3
+let fx = xsq.Add(threex).Add(one);
+
+if (Absolute(fx.val - 11.0) > eps) {print("FAIL: AD val=" + String(fx.val));
+    exit(1);
+}
+if (Absolute(fx.deriv - 7.0) > eps) {print("FAIL: AD deriv=" + String(fx.deriv));
+    exit(1);
+}
+
+// Derivative of sin(x) at x=PI/2 should be cos(PI/2)≈0
+let px = DualNew(PI / 2.0, 1.0);
+let sin_px = DualSin(px);
+if (Absolute(sin_px.val - 1.0) > 0.001) {print("FAIL: dual_sin val");
+    exit(1);
+}
+if (Absolute(sin_px.deriv) > 0.001) {print("FAIL: dual_sin deriv at PI/2 ~= 0");
+    exit(1);
+}
+
+print("  PASS");
+
+// [10] DataFrame
+print("[10] DataFrame (Pandas-like)");
+let rows = [
+["Alice", 30, 95.5],
+["Bob", 25, 82.0],
+["Carol", 35, 91.3],
+["Dave", 28, 74.0],
+["Eve", 32, 88.5]
+];
+let df = DataFrameFromRows(["name", "age", "score"], rows);
+
+// shape
+let sh = df.Shape();
+if (sh[0] != 5 || sh[1] != 3) {print("FAIL: shape " + String(sh[0]) + "x" + String(sh[1]));
+    exit(1);
+}
+
+// get_column
+let ages = df.GetColumn("age");
+if (ages[0] != 30 || ages[1] != 25) {print("FAIL: get_column");
+    exit(1);
+}
+
+// mean
+let mean_age = df.Mean("age");
+if (Absolute(mean_age - 30.0) > 0.01) {print("FAIL: mean=" + String(mean_age));
+    exit(1);
+}
+
+// filter
+let seniors = df.Filter("age", fn(v) {return v >= 30;
+});
+let senior_ages = seniors.GetColumn("age");
+if (Length(senior_ages) != 3) {print("FAIL: filter count=" + String(Length(senior_ages)));
+    exit(1);
+}
+
+// pick (select columns)
+let sub = df.Pick(["name", "score"]);
+let sub_sh = sub.Shape();
+if (sub_sh[1] != 2) {print("FAIL: select cols=" + String(sub_sh[1]));
+    exit(1);
+}
+
+// head
+let top2 = df.Head(2);
+if (top2.Shape()[0] != 2) {print("FAIL: head rows=" + String(top2.Shape()[0]));
+    exit(1);
+}
+
+print("  PASS");
+
+// [11] Plot / SVG export
+print("[11] Plot / SVG export");
+let p = PlotNew("Test Chart");
+let px_vals = [0.0, 1.0, 2.0, 3.0];
+let py_vals = [0.0, 1.0, 4.0, 9.0];
+p.Line(px_vals, py_vals, "#0077ff");
+p.Scatter(px_vals, py_vals, "#ff3300");
+
+let svg = p.ToSvg();
+if (Length(svg) < 100) {print("FAIL: SVG too short");
+    exit(1);
+}
+if (RegexSearch("<svg", svg) == null) {print("FAIL: SVG missing <svg> tag");
+    exit(1);
+}
+if (RegexSearch("<path", svg) == null) {print("FAIL: SVG missing <path> for line");
+    exit(1);
+}
+if (RegexSearch("<circle", svg) == null) {print("FAIL: SVG missing <circle> for scatter");
+    exit(1);
+}
+
+// bar chart
+let bp = PlotNew("Bar Chart");
+bp.Bar(["A", "B", "C"], [10.0, 25.0, 15.0], "#00aa55");
+let bsvg = bp.ToSvg();
+if (RegexSearch("<rect", bsvg) == null) {print("FAIL: Bar SVG missing <rect>");
+    exit(1);
+}
+
+// Save test svg
+p.SaveSvg("ChartOutput.svg");
+RemoveFile("ChartOutput.svg");
+print("  PASS (SVG saved to ChartOutput.svg)");
+
+// [12] BigInt
+print("[12] BigInt arbitrary precision");
+// + 1 = 100000000000000000000
+let big_a = BigIntNew("99999999999999999999");
+let big_b = BigIntNew("1");
+let big_sum = big_a.Add(big_b);
+if (big_sum.ToString() != "100000000000000000000") {
+    print("FAIL: BigInt add=" + big_sum.ToString());
+    exit(1);
+}
+
+// factorial(20) = 2432902008176640000
+let factorial_result = BigIntNew("1");
+let fact_i = BigIntNew("1");
+let fact_limit = BigIntNew("20");
+while (fact_i.Cmp(fact_limit) <= 0) {
+    factorial_result = factorial_result.Mul(fact_i);
+    fact_i = fact_i.Add(BigIntNew("1"));
+}
+if (factorial_result.ToString() != "2432902008176640000") {
+    print("FAIL: 20! = " + factorial_result.ToString());
+    exit(1);
+}
+
+// div and mod
+let big_x = BigIntNew("100");
+let big_y = BigIntNew("7");
+let quotient = big_x.Div(big_y);
+let remainder = big_x.Mod(big_y);
+if (quotient.ToString() != "14") {print("FAIL: BigInt div=" + quotient.ToString());
+    exit(1);
+}
+if (remainder.ToString() != "2") {print("FAIL: BigInt mod=" + remainder.ToString());
+    exit(1);
+}
+
+// negative
+let neg = BigIntNew("-50").Add(BigIntNew("30"));
+if (neg.ToString() != "-20") {print("FAIL: BigInt neg=" + neg.ToString());
+    exit(1);
+}
+
+print("  PASS");
+
+// [13] Decimal (no floating-point rounding)
+print("[13] Decimal (no FP rounding)");
+// + 0.2 should be exactly 0.3 in Decimal
+let d1 = DecimalNew("0.1");
+let d2 = DecimalNew("0.2");
+let d3 = d1.Add(d2);
+if (d3.ToString() != "0.3") {print("FAIL: Decimal 0.1+0.2=" + d3.ToString());
+    exit(1);
+}
+
+// Subtraction: 1.00 - 0.01 = 0.99
+let dc = DecimalNew("1.00");
+let dd = DecimalNew("0.01");
+let de = dc.Sub(dd);
+if (de.ToString() != "0.99") {print("FAIL: Decimal sub=" + de.ToString());
+    exit(1);
+}
+
+// Multiplication: 1.5 * 2.0 = 3.00
+let df_a = DecimalNew("1.5");
+let df_b = DecimalNew("2.0");
+let df_c = df_a.Mul(df_b);
+if (df_c.ToString() != "3.00") {print("FAIL: Decimal mul=" + df_c.ToString());
+    exit(1);
+}
+
+// Large value: 999.99 + 0.01 = 1000.00
+let dg = DecimalNew("999.99");
+let dh = DecimalNew("0.01");
+let di = dg.Add(dh);
+if (di.ToString() != "1000.00") {print("FAIL: Decimal large add=" + di.ToString());
+    exit(1);
+}
+
+print("  PASS");
+
+print("\nAll math, SIMD, linear algebra, and data science tests passed successfully.");

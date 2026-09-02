@@ -1,0 +1,17 @@
+// Test suite for OS Console ANSI Virtual Terminal & Screen Coordinates
+fn main() {
+    let sz = ConsoleAnsi.GetSize();
+    assert(sz.width > 0);
+    assert(sz.height > 0);
+
+    let cur = ConsoleAnsi.GetCursorPosition();
+    assert(cur.x >= 0);
+    assert(cur.y >= 0);
+
+    let vt_ok = ConsoleAnsi.EnableVirtualTerminal();
+    assert(vt_ok == true || vt_ok == false);
+
+    print("TestConsoleAnsi passed");
+}
+
+main();

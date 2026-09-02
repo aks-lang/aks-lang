@@ -1,0 +1,383 @@
+// Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
+// Automated Test Runner written in AKS
+
+print("AKS Native Test Suite Runner");
+
+fn str_contains(haystack, needle) {
+    if (haystack == null) {
+        return false;
+    }
+    let parts = split(haystack, needle);
+    return Length(parts) > 1;
+}
+
+let tests = [
+    { name: "TestAdvanced.aks", flags: "" },
+    { name: "TestAdvancedCompilation.aks", flags: "" },
+    { name: "TestAdvancedConcurrency.aks", flags: "" },
+    { name: "TestAdvancedFeatures.aks", flags: "" },
+    { name: "TestAdvancedTypes.aks", flags: "--strict-types" },
+    { name: "TestAdvancedTypesDeepSuite.aks", flags: "" },
+    { name: "TestAllInputs.aks", flags: "", in_file: "tests\\TestAllInputs.in" },
+    { name: "TestArcBoxRcDeepSuite.aks", flags: "" },
+    { name: "TestArrayDeepSuite.aks", flags: "" },
+    { name: "TestArrayInputCasting.aks", flags: "", in_file: "tests\\TestArrayInputCasting.in" },
+    { name: "TestArrayRepeatDeepSuite.aks", flags: "" },
+    { name: "TestAssign.aks", flags: "" },
+    { name: "TestAsyncGeneratorsDeepSuite.aks", flags: "" },
+    { name: "TestAsyncScheduler.aks", flags: "" },
+    { name: "TestBigintDecimalDeepSuite.aks", flags: "" },
+    { name: "TestBitwiseDeepSuite.aks", flags: "" },
+    { name: "TestBoolCast.aks", flags: "" },
+    { name: "TestBorrow.aks", flags: "" },
+    { name: "TestBorrowError.aks", flags: "", expect_fail: true },
+    { name: "TestBorrowFail1.aks", flags: "", expect_fail: true },
+    { name: "TestBorrowFail2.aks", flags: "", expect_fail: true },
+    { name: "TestBorrowFail3.aks", flags: "", expect_fail: true },
+    { name: "TestBorrowFail4.aks", flags: "", expect_fail: true },
+    { name: "TestBounds.aks", flags: "" },
+    { name: "TestCOM.aks", flags: "" },
+    { name: "TestCap.aks", flags: "" },
+    { name: "TestCastErrors.aks", flags: "" },
+    { name: "TestCastInput.aks", flags: "", in_file: "tests\\TestCastInput.in" },
+    { name: "TestCatch.aks", flags: "" },
+    { name: "TestCollections.aks", flags: "" },
+    { name: "TestCollectionsDeepSuite.aks", flags: "" },
+    { name: "TestCompileError.aks", flags: "", expect_fail: true },
+    { name: "TestCompileError2.aks", flags: "", expect_fail: true },
+    { name: "TestComprehensiveCasting.aks", flags: "" },
+    { name: "TestConcurrencyAdvanced.aks", flags: "" },
+    { name: "TestConcurrencyDeepSuite.aks", flags: "" },
+    { name: "TestConcurrencyPrimitives.aks", flags: "" },
+    { name: "TestConcurrencySuite.aks", flags: "" },
+    { name: "TestConstError.aks", flags: "--immutable-by-default", expect_fail: true },
+    { name: "TestContracts.aks", flags: "" },
+    { name: "TestControlFlowDeep.aks", flags: "" },
+    { name: "TestCrypto.aks", flags: "" },
+    { name: "TestCryptoDeepSuite.aks", flags: "" },
+    { name: "TestCseOnly.aks", flags: "" },
+    { name: "TestDataframeDeepSuite.aks", flags: "" },
+    { name: "TestDefaultParams.aks", flags: "" },
+    { name: "TestEval.aks", flags: "" },
+    { name: "TestEvalSimple.aks", flags: "" },
+    { name: "TestExceptionContractsDeepSuite.aks", flags: "" },
+    { name: "TestExceptions.aks", flags: "" },
+    { name: "TestFailArray.aks", flags: "--strict-types", expect_fail: true },
+    { name: "TestFailEffect.aks", flags: "--strict-types", expect_fail: true },
+    { name: "TestFailOpaque.aks", flags: "--strict-types", expect_fail: true },
+    { name: "TestFailRefine.aks", flags: "--strict-types", expect_fail: true },
+    { name: "TestFeatures.aks", flags: "" },
+    { name: "TestFileIoDeepSuite.aks", flags: "" },
+    { name: "TestForLoopDeepSuite.aks", flags: "" },
+    { name: "TestFrameworkSuite.aks", flags: "" },
+    { name: "TestFrozensetLinkedListDeepSuite.aks", flags: "" },
+    { name: "TestFullLanguageSuite.aks", flags: "" },
+    { name: "TestFunctionsDeep.aks", flags: "" },
+    { name: "TestHttpMinimal.aks", flags: "" },
+    { name: "TestImplBlock.aks", flags: "" },
+    { name: "TestJit.aks", flags: "" },
+    { name: "TestLazyChainDeepSuite.aks", flags: "" },
+    { name: "TestLazyImport.aks", flags: "" },
+    { name: "TestLibraries.aks", flags: "" },
+    { name: "TestLowlevelIpcShmDeepSuite.aks", flags: "" },
+    { name: "TestMapDeepSuite.aks", flags: "" },
+    { name: "TestMatchPatternDeepSuite.aks", flags: "" },
+    { name: "TestMathDeepSuite.aks", flags: "" },
+    { name: "TestMathLibrary.aks", flags: "" },
+    { name: "TestMathSuite.aks", flags: "" },
+    { name: "TestMatrixDualDeepSuite.aks", flags: "" },
+    { name: "TestMetaprogramming.aks", flags: "" },
+    { name: "TestMetaprogrammingAdvanced.aks", flags: "" },
+    { name: "TestMetaprogrammingDeepSuite.aks", flags: "" },
+    { name: "TestMin.aks", flags: "" },
+    { name: "TestMinImport.aks", flags: "" },
+    { name: "TestMinModule.aks", flags: "" },
+    { name: "TestModernSyntaxShowcase.aks", flags: "" },
+    { name: "TestModules.aks", flags: "" },
+    { name: "TestMonadOptionResultDeepSuite.aks", flags: "" },
+    { name: "TestNetwork.aks", flags: "" },
+    { name: "TestNewFeatures.aks", flags: "" },
+    { name: "TestExtendedaksSyntax.aks", flags: "" },
+    { name: "TestNullPtr.aks", flags: "" },
+    { name: "TestNumericLiterals.aks", flags: "" },
+    { name: "TestOperatorsDeep.aks", flags: "" },
+    { name: "TestOpt.aks", flags: "" },
+    { name: "TestOpts.aks", flags: "" },
+    { name: "TestOverflow.aks", flags: "" },
+    { name: "TestPanicsAndErrors.aks", flags: "" },
+    { name: "TestPattern.aks", flags: "" },
+    { name: "TestPerfSuite.aks", flags: "" },
+    { name: "TestPersistentCollectionsDeepSuite.aks", flags: "" },
+    { name: "TestPlotVisualizationDeepSuite.aks", flags: "" },
+    { name: "TestPreludeTypesDeepSuite.aks", flags: "" },
+    { name: "TestPubUse.aks", flags: "" },
+    { name: "TestRaii.aks", flags: "" },
+    { name: "TestReplFfiOps.aks", flags: "" },
+    { name: "TestRustInterop.aks", flags: "" },
+    { name: "TestSafety.aks", flags: "" },
+    { name: "TestSan.aks", flags: "" },
+    { name: "TestSerialization.aks", flags: "" },
+    { name: "TestSerializationDeepSuite.aks", flags: "" },
+    { name: "TestSimdVectorDeepSuite.aks", flags: "" },
+    { name: "TestSimple.aks", flags: "" },
+    { name: "TestSimplePrint.aks", flags: "" },
+    { name: "TestStaticRecursion.aks", flags: "", expect_fail: true },
+    { name: "TestStrict.aks", flags: "--strict-types" },
+    { name: "TestStrictFail.aks", flags: "--strict-types", expect_fail: true },
+    { name: "TestStringDeepSuite.aks", flags: "" },
+    { name: "TestStringUnicode.aks", flags: "" },
+    { name: "TestStructMethodsDeepSuite.aks", flags: "" },
+    { name: "TestStructuresDeepSuite.aks", flags: "" },
+    { name: "TestSuite.aks", flags: "" },
+    { name: "TestSystem.aks", flags: "" },
+    { name: "TestTempPrint.aks", flags: "" },
+    { name: "TestTimeDateDeepSuite.aks", flags: "" },
+    { name: "TestTupleFeatures.aks", flags: "" },
+    { name: "TestTypeAlias.aks", flags: "" },
+    { name: "TestTypeCastingDeepSuite.aks", flags: "" },
+    { name: "TestTypeError.aks", flags: "", expect_fail: true },
+    { name: "TestTypes.aks", flags: "" },
+    { name: "TestUaf.aks", flags: "" },
+    { name: "TestUtilities.aks", flags: "" },
+    { name: "TestVisibilityEnforce.aks", flags: "", expect_fail: true },
+    { name: "TestZero.aks", flags: "" },
+    { name: "TestaksUniqueFeatures.aks", flags: "" },
+    { name: "TestPipelineOperator.aks", flags: "" },
+    { name: "TestComptime.aks", flags: "" },
+    { name: "TestInlineAsm.aks", flags: "" },
+    { name: "TestAdvancedLanguageFeatures.aks", flags: "" },
+    { name: "TestSecureRandom.aks", flags: "" },
+    { name: "TestFileWatcher.aks", flags: "" },
+    { name: "TestSimdVec8f.aks", flags: "" },
+    { name: "TestUdpSocket.aks", flags: "" },
+    { name: "TestArenaAllocator.aks", flags: "" },
+    { name: "TestLockFreeQueue.aks", flags: "" },
+    { name: "TestCryptoHash.aks", flags: "" },
+    { name: "TestCompression.aks", flags: "" },
+    { name: "TestThreadLocal.aks", flags: "" },
+    { name: "TestMemoryPool.aks", flags: "" },
+    { name: "TestIpcQueue.aks", flags: "" },
+    { name: "TestEnvironment.aks", flags: "" },
+    { name: "TestBitOperations.aks", flags: "" },
+    { name: "TestFileSystemExtended.aks", flags: "" },
+    { name: "TestAesGcm.aks", flags: "" },
+    { name: "TestMemoryProtect.aks", flags: "" },
+    { name: "TestProcessManager.aks", flags: "" },
+    { name: "TestOsSignal.aks", flags: "" },
+    { name: "TestUuid.aks", flags: "" },
+    { name: "TestCpuTopology.aks", flags: "" },
+    { name: "TestNamedPipe.aks", flags: "" },
+    { name: "TestFastMath.aks", flags: "" },
+    { name: "TestOsRegistry.aks", flags: "" },
+    { name: "TestConsoleBuffer.aks", flags: "" },
+    { name: "TestDiskVolume.aks", flags: "" },
+    { name: "TestThreadSync.aks", flags: "" },
+    { name: "TestMemoryStream.aks", flags: "" },
+    { name: "TestSystemPower.aks", flags: "" },
+    { name: "TestNetworkInterface.aks", flags: "" },
+    { name: "TestFastMatrix.aks", flags: "" },
+    { name: "TestOsSemaphore.aks", flags: "" },
+    { name: "TestProcessWorkingSet.aks", flags: "" },
+    { name: "TestHardwareTimestamp.aks", flags: "" },
+    { name: "TestFileLock.aks", flags: "" },
+    { name: "TestFastChecksum.aks", flags: "" },
+    { name: "TestOsEvent.aks", flags: "" },
+    { name: "TestEntropyPool.aks", flags: "" },
+    { name: "TestThreadScheduler.aks", flags: "" },
+    { name: "TestSystemLocale.aks", flags: "" },
+    { name: "TestWaitableTimer.aks", flags: "" },
+    { name: "TestFastGeometry.aks", flags: "" },
+    { name: "TestProcessTelemetry.aks", flags: "" },
+    { name: "TestReadWriteLock.aks", flags: "" },
+    { name: "TestAlignedBuffer.aks", flags: "" },
+    { name: "TestSimdVec8i.aks", flags: "" },
+    { name: "TestCryptoKdf.aks", flags: "" },
+    { name: "TestSystemDisplay.aks", flags: "" },
+    { name: "TestSharedSpinlock.aks", flags: "" },
+    { name: "TestThreadBarrier.aks", flags: "" },
+    { name: "TestJobObject.aks", flags: "" },
+    { name: "TestSharedRingBuffer.aks", flags: "" },
+    { name: "TestCryptoHmac.aks", flags: "" },
+    { name: "TestSimdVec4d.aks", flags: "" },
+    { name: "TestSystemIdentity.aks", flags: "" },
+    { name: "TestConditionVariable.aks", flags: "" },
+    { name: "TestProcessPriority.aks", flags: "" },
+    { name: "TestFastMemSearch.aks", flags: "" },
+    { name: "TestCryptoChaCha20.aks", flags: "" },
+    { name: "TestSimdVec16s.aks", flags: "" },
+    { name: "TestVirtualMemoryMap.aks", flags: "" },
+    { name: "TestThreadPoolWork.aks", flags: "" },
+    { name: "TestSymLink.aks", flags: "" },
+    { name: "TestStopwatch.aks", flags: "" },
+    { name: "TestSimdVec32u8.aks", flags: "" },
+    { name: "TestProcessMemInfo.aks", flags: "" },
+    { name: "TestCryptoEd25519.aks", flags: "" },
+    { name: "TestFilePrefetch.aks", flags: "" },
+    { name: "TestThreadPoolTimer.aks", flags: "" },
+    { name: "TestDirectIo.aks", flags: "" },
+    { name: "TestCryptoSha3.aks", flags: "" },
+    { name: "TestSimdVec8fReductions.aks", flags: "" },
+    { name: "TestConsoleAnsi.aks", flags: "" },
+    { name: "TestWaitOnAddress.aks", flags: "" },
+    { name: "TestCryptoBlake2.aks", flags: "" },
+    { name: "TestProcessAffinity.aks", flags: "" },
+    { name: "TestVirtualMemoryLock.aks", flags: "" },
+    { name: "TestFastBmi2.aks", flags: "" },
+    { name: "TestHardLink.aks", flags: "" },
+    { name: "TestSparseFile.aks", flags: "" },
+    { name: "TestFileMemoryCommit.aks", flags: "" },
+    { name: "TestCryptoPoly1305.aks", flags: "" },
+    { name: "TestSystemThreadTelemetry.aks", flags: "" },
+    { name: "TestMemoryPressureWatcher.aks", flags: "" },
+    { name: "TestSimdStringMatch.aks", flags: "" },
+    { name: "TestFileIoRing.aks", flags: "" },
+    { name: "TestCryptoArgon2.aks", flags: "" },
+    { name: "TestSimdVec4q.aks", flags: "" },
+    { name: "TestProcessMemoryProtect.aks", flags: "" },
+    { name: "TestHardwareCacheInfo.aks", flags: "" },
+    { name: "TestFastBitPermute.aks", flags: "" },
+    { name: "TestSimdDotProductFma.aks", flags: "" },
+    { name: "TestSimdVec16u8Saturating.aks", flags: "" },
+    { name: "TestSimdMatrixMultiply.aks", flags: "" },
+    { name: "TestOsSharedMemoryMutex.aks", flags: "" },
+    { name: "TestOsSystemTimerResolution.aks", flags: "" },
+    { name: "TestCryptoSipHash.aks", flags: "" },
+    { name: "TestCryptoXChaCha20Poly1305.aks", flags: "" },
+    { name: "TestCryptoSha512_256.aks", flags: "" },
+    { name: "TestCryptoHkdf.aks", flags: "" },
+    { name: "TestCryptoCmacAes.aks", flags: "" },
+    { name: "TestBitSet256.aks", flags: "" },
+    { name: "TestFastBloomFilter.aks", flags: "" },
+    { name: "TestRawDnsResolver.aks", flags: "" },
+    { name: "TestWebSocketFrameEngine.aks", flags: "" },
+    { name: "TestIcmpPingEngine.aks", flags: "" },
+    { name: "TestHttp11Parser.aks", flags: "" },
+    { name: "TestCircularByteBuffer.aks", flags: "" },
+    { name: "TestRadixTree.aks", flags: "" },
+    { name: "TestNativeMathNumericsSuite.aks", flags: "" },
+    { name: "TestNativeDataStructuresSuite.aks", flags: "" },
+    { name: "TestNativeParsersSuite.aks", flags: "" },
+    { name: "TestNativeWin32Suite.aks", flags: "" },
+    { name: "TestNativeCryptoSimdSuite.aks", flags: "" },
+    { name: "TestNativeNetworkingConcurrencySuite.aks", flags: "" },
+    { name: "TestNativeStorageAudioUiSuite.aks", flags: "" }
+];
+
+let integration_suites = [
+    { name: "Borrow Checker Suite", cmd: ".\\tests\\BorrowCheckerTests.exe" },
+    { name: "Packaging Suite", cmd: "cmd.exe /c tests\\PackagingTest.bat" },
+    { name: "Developer Tools Suite", cmd: "python tests\\ToolsTest.py" },
+    { name: "LSP Server Suite", cmd: "python tests\\TestLsp.py" },
+    { name: "DAP Debugger Suite", cmd: "python tests\\TestDap.py" }
+];
+
+let total = Length(tests) + Length(integration_suites);
+let passed = 0;
+let failed = 0;
+let idx = 1;
+
+// Run all individual AKS test scripts
+for (let i = 0; i < Length(tests); i++) {
+    let t = tests[i];
+    let file = "tests/" + t.name;
+    print("[" + String(idx) + "/" + String(total) + "] Running: " + file);
+    idx = idx + 1;
+
+    let flag_str = "";
+    if (t.flags != "") {
+        flag_str = t.flags + " ";
+    }
+    
+    let in_pipe = "< nul";
+    if (t.in_file != null && t.in_file != "") {
+        in_pipe = "< " + t.in_file;
+    }
+    
+    let cmd = ".\\aks.exe run " + flag_str + "tests\\" + t.name + " " + in_pipe + " 2>&1";
+
+    let t0 = clock();
+    let out = Execute(cmd);
+    let dur = clock() - t0;
+
+    let is_fail = false;
+    if (t.expect_fail != null && t.expect_fail == true) {
+        is_fail = true;
+    }
+    let has_leak = str_contains(out, "Memory leak warning:");
+    let has_error = str_contains(out, "Compiler error:") || str_contains(out, "Compiler error on line") || str_contains(out, "Runtime error:") || str_contains(out, "Unhandled exception in __main__") || str_contains(out, "ASSERTION FAILED") || str_contains(out, "Security error:");
+
+    let test_ok = true;
+    if (is_fail) {
+        if (!has_error) {
+            test_ok = false;
+        }
+    } else {
+        if (has_error || has_leak) {
+            test_ok = false;
+        }
+    }
+
+    let dur_str = String(round(dur * 100) / 100);
+    if (test_ok) {
+        passed = passed + 1;
+        let status_msg = "Passed";
+        if (is_fail) {
+            status_msg = "Passed (expected failure)";
+        }
+        print("  -> PASS | " + status_msg + " | 0 leaks (" + dur_str + "s)");
+    } else {
+        failed = failed + 1;
+        let leak_msg = "0 leaks";
+        if (has_leak) {
+            leak_msg = "Memory Leaks Detected";
+        }
+        print("  -> FAIL | Execution failed | " + leak_msg + " (" + dur_str + "s)");
+    }
+}
+
+// Run all integration suites
+for (let i = 0; i < Length(integration_suites); i++) {
+    let suite = integration_suites[i];
+    print("[" + String(idx) + "/" + String(total) + "] Running: " + suite.name);
+    idx = idx + 1;
+
+    let t0 = clock();
+    let out = Execute(suite.cmd + " 2>&1");
+    let dur = clock() - t0;
+
+    let has_leak = str_contains(out, "Memory leak warning:");
+    let has_fail = false;
+    if (str_contains(out, "FAILED") || str_contains(out, "Build failed") || str_contains(out, "error:") || str_contains(out, "Error:")) {
+        if (!str_contains(out, "0 Failed") && !str_contains(out, "0 failed") && !str_contains(out, "14 Passed")) {
+            has_fail = true;
+        }
+    }
+
+    let dur_str = String(round(dur * 100) / 100);
+    if (!has_fail && !has_leak) {
+        passed = passed + 1;
+        print("  -> PASS | Passed | 0 leaks (" + dur_str + "s)");
+    } else {
+        failed = failed + 1;
+        print("  -> FAIL | Suite failed | (" + dur_str + "s)");
+    }
+}
+
+// Auto-clean residual temporary files
+RemoveFile("akscoredump.json");
+RemoveFile("PlotOutput.svg");
+RemoveFile("ChartOutput.svg");
+RemoveFile("dap_pause_dump.txt");
+RemoveFile("TestIoOutput.txt");
+RemoveFile("SystemOutput.txt");
+RemoveFile("AsyncIoOutput.txt");
+RemoveFile("AsyncIoDeepOutput.txt");
+RemoveFile("outtarget.c.map");
+Execute("cmd.exe /c del /f /q jittrace*.* *.svg tests\\*.svg 2>nul & rd /s /q LibraryTestDir templibrarydir mylib myapp 2>nul");
+
+print("\nSummary: " + String(passed) + "/" + String(total) + " tests passed.");
+if (failed == 0) {
+    print("All tests passed successfully (0 errors, 0 memory leaks).");
+} else {
+    print(String(failed) + " test(s) failed.");
+}

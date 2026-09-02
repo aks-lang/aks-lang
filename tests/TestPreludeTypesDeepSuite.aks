@@ -1,0 +1,76 @@
+println("Exhaustive Prelude Types Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// StringBuilder Subsystem (new StringBuilder)
+println("\n1. Stringbuilder Subsystem");
+
+let sb = StringBuilderNew();
+sb.Append("Hello ");
+sb.Append("World ");
+sb.Append(String(2026));
+
+assert_eq(sb.ToString(), "Hello World 2026", "StringBuilder append & to_string", stats);
+assert_eq(sb.Len() > 0, true, "StringBuilder len() > 0", stats);
+
+// Trie Subsystem (trie)
+println("\n2. Trie Subsystem");
+
+let tr = Trie();
+tr.Put("apple", 100);
+tr.Put("application", 200);
+
+assert_eq(tr.Contains("apple"), true, "Trie contains 'apple'", stats);
+assert_eq(tr.StartsWith("app"), true, "Trie starts_with 'app'", stats);
+assert_eq(tr.StartsWith("ban"), false, "Trie starts_with 'ban' == false", stats);
+
+// Deque Subsystem (deque)
+println("\n3. Deque Subsystem");
+
+let dq = Deque();
+dq.PushBack(10);
+dq.PushBack(20);
+dq.PushFront(5);
+
+assert_eq(dq.Len(), 3, "Deque len() == 3", stats);
+assert_eq(dq.PopFront(), 5, "Deque pop_front() == 5", stats);
+assert_eq(dq.PopBack(), 20, "Deque pop_back() == 20", stats);
+
+// Priority Queue Subsystem (priority_queue)
+println("\n4. Priority Queue Subsystem");
+
+let pq = PriorityQueue();
+pq.Push(30);
+pq.Push(10);
+pq.Push(20);
+
+assert_eq(pq.Len(), 3, "PriorityQueue len() == 3", stats);
+assert_eq(pq.Peek() != null, true, "PriorityQueue peek() non-null", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " prelude types tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

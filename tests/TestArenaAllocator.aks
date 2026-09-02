@@ -1,0 +1,26 @@
+fn RunArenaAllocatorTests() {
+    let arena = ArenaAllocator.New(65536);
+    assert_eq(arena.arena_id != 0, true);
+
+    let ptr1 = arena.Alloc(128);
+    assert_eq(ptr1 != 0, true);
+    assert_eq(arena.Used() >= 128, true);
+
+    let ptr2 = arena.Alloc(256);
+    assert_eq(ptr2 > ptr1, true);
+
+    let usedBeforeReset = arena.Used();
+    assert_eq(usedBeforeReset >= 384, true);
+
+    arena.Reset();
+    assert_eq(arena.Used(), 0);
+
+    let ptr3 = arena.Alloc(64);
+    assert_eq(ptr3, ptr1); // First allocation after reset gets base pointer again
+
+    arena.Free();
+
+    println("Virtual memory linear arena bump allocator tests passed successfully");
+}
+
+RunArenaAllocatorTests();

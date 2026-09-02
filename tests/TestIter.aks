@@ -1,0 +1,9 @@
+let myset = HashSet();
+myset.Add("hello");
+myset.Add("world");
+print("myset _iter_type: " + String(myset._iter_type));
+let it = iter(myset);
+print("it: " + String(it));
+print("it.arr: " + String(it.arr));
+let set_result = lazy(it).Collect();
+print("set_result len: " + String(Length(set_result)));

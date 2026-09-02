@@ -1,0 +1,48 @@
+// Test Direct Win32 Raw DNS Resolver Subsystem
+fn Main() {
+    print("Testing RawDnsResolver Native Subsystem");
+
+    // Direct Win32 DNS resolution test for IPv4 (A record)
+    let a_records = RawDnsResolver.ResolveA("localhost");
+    if (a_records == null || Length(a_records) < 1) {
+        print("localhost A record resolution failed");
+        return 1;
+    }
+    if (a_records[0] != "127.0.0.1") {
+        print("localhost expected 127.0.0.1, got: " + a_records[0]);
+        return 1;
+    }
+
+    // Generic DNS query helper
+    let generic_records = RawDnsResolver.Resolve("localhost", "A");
+    if (generic_records == null || Length(generic_records) < 1) {
+        print("Generic DNS query failed");
+        return 1;
+    }
+
+    // Test query for IPv6 AAAA record
+    let aaaa_records = RawDnsResolver.ResolveAAAA("localhost");
+    if (aaaa_records == null) {
+        print("IPv6 localhost query returned null");
+        return 1;
+    }
+
+    // Test query for MX record
+    let mx_records = RawDnsResolver.ResolveMX("localhost");
+    if (mx_records == null) {
+        print("MX query returned null");
+        return 1;
+    }
+
+    // Test query for TXT record
+    let txt_records = RawDnsResolver.ResolveTXT("localhost");
+    if (txt_records == null) {
+        print("TXT query returned null");
+        return 1;
+    }
+
+    print("TestRawDnsResolver passed");
+    return 0;
+}
+
+Main();

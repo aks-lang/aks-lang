@@ -1,0 +1,9 @@
+struct PinStruct {
+    selfRef: & mut PinStruct;
+}
+fn main() {
+    let x: PinStruct = new PinStruct();
+    let y = x;
+    print(y);
+}
+main();

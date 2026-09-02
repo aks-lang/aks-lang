@@ -1,0 +1,21 @@
+// Test suite for OS Asynchronous File I/O Ring Engine
+fn main() {
+    let src_file = "tests/ioring_src.tmp";
+    let dst_file = "tests/ioring_dst.tmp";
+    RemoveFile(src_file);
+    RemoveFile(dst_file);
+
+    WriteFile(src_file, "High Performance Kernel I/O Ring Fast Copy Payload 1234567890");
+
+    let ok = FileIoRing.SubmitCopy(src_file, dst_file);
+    assert(ok == true);
+
+    let content = ReadFile(dst_file);
+    assert_eq(content, "High Performance Kernel I/O Ring Fast Copy Payload 1234567890");
+
+    RemoveFile(src_file);
+    RemoveFile(dst_file);
+    print("TestFileIoRing passed");
+}
+
+main();

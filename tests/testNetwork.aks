@@ -1,0 +1,117 @@
+print("Running Networking & Protocols Test Suite");
+
+// Base64 & sha-1
+print("\n[Test 1] Base64 & SHA-1");
+let raw_data = "Hello World";
+let b64 = Base64Encode(raw_data);
+print("  base64(\"Hello World\") = " + b64);
+if (b64 != "SGVsbG8gV29ybGQ=") {
+    print("  FAILED: Base64 encoding mismatch!");
+    exit(1);
+}
+
+let sha_hello = SHA1("Hello");
+let sha_b64 = Base64Encode(sha_hello);
+print("  base64(SHA1(\"Hello\")) = " + sha_b64);
+if (sha_b64 != "9/+ei3uy4Jtwk1pdeF4MxdnQq/A=") {
+    print("  FAILED: SHA-1 computation mismatch!");
+    exit(1);
+}
+print("  Base64 & SHA-1 passed.");
+
+// Protobuf Varint and Serialization
+print("\n[Test 2] Protobuf Varint and Serialization");
+let val = 150;
+let encoded_v = EncodeVarint(val);
+if (Ordinal(Substring(encoded_v, 0, 1)) != 150 || Ordinal(Substring(encoded_v, 1, 1)) != 1) {
+    print("  FAILED: Varint encode mismatch!");
+    exit(1);
+}
+
+let offset_arr = [0];
+let decoded_v = DecodeVarint(encoded_v, offset_arr);
+print("  Decoded varint: " + String(decoded_v));
+if (decoded_v != val) {
+    print("  FAILED: Varint decode mismatch!");
+    exit(1);
+}
+
+let encoder = new ProtobufEncoder();
+encoder.buf = "";
+encoder.WriteVarint(1, 42);
+encoder.WriteString(2, "AKS Protobuf");
+
+let decoder = new ProtobufDecoder();
+decoder.data = encoder.buf;
+decoder.offset_arr = [0];
+let f1 = decoder.NextField();
+print("  Field 1: num=" + String(f1.field_number) + ", type=" + String(f1.wire_type) + ", val=" + String(f1.varint_val));
+if (f1.field_number != 1 || f1.wire_type != 0 || f1.varint_val != 42) {
+    print("  FAILED: Protobuf varint field mismatch!");
+    exit(1);
+}
+
+let f2 = decoder.NextField();
+print("  Field 2: num=" + String(f2.field_number) + ", type=" + String(f2.wire_type) + ", val=" + f2.str_val);
+if (f2.field_number != 2 || f2.wire_type != 2 || f2.str_val != "AKS Protobuf") {
+    print("  FAILED: Protobuf string field mismatch!");
+    exit(1);
+}
+print("  Protobuf Varint and Serialization passed.");
+
+// WebSockets Handshake and Framing Verification
+print("\n[Test 3] WebSockets Handshake and Framing");
+let client_key = "dGhlIHNhbXBsZSBub25jZQ==";
+let accept_input = client_key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+let accept_key = Base64Encode(SHA1(accept_input));
+print("  Sec-WebSocket-Accept key: " + accept_key);
+if (accept_key != "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=") {
+    print("  FAILED: Sec-WebSocket-Accept key mismatch!");
+    exit(1);
+}
+print("  WebSockets Handshake and Framing passed.");
+
+async fn run_tcp_test() {
+    print("\n[Test 4] TCP Sockets Wrapper");
+    let port = 8299;
+    let server = new TcpServer();
+    let listened = server.Listen(port);
+    print("  Server listen: " + String(listened));
+    if (!listened) {
+        print("  FAILED: TcpServer failed to listen!");
+        exit(1);
+    }
+
+    async fn server_worker(srv) {
+        let conn = await srv.accept();
+        if (conn != null) {
+            let msg = await conn.recv(1024);
+            print("  Server received: " + msg);
+            await conn.send("ECHO: " + msg);
+            conn.Close();
+        }
+    }
+    let server_task = spawn server_worker(server);
+    sleep(50);
+
+    let client = new TcpClient();
+    let connected = await client.connect("127.0.0.1", port);
+    print("  Client connected: " + String(connected));
+    if (connected) {
+        await client.send("Hello TCP Wrapper");
+        let response = await client.recv(1024);
+        print("  Client received: " + response);
+        client.Close();
+    }
+    server.Close();
+    await server_task;
+    print("  TCP Sockets Wrapper passed.");
+}
+
+async fn main_net_tests() {
+    await run_tcp_test();
+    print("\nAll Networking Tests Passed Perfectly");
+}
+
+let t = spawn main_net_tests();
+await t;

@@ -1,0 +1,34 @@
+// Test suite for Hardware AVX2 4-Way 64-Bit Quadword SIMD Vector Engine
+fn main() {
+    let a = SimdVec4q.New(100, 200, 300, 400);
+    let b = SimdVec4q.New(10, 20, 30, 40);
+
+    let sum = a.Add(b);
+    assert_eq(sum.Get(0), 110);
+    assert_eq(sum.Get(1), 220);
+    assert_eq(sum.Get(2), 330);
+    assert_eq(sum.Get(3), 440);
+
+    let diff = a.Sub(b);
+    assert_eq(diff.Get(0), 90);
+    assert_eq(diff.Get(1), 180);
+    assert_eq(diff.Get(2), 270);
+    assert_eq(diff.Get(3), 360);
+
+    let v1 = SimdVec4q.New(0xFF, 0x0F, 0xF0, 0xAA);
+    let v2 = SimdVec4q.New(0x0F, 0x0F, 0x0F, 0x55);
+
+    let and_v = v1.BitAnd(v2);
+    assert_eq(and_v.Get(0), 0x0F);
+    assert_eq(and_v.Get(1), 0x0F);
+    assert_eq(and_v.Get(2), 0x00);
+    assert_eq(and_v.Get(3), 0x00);
+
+    let xor_v = v1.BitXor(v2);
+    assert_eq(xor_v.Get(0), 0xF0);
+    assert_eq(xor_v.Get(3), 0xFF);
+
+    print("TestSimdVec4q passed");
+}
+
+main();

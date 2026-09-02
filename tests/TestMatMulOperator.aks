@@ -1,0 +1,51 @@
+println("Matrix and Tensor Multiplication (@ operator) Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Matrix struct @ Matrix struct
+let m1 = MatrixFrom(2, 2, [1.0, 2.0, 3.0, 4.0]);
+let m2 = MatrixFrom(2, 2, [2.0, 0.0, 1.0, 2.0]);
+let res_mat = m1 @ m2;
+
+assert_eq(res_mat != null, true, "Matrix @ multiplication non-null", stats);
+assert_eq(res_mat.Get(0, 0), 4.0, "m1 @ m2 cell (0,0) == 4.0", stats);
+assert_eq(res_mat.Get(0, 1), 4.0, "m1 @ m2 cell (0,1) == 4.0", stats);
+assert_eq(res_mat.Get(1, 0), 10.0, "m1 @ m2 cell (1,0) == 10.0", stats);
+assert_eq(res_mat.Get(1, 1), 8.0, "m1 @ m2 cell (1,1) == 8.0", stats);
+
+// d array @ 2d array
+let a2d = [[1, 2], [3, 4]];
+let b2d = [[2, 0], [1, 2]];
+let c2d = a2d @ b2d;
+
+assert_eq(Length(c2d), 2, "2D Array @ outer length == 2", stats);
+assert_eq(c2d[0][0], 4, "2D Array @ (0,0) == 4", stats);
+assert_eq(c2d[0][1], 4, "2D Array @ (0,1) == 4", stats);
+assert_eq(c2d[1][0], 10, "2D Array @ (1,0) == 10", stats);
+assert_eq(c2d[1][1], 8, "2D Array @ (1,1) == 8", stats);
+
+// d Vector Dot Product
+let v1 = [1, 2, 3];
+let v2 = [4, 5, 6];
+let dot = v1 @ v2;
+assert_eq(dot, 32, "Vector dot product 1*4 + 2*5 + 3*6 == 32", stats);
+
+println("Results: " + String(stats[0]) + " passed, " + String(stats[1]) + " failed.");

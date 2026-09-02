@@ -1,0 +1,75 @@
+println("Exhaustive Array Repeat Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Array Repeat Creation ([val] * count)
+println("\n1. Array Repeat Creation ([0] * 50)");
+
+let buffer = [0] * 50;
+assert_eq(Length(buffer), 50, "Buffer length created with [0] * 50 == 50", stats);
+assert_eq(buffer[0], 0, "buffer[0] initial value == 0", stats);
+assert_eq(buffer[25], 0, "buffer[25] initial value == 0", stats);
+assert_eq(buffer[49], 0, "buffer[49] initial value == 0", stats);
+
+// Index-by-Index Mutation
+println("\n2. Index-by-index Mutation");
+
+buffer[0] = 100;
+buffer[49] = 999;
+assert_eq(buffer[0], 100, "buffer[0] mutated to 100", stats);
+assert_eq(buffer[1], 0, "buffer[1] unmutated == 0", stats);
+assert_eq(buffer[49], 999, "buffer[49] mutated to 999", stats);
+
+// String & Mixed Type Array Repeat
+println("\n3. String & Mixed Type Array Repeat");
+
+let str_arr = ["default"] * 10;
+assert_eq(Length(str_arr), 10, "['default'] * 10 len == 10", stats);
+assert_eq(str_arr[0], "default", "str_arr[0] == 'default'", stats);
+assert_eq(str_arr[9], "default", "str_arr[9] == 'default'", stats);
+
+str_arr[5] = "custom";
+assert_eq(str_arr[5], "custom", "str_arr[5] mutated to 'custom'", stats);
+assert_eq(str_arr[4], "default", "str_arr[4] remains 'default'", stats);
+
+// Index-by-Index Computation in Loop
+println("\n4. Index-by-index Computation in Loop");
+
+let computed = [0] * 10;
+let idx = 0;
+for val in computed {
+    computed[idx] = idx * idx;
+    idx = idx + 1;
+}
+
+assert_eq(computed[0], 0, "computed[0] == 0", stats);
+assert_eq(computed[3], 9, "computed[3] == 9", stats);
+assert_eq(computed[9], 81, "computed[9] == 81", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " array repeat subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

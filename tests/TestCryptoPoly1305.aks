@@ -1,0 +1,21 @@
+// Test suite for RFC 8439 Poly1305 One-Time Authenticator Engine
+fn main() {
+    let key_32bytes = "85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b";
+    let msg = "Cryptographic Message for Poly1305 Authentication";
+
+    let tag1 = CryptoPoly1305.Auth(key_32bytes, msg);
+    assert(tag1 != "");
+    assert_eq(Length(tag1), 32);
+
+    // Repeatability test
+    let tag2 = CryptoPoly1305.Auth(key_32bytes, msg);
+    assert_eq(tag1, tag2);
+
+    // Different message produces different MAC tag
+    let tag3 = CryptoPoly1305.Auth(key_32bytes, "Different Message");
+    assert(tag1 != tag3);
+
+    print("TestCryptoPoly1305 passed");
+}
+
+main();

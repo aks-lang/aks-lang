@@ -1,0 +1,68 @@
+print("testing REPL, FFI, and advanced operators");
+
+// Null Coalescing (??)
+print("");
+print("null coalescing (??)");
+let v1 = null ?? 42;
+print("null ?? 42 = " + String(v1));
+
+let v2 = "hello" ?? 42;
+print("\"hello\" ?? 42 = " + String(v2));
+
+let v3 = 0 ?? 42;
+print("0 ?? 42 = " + String(v3));
+
+let v4 = false ?? true;
+print("false ?? true = " + String(v4));
+
+// Optional Chaining (?.)
+print("");
+print("optional chaining (?.)");
+struct Person {
+    name: string
+}
+let u = Person { name: "Anoop" };
+
+print("u?.name = " + String(u?.name));
+
+let niluser = null;
+print("niluser?.name = " + String(niluser?.name));
+
+// Range Operator (..)
+print("");
+print("range operator (..)");
+let r = 1..5;
+print("1..5 length = " + String(Length(r)));
+print("1..5 array = ");
+print(r);
+
+// Foreign Function Interface (FFI)
+print("");
+print("foreign function interface (ffi)");
+let libname = "msvcrt.dll";
+let iswin = (platform() == "windows");
+if (!iswin) {
+    libname = "libm.so.6";
+}
+
+print("Loading dynamic library: " + libname);
+let lib_h = FFILoad(libname);
+if (lib_h != 0) {
+    print("FFI library loaded successfully. Handle: " + String(lib_h));
+
+    // call cos(0.0), signature: "d(d)" -> double returns double
+    let coszero = FFICall(lib_h, "cos", "d(d)", [0.0]);
+    print("cos(0.0) call result: " + String(coszero));
+
+    // call sin(3.141592653589793 / 2.0)
+    let sinhalfpi = FFICall(lib_h, "sin", "d(d)", [1.5707963267948966]);
+    print("sin(pi/2) call result: " + String(sinhalfpi));
+
+    FFIFree(lib_h);
+    print("FFI library handle freed");
+} else {
+    print("WARNING: Could not load library " + libname + " for FFI tests.");
+}
+
+print("");
+print("tests complete");

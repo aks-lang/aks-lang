@@ -1,0 +1,31 @@
+fn RunOsRegistryTests() {
+    let rootKey = "HKCU";
+    let subKey = "Software\\AksLangTest";
+
+    // Set string value
+    let okSetStr = OsRegistry.SetString(rootKey, subKey, "EngineVersion", "2.0.0");
+    assert_eq(okSetStr, true);
+
+    // Get string value
+    let readStr = OsRegistry.GetString(rootKey, subKey, "EngineVersion");
+    assert_eq(readStr, "2.0.0");
+
+    // Set dword value
+    let okSetDw = OsRegistry.SetDword(rootKey, subKey, "MaxThreads", 64);
+    assert_eq(okSetDw, true);
+
+    // Get dword value
+    let readDw = OsRegistry.GetDword(rootKey, subKey, "MaxThreads");
+    assert_eq(readDw, 64);
+
+    // Delete values
+    let okDel1 = OsRegistry.DeleteValue(rootKey, subKey, "EngineVersion");
+    assert_eq(okDel1, true);
+
+    let okDel2 = OsRegistry.DeleteValue(rootKey, subKey, "MaxThreads");
+    assert_eq(okDel2, true);
+
+    println("Windows registry management and query tests passed successfully");
+}
+
+RunOsRegistryTests();

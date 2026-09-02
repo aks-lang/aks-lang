@@ -1,0 +1,20 @@
+fn RunUdpSocketTests() {
+    let server = UdpDatagramSocket.Bind(19999);
+    assert_eq(server.sock_fd != -1, true);
+
+    let client = UdpDatagramSocket.New();
+    assert_eq(client.sock_fd != -1, true);
+
+    let sentBytes = client.SendTo("127.0.0.1", 19999, "PING_UDP_DATAGRAM");
+    assert_eq(sentBytes, 17);
+
+    let recvdData = server.RecvFrom(1024);
+    assert_eq(recvdData, "PING_UDP_DATAGRAM");
+
+    client.Close();
+    server.Close();
+
+    println("WinSock UDP datagram socket transmission tests passed successfully");
+}
+
+RunUdpSocketTests();

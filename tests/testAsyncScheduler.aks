@@ -1,0 +1,228 @@
+print("Running Async Scheduler & I/o Test Suite");
+
+// Async file i/o
+print("\n[Test 1] Async File I/O");
+let filename = "AsyncIoOutput.txt";
+let content = "Hello, AKS Async I/O!";
+let write_task = WriteFileAsync(filename, content);
+let write_res = await write_task;
+print("  Write completed: " + String(write_res));
+
+let read_task = ReadFileAsync(filename);
+let read_res = await read_task;
+print("  Read content: " + read_res);
+if (read_res != content) {
+    print("  FAILED: Async file content mismatch!");
+    exit(1);
+}
+RemoveFile(filename);
+print("  Async File I/O passed.");
+
+// TCP sockets
+print("\n[Test 2] TCP Sockets");
+let server = SocketListen(8099);
+print("  Server listening on port 8099: " + String(server));
+
+async fn run_server(srv) {
+    print("  Server waiting for accept...");
+    let client_task = SocketAccept(srv);
+    let client_sock = await client_task;
+    print("  Server accepted client socket: " + String(client_sock));
+
+    let msg_task = SocketReceive(client_sock, 1024);
+    let msg = await msg_task;
+    print("  Server received: " + msg);
+
+    let send_task = SocketSend(client_sock, "ACK: " + msg);
+    await send_task;
+
+    SocketClose(client_sock);
+    print("  Server finished handling client.");
+}
+
+let server_task = spawn run_server(server);
+sleep(50);
+// Let server setup
+
+print("  Client connecting...");
+let client_conn = SocketConnect("127.0.0.1", 8099);
+let client_sock = await client_conn;
+print("  Client connected, socket: " + String(client_sock));
+
+let send_task = SocketSend(client_sock, "Hello TCP");
+let bytes_sent = await send_task;
+print("  Client sent bytes: " + String(bytes_sent));
+
+let recv_task = SocketReceive(client_sock, 1024);
+let response = await recv_task;
+print("  Client received response: " + response);
+
+if (response != "ACK: Hello TCP") {
+    print("  FAILED: TCP socket response mismatch!");
+    exit(1);
+}
+SocketClose(client_sock);
+SocketClose(server);
+await server_task;
+print("  TCP Sockets passed.");
+
+// UDP sockets
+print("\n[Test 3] UDP Sockets");
+let u1 = UdpSocket(8100);
+let u2 = UdpSocket(8101);
+
+async fn run_udp_receiver(sock) {
+    let recv_task = UdpReceiveFrom(sock, 1024);
+    let msg = await recv_task;
+    print("  UDP receiver got: " + msg);
+    return msg;
+}
+
+let udp_recv_task = spawn run_udp_receiver(u2);
+sleep(50);
+
+let udp_send_task = UdpSendTo(u1, "127.0.0.1", 8101, "Hello UDP");
+await udp_send_task;
+
+let udp_msg = await udp_recv_task;
+if (udp_msg != "Hello UDP") {
+    print("  FAILED: UDP socket message mismatch!");
+    exit(1);
+}
+SocketClose(u1);
+SocketClose(u2);
+print("  UDP Sockets passed.");
+
+// Select Statement
+print("\n[Test 4] Select Statement");
+let c1 = Channel(1);
+let c2 = Channel(1);
+
+send(c1, "c1val");
+select {
+    case let x = Receive(c1) => {
+        print("  Selected case c1: " + x);
+        if (x != "c1val") {print("  FAILED: Expected c1val");
+            exit(1);
+        }
+    }
+    case let y = Receive(c2) => {
+        print("  Selected case c2: " + y);
+        exit(1);
+        // Should not happen
+    }
+}
+
+// Test select default
+select {
+    case let y = Receive(c2) => {
+        print("  Selected case c2: " + y);
+        exit(1);
+        // Should not happen
+    }
+    default => {
+        print("  Selected default case");
+    }
+}
+
+// Test select send case
+let c3 = Channel(1);
+select {
+    case send(c3, "sentval") => {
+        print("  Selected send case");
+    }
+}
+let c3val = Receive(c3);
+if (c3val != "sentval") {
+    print("  FAILED: Expected sentval in c3");
+    exit(1);
+}
+
+// Test select blocking and waking
+let c4 = Channel(1);
+async fn wake_select_chan(ch) {
+    sleep(100);
+    send(ch, "wokenval");
+}
+spawn wake_select_chan(c4);
+select {
+    case let val = Receive(c4) => {
+        print("  Selected woken case: " + val);
+        if (val != "wokenval") {print("  FAILED: Expected wokenval");
+            exit(1);
+        }
+    }
+}
+print("  Select Statement passed.");
+
+// Await Timeout
+print("\n[Test 5] Await Timeout");
+async fn slow_task() {
+    sleep(200);
+    return "slow_done";
+}
+let t_slow = spawn slow_task();
+try {
+    print("  Awaiting slow task with 50ms timeout...");
+    await t_slow with_timeout 50;
+    print("  FAILED: Await should have timed out!");
+    exit(1);
+}catch (err) {
+    print("  Caught expected error: " + err);
+}
+
+// Ensure normal await after timeout still works
+sleep(200);
+let slow_res = await t_slow;
+print("  Slow task resolved later: " + slow_res);
+if (slow_res != "slow_done") {
+    print("  FAILED: Expected slow_done");
+    exit(1);
+}
+
+// Test await with timeout that does not expire
+let t_fast = spawn slow_task();
+print("  Awaiting slow task with 500ms timeout (should succeed)...");
+let fast_res = await t_fast with_timeout 500;
+print("  Awaited successfully: " + fast_res);
+if (fast_res != "slow_done") {
+    print("  FAILED: Expected slow_done");
+    exit(1);
+}
+print("  Await Timeout passed.");
+
+// Async For-In Loops
+print("\n[Test 6] Async For-In Loops");
+let c_loop = Channel(3);
+send(c_loop, "loop1");
+send(c_loop, "loop2");
+close(c_loop);
+
+print("  Async looping over channel:");
+async for (item in c_loop) {
+    print("    item: " + item);
+}
+
+// Custom async iterator
+struct MyIterator {
+    count: int;
+}
+async fn my_iter_next(self) {
+    if (self.count < 3) {
+        self.count = self.count + 1;
+        return self.count;
+    }
+    return null;
+}
+
+let my_iter = new MyIterator();
+my_iter.count = 0;
+my_iter.next = my_iter_next;
+
+print("  Async looping over custom iterator:");
+async for (val in my_iter) {
+    print("    val: " + String(val));
+}
+print("  Async For-In Loops passed.");
+
+print("\nAll Async Scheduler Tests Passed!");

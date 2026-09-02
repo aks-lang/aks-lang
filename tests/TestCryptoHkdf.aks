@@ -1,0 +1,30 @@
+// Test RFC 5869 HMAC-SHA256 Extract-and-Expand HKDF Key Derivation Function
+fn Main() {
+    let ikm_hex = "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b";
+    let salt_hex = "000102030405060708090a0b0c";
+    let info = "f0f1f2f3f4f5f6f7f8f9";
+
+    let prk = CryptoHkdf.Extract(salt_hex, ikm_hex);
+    if (Length(prk) != 64) {
+        print("Invalid PRK length: " + Length(prk));
+        return 1;
+    }
+
+    let okm = CryptoHkdf.Expand(prk, info, 42);
+    if (Length(okm) != 84) { // 42 bytes = 84 hex characters
+        print("Invalid OKM length: " + Length(okm));
+        return 1;
+    }
+
+    // Consistency check on repeated expand
+    let okm_again = CryptoHkdf.Expand(prk, info, 42);
+    if (okm != okm_again) {
+        print("HKDF Expand mismatch on repeated execution");
+        return 1;
+    }
+
+    print("TestCryptoHkdf passed");
+    return 0;
+}
+
+Main();

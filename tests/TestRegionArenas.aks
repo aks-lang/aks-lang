@@ -1,0 +1,51 @@
+// Scoped Memory Region Arena Test Suite
+
+println("Scoped Memory Region Arena Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Region block execution
+let outside_val = 0;
+
+region scratch {
+    let local_arr = [10, 20, 30, 40];
+    outside_val = local_arr[0] + local_arr[3];
+    assert_eq(scratch.name, "scratch", "Region name identifier matches scope", stats);
+}
+
+assert_eq(outside_val, 50, "Region block executed computation correctly (10 + 40 == 50)", stats);
+
+// Default unnamed region block
+let sum_val = 0;
+region {
+    let buffer = [1, 2, 3, 4, 5];
+    let s = 0;
+    let i = 0;
+    while (i < Length(buffer)) {
+        s = s + buffer[i];
+        i++;
+    }
+    sum_val = s;
+}
+
+assert_eq(sum_val, 15, "Default region block sum computation == 15", stats);
+
+println("Results: " + String(stats[0]) + " passed, " + String(stats[1]) + " failed.");

@@ -1,0 +1,40 @@
+fn RunEinsteinTensorTests() {
+    let matA = Tensor.Create([2, 3], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    let matB = Tensor.Create([3, 2], [7.0, 8.0, 9.0, 1.0, 2.0, 3.0]);
+
+    assert_eq(matA.ndim, 2);
+    assert_eq(matA.size, 6);
+
+    let matC = Tensor.Einsum("ij,jk->ik", matA, matB);
+    assert_eq(matC.shape[0], 2);
+    assert_eq(matC.shape[1], 2);
+
+    assert_eq(matC.Get([0, 0]), 31.0);
+    assert_eq(matC.Get([0, 1]), 19.0);
+    assert_eq(matC.Get([1, 0]), 85.0);
+    assert_eq(matC.Get([1, 1]), 55.0);
+
+    let vecX = Tensor.Create([3], [1.0, 2.0, 3.0]);
+    let vecY = Tensor.Create([3], [4.0, 5.0, 6.0]);
+    let dotRes = Tensor.Einsum("i,i->", vecX, vecY);
+    assert_eq(dotRes, 32.0);
+
+    let matT = Tensor.Einsum("ij->ji", matA, null);
+    assert_eq(matT.shape[0], 3);
+    assert_eq(matT.shape[1], 2);
+    assert_eq(matT.Get([0, 1]), 4.0);
+    assert_eq(matT.Get([1, 0]), 2.0);
+
+    let bA = Tensor.Create([2, 2, 2], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
+    let bB = Tensor.Create([2, 2, 2], [1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0]);
+    let bC = Tensor.Einsum("bij,bjk->bik", bA, bB);
+    assert_eq(bC.shape[0], 2);
+    assert_eq(bC.shape[1], 2);
+    assert_eq(bC.shape[2], 2);
+    assert_eq(bC.Get([0, 0, 0]), 1.0);
+    assert_eq(bC.Get([1, 0, 0]), 10.0);
+
+    println("Native Einstein summation and tensor contraction tests passed successfully");
+}
+
+RunEinsteinTensorTests();

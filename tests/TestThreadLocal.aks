@@ -1,0 +1,25 @@
+fn RunThreadLocalTests() {
+    let tl = ThreadLocal.New();
+
+    // Initial value is 0 (NULL)
+    let val0 = tl.Get();
+    assert_eq(val0, 0);
+
+    // Set value in current thread
+    let ok = tl.Set(424242);
+    assert_eq(ok, true);
+
+    let val1 = tl.Get();
+    assert_eq(val1, 424242);
+
+    // Update value
+    tl.Set(999999);
+    let val2 = tl.Get();
+    assert_eq(val2, 999999);
+
+    tl.Free();
+
+    println("Hardware thread-local storage tests passed successfully");
+}
+
+RunThreadLocalTests();

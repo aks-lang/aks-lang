@@ -1,0 +1,92 @@
+// Test Suite: Native Data Structures Subsystems
+
+fn assert_true(cond, msg) {
+    if (!cond) {
+        print("FAIL: " + msg);
+        panic(msg);
+    }
+}
+
+fn assert_eq(a, b, msg) {
+    if (a != b) {
+        print("FAIL: " + msg + " expected " + String(b) + " got " + String(a));
+        panic(msg);
+    }
+}
+
+// 1. Fenwick Tree (FenwickTreeNewC, FenwickTreeAddC, FenwickTreeQueryC)
+let ft = FenwickTreeNewC(10);
+FenwickTreeAddC(ft, 1, 5);
+FenwickTreeAddC(ft, 2, 10);
+FenwickTreeAddC(ft, 3, 15);
+assert_eq(FenwickTreeQueryC(ft, 3), 30, "Fenwick prefix sum 1..3");
+assert_eq(FenwickTreeQueryC(ft, 2), 15, "Fenwick prefix sum 1..2");
+
+// 2. Segment Tree (SegTreeNewC, SegTreeUpdateC, SegTreeQueryC)
+let st = SegTreeNewC(5);
+SegTreeUpdateC(st, 0, 10);
+SegTreeUpdateC(st, 1, 20);
+SegTreeUpdateC(st, 2, 5);
+SegTreeUpdateC(st, 3, 40);
+SegTreeUpdateC(st, 4, 30);
+assert_eq(SegTreeQueryC(st, 0, 4), 5, "Segment tree range min [0..4]");
+SegTreeUpdateC(st, 2, 25);
+assert_eq(SegTreeQueryC(st, 0, 4), 10, "Segment tree range min after update");
+
+// 3. Disjoint Set Union (DSUNewC, DSUFindC, DSUUnionC, DSUSameC)
+let dsu = DSUNewC(10);
+DSUUnionC(dsu, 1, 2);
+DSUUnionC(dsu, 2, 3);
+assert_eq(DSUSameC(dsu, 1, 3), true, "DSU connected components");
+
+// 4. MinMax Heap (MinMaxHeapNewC, MinMaxHeapPushC, MinMaxHeapMinC, MinMaxHeapMaxC, MinMaxHeapSizeC)
+let mmh = MinMaxHeapNewC();
+MinMaxHeapPushC(mmh, 50);
+MinMaxHeapPushC(mmh, 10);
+MinMaxHeapPushC(mmh, 90);
+MinMaxHeapPushC(mmh, 30);
+assert_eq(MinMaxHeapSizeC(mmh), 4, "MinMaxHeap size");
+assert_eq(MinMaxHeapMinC(mmh), 10, "MinMaxHeap minimum element");
+assert_eq(MinMaxHeapMaxC(mmh), 90, "MinMaxHeap maximum element");
+
+// 5. Skip List (SkipListNewC, SkipListInsertC, SkipListContainsC, SkipListLenC)
+let sl = SkipListNewC();
+SkipListInsertC(sl, 42);
+SkipListInsertC(sl, 100);
+SkipListInsertC(sl, 7);
+assert_eq(SkipListLenC(sl), 3, "SkipList length");
+assert_eq(SkipListContainsC(sl, 42), true, "SkipList contains 42");
+assert_eq(SkipListContainsC(sl, 999), false, "SkipList does not contain 999");
+
+// 6. Treap Map (TreapNewC, TreapInsertC, TreapContainsC, TreapMinC, TreapMaxC)
+let tr = TreapNewC();
+TreapInsertC(tr, 25);
+TreapInsertC(tr, 10);
+TreapInsertC(tr, 40);
+assert_eq(TreapContainsC(tr, 25), true, "Treap contains key 25");
+assert_eq(TreapContainsC(tr, 99), false, "Treap does not contain key 99");
+assert_eq(TreapMinC(tr), 10, "Treap minimum key");
+assert_eq(TreapMaxC(tr), 40, "Treap maximum key");
+
+// 7. Cuckoo Filter (CuckooFilterNewC, CuckooFilterInsertC, CuckooFilterContainsC)
+let cf = CuckooFilterNewC(1024);
+CuckooFilterInsertC(cf, "alpha");
+CuckooFilterInsertC(cf, "beta");
+assert_eq(CuckooFilterContainsC(cf, "alpha"), true, "Cuckoo contains alpha");
+assert_eq(CuckooFilterContainsC(cf, "gamma"), false, "Cuckoo does not contain gamma");
+
+// 8. HAMT Map (HAMTNewC, HAMTInsertC, HAMTGetC)
+let hm = HAMTNewC();
+HAMTInsertC(hm, "user", "admin");
+assert_eq(HAMTGetC(hm, "user"), "admin", "HAMT retrieved value");
+
+// 9. Wavelet Tree (WaveletNewC, WaveletRankC)
+let wt = WaveletNewC([1, 3, 2, 3, 1, 3, 2]);
+assert_eq(WaveletRankC(wt, 3, 4), 2, "Wavelet rank count of 3 in prefix 4");
+
+// 10. Suffix Array (SuffixArrayBuildC, SuffixArraySearchC)
+let sa = SuffixArrayBuildC("banana");
+assert_true(sa != null, "Suffix array constructed");
+assert_eq(SuffixArraySearchC("banana", sa, "nan"), 2, "Suffix array search pattern index");
+
+print("PASS: Native Data Structures Subsystems");

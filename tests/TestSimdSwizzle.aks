@@ -1,0 +1,90 @@
+fn RunSimdSwizzleTests() {
+    let v2 = Vec2(3.0, 4.0);
+    assert_eq(v2.x, 3.0);
+    assert_eq(v2.y, 4.0);
+    assert_eq(v2.Length(), 5.0);
+
+    let v2Norm = v2.Normalize();
+    assert_eq(v2Norm.x, 0.6);
+    assert_eq(v2Norm.y, 0.8);
+
+    let v2Yx = v2.yx;
+    assert_eq(v2Yx.x, 4.0);
+    assert_eq(v2Yx.y, 3.0);
+
+    let v2Xx = v2.xx;
+    assert_eq(v2Xx.x, 3.0);
+    assert_eq(v2Xx.y, 3.0);
+
+    let dot2 = v2.Dot(Vec2(2.0, 3.0));
+    assert_eq(dot2, 18.0);
+
+    let dist2 = v2.Distance(Vec2(0.0, 0.0));
+    assert_eq(dist2, 5.0);
+
+    let arr2 = v2.ToArray();
+    assert_eq(arr2[0], 3.0);
+    assert_eq(arr2[1], 4.0);
+
+    let v3 = Vec3(1.0, 2.0, 3.0);
+    assert_eq(v3.x, 1.0);
+    assert_eq(v3.y, 2.0);
+    assert_eq(v3.z, 3.0);
+
+    let v3Zyx = v3.zyx;
+    assert_eq(v3Zyx.x, 3.0);
+    assert_eq(v3Zyx.y, 2.0);
+    assert_eq(v3Zyx.z, 1.0);
+
+    let v3Xy = v3.xy;
+    assert_eq(v3Xy.x, 1.0);
+    assert_eq(v3Xy.y, 2.0);
+
+    let crossProd = Vec3(1.0, 0.0, 0.0).Cross(Vec3(0.0, 1.0, 0.0));
+    assert_eq(crossProd.x, 0.0);
+    assert_eq(crossProd.y, 0.0);
+    assert_eq(crossProd.z, 1.0);
+
+    let arr3 = v3.ToArray();
+    assert_eq(arr3[0], 1.0);
+    assert_eq(arr3[1], 2.0);
+    assert_eq(arr3[2], 3.0);
+
+    let v4 = Vec4(1.0, 2.0, 3.0, 4.0);
+    let v4Wzyx = v4.wzyx;
+    assert_eq(v4Wzyx.x, 4.0);
+    assert_eq(v4Wzyx.y, 3.0);
+    assert_eq(v4Wzyx.z, 2.0);
+    assert_eq(v4Wzyx.w, 1.0);
+
+    let v4Rgba = v4.rgba;
+    assert_eq(v4Rgba.x, 1.0);
+    assert_eq(v4Rgba.y, 2.0);
+    assert_eq(v4Rgba.z, 3.0);
+    assert_eq(v4Rgba.w, 4.0);
+
+    let v4Stpq = v4.stpq;
+    assert_eq(v4Stpq.x, 1.0);
+    assert_eq(v4Stpq.y, 2.0);
+    assert_eq(v4Stpq.z, 3.0);
+    assert_eq(v4Stpq.w, 4.0);
+
+    let v4Xyz = v4.xyz;
+    assert_eq(v4Xyz.x, 1.0);
+    assert_eq(v4Xyz.y, 2.0);
+    assert_eq(v4Xyz.z, 3.0);
+
+    let v4Xx = v4.xx;
+    assert_eq(v4Xx.x, 1.0);
+    assert_eq(v4Xx.y, 1.0);
+
+    let arr4 = v4.ToArray();
+    assert_eq(arr4[0], 1.0);
+    assert_eq(arr4[1], 2.0);
+    assert_eq(arr4[2], 3.0);
+    assert_eq(arr4[3], 4.0);
+
+    println("Vector SIMD swizzle tests passed successfully");
+}
+
+RunSimdSwizzleTests();

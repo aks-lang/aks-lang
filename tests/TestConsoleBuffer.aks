@@ -1,0 +1,19 @@
+fn RunConsoleBufferTests() {
+    // Set console color
+    let okColor = ConsoleBuffer.SetColor(10, 0);
+    assert_eq(okColor, true);
+
+    // Reset console color
+    let okReset = ConsoleBuffer.ResetColor();
+    assert_eq(okReset, true);
+
+    // Get console dimensions
+    let dims = ConsoleBuffer.GetDimensions();
+    assert_eq(Length(dims), 2);
+    assert_eq(dims[0] > 0, true);
+    assert_eq(dims[1] > 0, true);
+
+    println("Terminal console buffer and styling tests passed successfully");
+}
+
+RunConsoleBufferTests();

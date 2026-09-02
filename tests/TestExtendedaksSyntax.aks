@@ -1,0 +1,45 @@
+println("Extended AKS Syntax Architecture Test");
+
+// In-Struct Method Declarations (Methods declared DIRECTLY inside struct bodies!)
+struct Point {
+    x: int,
+    y: int,
+
+    fn sum(self) -> int {
+        return self.x + self.y;
+    }
+
+    fn distance_sq(self) -> int {
+        return self.x * self.x + self.y * self.y;
+    }
+}
+
+let p = Point { x: 3, y: 4 };
+println("In-struct method p.sum(): " + String(p.sum()));
+println("In-struct method p.distance_sq(): " + String(p.distance_sq()));
+
+// Python/JS-Style Array Multiplication ([0] * 50)
+let zeros = [0] * 50;
+println("\nArray multiplication [0] * 50 length: " + String(zeros.len));
+
+zeros[0] = 10;
+zeros[25] = 25;
+zeros[49] = 99;
+
+println("zeros[0] = " + String(zeros[0]));
+println("zeros[25] = " + String(zeros[25]));
+println("zeros[49] = " + String(zeros[49]));
+
+// Array Multiplication with Multiple Elements (["a", "b"] * 3)
+let pattern = ["a", "b"] * 3;
+println("\nRepeated pattern length: " + String(pattern.len)); // 
+println("pattern[0] = " + pattern[0]);
+println("pattern[1] = " + pattern[1]);
+println("pattern[5] = " + pattern[5]);
+
+if (p.sum() == 7 && p.distance_sq() == 25 && zeros.len == 50 && zeros[49] == 99 && pattern.len == 6) {
+    println("\nExtended AKS Syntax is faultless");
+} else {
+    println("\nTest failed.");
+    exit(1);
+}

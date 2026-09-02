@@ -1,0 +1,118 @@
+print("Exhaustive Control Flow Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    print("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, st) {
+    print("  [FAIL] " + name);
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        print("  [FAIL] " + name + " (expected " + String(expected) + ", got " + String(actual) + ")");
+        st[1] = st[1] + 1;
+    }
+}
+
+// Conditionals (if / else if / else)
+print("\n1. Conditionals & Nested Branching");
+
+fn classify_number(x) {
+    if (x > 100) {
+        return "huge";
+    } else if (x > 50) {
+        return "large";
+    } else if (x > 0) {
+        return "positive";
+    } else if (x == 0) {
+        return "zero";
+    } else {
+        return "negative";
+    }
+}
+
+assert_eq(classify_number(150), "huge", "if (x > 100)", stats);
+assert_eq(classify_number(75), "large", "else if (x > 50)", stats);
+assert_eq(classify_number(10), "positive", "else if (x > 0)", stats);
+assert_eq(classify_number(0), "zero", "else if (x == 0)", stats);
+assert_eq(classify_number(-25), "negative", "else branch", stats);
+
+// Short-Circuit Logical Evaluation
+print("\n2. Short-circuit Logical Operators");
+
+let side_effect = 0;
+fn set_side_effect() {
+    side_effect = 1;
+    return true;
+}
+
+let b_and = (false && set_side_effect());
+assert_eq(side_effect, 0, "Short-circuit && does not evaluate right operand when left is false", stats);
+
+let b_or = (true || set_side_effect());
+assert_eq(side_effect, 0, "Short-circuit || does not evaluate right operand when left is true", stats);
+
+assert_eq(b_and, false, "false && expr == false", stats);
+assert_eq(b_or, true, "true || expr == true", stats);
+
+// While Loops with Break & Continue
+print("\n3. While Loops (break & Continue)");
+
+let sum_even = 0;
+let i = 0;
+while (i < 10) {
+    i++;
+    if (i % 2 != 0) {
+        continue;
+    }
+    sum_even = sum_even + i;
+}
+assert_eq(sum_even, 30, "While loop continue (Sum of evens 2+4+6+8+10 == 30)", stats);
+
+let break_val = 0;
+let j = 0;
+while (j < 100) {
+    if (j == 5) {
+        break_val = j;
+        break;
+    }
+    j++;
+}
+assert_eq(break_val, 5, "While loop break at j == 5", stats);
+
+// Switch / Case Statements
+print("\n4. Switch / Case Statements");
+
+fn test_switch(val) {
+    let res = 0;
+    switch (val) {
+        case 1: res = 10;
+        case 2: res = 20;
+        case 3: res = 30;
+        default: res = -1;
+    }
+    return res;
+}
+
+assert_eq(test_switch(1), 10, "Switch case 1 == 10", stats);
+assert_eq(test_switch(2), 20, "Switch case 2 == 20", stats);
+assert_eq(test_switch(3), 30, "Switch case 3 == 30", stats);
+assert_eq(test_switch(99), -1, "Switch default == -1", stats);
+
+// Summary
+print("Passed: " + String(stats[0]));
+print("Failed: " + String(stats[1]));
+
+if (stats[1] > 0) {
+    print("CONTROL FLOW TEST SUITE FAILED!");
+    exit(1);
+} else {
+    print("All 15 control flow tests passed successfully.");
+}

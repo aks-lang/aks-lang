@@ -1,0 +1,13 @@
+fn RunOsSignalTests() {
+    // Set ignore break to true
+    let okIgnore = OsSignal.IgnoreBreak(true);
+    assert_eq(okIgnore, true);
+
+    // Restore ignore break to false
+    let okRestore = OsSignal.IgnoreBreak(false);
+    assert_eq(okRestore, true);
+
+    println("OS console signal and interrupt handling tests passed successfully");
+}
+
+RunOsSignalTests();

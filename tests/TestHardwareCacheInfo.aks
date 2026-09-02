@@ -1,0 +1,11 @@
+// Test suite for Hardware CPU Cache Hierarchy Telemetry
+fn main() {
+    let cache = HardwareCacheInfo.GetCacheHierarchy();
+    assert(cache.line_size_bytes >= 32);
+    assert(cache.l1d_cache_bytes > 0);
+    assert(cache.l2_cache_bytes > 0);
+
+    print("TestHardwareCacheInfo passed");
+}
+
+main();

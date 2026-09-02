@@ -1,0 +1,91 @@
+println("Exhaustive Serialization Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Struct Derive Macros (@serialize / @deserialize)
+println("\n1. Struct Serialization & Deserialization Methods");
+
+@serialize
+@deserialize
+struct Point {
+    x: int,
+    y: int
+}
+
+let pt = new Point();
+pt.x = 7;
+pt.y = 12;
+
+let pt_json = Point.to_json(pt);
+let decoded_pt_json = Point.from_json(pt_json);
+assert_eq(decoded_pt_json.x, 7, "Point.from_json().x == 7", stats);
+assert_eq(decoded_pt_json.y, 12, "Point.from_json().y == 12", stats);
+
+let pt_toml = Point.to_toml(pt);
+let decoded_pt_toml = Point.from_toml(pt_toml);
+assert_eq(decoded_pt_toml.y, 12, "Point.from_toml().y == 12", stats);
+
+// CBOR Binary Serialization & Deserialization
+println("\n2. Cbor Binary Serialization");
+
+struct TestData {
+    name: string,
+    score: int,
+    active: bool
+}
+
+let inst = new TestData();
+inst.name = "CBOR Test";
+inst.score = 99;
+inst.active = true;
+
+let cbor_bytes = CborEncode(inst);
+let decoded_cbor = CborDecode(cbor_bytes);
+assert_eq(decoded_cbor.name, "CBOR Test", "cbor_decode name == 'CBOR Test'", stats);
+assert_eq(decoded_cbor.score, 99, "cbor_decode score == 99", stats);
+assert_eq(decoded_cbor.active, true, "cbor_decode active == true", stats);
+
+// MessagePack Binary Serialization & Deserialization
+println("\n3. Messagepack Binary Serialization");
+
+let msgpack_bytes = MessagePackEncode(inst);
+let decoded_msgpack = MessagePackDecode(msgpack_bytes);
+assert_eq(decoded_msgpack.name, "CBOR Test", "msgpack_decode name == 'CBOR Test'", stats);
+assert_eq(decoded_msgpack.score, 99, "msgpack_decode score == 99", stats);
+assert_eq(decoded_msgpack.active, true, "msgpack_decode active == true", stats);
+
+// Base64 Encoding & Decoding (b64enc, b64dec)
+println("\n4. Base64 Encoding & Decoding");
+
+let raw_text = "AKS Language 2026";
+let encoded_b64 = B64Enc(raw_text);
+let decoded_b64 = B64Dec(encoded_b64);
+assert_eq(decoded_b64, raw_text, "b64enc / b64dec roundtrip", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " serialization subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

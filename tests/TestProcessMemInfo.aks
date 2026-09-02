@@ -1,0 +1,11 @@
+fn RunProcessMemInfoTests() {
+    let mem = ProcessMemInfo.Current();
+    assert_eq(mem.working_set > 0, true);
+    assert_eq(mem.peak_working_set > 0, true);
+    assert_eq(mem.private_usage > 0, true);
+    assert_eq(mem.page_faults >= 0, true);
+
+    println("OS process private memory and commit charge tests passed successfully");
+}
+
+RunProcessMemInfoTests();

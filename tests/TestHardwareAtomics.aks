@@ -1,0 +1,33 @@
+fn RunHardwareAtomicsTests() {
+    let counter = AtomicCounter.New(100);
+    assert_eq(counter.Load(), 100);
+
+    let addRes = counter.Add(50);
+    assert_eq(addRes, 150);
+    assert_eq(counter.Load(), 150);
+
+    let subRes = counter.Sub(25);
+    assert_eq(subRes, 125);
+    assert_eq(counter.Load(), 125);
+
+    let casOk = counter.CompareAndSwap(125, 200);
+    assert_eq(casOk, true);
+    assert_eq(counter.Load(), 200);
+
+    let casFail = counter.CompareAndSwap(999, 500);
+    assert_eq(casFail, false);
+    assert_eq(counter.Load(), 200);
+
+    let oldVal = counter.Exchange(1000);
+    assert_eq(oldVal, 200);
+    assert_eq(counter.Load(), 1000);
+
+    let fenceOk = AtomicFence();
+    assert_eq(fenceOk, true);
+
+    counter.Free();
+
+    println("Hardware 64-bit atomic intrinsics and memory barriers tests passed successfully");
+}
+
+RunHardwareAtomicsTests();

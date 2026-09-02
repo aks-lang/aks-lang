@@ -1,0 +1,17 @@
+fn RunEntropyPoolTests() {
+    let hasHwEntropy = EntropyPool.HardwareEntropyAvailable();
+    assert_eq(hasHwEntropy, true);
+
+    let seed = EntropyPool.HardwareSeed();
+    assert_eq(seed != 0, true);
+
+    let rand64 = EntropyPool.HardwareRandomInt64();
+    assert_eq(rand64 != 0, true);
+
+    let hexBytes = EntropyPool.SystemEntropyBytes(32);
+    assert_eq(Length(hexBytes), 64);
+
+    println("Hardware on-die entropy pool and true randomness tests passed successfully");
+}
+
+RunEntropyPoolTests();

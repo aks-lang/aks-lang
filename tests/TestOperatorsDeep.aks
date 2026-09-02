@@ -1,0 +1,95 @@
+print("Exhaustive Operators Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    print("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, st) {
+    print("  [FAIL] " + name);
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        print("  [FAIL] " + name + " (expected " + String(expected) + ", got " + String(actual) + ")");
+        st[1] = st[1] + 1;
+    }
+}
+
+// Integer Arithmetic & Precedence
+print("\n1. Integer Arithmetic & Precedence");
+
+assert_eq(10 + 20 * 3, 70, "Precedence: 10 + 20 * 3 == 70", stats);
+assert_eq((10 + 20) * 3, 90, "Parentheses: (10 + 20) * 3 == 90", stats);
+assert_eq(100 - 45 / 5, 91, "Precedence: 100 - 45 / 5 == 91", stats);
+assert_eq(27 % 5, 2, "Modulo: 27 % 5 == 2", stats);
+
+let val = 10;
+val++;
+assert_eq(val, 11, "Increment val++ == 11", stats);
+val--;
+assert_eq(val, 10, "Decrement val-- == 10", stats);
+
+let neg = -42;
+assert_eq(neg, -42, "Unary negation -42", stats);
+
+// Float Precision Math
+print("\n2. Float Precision Math");
+
+fn abs_diff(a, b) {
+    let diff = a - b;
+    if (diff < 0.0) { return -diff; }
+    return diff;
+}
+
+let f_res = 3.5 * 2.0 + 1.25;
+if (abs_diff(f_res, 8.25) < 0.001) {
+    pass("Float math: 3.5 * 2.0 + 1.25 == 8.25", stats);
+} else {
+    fail("Float math: 3.5 * 2.0 + 1.25 == 8.25", stats);
+}
+
+let f_div = 10.0 / 4.0;
+if (abs_diff(f_div, 2.5) < 0.001) {
+    pass("Float division: 10.0 / 4.0 == 2.5", stats);
+} else {
+    fail("Float division: 10.0 / 4.0 == 2.5", stats);
+}
+
+// Bitwise Operations
+print("\n3. Bitwise Operations");
+
+assert_eq(0b1100 & 0b1010, 0b1000, "Bitwise AND: 12 & 10 == 8", stats);
+assert_eq(0b1100 | 0b1010, 0b1110, "Bitwise OR: 12 | 10 == 14", stats);
+assert_eq(0b1100 ^ 0b1010, 0b0110, "Bitwise XOR: 12 ^ 10 == 6", stats);
+assert_eq(1 << 4, 16, "Bitwise Left Shift: 1 << 4 == 16", stats);
+assert_eq(32 >> 3, 4, "Bitwise Right Shift: 32 >> 3 == 4", stats);
+
+// Comparison Operators & Strings
+print("\n4. Comparisons & String Concatenation");
+
+assert_eq(10 < 20, true, "Comparison 10 < 20", stats);
+assert_eq(20 <= 20, true, "Comparison 20 <= 20", stats);
+assert_eq(50 > 30, true, "Comparison 50 > 30", stats);
+assert_eq(30 >= 30, true, "Comparison 30 >= 30", stats);
+assert_eq(100 == 100, true, "Equality 100 == 100", stats);
+assert_eq(100 != 200, true, "Inequality 100 != 200", stats);
+
+let s_concat = "Value: " + String(100) + ", PI: " + String(3.14);
+assert_eq(s_concat, "Value: 100, PI: 3.14", "String concatenation with str() helpers", stats);
+
+// Summary
+print("Passed: " + String(stats[0]));
+print("Failed: " + String(stats[1]));
+
+if (stats[1] > 0) {
+    print("OPERATORS TEST SUITE FAILED!");
+    exit(1);
+} else {
+    print("All 18 operator tests passed successfully.");
+}

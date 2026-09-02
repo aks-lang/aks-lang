@@ -1,0 +1,80 @@
+// Test WebSocketFrameEngine RFC 6455 Framing Subsystem
+fn Main() {
+    print("Testing WebSocketFrameEngine RFC 6455 Framing Subsystem");
+
+    // Test Unmasked Text Frame (Opcode 1)
+    let text_msg = "Hello, WebSocket!";
+    let encoded_text = WebSocketFrameEngine.Encode(text_msg, 1, false, 0);
+    if (encoded_text == null || Length(encoded_text) == 0) {
+        print("Encoded text frame should be valid hex");
+        return 1;
+    }
+
+    let decoded_frame = WebSocketFrameEngine.Decode(encoded_text);
+    if (decoded_frame == null) {
+        print("Decoded text frame must not be null");
+        return 1;
+    }
+    if (decoded_frame.fin != true || decoded_frame.opcode != 1 || decoded_frame.masked != false) {
+        print("Text frame header mismatch");
+        return 1;
+    }
+    if (decoded_frame.payload != text_msg || decoded_frame.payload_len != Length(text_msg)) {
+        print("Decoded payload mismatch");
+        return 1;
+    }
+
+    // Test Masked Binary Frame (Opcode 2) with 32-bit mask key
+    let bin_data = "AKS_PROTOCOL_PAYLOAD_DATA";
+    let mask_key = 0x37fa213d;
+    let encoded_masked = WebSocketFrameEngine.Encode(bin_data, 2, true, mask_key);
+    if (encoded_masked == null || Length(encoded_masked) == 0) {
+        print("Masked frame encoded failed");
+        return 1;
+    }
+
+    let decoded_masked = WebSocketFrameEngine.Decode(encoded_masked);
+    if (decoded_masked == null) {
+        print("Decoded masked frame not null");
+        return 1;
+    }
+    if (decoded_masked.fin != true || decoded_masked.opcode != 2 || decoded_masked.masked != true) {
+        print("Masked frame header mismatch");
+        return 1;
+    }
+    if (decoded_masked.payload != bin_data || decoded_masked.payload_len != Length(bin_data)) {
+        print("Unmasked payload mismatch");
+        return 1;
+    }
+
+    // Test Control Frame: Ping (Opcode 9)
+    let ping_payload = "ping_123";
+    let encoded_ping = WebSocketFrameEngine.Encode(ping_payload, 9, false, 0);
+    let decoded_ping = WebSocketFrameEngine.Decode(encoded_ping);
+    if (decoded_ping == null || decoded_ping.opcode != 9 || decoded_ping.payload != ping_payload) {
+        print("Ping frame mismatch");
+        return 1;
+    }
+
+    // Test Control Frame: Pong (Opcode 10)
+    let pong_payload = "pong_123";
+    let encoded_pong = WebSocketFrameEngine.Encode(pong_payload, 10, false, 0);
+    let decoded_pong = WebSocketFrameEngine.Decode(encoded_pong);
+    if (decoded_pong == null || decoded_pong.opcode != 10 || decoded_pong.payload != pong_payload) {
+        print("Pong frame mismatch");
+        return 1;
+    }
+
+    // Test Control Frame: Close (Opcode 8)
+    let encoded_close = WebSocketFrameEngine.Encode("", 8, false, 0);
+    let decoded_close = WebSocketFrameEngine.Decode(encoded_close);
+    if (decoded_close == null || decoded_close.opcode != 8) {
+        print("Close frame mismatch");
+        return 1;
+    }
+
+    print("TestWebSocketFrameEngine passed");
+    return 0;
+}
+
+Main();

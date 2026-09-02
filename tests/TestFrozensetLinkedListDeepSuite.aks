@@ -1,0 +1,53 @@
+println("Exhaustive Linkedlist Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// LinkedList Subsystem (linked_list, push_front, push_back, pop, to_array)
+println("\n1. Linkedlist Subsystem");
+
+let ll = LinkedList();
+assert_eq(ll.Len(), 0, "linked_list initial len == 0", stats);
+
+ll.PushBack(20);
+ll.PushBack(30);
+ll.PushFront(10);
+
+assert_eq(ll.Len(), 3, "ll.len() after 3 pushes == 3", stats);
+
+let arr = ll.ToArray();
+assert_eq(Length(arr), 3, "ll.to_array() length == 3", stats);
+assert_eq(arr[0], 10, "arr[0] == 10", stats);
+assert_eq(arr[1], 20, "arr[1] == 20", stats);
+assert_eq(arr[2], 30, "arr[2] == 30", stats);
+
+assert_eq(ll.PopFront(), 10, "ll.pop_front() == 10", stats);
+assert_eq(ll.PopBack(), 30, "ll.pop_back() == 30", stats);
+assert_eq(ll.Len(), 1, "ll.len() after pops == 1", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " linkedlist tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

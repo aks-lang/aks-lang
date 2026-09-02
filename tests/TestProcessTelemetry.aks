@@ -1,0 +1,21 @@
+fn RunProcessTelemetryTests() {
+    let cmdLine = ProcessTelemetry.CommandLine();
+    assert_eq(Length(cmdLine) > 0, true);
+
+    let exePath = ProcessTelemetry.ExecutablePath();
+    assert_eq(Length(exePath) > 0, true);
+
+    let pid = ProcessTelemetry.ProcessId();
+    assert_eq(pid > 0, true);
+
+    let tid = ProcessTelemetry.ThreadId();
+    assert_eq(tid > 0, true);
+
+    let cpuTimes = ProcessTelemetry.KernelUserCpuTimes();
+    assert_eq(cpuTimes.kernel_ms >= 0, true);
+    assert_eq(cpuTimes.user_ms >= 0, true);
+
+    println("Process telemetry and execution times tests passed successfully");
+}
+
+RunProcessTelemetryTests();

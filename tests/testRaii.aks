@@ -1,0 +1,17 @@
+struct test {
+    field: string;
+}
+
+fn leakcreator() {
+    let arr = [1, 2, 3];
+    let s = new test();
+    s.field = "hello";
+    // arr and s should be cleaned up automatically on return!
+}
+
+let i = 0;
+while (i < 10) {
+    leakcreator();
+    i++;
+}
+print("RAII loop done");

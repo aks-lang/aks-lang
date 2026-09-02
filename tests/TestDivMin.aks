@@ -1,0 +1,6 @@
+try {
+    let x = 10 / 0;
+    print("no div error");
+} catch (err) {
+    print("Caught: " + err);
+}

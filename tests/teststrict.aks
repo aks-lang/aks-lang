@@ -1,0 +1,54 @@
+struct Point {
+    x: any;
+    y: any;
+}
+
+fn add(x, y) {
+    return x + y;
+}
+
+fn getNumber(cond) {
+    if (cond) {
+        return 42;
+    }else {
+        return 100;
+    }
+}
+
+fn testNullNarrow(x: string | null) {
+    if (x != null) {
+        let s: string = x;
+        print(s);
+    }
+}
+
+fn testTypeNarrow(x: any) {
+    if (type(x) == "string") {
+        let s: string = x;
+        print(s);
+    }
+}
+
+fn main() {
+    print("starting strict type tests");
+
+    let a = add(10, 20);
+    print(String(a));
+
+    let b = getNumber(1);
+    print(String(b));
+
+    let p = new Point();
+    p.x = 100;
+    p.y = 200;
+    print(String(p.x));
+
+    testNullNarrow("hello");
+    testNullNarrow(null);
+
+    testTypeNarrow("world");
+
+    print("all strict tests passed");
+}
+
+main();

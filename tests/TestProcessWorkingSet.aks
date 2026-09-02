@@ -1,0 +1,20 @@
+fn RunProcessWorkingSetTests() {
+    let ws = ProcessWorkingSet.CurrentWorkingSet(0);
+    assert_eq(ws > 0, true);
+
+    let peak = ProcessWorkingSet.PeakWorkingSet(0);
+    assert_eq(peak >= ws, true);
+
+    let faults = ProcessWorkingSet.PageFaultCount(0);
+    assert_eq(faults > 0, true);
+
+    let trimmed = ProcessWorkingSet.TrimWorkingSet(0);
+    assert_eq(trimmed, true);
+
+    let wsAfter = ProcessWorkingSet.CurrentWorkingSet(0);
+    assert_eq(wsAfter > 0, true);
+
+    println("OS memory working set telemetry tests passed successfully");
+}
+
+RunProcessWorkingSetTests();

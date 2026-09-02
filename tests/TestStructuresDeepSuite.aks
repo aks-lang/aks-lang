@@ -1,0 +1,135 @@
+print("Exhaustive Structures Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    print("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, st) {
+    print("  [FAIL] " + name);
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        print("  [FAIL] " + name + " (expected " + String(expected) + ", got " + String(actual) + ")");
+        st[1] = st[1] + 1;
+    }
+}
+
+// Tuples Subsystem
+print("\n1. Tuples Subsystem");
+
+let tup1 = (10, "hello", true);
+assert_eq(Length(tup1), 3, "Tuple length len() == 3", stats);
+assert_eq(tup1[0], 10, "Tuple index 0 == 10", stats);
+assert_eq(tup1[1], "hello", "Tuple index 1 == 'hello'", stats);
+assert_eq(tup1[2], true, "Tuple index 2 == true", stats);
+
+let tup2 = (100, 200);
+let t_sum = tup2[0] + tup2[1];
+assert_eq(t_sum, 300, "Tuple indexing addition (100+200 == 300)", stats);
+
+let nested_tup = ((1, 2), (3, 4));
+assert_eq(nested_tup[0][0], 1, "Nested Tuple [0][0] == 1", stats);
+assert_eq(nested_tup[1][1], 4, "Nested Tuple [1][1] == 4", stats);
+
+// Structs & OOP Subsystem
+print("\n2. Structs & Oop Subsystem");
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+fn Point.sum(self) {
+    return self.x + self.y;
+}
+
+let p1 = new Point();
+p1.x = 10;
+p1.y = 20;
+
+assert_eq(p1.x, 10, "Struct Field Read p1.x == 10", stats);
+assert_eq(p1.y, 20, "Struct Field Read p1.y == 20", stats);
+assert_eq(p1.sum(), 30, "Struct Method Execution p1.sum() == 30", stats);
+
+p1.x = 99;
+assert_eq(p1.x, 99, "Struct Field Write p1.x = 99", stats);
+assert_eq(p1.sum(), 119, "Struct Method Execution after mutation p1.sum() == 119", stats);
+
+struct Circle {
+    center_x: int;
+    center_y: int;
+    radius: float;
+}
+
+fn Circle.area(self) {
+    return 3.14 * self.radius * self.radius;
+}
+
+let c1 = new Circle();
+c1.center_x = 0;
+c1.center_y = 0;
+c1.radius = 2.0;
+
+assert_eq(c1.center_x, 0, "Circle center_x == 0", stats);
+
+fn abs_diff(a, b) {
+    let diff = a - b;
+    if (diff < 0.0) { return -diff; }
+    return diff;
+}
+
+if (abs_diff(c1.area(), 12.56) < 0.01) {
+    pass("Circle Method Area Calculation c1.area() == 12.56", stats);
+} else {
+    fail("Circle Method Area Calculation c1.area() == 12.56", stats);
+}
+
+// Enums & Pattern Matching
+print("\n3. Enums & Pattern Matching");
+
+enum Shape {
+    Circle(float),
+    Rectangle(float, float)
+};
+
+fn calc_shape_area(s) {
+    let res = 0.0;
+    match (s) {
+        case Shape.Circle(r) => { res = 3.14 * r * r; }
+        case Shape.Rectangle(w, h) => { res = w * h; }
+    }
+    return res;
+}
+
+let circ = Shape.Circle(3.0);
+let rect = Shape.Rectangle(4.0, 5.0);
+
+if (abs_diff(calc_shape_area(circ), 28.26) < 0.01) {
+    pass("Enum Pattern Match Shape.Circle(3.0) area == 28.26", stats);
+} else {
+    fail("Enum Pattern Match Shape.Circle(3.0) area == 28.26", stats);
+}
+
+if (abs_diff(calc_shape_area(rect), 20.0) < 0.01) {
+    pass("Enum Pattern Match Shape.Rectangle(4.0, 5.0) area == 20.0", stats);
+} else {
+    fail("Enum Pattern Match Shape.Rectangle(4.0, 5.0) area == 20.0", stats);
+}
+
+// Summary
+print("Passed: " + String(stats[0]));
+print("Failed: " + String(stats[1]));
+
+if (stats[1] > 0) {
+    print("DEEP STRUCTURES TEST SUITE FAILED!");
+    exit(1);
+} else {
+    print("All 16 deep structures & enum tests passed successfully.");
+}

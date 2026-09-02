@@ -1,0 +1,5 @@
+fn recurse(n) {
+    recurse(n);
+    // unconditional recursive call!
+}
+recurse(10);

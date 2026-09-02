@@ -1,0 +1,197 @@
+print("testing type system");
+
+// Interfaces & Explicit Implements
+print("Testing interfaces");
+interface Drivable {
+    fn drive(speed: int) -> void;
+}
+
+interface Flyable {
+    fn fly(altitude: int) -> void;
+}
+
+struct Car implements Drivable {
+    drive: fn(int) -> void;
+}
+
+struct FlyingCar implements Drivable, Flyable {
+    drive: fn(int) -> void;
+    fly: fn(int) -> void;
+}
+
+fn driveCar(d: Drivable, s: int) {
+    d.drive(s);
+}
+
+let myCar = new Car();
+myCar.drive = fn(speed: int) {
+    print("Driving car at speed: " + String(speed));
+};
+
+// test interface compatibility check
+driveCar(myCar, 60);
+
+// Generics (Struct Templates & Monomorphization)
+print("Testing generics");
+struct Box < T > {
+    value: T;
+}
+
+let intBox = new Box < int > ();
+intBox.value = 42;
+print("intBox value: " + String(intBox.value));
+
+let strBox = new Box < string > ();
+strBox.value = "Hello Generics";
+print("strBox value: " + strBox.value);
+
+// Union Types
+print("Testing union types");
+fn processUnion(val: int | string) {
+    print("Processing union value: " + String(val));
+}
+processUnion(100);
+processUnion("AKS Type System");
+
+// Intersection Types & Structural Compatibility
+print("Testing intersection types");
+let myFC = new FlyingCar();
+myFC.drive = fn(speed: int) {
+    print("FlyingCar driving at speed: " + String(speed));
+};
+myFC.fly = fn(alt: int) {
+    print("FlyingCar flying at altitude: " + String(alt));
+};
+
+// flyingCar matches intersection of Drivable & Flyable
+let hybrid: Drivable & Flyable = myFC;
+hybrid.drive(80);
+hybrid.fly(500);
+
+// Algebraic Data Types & Pattern Matching
+print("Testing ADTs and pattern matching");
+enum Shape {
+    Circle(int),
+    Rectangle(int, int),
+    Point
+};
+
+fn describeShape(s: Shape) {
+    match (s) {
+        Shape.Circle(r) => {
+            print("Area of Circle: " + String(3 * r * r));
+        },
+        Shape.Rectangle(w, h) => {
+            print("Area of Rectangle: " + String(w * h));
+        },
+        Shape.Point => {
+            print("It is a Point!");
+        }
+    }
+}
+
+let c = Shape.Circle(10);
+let r = Shape.Rectangle(5, 8);
+let p = Shape.Point();
+
+describeShape(c);
+describeShape(r);
+describeShape(p);
+
+// Dependent / Refinement Types
+print("Testing dependent / refinement types");
+fn positiveSquare(x: int {val: val > 0}) -> int {res: res > x} {
+    return x * x + 1;
+}
+
+let posVal: int {x: x >= 10} = 15;
+print("posVal: " + String(posVal));
+
+let result = positiveSquare(posVal);
+print("positiveSquare result: " + String(result));
+
+// test positiveSquare with invalid argument (now caught at compile-time, tested in testCompileError.aks)
+// try {
+// positiveSquare(-5);
+// print("FAILED: expected refinement error for negative argument");
+// } catch(err) {
+// print("Caught expected argument refinement error: " + err);
+// }
+
+// test refinement assignment error (now caught at compile-time, tested in testCompileError.aks)
+// try {
+// let bad: int{x: x < 0} = 10;
+// print("FAILED: expected refinement error for positive assignment");
+// } catch(err) {
+// print("Caught expected assignment refinement error: " + err);
+// }
+
+// New enhancement tests
+print("Testing new enhancements");
+
+// Interface Default Methods
+print("Testing default interface methods");
+interface Greetable {
+    fn greet() -> void {
+        print("Hello from default interface method!");
+    }
+}
+struct Person implements Greetable {}
+let p1 = new Person();
+p1.greet();
+// should call default body and print "Hello from default interface method!"
+
+// ADT Trait Derivations (toString / eq)
+print("Testing ADT derives");
+let c1 = Shape.Circle(10);
+let c2 = Shape.Circle(10);
+let c3 = Shape.Circle(12);
+let pt = Shape.Point();
+
+print("Shape c1: " + Shape.ToString(c1));
+// circle(10)
+print("Shape pt: " + Shape.ToString(pt));
+// point
+print("c1 == c2: " + String(Shape.Eq(c1, c2)));
+// true
+print("c1 == c3: " + String(Shape.Eq(c1, c3)));
+// false
+
+// Intersection runtime checking failure
+print("Testing intersection runtime type checks");
+struct NonFlyer implements Drivable {
+    drive: fn(int) -> void;
+}
+let nf = new NonFlyer();
+nf.drive = fn(speed: int) {};
+try {
+    let badhybrid: Drivable & Flyable = nf;
+    print("FAILED: expected runtime intersection error");
+}catch (err) {
+    print("Caught expected intersection runtime type error: " + err);
+}
+
+// Type narrowing inside branches
+print("Testing branch type narrowing");
+let valnarrow: int = 5;
+if (valnarrow > 0) {
+    let positiveval: int {v: v > 0} = valnarrow;
+    // should check out at compile time!
+    print("Type narrowing success: positiveval = " + String(positiveval));
+}
+
+// Non-exhaustive match warning demo (compiling this triggers the compiler warning)
+print("Testing non-exhaustive match warning");
+enum Color {
+    Red,
+    Green,
+    Blue
+};
+fn checkExhaustiveness(col: Color) {
+    match (col) {
+        Color.Red => {print("Red");
+        }
+    }
+}
+
+print("type system verified");

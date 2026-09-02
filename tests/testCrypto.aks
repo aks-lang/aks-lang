@@ -1,0 +1,210 @@
+print("Running Cryptography Suite Test Suite");
+
+// Hex Encoding & Decoding
+print("\n[Test 1] Hex Encoding / Decoding");
+let plain = "Hello Crypto World!";
+let hex = HexEncode(plain);
+print("  hex_encode(\"" + plain + "\") = " + hex);
+let decoded = HexDecode(hex);
+print("  hex_decode(...) = " + decoded);
+if (decoded != plain) {
+    print("  FAILED: Hex roundtrip mismatch!");
+    exit(1);
+}
+print("  Hex passed.");
+
+// Hash functions (sha-512, sha-3)
+print("\n[Test 2] SHA-512 & SHA-3");
+let data = "hello";
+// Sha-512 of "hello" (known hex)
+let h512 = SHA512(data);
+print("  SHA512(\"hello\") = " + h512);
+if (Substring(h512, 0, 16) != "9b71d224bd62f378") {
+    print("  FAILED: SHA-512 mismatch!");
+    exit(1);
+}
+
+// Sha3-256 of "hello"
+let h3_256 = SHA3256(data);
+print("  sha3_256(\"hello\") = " + h3_256);
+if (Substring(h3_256, 0, 16) != "3338be694f50c5f3") {
+    print("  FAILED: SHA3-256 mismatch!");
+    exit(1);
+}
+
+// Sha3-512 of "hello"
+let h3_512 = SHA3512(data);
+print("  sha3_512(\"hello\") = " + h3_512);
+if (Substring(h3_512, 0, 16) != "75d527c368f2efe8") {
+    print("  FAILED: SHA3-512 mismatch!");
+    exit(1);
+}
+print("  Hashes passed.");
+
+// HMAC (sha-256, sha-512)
+print("\n[Test 3] HMAC");
+let key = "secret_key";
+let msg = "message_to_sign";
+let mac256 = HMACSHA256(key, msg);
+print("  hmac_sha256 = " + mac256);
+// Hmac-sha256 of "message_to_sign" with "secret_key"
+if (Substring(mac256, 0, 16) != "8ca2ba83d47f49fc") {
+    print("  FAILED: HMAC-SHA256 mismatch!");
+    exit(1);
+}
+
+let mac512 = HMACSHA512(key, msg);
+print("  hmac_sha512 = " + mac512);
+if (Substring(mac512, 0, 16) != "6a73cc7c9316b3cc") {
+    print("  FAILED: HMAC-SHA512 mismatch!");
+    exit(1);
+}
+print("  HMAC passed.");
+
+// Symmetric Encryption (AES-256-GCM & ChaCha20-Poly1305)
+print("\n[Test 4] Symmetric Ciphers (AES-256-GCM & ChaCha20-Poly1305)");
+let key_hex = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+// bytes key
+let iv_hex = "000000000000000000000000";
+// Bytes iv
+let aad = "additional_authenticated_data";
+let pt = "Top Secret Plaintext Message";
+
+// Aes-gcm
+print("  Running AES-256-GCM...");
+let aes_res = AES256GCMEncrypt(key_hex, iv_hex, pt, aad);
+print("    ciphertext = " + aes_res.ciphertext);
+print("    tag = " + aes_res.tag);
+
+let aes_dec = AES256GCMDecrypt(key_hex, iv_hex, aes_res.ciphertext, aes_res.tag, aad);
+print("    decrypted = " + aes_dec);
+if (aes_dec != pt) {
+    print("  FAILED: AES-GCM decryption mismatch!");
+    exit(1);
+}
+
+// ChaCha20-Poly1305
+print("  Running ChaCha20-Poly1305...");
+let chacha_res = Chacha20Poly1305Encrypt(key_hex, iv_hex, pt, aad);
+print("    ciphertext = " + chacha_res.ciphertext);
+print("    tag = " + chacha_res.tag);
+
+let chacha_dec = Chacha20Poly1305Decrypt(key_hex, iv_hex, chacha_res.ciphertext, chacha_res.tag, aad);
+print("    decrypted = " + chacha_dec);
+if (chacha_dec != pt) {
+    print("  FAILED: ChaCha20-Poly1305 decryption mismatch!");
+    exit(1);
+}
+print("  Symmetric ciphers passed.");
+
+// Key Derivation (PBKDF2, Scrypt, Argon2)
+print("\n[Test 5] Key Derivation Functions (PBKDF2, Scrypt, Argon2)");
+let password = "super_secure_password";
+let salt = "salt_value_123456";
+
+print("  Running PBKDF2...");
+let k_pbkdf2 = PBKDF2(password, salt, 1000, 32);
+print("    PBKDF2 key (32 bytes) = " + k_pbkdf2);
+
+print("  Running Scrypt...");
+let k_scrypt = Scrypt(password, salt, 1024, 8, 1, 32);
+print("    Scrypt key (32 bytes) = " + k_scrypt);
+
+print("  Running Argon2i...");
+let k_argon2i = Argon2(password, salt, 32, 2, 1, 32, "argon2i");
+print("    Argon2i key = " + k_argon2i);
+
+print("  Running Argon2d...");
+let k_argon2d = Argon2(password, salt, 32, 2, 1, 32, "argon2d");
+print("    Argon2d key = " + k_argon2d);
+
+print("  Running Argon2id...");
+let k_argon2id = Argon2(password, salt, 32, 2, 1, 32, "argon2id");
+print("    Argon2id key = " + k_argon2id);
+print("  KDFs passed.");
+
+// RSA Signature & Verification
+print("\n[Test 6] RSA Signing & Verification");
+print("  Generating RSA 2048 keypair...");
+let rsa_keys = RSAKeygen(2048);
+if (rsa_keys == null) {
+    print("  FAILED to generate RSA keys!");
+    exit(1);
+}
+let payload = "Important message to sign via RSA";
+let rsa_sig = RSASign(rsa_keys.private_key, payload);
+print("  RSA signature: " + Substring(rsa_sig, 0, 32) + "...");
+let rsa_ok = RSAVerify(rsa_keys.public_key, payload, rsa_sig);
+print("  RSA verification: " + String(rsa_ok));
+if (!rsa_ok) {
+    print("  FAILED: RSA verification failed!");
+    exit(1);
+}
+print("  RSA passed.");
+
+// ECDSA (nist p-256) signature & verification
+print("\n[Test 7] ECDSA Signing & Verification");
+print("  Generating ECDSA keypair...");
+let ecdsa_keys = ECDSAKeygen();
+if (ecdsa_keys == null) {
+    print("  FAILED to generate ECDSA keys!");
+    exit(1);
+}
+let ecdsa_sig = ECDSASign(ecdsa_keys.private_key, payload);
+print("  ECDSA signature: " + Substring(ecdsa_sig, 0, 32) + "...");
+let ecdsa_ok = ECDSAVerify(ecdsa_keys.public_key, payload, ecdsa_sig);
+print("  ECDSA verification: " + String(ecdsa_ok));
+if (!ecdsa_ok) {
+    print("  FAILED: ECDSA verification failed!");
+    exit(1);
+}
+print("  ECDSA passed.");
+
+// Ed25519 Signature & Verification
+print("\n[Test 8] Ed25519 Signing & Verification");
+print("  Generating Ed25519 keypair...");
+let ed_keys = Ed25519Keygen();
+if (ed_keys == null) {
+    print("  FAILED to generate Ed25519 keys!");
+    exit(1);
+}
+let ed_sig = Ed25519Sign(ed_keys.private_key, payload);
+print("  Ed25519 signature: " + Substring(ed_sig, 0, 32) + "...");
+let ed_ok = Ed25519Verify(ed_keys.public_key, payload, ed_sig);
+print("  Ed25519 verification: " + String(ed_ok));
+if (!ed_ok) {
+    print("  FAILED: Ed25519 verification failed!");
+    exit(1);
+}
+print("  Ed25519 passed.");
+
+// X25519 Diffie-Hellman Key Exchange
+print("\n[Test 9] X25519 Diffie-Hellman Key Exchange");
+print("  Generating Alice's keypair...");
+let alice = X25519Keygen();
+print("  Generating Bob's keypair...");
+let bob = X25519Keygen();
+
+let alice_secret = X25519DH(alice.private_key, bob.public_key);
+let bob_secret = X25519DH(bob.private_key, alice.public_key);
+print("  Alice shared secret = " + alice_secret);
+print("  Bob shared secret   = " + bob_secret);
+if (alice_secret != bob_secret) {
+    print("  FAILED: X25519 shared secret mismatch!");
+    exit(1);
+}
+print("  X25519 passed.");
+
+// OS CSPRNG secure random
+print("\n[Test 10] OS CSPRNG Secure Random");
+let rand_hex1 = SecureRandom(16);
+let rand_hex2 = SecureRandom(16);
+print("  rand_hex1 = " + rand_hex1);
+print("  rand_hex2 = " + rand_hex2);
+if (Length(rand_hex1) != 32 || rand_hex1 == rand_hex2) {
+    print("  FAILED: CSPRNG generation failed or returned duplicate!");
+    exit(1);
+}
+print("  Secure random passed.");
+
+print("\nAll Cryptography Tests Passed Successfully!");

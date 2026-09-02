@@ -1,0 +1,86 @@
+println("Exhaustive Match Pattern Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+// Integer Expression-Based Match with Fallback
+println("\n1. Integer Match With 'else =>' Fallback");
+
+fn get_role_name(code) {
+    let role = match code {
+        1 => "Administrator",
+        2 => "Developer",
+        3 => "Tester",
+        else => "Guest User"
+    };
+    return role;
+}
+
+assert_eq(get_role_name(1), "Administrator", "Match code 1 == 'Administrator'", stats);
+assert_eq(get_role_name(2), "Developer", "Match code 2 == 'Developer'", stats);
+assert_eq(get_role_name(3), "Tester", "Match code 3 == 'Tester'", stats);
+assert_eq(get_role_name(99), "Guest User", "Match unknown code 99 == 'Guest User'", stats);
+assert_eq(get_role_name(0), "Guest User", "Match code 0 == 'Guest User'", stats);
+
+// String Match Patterns
+println("\n2. String Match Patterns");
+
+fn get_http_status_message(method) {
+    let msg = match method {
+        "GET" => "Fetch Data",
+        "POST" => "Create Resource",
+        "PUT" => "Update Resource",
+        "DELETE" => "Remove Resource",
+        else => "Unknown Method"
+    };
+    return msg;
+}
+
+assert_eq(get_http_status_message("GET"), "Fetch Data", "Match 'GET'", stats);
+assert_eq(get_http_status_message("POST"), "Create Resource", "Match 'POST'", stats);
+assert_eq(get_http_status_message("DELETE"), "Remove Resource", "Match 'DELETE'", stats);
+assert_eq(get_http_status_message("PATCH"), "Unknown Method", "Match fallback 'PATCH'", stats);
+
+// Computed Arithmetic Match Arms
+println("\n3. Computed Arithmetic Match Arms");
+
+fn evaluate_score(grade_point) {
+    let description = match grade_point {
+        10 => "Perfect Score",
+        9 => "Excellent",
+        8 => "Good",
+        else => "Needs Improvement"
+    };
+    return description;
+}
+
+assert_eq(evaluate_score(10), "Perfect Score", "Score 10 == 'Perfect Score'", stats);
+assert_eq(evaluate_score(8), "Good", "Score 8 == 'Good'", stats);
+assert_eq(evaluate_score(5), "Needs Improvement", "Score 5 == 'Needs Improvement'", stats);
+
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " match pattern subsystem tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

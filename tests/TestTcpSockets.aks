@@ -1,0 +1,28 @@
+fn RunTcpSocketsTests() {
+    let server = TcpSocket.Listen(19876);
+    assert_eq(server.sock_fd != -1, true);
+
+    let client = TcpSocket.Connect("127.0.0.1", 19876);
+    assert_eq(client.sock_fd != -1, true);
+
+    let peer = server.Accept();
+    assert_eq(peer.sock_fd != -1, true);
+
+    let sentBytes = client.Send("PING_TCP_DATA");
+    assert_eq(sentBytes, 13);
+
+    let recvdStr = peer.Recv(1024);
+    assert_eq(recvdStr, "PING_TCP_DATA");
+
+    peer.Send("PONG_RESPONSE");
+    let clientRecvd = client.Recv(1024);
+    assert_eq(clientRecvd, "PONG_RESPONSE");
+
+    client.Close();
+    peer.Close();
+    server.Close();
+
+    println("TCP socket networking and binary streaming tests passed successfully");
+}
+
+RunTcpSocketsTests();

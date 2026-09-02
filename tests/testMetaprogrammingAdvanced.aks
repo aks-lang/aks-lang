@@ -1,0 +1,104 @@
+print("Advanced Metaprogramming Test Suite");
+
+// macro_rules! declarative macros
+print("1. Macro_rules!");
+
+macro_rules! msquare {
+    (x) => {
+        return x * x;
+    };
+}
+
+macro_rules! mgreet {
+    (name) => {
+        return "Hello, " + name + "!";
+    };
+}
+
+print("msquare!(7) (Expected: 49):");
+print(msquare!(7));
+print("mgreet! (Expected: Hello, World!):");
+print(mgreet!("World"));
+
+// Macro arity overloads
+print("2. Arity Overloads");
+
+macro_rules! myadd {
+    (a) => {
+        return a;
+    };
+}
+
+macro_rules! myadd {
+    (a, b) => {
+        return a + b;
+    };
+}
+
+macro_rules! myadd {
+    (a, b, c) => {
+        return a + b + c;
+    };
+}
+
+print("myadd!(5) (Expected: 5):");
+print(myadd!(5));
+print("myadd!(3, 4) (Expected: 7):");
+print(myadd!(3, 4));
+print("myadd!(1, 2, 3) (Expected: 6):");
+print(myadd!(1, 2, 3));
+
+// Original macro syntax still works
+print("3. Original Macro Syntax");
+
+macro squaremacro(x) {
+    return x * x;
+}
+
+print("squaremacro!(5) (Expected: 25):");
+print(squaremacro!(5));
+
+// Hygienic macros: inner locals do NOT escape to outer scope
+print("4. Hygienic Macros");
+
+macro double_sum(a, b) {
+    let inner = a + b;
+    return inner * 2;
+}
+
+let inner = 999;
+let r = double_sum!(10, 5);
+print("double_sum!(10, 5) (Expected: 30):");
+print(r);
+print("Outer inner unchanged (Expected: 999):");
+print(inner);
+
+// comptime blocks
+print("5. Comptime Blocks");
+
+let ct = comptime { 6 * 7; };
+print("comptime { 6 * 7 } (Expected: 42):");
+print(ct);
+
+let ct2 = comptime { let x = 100; x + 23; };
+print("comptime { let x = 100; x + 23 } (Expected: 123):");
+print(ct2);
+
+// Reflection API (derive macro infrastructure)
+print("6. Reflection API");
+
+struct MyRecord {
+    id: int;
+    label: string;
+}
+
+let rec = new MyRecord();
+rec.id = 42;
+rec.label = "test";
+
+print("fields has id (Expected: true):");
+print(contains(fields(rec), "id"));
+print("get id (Expected: 42):");
+print(get(rec, "id"));
+
+print("All Advanced Metaprogramming Tests Passed");

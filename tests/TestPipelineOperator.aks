@@ -1,0 +1,48 @@
+fn Assert(cond, msg) {
+    if (!cond) {
+        panic(msg);
+    }
+}
+
+fn AssertEq(actual, expected, msg) {
+    if (actual != expected) {
+        panic(msg);
+    }
+}
+
+fn DoubleVal(x) {
+    return x * 2;
+}
+
+fn AddVal(x, y) {
+    return x + y;
+}
+
+fn SquareVal(x) {
+    return x * x;
+}
+
+fn TestPipelineBasic() {
+    let res = 5 |> DoubleVal |> SquareVal;
+    AssertEq(res, 100, "Pipeline basic failed");
+}
+
+fn TestPipelineWithArgs() {
+    let res = 10 |> AddVal(5) |> DoubleVal;
+    AssertEq(res, 30, "Pipeline with args failed");
+}
+
+fn TestPipelineChain() {
+    let val = 2 |> DoubleVal |> DoubleVal |> AddVal(3);
+    AssertEq(val, 11, "Pipeline chain failed");
+}
+
+fn Main() {
+    print("Running Pipeline Operator Tests");
+    TestPipelineBasic();
+    TestPipelineWithArgs();
+    TestPipelineChain();
+    print("Pipeline Operator Tests Passed");
+}
+
+Main();

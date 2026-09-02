@@ -1,0 +1,9 @@
+fn getRef() {
+    let x = 42;
+    return & x;
+}
+fn main() {
+    let r = getRef();
+    print(String(r));
+}
+main();

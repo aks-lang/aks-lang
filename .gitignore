@@ -1,0 +1,59 @@
+# Build outputs & executables
+*.obj
+src/*.obj
+tests/*.obj
+*.exe
+tests/*.exe
+*.pdb
+*.ilk
+*.dll
+*.lib
+*.exp
+*.node
+
+# Intermediate Maps & Traces
+*.c.map
+tests/*.c.map
+tests/*.ll
+jittrace*
+run_out*.txt
+output*.txt
+debug_output*.txt
+temp*.txt
+scratch_*.txt
+retire_dump*.txt
+comp_out.txt
+out.txt
+test_run_output.txt
+test_tcp_out*.txt
+test_trace_out*.txt
+verify_utf8.txt
+build_audit.txt
+build_out.txt
+
+# Cache & Runtime generated residues
+.akscache/
+.aks_cache/
+aks.lock
+akscoredump.json
+.akstutorial
+outtarget.c
+outtarget.c.map
+compilejit.bat
+compilejit_tr_*.bat
+reg_trace.txt
+dap_pause_dump.txt
+templibrarydir/
+test_out.wat
+test_chart_output.svg
+temp_plot_output.svg
+ChartOutput.svg
+PlotOutput.svg
+*.svg
+
+# Integration Mock Residues
+mylib/
+myapp/
+
+# VS Code & IDE configs
+.vscode/

@@ -1,0 +1,34 @@
+fn RunLockFreeQueueTests() {
+    let queue = LockFreeQueue.New(16);
+    assert_eq(queue.queue_id != 0, true);
+
+    // Initial pop on empty queue should return null
+    let emptyVal = queue.Pop();
+    assert_eq(emptyVal, null);
+
+    // Push sequential items
+    let push1 = queue.Push(100);
+    let push2 = queue.Push(200);
+    let push3 = queue.Push(300);
+    assert_eq(push1, true);
+    assert_eq(push2, true);
+    assert_eq(push3, true);
+
+    // Pop in FIFO order
+    let pop1 = queue.Pop();
+    let pop2 = queue.Pop();
+    let pop3 = queue.Pop();
+    assert_eq(pop1, 100);
+    assert_eq(pop2, 200);
+    assert_eq(pop3, 300);
+
+    // Queue is empty again
+    let popAfterEmpty = queue.Pop();
+    assert_eq(popAfterEmpty, null);
+
+    queue.Free();
+
+    println("Hardware memory barrier lock-free circular queue tests passed successfully");
+}
+
+RunLockFreeQueueTests();

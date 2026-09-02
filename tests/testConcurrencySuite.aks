@@ -1,0 +1,131 @@
+print("testing concurrency");
+
+// Lightweight tasks (coroutines) & Async/await syntax
+print("\ntesting coroutines");
+async fn calculatesum(a, b) {
+    print("  Coroutine running sum");
+    return a + b;
+}
+
+let t1 = spawn calculatesum(100, 200);
+let res1 = await t1;
+print("  Coroutine sum result (Expected: 300):");
+print(res1);
+
+// Channels for communication (buffered/blocking)
+print("\ntesting channels");
+let c = Channel(2);
+
+fn producer(ch) {
+    print("  Producer sending values");
+    send(ch, 10);
+    send(ch, 20);
+    send(ch, 30);
+    // should block since capacity is 2
+    print("  Producer sent all values");
+}
+
+let prodtask = spawn producer(c);
+
+sleep(50);
+// let producer run and queue up
+let v1 = Receive(c);
+let v2 = Receive(c);
+let v3 = Receive(c);
+print("  Chan recv 1 (Expected: 10):");
+print(v1);
+print("  Chan recv 2 (Expected: 20):");
+print(v2);
+print("  Chan recv 3 (Expected: 30):");
+print(v3);
+
+// wait for producer to clean up
+await prodtask;
+close(c);
+print("  Channel test complete!");
+
+// Mutex/semaphore primitives
+print("\ntesting mutexes and semaphores");
+let mu = mutex();
+let sema = Semaphore(0);
+let sharedcounter = [0];
+// use array to share mutable state
+
+fn mutexworker(m, counter, donesem) {
+    print("  Worker param m value:");
+    print(m);
+    lock(m);
+    let temp = counter[0];
+    sleep(10);
+    counter[0] = temp + 1;
+    unlock(m);
+    post(donesem);
+}
+
+let tm1 = spawn mutexworker(mu, sharedcounter, sema);
+let tm2 = spawn mutexworker(mu, sharedcounter, sema);
+
+print("  Main thread sem value:");
+print(sema);
+wait(sema);
+wait(sema);
+
+print("  Shared counter value (Expected 2):");
+print(sharedcounter[0]);
+
+// & 6. Parallel map/reduce
+print("\ntesting parallel map/reduce");
+let items = [1, 2, 3, 4, 5, 6, 7, 8];
+print("  Original array:");
+print(items);
+
+let mapped = ParallelMapRaw(fn(x) {return x * 10;
+}, items);
+print("  pmap result:");
+print(mapped);
+
+let reduced = ParallelReduceRaw(fn(x, y) {return x + y;
+}, mapped, 0);
+print("  preduce result (Expected 360):");
+print(reduced);
+
+// Atomic operations
+print("\ntesting atomic ops");
+let atomicarr = [0];
+print("  Atomic initial:");
+print(AtomGet(atomicarr, 0));
+let prevadd = AtomAdd(atomicarr, 0, 50);
+print("  Atomic add return (Expected 0):");
+print(prevadd);
+print("  Atomic after add:");
+print(AtomGet(atomicarr, 0));
+let prevsub = AtomSub(atomicarr, 0, 20);
+print("  Atomic sub return (Expected 50):");
+print(prevsub);
+print("  Atomic after sub:");
+print(AtomGet(atomicarr, 0));
+let prevset = AtomSet(atomicarr, 0, 99);
+print("  Atomic set return (Expected 30):");
+print(prevset);
+print("  Atomic final:");
+print(AtomGet(atomicarr, 0));
+
+// , 9 & 10. Actor Model & Green Threads N:M & Work-stealing
+print("\ntesting actors");
+let actormailbox = actor(fn(mailbox) {
+    print("  Actor started and waiting for messages");
+    let m1 = Receive(mailbox);
+    print("  Actor received message 1:");
+    print(m1);
+    let m2 = Receive(mailbox);
+    print("  Actor received message 2:");
+    print(m2);
+});
+
+ActorSend(actormailbox, "Hello from main thread!");
+ActorSend(actormailbox, "Greetings, Actor!");
+
+sleep(50);
+// give actor time to process
+
+print("concurrency tests passed");

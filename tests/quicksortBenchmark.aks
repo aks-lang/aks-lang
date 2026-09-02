@@ -1,0 +1,71 @@
+print("running quicksort benchmark");
+
+fn partition(arr, low, high) {
+    let pivot = arr[high];
+    let i = low - 1;
+    let j = low;
+    while (j < high) {
+        if (arr[j] < pivot) {
+            i++;
+            let temp = arr[i];
+            arr[i] = arr[j];
+            arr[j] = temp;
+        }
+        j++;
+    }
+    let temp = arr[i + 1];
+    arr[i + 1] = arr[high];
+    arr[high] = temp;
+    return i + 1;
+}
+
+fn quicksort(arr, low, high) {
+    if (low < high) {
+        let p = partition(arr, low, high);
+        quicksort(arr, low, p - 1);
+        quicksort(arr, p + 1, high);
+    }
+}
+
+// Create a dynamic array using built-in append()
+let mylist = [];
+append(mylist, 45);
+append(mylist, 12);
+append(mylist, 89);
+append(mylist, 7);
+append(mylist, 56);
+append(mylist, 23);
+append(mylist, 67);
+append(mylist, 4);
+
+let listlen = Length(mylist);
+print("Initial array size (using len()):");
+print(listlen);
+print("Initial array items:");
+print(mylist);
+
+// Perform QuickSort and measure execution time
+let starttime = clock();
+quicksort(mylist, 0, listlen - 1);
+let endtime = clock();
+
+print("Sorted array:");
+print(mylist);
+
+let diff = endtime - starttime;
+print("Sorting execution time (seconds):");
+print(diff);
+
+// Test other mathematical and helper built-ins
+print("Absolute value of -45.67 (using abs()):");
+print(Absolute(-45.67));
+
+print("Square root of 144 (using sqrt()):");
+print(SquareRoot(144));
+
+print("Coercing integer 9999 to string (using str()):");
+let stringval = String(9999);
+print("Type of stringval is string. Concat test: stringval + ' test' ->");
+print(stringval + " test");
+
+print("done!");

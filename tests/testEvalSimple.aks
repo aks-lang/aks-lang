@@ -1,0 +1,4 @@
+let x = 5;
+print("before eval");
+let result = Evaluate("1 + 2;", true);
+print("after eval, result = " + result);

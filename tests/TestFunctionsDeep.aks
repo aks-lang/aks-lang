@@ -1,0 +1,98 @@
+print("Exhaustive Functions Subsystem Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    print("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, st) {
+    print("  [FAIL] " + name);
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        print("  [FAIL] " + name + " (expected " + String(expected) + ", got " + String(actual) + ")");
+        st[1] = st[1] + 1;
+    }
+}
+
+// First-Class & Higher-Order Functions
+print("\n1. First-class & Higher-order Functions");
+
+fn add(a, b) { return a + b; }
+fn multiply(a, b) { return a * b; }
+
+fn apply_op(op, x, y) {
+    return op(x, y);
+}
+
+assert_eq(apply_op(add, 10, 20), 30, "Higher-order function apply_op(add, 10, 20) == 30", stats);
+assert_eq(apply_op(multiply, 5, 6), 30, "Higher-order function apply_op(multiply, 5, 6) == 30", stats);
+
+// Anonymous Lambdas & Functional Composition
+print("\n2. Anonymous Lambdas & Prelude Utilities");
+
+let nums = range(1, 6);
+assert_eq(Length(nums), 5, "range(1, 6) length == 5", stats);
+
+let doubled = map(nums, fn(x) { return x * 2; });
+assert_eq(doubled[0], 2, "map() element 0 == 2", stats);
+assert_eq(doubled[4], 10, "map() element 4 == 10", stats);
+
+let evens = filter(nums, fn(x) { return x % 2 == 0; });
+assert_eq(Length(evens), 2, "filter() evens length == 2", stats);
+assert_eq(evens[0], 2, "filter() evens[0] == 2", stats);
+assert_eq(evens[1], 4, "filter() evens[1] == 4", stats);
+
+let sum_all = reduce(nums, fn(acc, x) { return acc + x; }, 0);
+assert_eq(sum_all, 15, "reduce() sum (1+2+3+4+5 == 15)", stats);
+
+// Direct & Mutual Recursion
+print("\n3. Direct & Mutual Recursion");
+
+fn factorial(n) {
+    if (n <= 1) { return 1; }
+    return n * factorial(n - 1);
+}
+
+assert_eq(factorial(5), 120, "Factorial 5! == 120", stats);
+assert_eq(factorial(6), 720, "Factorial 6! == 720", stats);
+
+fn fibonacci(n) {
+    if (n <= 0) { return 0; }
+    if (n == 1) { return 1; }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+assert_eq(fibonacci(7), 13, "Fibonacci(7) == 13", stats);
+assert_eq(fibonacci(8), 21, "Fibonacci(8) == 21", stats);
+
+fn is_even(n) {
+    if (n == 0) { return true; }
+    return is_odd(n - 1);
+}
+
+fn is_odd(n) {
+    if (n == 0) { return false; }
+    return is_even(n - 1);
+}
+
+assert_eq(is_even(10), true, "Mutual Recursion is_even(10) == true", stats);
+assert_eq(is_odd(11), true, "Mutual Recursion is_odd(11) == true", stats);
+assert_eq(is_even(7), false, "Mutual Recursion is_even(7) == false", stats);
+
+// Summary
+print("Passed: " + String(stats[0]));
+print("Failed: " + String(stats[1]));
+
+if (stats[1] > 0) {
+    print("FUNCTIONS SUBSYSTEM SUITE FAILED!");
+    exit(1);
+} else {
+    print("All 17 function & lambda tests passed successfully.");
+}

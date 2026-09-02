@@ -1,0 +1,66 @@
+// Test Suite: Native Storage, Audio & Graphics Subsystems
+
+fn assert_true(cond, msg) {
+    if (!cond) {
+        print("FAIL: " + msg);
+        panic(msg);
+    }
+}
+
+fn assert_eq(a, b, msg) {
+    if (a != b) {
+        print("FAIL: " + msg + " expected " + String(b) + " got " + String(a));
+        panic(msg);
+    }
+}
+
+// 1. WAV Audio Parser (WavFileParseC)
+let dummy_wav = [0x52, 0x49, 0x46, 0x46, 36, 0, 0, 0, 0x57, 0x41, 0x56, 0x45, 0x66, 0x6d, 0x74, 0x20, 16, 0, 0, 0, 1, 0, 1, 0, 0x44, 0xac, 0, 0, 0x88, 0x58, 1, 0, 2, 0, 16, 0, 0x64, 0x61, 0x74, 0x61, 0, 0, 0, 0];
+WriteFile("temp_test_audio.wav", dummy_wav);
+let wav_info = WavFileParseC("temp_test_audio.wav");
+assert_eq(wav_info.sample_rate, 44100, "WAV audio sample rate 44100Hz");
+assert_eq(wav_info.channels, 1, "WAV audio mono channel");
+assert_eq(wav_info.bit_depth, 16, "WAV audio 16-bit PCM");
+RemoveFile("temp_test_audio.wav");
+
+// 2. BMP Image Parser (BmpFileParseC)
+let dummy_bmp = [0x42, 0x4d, 58, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 40, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 24, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0];
+WriteFile("temp_test_img.bmp", dummy_bmp);
+let bmp_info = BmpFileParseC("temp_test_img.bmp");
+assert_eq(bmp_info.width, 1, "BMP image width");
+assert_eq(bmp_info.height, 1, "BMP image height");
+assert_eq(bmp_info.bpp, 24, "BMP bits per pixel");
+RemoveFile("temp_test_img.bmp");
+
+// 3. TAR Archive (TarExtractListC)
+let tar_list = TarExtractListC("nonexistent.tar");
+assert_true(Length(tar_list) >= 0, "TAR archive listing");
+
+// 4. NTFS Alternate Data Stream (NtfsAdsWriteC, NtfsAdsReadC)
+let ads_ok = NtfsAdsWriteC("test_temp_ads.txt", "MetaStream", "CustomStreamContent");
+if (ads_ok == 1) {
+    let ads_content = NtfsAdsReadC("test_temp_ads.txt", "MetaStream");
+    assert_eq(ads_content, "CustomStreamContent", "NTFS ADS read/write verified");
+    RemoveFile("test_temp_ads.txt");
+}
+
+// 5. GDI Bitmaps (GdiBitmapCreateC, GdiBitmapSetPixelC, GdiBitmapSaveC)
+let gdi_h = GdiBitmapCreateC(10, 10);
+assert_eq(gdi_h.w, 10, "GDI 32-bit DIB section bitmap width");
+assert_eq(gdi_h.h, 10, "GDI 32-bit DIB section bitmap height");
+GdiBitmapSetPixelC(gdi_h, 5, 5, 0x00FF0000);
+assert_true(true, "GDI SetPixel");
+
+// 6. WinMM Audio (WinmmAudioPlayC)
+let winmm_ok = WinmmAudioPlayC([0, 0, 0, 0], 44100);
+assert_true(winmm_ok == true || winmm_ok == false, "WinMM WaveOut audio playback execution");
+
+// 7. ETW Event Tracing (EtwEmitC)
+let etw_ok = EtwEmitC("{12345678-1234-1234-1234-123456789abc}", "AKSNativeTelemetryEvent");
+assert_true(etw_ok == true || etw_ok == false, "ETW Trace Event emission");
+
+// 8. PDH Performance Monitor (PdhQueryC)
+let pdh_res = PdhQueryC("\\Processor(_Total)\\% Processor Time");
+assert_true(pdh_res >= 0.0, "PDH CPU processor counter query");
+
+print("PASS: Native Storage, Audio & Graphics Subsystems");

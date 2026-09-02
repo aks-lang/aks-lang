@@ -1,0 +1,186 @@
+print("Exhaustive Array Subsystem Test Suite");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    print("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, st) {
+    print("  [FAIL] " + name);
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        print("  [FAIL] " + name + " (expected " + String(expected) + ", got " + String(actual) + ")");
+        st[1] = st[1] + 1;
+    }
+}
+
+fn pass_or_fail(cond, name, st) {
+    if (cond) { pass(name, st); } else { fail(name, st); }
+}
+
+// Array Creation & Basic Properties
+print("\n1. Array Creation & Properties");
+let empty_arr = [];
+assert_eq(Length(empty_arr), 0, "Empty Array len() == 0", stats);
+
+let single_arr = [42];
+assert_eq(Length(single_arr), 1, "Single Element Array len() == 1", stats);
+assert_eq(single_arr[0], 42, "Single Element Array Index 0 == 42", stats);
+
+let multi_arr = [10, 20, 30, 40, 50];
+assert_eq(Length(multi_arr), 5, "Multi Element Array len() == 5", stats);
+assert_eq(multi_arr[0], 10, "Multi Element Index 0", stats);
+assert_eq(multi_arr[2], 30, "Multi Element Index 2", stats);
+assert_eq(multi_arr[4], 50, "Multi Element Index 4 (Last)", stats);
+
+let mixed_arr = [100, "hello", true, 3.14];
+assert_eq(Length(mixed_arr), 4, "Mixed Type Array len() == 4", stats);
+assert_eq(mixed_arr[0], 100, "Mixed Array Int Element", stats);
+assert_eq(mixed_arr[1], "hello", "Mixed Array String Element", stats);
+assert_eq(mixed_arr[2], true, "Mixed Array Bool Element", stats);
+assert_eq(mixed_arr[3], 3.14, "Mixed Array Float Element", stats);
+
+// Element Mutation & Append/Pop
+print("\n2. Element Mutation & Append");
+
+let mut_arr = [1, 2, 3];
+mut_arr[0] = 99;
+assert_eq(mut_arr[0], 99, "Mutate Index 0 to 99", stats);
+assert_eq(mut_arr[1], 2, "Index 1 unchanged", stats);
+assert_eq(mut_arr[2], 3, "Index 2 unchanged", stats);
+
+mut_arr[2] = 777;
+assert_eq(mut_arr[2], 777, "Mutate Index 2 to 777", stats);
+
+let app_arr = [10, 20];
+append(app_arr, 30);
+assert_eq(Length(app_arr), 3, "Array len() after append(30)", stats);
+assert_eq(app_arr[2], 30, "Appended element index 2 == 30", stats);
+
+append(app_arr, 40);
+assert_eq(Length(app_arr), 4, "Array len() after append(40)", stats);
+assert_eq(app_arr[3], 40, "Appended element index 3 == 40", stats);
+
+// Multidimensional & Nested Arrays
+print("\n3. Multidimensional & Nested Arrays");
+
+let matrix = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+];
+
+assert_eq(Length(matrix), 3, "2D Matrix Outer Length == 3", stats);
+assert_eq(Length(matrix[0]), 3, "2D Matrix Inner Row 0 Length == 3", stats);
+assert_eq(matrix[0][0], 1, "Matrix[0][0] == 1", stats);
+assert_eq(matrix[1][1], 5, "Matrix[1][1] == 5", stats);
+assert_eq(matrix[2][2], 9, "Matrix[2][2] == 9", stats);
+
+// Mutate nested element
+matrix[1][1] = 555;
+assert_eq(matrix[1][1], 555, "Mutated Matrix[1][1] == 555", stats);
+assert_eq(matrix[0][1], 2, "Matrix[0][1] unmodified", stats);
+
+// D Array
+let cube = [
+    [[10, 20], [30, 40]],
+    [[50, 60], [70, 80]]
+];
+assert_eq(cube[0][0][0], 10, "3D Cube[0][0][0] == 10", stats);
+assert_eq(cube[1][1][1], 80, "3D Cube[1][1][1] == 80", stats);
+
+// Array Iteration & Reductions
+print("\n4. Array Iteration & Reductions");
+
+let numbers = [5, 10, 15, 20, 25];
+let sum = 0;
+let idx = 0;
+while (idx < Length(numbers)) {
+    sum = sum + numbers[idx];
+    idx++;
+}
+assert_eq(sum, 75, "Sum of Array Elements (5+10+15+20+25 == 75)", stats);
+
+// Build array in loop
+let built_arr = [];
+let i = 1;
+while (i <= 5) {
+    append(built_arr, i * 10);
+    i++;
+}
+assert_eq(Length(built_arr), 5, "Loop-built array length == 5", stats);
+assert_eq(built_arr[0], 10, "Loop-built array[0] == 10", stats);
+assert_eq(built_arr[4], 50, "Loop-built array[4] == 50", stats);
+
+// Array Element Type Casting (`as`)
+print("\n5. Array Element Type Casting");
+
+let str_nums = [];
+append(str_nums, "10");
+append(str_nums, "20");
+append(str_nums, "30");
+
+let int1 = str_nums[0] as int;
+let int2 = str_nums[1] as int;
+let int3 = str_nums[2] as int;
+
+if (int1 == 10 && int2 == 20 && int3 == 30) {
+    pass("Cast Array Str Elements to Int", stats);
+} else {
+    fail("Cast Array Str Elements to Int", stats);
+}
+
+let str_floats = [];
+append(str_floats, "1.5");
+append(str_floats, "2.5");
+append(str_floats, "3.0");
+
+let flt1 = str_floats[0] as float;
+let flt2 = str_floats[1] as float;
+
+fn abs_diff(a, b) {
+    let diff = a - b;
+    if (diff < 0.0) { return -diff; }
+    return diff;
+}
+
+if (abs_diff(flt1, 1.5) < 0.001 && abs_diff(flt2, 2.5) < 0.001) {
+    pass("Cast Array Str Elements to Float", stats);
+} else {
+    fail("Cast Array Str Elements to Float", stats);
+}
+
+let str_bools = [];
+append(str_bools, "true");
+append(str_bools, "false");
+append(str_bools, "1");
+append(str_bools, "0");
+
+let bool1 = str_bools[0] as bool;
+let bool2 = str_bools[1] as bool;
+let bool3 = str_bools[2] as bool;
+let bool4 = str_bools[3] as bool;
+
+if (bool1 == true && bool2 == false && bool3 == true && bool4 == false) {
+    pass("Cast Array Str Elements to Bool", stats);
+} else {
+    fail("Cast Array Str Elements to Bool", stats);
+}
+
+// Summary
+print("Passed: " + String(stats[0]));
+print("Failed: " + String(stats[1]));
+
+if (stats[1] > 0) {
+    print("DEEP ARRAY TEST SUITE FAILED!");
+    exit(1);
+} else {
+    print("All 36 deep array subsystem tests passed successfully.");
+}

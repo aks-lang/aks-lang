@@ -1,0 +1,19 @@
+fn RunSubprocessPipesTests() {
+    let proc = ChildProcess.Spawn("cmd.exe /c echo HelloFromChildProcess");
+    assert_eq(proc.proc_handle != null, true);
+
+    let waitOk = proc.Wait(5000);
+    assert_eq(waitOk, true);
+
+    let outStr = proc.ReadStdout(1024);
+    assert_eq(outStr != "", true);
+
+    let exitCode = proc.ExitCode();
+    assert_eq(exitCode, 0);
+
+    proc.Close();
+
+    println("Subprocess spawning and anonymous pipe redirection tests passed successfully");
+}
+
+RunSubprocessPipesTests();

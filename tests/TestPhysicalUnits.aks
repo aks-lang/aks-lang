@@ -1,0 +1,53 @@
+fn RunPhysicalUnitsTests() {
+    let d1 = Meter(100.0);
+    let d2 = Meter(50.0);
+    let totalDist = d1.Add(d2);
+    assert_eq(totalDist.magnitude, 150.0);
+    assert_eq(totalDist.unit.m, 1);
+
+    let diffDist = d1.Sub(d2);
+    assert_eq(diffDist.magnitude, 50.0);
+
+    let t1 = Second(10.0);
+    let v = Speed(totalDist, t1);
+    assert_eq(v.magnitude, 15.0);
+    assert_eq(v.unit.m, 1);
+    assert_eq(v.unit.s, -1);
+
+    let t2 = Second(5.0);
+    let a = Acceleration(v, t2);
+    assert_eq(a.magnitude, 3.0);
+    assert_eq(a.unit.m, 1);
+    assert_eq(a.unit.s, -2);
+
+    let mass = Kilogram(2.0);
+    let force = Newton(mass, a);
+    assert_eq(force.magnitude, 6.0);
+    assert_eq(force.unit.kg, 1);
+    assert_eq(force.unit.m, 1);
+    assert_eq(force.unit.s, -2);
+
+    let work = Joule(force, d1);
+    assert_eq(work.magnitude, 600.0);
+    assert_eq(work.unit.kg, 1);
+    assert_eq(work.unit.m, 2);
+    assert_eq(work.unit.s, -2);
+
+    let power = Watt(work, t1);
+    assert_eq(power.magnitude, 60.0);
+    assert_eq(power.unit.kg, 1);
+    assert_eq(power.unit.m, 2);
+    assert_eq(power.unit.s, -3);
+
+    let scaled = d1.Scale(2.5);
+    assert_eq(scaled.magnitude, 250.0);
+    assert_eq(scaled.unit.m, 1);
+
+    assert_throws(fn() {
+        d1.Add(t1);
+    });
+
+    println("Physical unit types and dimensional analysis tests passed successfully");
+}
+
+RunPhysicalUnitsTests();

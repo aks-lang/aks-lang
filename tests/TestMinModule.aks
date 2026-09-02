@@ -1,0 +1,4 @@
+module math {
+    pub fn add(a, b) { return a + b; }
+}
+print(math::add(1, 2));

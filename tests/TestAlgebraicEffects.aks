@@ -1,0 +1,83 @@
+effect Logger {
+    fn Log(msg: string);
+}
+
+effect State {
+    fn Get() -> any;
+    fn Put(v: any);
+}
+
+fn ComputeWithLogger() {
+    perform Logger.Log("Step 1 executed");
+    perform Logger.Log("Step 2 executed");
+    return 100;
+}
+
+fn ComputeWithState() {
+    let s = perform State.Get();
+    perform State.Put(s + 50);
+    return s * 2;
+}
+
+let g_logs = [];
+let g_current_val = 10;
+
+fn RunAlgebraicEffectsTests() {
+    g_logs = [];
+    let r1 = handle (ComputeWithLogger()) with {
+        Logger.Log(msg) => {
+            append(g_logs, msg);
+            return resume();
+        }
+    };
+    assert_eq(r1, 100);
+    assert_eq(Length(g_logs), 2);
+    assert_eq(g_logs[0], "Step 1 executed");
+    assert_eq(g_logs[1], "Step 2 executed");
+
+    g_current_val = 10;
+    let r2 = handle (ComputeWithState()) with {
+        State.Get() => {
+            return resume(g_current_val);
+        },
+        State.Put(v) => {
+            g_current_val = v;
+            return resume();
+        }
+    };
+    assert_eq(r2, 20);
+    assert_eq(g_current_val, 60);
+
+    // Test nested effect handlers
+    let nested_res = handle (
+        handle (message_pipeline("aks-lang", 5)) with {
+            inc(val: int) => {
+                resume (val * 10);
+            }
+        }
+    ) with {
+        shout(s: string) => {
+            resume ("*** " + s + " ***");
+        }
+    };
+    assert(nested_res == "*** aks-lang - value: 50 ***", "nested effect handler composition");
+
+    println("All Algebraic Effect Tests Passed Successfully!");
+}
+
+effect Counter {
+    inc(x: int) -> int;
+}
+
+effect StringTransform {
+    shout(s: string) -> string;
+}
+
+fn message_pipeline(raw: string, num: int) -> string {
+    let res = perform inc(num);
+    let msg = raw + " - value: " + String(res);
+    let transformed = perform shout(msg);
+    return transformed;
+}
+
+RunAlgebraicEffectsTests();

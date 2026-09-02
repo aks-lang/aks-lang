@@ -1,0 +1,41 @@
+fn RunZeroCopyViewsTests() {
+    let sourceData = [100, 200, 300, 400, 500];
+    let view = MemoryView.Create(sourceData, 4);
+
+    assert_eq(view.Len(), 5);
+    assert_eq(view.Get(0), 100);
+    assert_eq(view.Get(2), 300);
+    assert_eq(view.Get(4), 500);
+
+    view.Set(1, 999);
+    assert_eq(view.Get(1), 999);
+    assert_eq(sourceData[1], 999);
+
+    let subView = view.Slice(2, 3);
+    assert_eq(subView.Len(), 3);
+    assert_eq(subView.Get(0), 300);
+    assert_eq(subView.Get(1), 400);
+    assert_eq(subView.Get(2), 500);
+
+    subView.Set(0, 777);
+    assert_eq(subView.Get(0), 777);
+    assert_eq(sourceData[2], 777);
+
+    let arrCopy = subView.ToArray();
+    assert_eq(Length(arrCopy), 3);
+    assert_eq(arrCopy[0], 777);
+    assert_eq(arrCopy[1], 400);
+    assert_eq(arrCopy[2], 500);
+
+    assert_throws(fn() {
+        view.Get(10);
+    });
+
+    assert_throws(fn() {
+        subView.Get(5);
+    });
+
+    println("Zero-copy binary memory views tests passed successfully");
+}
+
+RunZeroCopyViewsTests();

@@ -1,0 +1,17 @@
+fn RunDynamicFfiTests() {
+    let k32 = DynamicLibrary.Load("kernel32.dll");
+    assert_eq(k32.lib_handle != 0, true);
+
+    let getPidSym = k32.GetSymbol("GetCurrentProcessId");
+    assert_eq(getPidSym != 0, true);
+
+    let pidFromFfi = k32.Call0("GetCurrentProcessId");
+    assert_eq(pidFromFfi > 0, true);
+    assert_eq(pidFromFfi, SystemInfo.ProcessId());
+
+    k32.Free();
+
+    println("Dynamic C library loading and FFI call tests passed successfully");
+}
+
+RunDynamicFfiTests();

@@ -1,0 +1,9 @@
+let raw_inputs = [];
+let cnt = 0;
+while (cnt < 8) {
+    input(line);
+    print("Read line " + String(cnt) + ": '" + line + "'");
+    append(raw_inputs, line);
+    cnt++;
+}
+print("raw_inputs: " + String(raw_inputs));

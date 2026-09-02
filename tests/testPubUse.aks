@@ -1,0 +1,15 @@
+import "ModuleHelperA.aks";
+
+module wrapper {
+    pub use helper_a::get_val;
+}
+
+// Should this work? - calling via the re-exported alias wrapper::get_val:
+// This requires wrapper::get_val -> helper_a::get_val resolution
+let r = wrapper::get_val();
+print(r);
+
+// And calling the alias from outside the module:
+use wrapper::get_val;
+let r2 = get_val();
+print(r2);

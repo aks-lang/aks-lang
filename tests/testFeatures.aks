@@ -1,0 +1,38 @@
+print("testing advanced features");
+
+// Module Imports
+print("Testing module imports");
+import "MathHelper.aks";
+
+let magicresult = multiplybymagic(10);
+print("Result of modular call (Expected: 420):");
+print(magicresult);
+
+// String Interpolation
+print("Testing string interpolation");
+let user = "developer";
+let year = 2026;
+let score = 95.5;
+
+let interpolated = "Greetings, ${user}! The year is ${year}. Dynamic math: ${score + 4.5}% correct.";
+print(interpolated);
+
+// Lambda / Anonymous Functions
+print("Testing lambda functions");
+let square = fn(x) {
+    return x * x;
+};
+print("Square of 9 (Expected: 81):");
+print(square(9));
+
+// passing anonymous functions as arguments
+fn compute(op, a, b) {
+    return op(a, b);
+}
+
+print("Inline lambda for addition (Expected: 57):");
+let sum = compute(fn(x, y) {return x + y;
+}, 40, 17);
+print(sum);
+
+print("advanced features verified");

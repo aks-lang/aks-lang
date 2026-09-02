@@ -1,0 +1,20 @@
+fn RunMemoryProtectTests() {
+    let pool = MemoryPool.New(4096, 2);
+    let ptr = pool.Alloc();
+    assert_eq(ptr != 0, true);
+
+    // Set page permissions to read-only
+    let okRo = MemoryProtect.SetReadOnly(ptr, 4096);
+    assert_eq(okRo, true);
+
+    // Restore page permissions to read-write
+    let okRw = MemoryProtect.SetReadWrite(ptr, 4096);
+    assert_eq(okRw, true);
+
+    pool.Free(ptr);
+    pool.Destroy();
+
+    println("Virtual memory page protection tests passed successfully");
+}
+
+RunMemoryProtectTests();

@@ -1,0 +1,18 @@
+// Test suite for OS Process and Thread CPU Core Affinity
+fn main() {
+    let aff = ProcessAffinity.Get();
+    assert(aff.process_mask > 0);
+    assert(aff.system_mask > 0);
+
+    // Re-set same process mask
+    let set_ok = ProcessAffinity.Set(aff.process_mask);
+    assert(set_ok == true);
+
+    // Thread affinity pinning
+    let prev_thread_mask = ProcessAffinity.SetCurrentThread(aff.process_mask);
+    assert(prev_thread_mask != 0);
+
+    print("TestProcessAffinity passed");
+}
+
+main();

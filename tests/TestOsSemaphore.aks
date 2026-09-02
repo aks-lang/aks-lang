@@ -1,0 +1,32 @@
+fn RunOsSemaphoreTests() {
+    let sem = OsSemaphore.Create(2, 5, null);
+    assert_eq(sem.sem_id != 0, true);
+
+    // Acquire 1st slot
+    let ok1 = sem.Acquire(100);
+    assert_eq(ok1, true);
+
+    // Acquire 2nd slot
+    let ok2 = sem.Acquire(100);
+    assert_eq(ok2, true);
+
+    // rd slot should timeout immediately with 10ms timeout
+    let ok3 = sem.Acquire(10);
+    assert_eq(ok3, false);
+
+    // Release 1 slot
+    let prevCount = sem.Release(1);
+    assert_eq(prevCount, 0);
+
+    // Now slot is available
+    let ok4 = sem.Acquire(100);
+    assert_eq(ok4, true);
+
+    // Clean up
+    let destroyed = sem.Destroy();
+    assert_eq(destroyed, true);
+
+    println("Native OS semaphore concurrency tests passed successfully");
+}
+
+RunOsSemaphoreTests();

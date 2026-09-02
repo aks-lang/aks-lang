@@ -1,0 +1,22 @@
+fn RunCryptoEd25519Tests() {
+    let kp = CryptoEd25519.GenerateKeyPair();
+    assert_eq(kp != null, true);
+    assert_eq(Length(kp.public_key) > 0, true);
+    assert_eq(Length(kp.private_key) > 0, true);
+
+    let msg = "Decentralized verification with Ed25519 curve signatures";
+    let sig = CryptoEd25519.Sign(kp.private_key, msg);
+    assert_eq(sig != null, true);
+    assert_eq(Length(sig) > 0, true);
+
+    let valid = CryptoEd25519.Verify(kp.public_key, msg, sig);
+    assert_eq(valid, true);
+
+    // Tampered message should fail verification
+    let invalid = CryptoEd25519.Verify(kp.public_key, "Tampered message content", sig);
+    assert_eq(invalid, false);
+
+    println("Cryptographic Ed25519 elliptic curve signature tests passed successfully");
+}
+
+RunCryptoEd25519Tests();

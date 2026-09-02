@@ -1,0 +1,42 @@
+fn RunMemoryStreamTests() {
+    let stream = MemoryStream.New(64);
+
+    // Write binary elements
+    let ok1 = stream.WriteByte(65);
+    assert_eq(ok1, true);
+
+    let ok2 = stream.WriteInt32(12345678);
+    assert_eq(ok2, true);
+
+    let ok3 = stream.WriteString("AKSStream");
+    assert_eq(ok3, true);
+
+    assert_eq(stream.Length(), 1 + 4 + 9);
+
+    // Seek back to start
+    let okSeek = stream.Seek(0);
+    assert_eq(okSeek, true);
+    assert_eq(stream.Position(), 0);
+
+    // Read elements sequentially
+    let readB = stream.ReadByte();
+    assert_eq(readB, 65);
+
+    let readI = stream.ReadInt32();
+    assert_eq(readI, 12345678);
+
+    let readS = stream.ReadString(9);
+    assert_eq(readS, "AKSStream");
+
+    // Hex serialization check
+    let hexStr = stream.ToHex();
+    assert_eq(Length(hexStr), 28);
+
+    // Clean up
+    let okDestroy = stream.Destroy();
+    assert_eq(okDestroy, true);
+
+    println("Binary byte stream engine tests passed successfully");
+}
+
+RunMemoryStreamTests();

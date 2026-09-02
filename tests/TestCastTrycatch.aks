@@ -1,0 +1,13 @@
+try {
+    let x = 10 / 0;
+    print("no error");
+} catch (err) {
+    print("Caught div: " + err);
+}
+
+try {
+    let y = "fefe" as int;
+    print("no cast error");
+} catch (err) {
+    print("Caught cast: " + err);
+}
