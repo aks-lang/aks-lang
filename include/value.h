@@ -15,10 +15,16 @@
 #elif defined(__GNUC__) || defined(__clang__)
 #define AtomicIncrement(ptr) __sync_add_and_fetch(ptr, 1)
 #define AtomicDecrement(ptr) __sync_sub_and_fetch(ptr, 1)
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_ATOMICS__)
+#include <stdatomic.h>
+#define AtomicIncrement(ptr) atomic_fetch_add((atomic_int*)(ptr), 1)
+#define AtomicDecrement(ptr) atomic_fetch_sub((atomic_int*)(ptr), 1)
 #else
-#define AtomicIncrement(ptr) (++(*(ptr)))
-#define AtomicDecrement(ptr) (--(*(ptr)))
+#error "Compiler does not support atomic operations. Use GCC, Clang, MSVC, or a C11 compiler with stdatomic.h support."
 #endif
+
+#define SAFE_ALLOC(count, size) \
+    (((count) > 0 && (size) > 0 && (count) > (size_t)-1 / (size)) ? NULL : malloc((count) * (size)))
 
 typedef enum {
     VALFLOAT = 0,

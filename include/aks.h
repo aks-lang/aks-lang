@@ -21,9 +21,18 @@
 extern "C" {
 #endif
 
+// Standardized AKS execution result status codes
+typedef enum {
+    AKS_OK = 0,             // Execution completed successfully
+    AKS_PARSE_ERROR = 1,    // Lexical or syntax error during parsing
+    AKS_COMPILE_ERROR = 2,  // Semantic, type, or bytecode generation error
+    AKS_RUNTIME_ERROR = 3,  // Uncaught runtime exception or panic
+    AKS_MEMORY_ERROR = 4,   // Memory allocation failure / out of memory
+    AKS_FATAL = -1          // Unrecoverable engine error
+} AKSResult;
+
 typedef struct VM AksVmT;
 typedef struct VM AksVM;
-typedef struct VM AksVmT;
 
 // Creates a new VM instance.
 AKS_API AksVmT *AKSNewVM(void);

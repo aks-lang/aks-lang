@@ -48,8 +48,9 @@ static inline void QuarantineUnlock(void) {
 #endif
 
 void *AslrmAlloc(size_t size) {
-    size_t shift = (rand() % 16 + 1) * 8;
     size_t header_size = sizeof(size_t) + sizeof(size_t) + sizeof(uint64_t);
+    if (size > (size_t)-1 - (header_size + 256)) return NULL;
+    size_t shift = (rand() % 16 + 1) * 8;
     char *raw = (char*)(malloc)(size + shift + header_size);
     if (!raw) return NULL;
     
@@ -65,6 +66,7 @@ void *AslrReAlloc(void *ptr, size_t size) {
     if (!ptr) return AslrmAlloc(size);
     
     size_t header_size = sizeof(size_t) + sizeof(size_t) + sizeof(uint64_t);
+    if (size > (size_t)-1 - (header_size + 256)) return NULL;
     size_t *shift_ptr = (size_t*)((char*)ptr - header_size);
     size_t *size_ptr = (size_t*)((char*)ptr - header_size + sizeof(size_t));
     uint64_t *magic_ptr = (uint64_t*)((char*)ptr - sizeof(uint64_t));

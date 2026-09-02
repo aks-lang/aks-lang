@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
 #include "aks_plat.h"
 #ifndef _WIN32
 #include <sys/mman.h>
@@ -24582,6 +24583,16 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
            evalfn->chunk.count * sizeof(int));
     if (vm->fncount < MAXFNS) {
       vm->fns[vm->fncount++] = evalfn;
+    } else {
+      fprintf(stderr, "VM error: Maximum function count reached in eval\n");
+      free(evalfn->chunk.code);
+      free(evalfn->chunk.lines);
+      free(evalfn);
+      MutexUnlockNative(vm->globallock);
+      CompFree(tmpc);
+      PUSH(ValNull());
+      *stacktopptr = stacktop;
+      return 1;
     }
     VMTask *evaltask = TaskNew(vm, evalfn, 0);
     MutexUnlockNative(vm->globallock);
@@ -24631,6 +24642,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     ValFree(&arg);
 
     if (failed) {
+      ValFree(&evalres);
       return -1;
     }
 

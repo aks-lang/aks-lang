@@ -6,11 +6,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define PARSER_MAX_RECURSION_DEPTH 512
+
 typedef struct {
   Lexer lex;
   Token cur, peek;
   int err;
   int suppresserrors;
+  int recursion_depth;
 } Parser;
 
 static Node *ParseStmt(Parser *p);
@@ -972,7 +975,7 @@ static Node *ParseStruct(Parser *p) {
       continue;
     }
     Token fn = Expect(p, TIDENT);
-    char *fname = strdup(fn.val);
+    char *fname = fn.val ? strdup(fn.val) : strdup("");
     TokFree(&fn);
     Token co = Expect(p, TCOLON);
     TokFree(&co);
@@ -1089,7 +1092,7 @@ static Node *ParseActor(Parser *p) {
       Token letkw = Consume(p); TokFree(&letkw);
     }
     Token fn = Expect(p, TIDENT);
-    char *fname = strdup(fn.val);
+    char *fname = fn.val ? strdup(fn.val) : strdup("");
     TokFree(&fn);
     char *ftype = strdup("any");
     if (Check(p, TCOLON)) {
@@ -1997,7 +2000,7 @@ static Node *ParseInterface(Parser *p) {
 
     Expect(p, TFN);
     Token fn = Expect(p, TIDENT);
-    char *fname = strdup(fn.val);
+    char *fname = fn.val ? strdup(fn.val) : strdup("");
     TokFree(&fn);
     Token lp = Expect(p, TLPAREN);
     TokFree(&lp);
@@ -2574,7 +2577,25 @@ static Node *ParseRegion(Parser *p) {
   return n;
 }
 
+static Node *ParseStmtInternal(Parser *p);
+
 static Node *ParseStmt(Parser *p) {
+  if (++p->recursion_depth > PARSER_MAX_RECURSION_DEPTH) {
+    if (!p->suppresserrors) {
+      fprintf(stderr,
+              "Syntax error on line %d: maximum parser recursion depth exceeded (%d)\n",
+              p->cur.line, PARSER_MAX_RECURSION_DEPTH);
+    }
+    p->err = 1;
+    p->recursion_depth--;
+    return NULL;
+  }
+  Node *res = ParseStmtInternal(p);
+  p->recursion_depth--;
+  return res;
+}
+
+static Node *ParseStmtInternal(Parser *p) {
   if (Check(p, TIDENT) && strcmp(p->cur.val, "opaque") == 0 && Check2(p, TTYPE)) {
     Token opq = Consume(p);
     TokFree(&opq);
@@ -3191,7 +3212,21 @@ static Node *ParseUnary(Parser *p);
 static Node *ParsePostfix(Parser *p);
 static Node *ParsePrimary(Parser *p);
 
-static Node *ParserExpr(Parser *p) { return ParseAssign(p); }
+static Node *ParserExpr(Parser *p) {
+  if (++p->recursion_depth > PARSER_MAX_RECURSION_DEPTH) {
+    if (!p->suppresserrors) {
+      fprintf(stderr,
+              "Syntax error on line %d: maximum parser recursion depth exceeded (%d)\n",
+              p->cur.line, PARSER_MAX_RECURSION_DEPTH);
+    }
+    p->err = 1;
+    p->recursion_depth--;
+    return NULL;
+  }
+  Node *res = ParseAssign(p);
+  p->recursion_depth--;
+  return res;
+}
 
 static Node *ParseAssign(Parser *p) {
   Node *left = ParseTernary(p);
@@ -3926,7 +3961,7 @@ static Node *ParsePostfix(Parser *p) {
       } else {
         fn = Expect(p, TIDENT);
       }
-      char *field = strdup(fn.val);
+      char *field = fn.val ? strdup(fn.val) : strdup("");
       TokFree(&fn);
       Node *n = NodeNew(NMEMBER, line);
       n->member.obj = expr;
@@ -3965,7 +4000,7 @@ static Node *ParsePostfix(Parser *p) {
         } else {
           fn = Expect(p, TIDENT);
         }
-        char *field = strdup(fn.val);
+        char *field = fn.val ? strdup(fn.val) : strdup("");
         TokFree(&fn);
         Node *n = NodeNew(NOPTCHAIN, line);
         n->optchain.obj = expr;
@@ -4485,6 +4520,7 @@ Node *Parse(const char *source, int *haderror) {
   p.lex = LexNew(source);
   p.err = 0;
   p.suppresserrors = 0;
+  p.recursion_depth = 0;
   p.cur = LexNext(&p.lex);
   p.peek = LexNext(&p.lex);
 
@@ -4514,6 +4550,7 @@ Node *ParseExpr(const char *source, int *haderror) {
   p.lex = LexNew(source);
   p.err = 0;
   p.suppresserrors = 0;
+  p.recursion_depth = 0;
   p.cur = LexNext(&p.lex);
   p.peek = LexNext(&p.lex);
   Node *expr = ParserExpr(&p);
