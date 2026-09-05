@@ -32461,6 +32461,13 @@ static int ChkopOverload(VM *vm, VMTask *task, uint8_t **ipptr,
           stacktop++;
 
           (*frameptr)->ip = *ipptr;
+          /* Inline FrameEnsure: ChkopOverload cannot use the RunTaskSlice macro */
+          if (task->framecount >= task->framecap) {
+            int _fi = (int)(*frameptr - task->frames);
+            FrameEnsure(task, task->framecount);
+            *frameptr = task->frames + _fi;
+            *frameslotsptr = task->stack + (*frameptr)->slotsbase;
+          }
           CallFrame *newframe = &task->frames[task->framecount++];
           newframe->fn = calleefn;
           newframe->ip = calleefn->chunk.code;
@@ -32488,9 +32495,30 @@ int RunTaskSlice(VM *vm, VMTask *task, int maxinstructions) {
   uint8_t *ip = frame->ip;
   AKSValue *stacktop = task->stack + task->stacktop;
   AKSValue *frameslots = task->stack + frame->slotsbase;
-  AKSValue *stacklimit = task->stack + MAXSTACK;
+  AKSValue *stacklimit = task->stack + task->stackcap; /* tracks actual capacity, not MAXSTACK */
   int instructionsrun = 0;
   int lastframecount = task->framecount;
+
+  /* Growable frame-array: save/restore frame ptr around FrameEnsure. */
+#define FRAME_GROW() do { \
+    if (task->framecount >= task->framecap) { \
+        int _fi = (int)(frame - task->frames); \
+        FrameEnsure(task, task->framecount); \
+        frame = task->frames + _fi; \
+        frameslots = task->stack + frame->slotsbase; \
+    } \
+  } while(0)
+  /* Growable stack-array: save/restore stacktop+frameslots around StackEnsure. */
+#define STACK_GROW(needed) do { \
+    if ((int)(needed) >= task->stackcap) { \
+        ptrdiff_t _so = stacktop - task->stack; \
+        ptrdiff_t _fo = frameslots - task->stack; \
+        StackEnsure(task, (int)(needed) + 1); \
+        stacktop  = task->stack + _so; \
+        frameslots = task->stack + _fo; \
+        stacklimit = task->stack + task->stackcap; \
+    } \
+  } while(0)
 
   // shorthands used all over the dispatch loop below
 #define RaiseX(vmptr, msg, ipptr, stptr, frptr, fsptr)                         \
@@ -32544,12 +32572,15 @@ int RunTaskSlice(VM *vm, VMTask *task, int maxinstructions) {
   (ip += 4, (int32_t)((ip[-4] << 24) | (ip[-3] << 16) | (ip[-2] << 8) | ip[-1]))
 #define PUSH(val)                                                              \
   do {                                                                         \
-    if (stacktop < stacklimit) {                                               \
-      *stacktop++ = (val);                                                     \
-    } else {                                                                   \
-      fprintf(stderr, "Runtime error: stack overflow\n");                      \
-      exit(1);                                                                 \
+    if (stacktop >= stacklimit) {                                              \
+      ptrdiff_t _so = stacktop - task->stack;                                  \
+      ptrdiff_t _fo = frameslots - task->stack;                                \
+      StackEnsure(task, (int)_so + 1);                                         \
+      stacktop  = task->stack + _so;                                           \
+      frameslots = task->stack + _fo;                                          \
+      stacklimit = task->stack + task->stackcap;                               \
     }                                                                          \
+    *stacktop++ = (val);                                                       \
   } while (0)
 #define POP() (*--stacktop)
 #define PEEK() (*(stacktop - 1))
@@ -33502,11 +33533,13 @@ while (0)
           *canarypos = ValInt(vm->stackcanary);
           stacktop++;
 
+          FRAME_GROW();
           CallFrame *newframe = &task->frames[task->framecount++];
           newframe->fn = callee;
           newframe->slotsbase = (int)(canarypos + 1 - task->stack);
           newframe->argc = argc;
 
+          STACK_GROW(newframe->slotsbase + callee->maxregisters + 1);
           for (int i = argc; i < callee->maxregisters; i++) {
             task->stack[newframe->slotsbase + i] = ValNull();
           }
@@ -33534,6 +33567,7 @@ while (0)
         *canarypos = ValInt(vm->stackcanary);
         stacktop++;
 
+        FRAME_GROW();
         CallFrame *newframe = &task->frames[task->framecount++];
         newframe->fn = callee;
         newframe->ip = callee->chunk.code;
@@ -33543,6 +33577,7 @@ while (0)
         int maxreg = callee->maxregisters;
         if (maxreg == 0)
           maxreg = callee->localcount;
+        STACK_GROW(newframe->slotsbase + maxreg + 1);
         for (int i = argc; i < maxreg; i++) {
           task->stack[newframe->slotsbase + i] = ValNull();
         }
@@ -33717,11 +33752,13 @@ while (0)
           *canarypos = ValInt(vm->stackcanary);
           stacktop++;
 
+          FRAME_GROW();
           CallFrame *newframe = &task->frames[task->framecount++];
           newframe->fn = callee;
           newframe->slotsbase = (int)(canarypos + 1 - task->stack);
           newframe->argc = argc;
 
+          STACK_GROW(newframe->slotsbase + callee->maxregisters + 1);
           for (int i = argc; i < callee->maxregisters; i++) {
             task->stack[newframe->slotsbase + i] = ValNull();
           }
@@ -33748,6 +33785,7 @@ while (0)
         *canarypos = ValInt(vm->stackcanary);
         stacktop++;
 
+        FRAME_GROW();
         CallFrame *newframe = &task->frames[task->framecount++];
         newframe->fn = callee;
         newframe->ip = callee->chunk.code;
@@ -33757,6 +33795,7 @@ while (0)
         int maxreg = callee->maxregisters;
         if (maxreg == 0)
           maxreg = callee->localcount;
+        STACK_GROW(newframe->slotsbase + maxreg + 1);
         for (int i = argc; i < maxreg; i++) {
           task->stack[newframe->slotsbase + i] = ValNull();
         }
@@ -35104,12 +35143,14 @@ while (0)
         *canarypos = ValInt(vm->stackcanary);
         stacktop++;
 
+        FRAME_GROW();
         CallFrame *newframe = &task->frames[task->framecount++];
         newframe->fn = callee;
         newframe->ip = callee->chunk.code;
         newframe->slotsbase = (int)(canarypos + 1 - task->stack);
         newframe->argc = argc;
 
+        STACK_GROW(newframe->slotsbase + callee->maxregisters + 1);
         for (int i = argc; i < callee->maxregisters; i++) {
           task->stack[newframe->slotsbase + i] = ValNull();
         }
@@ -36244,6 +36285,7 @@ enter_stack_interpreter: for (;;) {
 
       frame->ip = ip;
 
+      FRAME_GROW();
       CallFrame *newframe = &task->frames[task->framecount++];
       newframe->fn = callee;
       newframe->ip = callee->chunk.code;
@@ -36251,6 +36293,7 @@ enter_stack_interpreter: for (;;) {
       newframe->argc = argc;
 
       int maxreg = callee->maxregisters > argc ? callee->maxregisters : argc;
+      STACK_GROW(newframe->slotsbase + maxreg + 1);
       for (int i = argc; i < maxreg; i++) {
         task->stack[newframe->slotsbase + i] = ValNull();
       }
@@ -36471,6 +36514,7 @@ enter_stack_interpreter: for (;;) {
       stacktop++;
 
       frame->ip = ip;
+      FRAME_GROW();
       CallFrame *newframe = &task->frames[task->framecount++];
       newframe->fn = callee;
       newframe->ip = callee->chunk.code;
@@ -36775,6 +36819,7 @@ enter_stack_interpreter: for (;;) {
 
       frame->ip = ip;
 
+      FRAME_GROW();
       CallFrame *newframe = &task->frames[task->framecount++];
       newframe->fn = callee;
       newframe->ip = callee->chunk.code;
@@ -36782,6 +36827,7 @@ enter_stack_interpreter: for (;;) {
       newframe->argc = argc;
 
       int maxreg = callee->maxregisters > argc ? callee->maxregisters : argc;
+      STACK_GROW(newframe->slotsbase + maxreg + 1);
       for (int i = argc; i < maxreg; i++) {
         task->stack[newframe->slotsbase + i] = ValNull();
       }
@@ -38120,6 +38166,8 @@ return 0;
 #pragma optimize("", on)
 #undef RaiseX
 #undef ExecuteStdlib
+#undef FRAME_GROW
+#undef STACK_GROW
 static void StructSetFieldNative(AKSStruct *s, const char *fieldname,
                                  AKSValue val) {
   int found = -1;

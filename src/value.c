@@ -243,7 +243,7 @@ AKSValue ValStr(const char *s) {
 AKSValue ValArr(int cap) {
     AKSArray *arr = malloc(sizeof(AKSArray));
     if (!arr) return ValNull();
-    arr->items = cap > 0 ? malloc(cap * sizeof(AKSValue)) : NULL;
+    arr->items = cap > 0 ? SAFE_ALLOC(cap, sizeof(AKSValue)) : NULL;
     arr->count = 0;
     arr->capacity = cap;
     arr->refcount = 1;
