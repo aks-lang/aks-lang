@@ -78,24 +78,32 @@ struct AKSArena {
     int invalidated;
 };
 
-static inline AKSArena *ValToArena(AKSValue v) {
+#if defined(_MSC_VER)
+#define AKS_INLINE static __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+#define AKS_INLINE static inline __attribute__((always_inline))
+#else
+#define AKS_INLINE static inline
+#endif
+
+AKS_INLINE AKSArena *ValToArena(AKSValue v) {
     return (AKSArena*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
 }
 
-static inline AKSValue ValArena(AKSArena *a) {
+AKS_INLINE AKSValue ValArena(AKSArena *a) {
     return (0xFFFDULL << 48) | ((uintptr_t)a & 0x0000FFFFFFFFFFFFULL);
 }
 
 #define VALFLOATLIMIT 0xFFF1000000000000ULL
 
-static inline ValType ValKind(AKSValue v) {
+AKS_INLINE ValType ValKind(AKSValue v) {
     if (v < VALFLOATLIMIT) return VALFLOAT;
     uint64_t tag = (v >> 48) - 0xFFF0ULL;
     if (tag > 14) return VALFLOAT;
     return (ValType)tag;
 }
 
-static inline int64_t ValToInt(AKSValue v) {
+AKS_INLINE int64_t ValToInt(AKSValue v) {
     uint64_t payload = v & 0x0000FFFFFFFFFFFFULL;
     if (payload & 0x0000800000000000ULL) {
         return (int64_t)(payload | 0xFFFF000000000000ULL);
@@ -103,7 +111,7 @@ static inline int64_t ValToInt(AKSValue v) {
     return (int64_t)payload;
 }
 
-static inline int64_t ValToIntUnchecked(AKSValue v) {
+AKS_INLINE int64_t ValToIntUnchecked(AKSValue v) {
     uint64_t payload = v & 0x0000FFFFFFFFFFFFULL;
     if (payload & 0x0000800000000000ULL) {
         return (int64_t)(payload | 0xFFFF000000000000ULL);
@@ -111,57 +119,57 @@ static inline int64_t ValToIntUnchecked(AKSValue v) {
     return (int64_t)payload;
 }
 
-static inline double ValToFloat(AKSValue v) {
+AKS_INLINE double ValToFloat(AKSValue v) {
     union { uint64_t u; double d; } u;
     u.u = v;
     return u.d;
 }
 
-static inline int ValToBool(AKSValue v) {
+AKS_INLINE int ValToBool(AKSValue v) {
     return (int)(v & 1);
 }
 
-static inline int ValToFn(AKSValue v) {
+AKS_INLINE int ValToFn(AKSValue v) {
     return (int)(v & 0xFFFFFFFFULL);
 }
 
-static inline AKSString *ValToStrPtr(AKSValue v) {
+AKS_INLINE AKSString *ValToStrPtr(AKSValue v) {
     return (AKSString*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
 }
 
-static inline AKSArray *ValToArr(AKSValue v) {
+AKS_INLINE AKSArray *ValToArr(AKSValue v) {
     return (AKSArray*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
 }
 
-static inline AKSStruct *ValToObj(AKSValue v) {
+AKS_INLINE AKSStruct *ValToObj(AKSValue v) {
     return (AKSStruct*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
 }
 
-static inline VMTask *ValToTask(AKSValue v) {
+AKS_INLINE VMTask *ValToTask(AKSValue v) {
     return (VMTask*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
 }
 
-static inline VMChannel *ValToChan(AKSValue v) {
+AKS_INLINE VMChannel *ValToChan(AKSValue v) {
     return (VMChannel*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
 }
 
-static inline VMMutex *ValToMutex(AKSValue v) {
+AKS_INLINE VMMutex *ValToMutex(AKSValue v) {
     return (VMMutex*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
 }
 
-static inline VMSemaphore *ValToSem(AKSValue v) {
+AKS_INLINE VMSemaphore *ValToSem(AKSValue v) {
     return (VMSemaphore*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
 }
 
-static inline AKSBoundMethod *ValToBoundMethod(AKSValue v) {
+AKS_INLINE AKSBoundMethod *ValToBoundMethod(AKSValue v) {
     return (AKSBoundMethod*)(uintptr_t)(v & 0x0000FFFFFFFFFFFFULL);
 }
 
-static inline AKSValue ValInt(int64_t i) {
+AKS_INLINE AKSValue ValInt(int64_t i) {
     return (0xFFF1ULL << 48) | ((uint64_t)i & 0x0000FFFFFFFFFFFFULL);
 }
 
-static inline AKSValue ValFloat(double f) {
+AKS_INLINE AKSValue ValFloat(double f) {
     union { uint64_t u; double d; } u;
     u.d = f;
     if ((u.u & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL) {
@@ -170,15 +178,15 @@ static inline AKSValue ValFloat(double f) {
     return u.u;
 }
 
-static inline AKSValue ValBool(int b) {
+AKS_INLINE AKSValue ValBool(int b) {
     return (0xFFF2ULL << 48) | (b ? 1 : 0);
 }
 
-static inline AKSValue ValNull(void) {
+AKS_INLINE AKSValue ValNull(void) {
     return (0xFFF3ULL << 48);
 }
 
-static inline AKSValue ValFn(int fnid) {
+AKS_INLINE AKSValue ValFn(int fnid) {
     return (0xFFF7ULL << 48) | (uint32_t)fnid;
 }
 
@@ -259,7 +267,7 @@ static inline int ChkMulOvf(int64_t a, int64_t b, int64_t *res) {
 #endif
 }
 
-static inline AKSValue ValAddIntInt(AKSValue a, AKSValue b) {
+AKS_INLINE AKSValue ValAddIntInt(AKSValue a, AKSValue b) {
     int64_t res;
     if (ChkAddOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &res)) {
         return ValFloat((double)ValToIntUnchecked(a) + (double)ValToIntUnchecked(b));
@@ -267,23 +275,23 @@ static inline AKSValue ValAddIntInt(AKSValue a, AKSValue b) {
     return ValInt(res);
 }
 
-static inline AKSValue ValAddFloatFloat(AKSValue a, AKSValue b) {
+AKS_INLINE AKSValue ValAddFloatFloat(AKSValue a, AKSValue b) {
     return ValFloat(ValToFloat(a) + ValToFloat(b));
 }
 
-static inline AKSValue ValSubFloatFloat(AKSValue a, AKSValue b) {
+AKS_INLINE AKSValue ValSubFloatFloat(AKSValue a, AKSValue b) {
     return ValFloat(ValToFloat(a) - ValToFloat(b));
 }
 
-static inline AKSValue ValMulFloatFloat(AKSValue a, AKSValue b) {
+AKS_INLINE AKSValue ValMulFloatFloat(AKSValue a, AKSValue b) {
     return ValFloat(ValToFloat(a) * ValToFloat(b));
 }
 
-static inline AKSValue ValDivFloatFloat(AKSValue a, AKSValue b) {
+AKS_INLINE AKSValue ValDivFloatFloat(AKSValue a, AKSValue b) {
     return ValFloat(ValToFloat(a) / ValToFloat(b));
 }
 
-static inline AKSValue ValSubIntInt(AKSValue a, AKSValue b) {
+AKS_INLINE AKSValue ValSubIntInt(AKSValue a, AKSValue b) {
     int64_t res;
     if (ChkSubOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &res)) {
         return ValFloat((double)ValToIntUnchecked(a) - (double)ValToIntUnchecked(b));
@@ -291,7 +299,7 @@ static inline AKSValue ValSubIntInt(AKSValue a, AKSValue b) {
     return ValInt(res);
 }
 
-static inline AKSValue ValMulIntInt(AKSValue a, AKSValue b) {
+AKS_INLINE AKSValue ValMulIntInt(AKSValue a, AKSValue b) {
     int64_t res;
     if (ChkMulOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &res)) {
         return ValFloat((double)ValToIntUnchecked(a) * (double)ValToIntUnchecked(b));
@@ -299,7 +307,7 @@ static inline AKSValue ValMulIntInt(AKSValue a, AKSValue b) {
     return ValInt(res);
 }
 
-static inline AKSValue ValDivIntInt(AKSValue a, AKSValue b) {
+AKS_INLINE AKSValue ValDivIntInt(AKSValue a, AKSValue b) {
     int64_t ib = ValToIntUnchecked(b);
     if (ib == 0) {
         fprintf(stderr, "Runtime error: division by zero\n");
@@ -308,7 +316,7 @@ static inline AKSValue ValDivIntInt(AKSValue a, AKSValue b) {
     return ValInt(ValToIntUnchecked(a) / ib);
 }
 
-static inline AKSValue ValModIntInt(AKSValue a, AKSValue b) {
+AKS_INLINE AKSValue ValModIntInt(AKSValue a, AKSValue b) {
     int64_t ib = ValToIntUnchecked(b);
     if (ib == 0) {
         fprintf(stderr, "Runtime error: modulo by zero\n");

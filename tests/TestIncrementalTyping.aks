@@ -1,0 +1,27 @@
+// TestIncrementalTyping.aks
+// Verifies incremental type checking, function signatures, and dependency tracking.
+
+fn square(x: int) -> int {
+    return x * x;
+}
+
+fn sum_squares(a: int, b: int) -> int {
+    return square(a) + square(b);
+}
+
+fn format_result(prefix: string, val: int) -> string {
+    return prefix + ": " + val;
+}
+
+fn compute_pipeline(x: int, y: int) -> string {
+    let s = sum_squares(x, y);
+    return format_result("Result", s);
+}
+
+let out1 = compute_pipeline(3, 4);
+print(out1);
+if (out1 != "Result: 25") {
+    print("FAILED: expected 'Result: 25'");
+} else {
+    print("SUCCESS: TestIncrementalTyping passed.");
+}

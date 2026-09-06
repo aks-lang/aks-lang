@@ -847,6 +847,7 @@ static inline void StackEnsure(VMTask *t, int needed) {
       for (int i = t->stackcap; i < newcap; i++) newstack[i] = ValNull();
       t->stack = newstack;
       t->stackcap = newcap;
+      if (newcap > t->stack_peak) t->stack_peak = newcap; /* watermark */
     }
   }
 }
@@ -2282,7 +2283,7 @@ void VMFree(VM *vm) {
             }
           }
         }
-        if (i < 1024 && vm->fncallcounts[i] > 0) {
+        if (i < 4096 && vm->fncallcounts[i] > 0) {
           fprintf(pf, "call %d %d\n", i, vm->fncallcounts[i]);
         }
       }
@@ -2387,7 +2388,7 @@ int VMGenerateFlamegraphSVG(VM *vm, const char *filepath) {
   if (vm->flame_node_count == 0) {
     uint64_t total_calls = 0;
     for (int i = 0; i < vm->fncount; i++) {
-      if (i < 1024 && vm->fncallcounts[i] > 0) {
+      if (i < 4096 && vm->fncallcounts[i] > 0) {
         total_calls += vm->fncallcounts[i];
       }
     }
@@ -2402,7 +2403,7 @@ int VMGenerateFlamegraphSVG(VM *vm, const char *filepath) {
 
     for (int i = 0; i < vm->fncount && vm->flame_node_count < 4090; i++) {
       if (vm->fns[i]) {
-        uint64_t count = (i < 1024 && vm->fncallcounts[i] > 0) ? vm->fncallcounts[i] : 1;
+        uint64_t count = (i < 4096 && vm->fncallcounts[i] > 0) ? vm->fncallcounts[i] : 1;
         int idx = vm->flame_node_count++;
         const char *fname = vm->fns[i]->name[0] ? vm->fns[i]->name : "anonymous";
         strncpy(vm->flame_nodes[idx].name, fname, 127);
@@ -31170,6 +31171,13 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
   return 0;
 }
 
+extern void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset,
+                             TraceStep *trace, int stepcount, int startdepth);
+extern void *CompileLLVMTrace(VM *vm, FnProto *fn, int startoffset,
+                              TraceStep *trace, int stepcount, int startdepth);
+extern void *CompileQBETrace(VM *vm, FnProto *fn, int startoffset,
+                             TraceStep *trace, int stepcount, int startdepth);
+
 static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
   if (vm->sandboxenabled)
     return;
@@ -31184,6 +31192,100 @@ static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
         vm->jitloops[i].targetoffset == startoffset) {
       MutexUnlockNative(vm->globallock);
       return;
+    }
+  }
+
+  /* In-memory native JIT compilation if JIT mode is active (x64, LLVM, or QBE) */
+  if (vm->jitmode > 0 && fn->chunk.code && fn->chunk.count > 0) {
+    int stepcount = 0;
+    int looplen = endoffset - startoffset + 1;
+    if (looplen <= 0 || looplen > 2048) looplen = 256;
+    TraceStep *trace = (TraceStep *)malloc(sizeof(TraceStep) * (looplen + 16));
+    if (trace) {
+      int ip = startoffset;
+      int limit = (endoffset > startoffset && endoffset <= fn->chunk.count) ? endoffset : fn->chunk.count;
+      int can_jit = 1;
+      while (ip < limit && stepcount < looplen) {
+        uint8_t op = fn->chunk.code[ip];
+        if (op == OPCALL || op == OPCALLDYNAMIC || op == OPSPAWN || op == OPAWAIT ||
+            op == OPTRYPUSH || op == OPTRYPOP || op == OPTAILCALL) {
+          can_jit = 0;
+          break;
+        }
+        trace[stepcount].op = op;
+        trace[stepcount].ipoffset = ip;
+        trace[stepcount].jumpoffset = 0;
+        trace[stepcount].guardoutcome = 0;
+        trace[stepcount].pushival = 0;
+        trace[stepcount].pushfval = 0.0;
+        trace[stepcount].slot = 0;
+
+        int len = GetInstrLen(op, &fn->chunk.code[ip]);
+        if (op == OPPUSHINT) {
+          if (ip + 8 < fn->chunk.count) {
+            int64_t val = 0;
+            for (int b = 0; b < 8; b++) {
+              val = (val << 8) | fn->chunk.code[ip + 1 + b];
+            }
+            trace[stepcount].pushival = val;
+          }
+        } else if (op == OPPUSHFLOAT) {
+          if (ip + 8 < fn->chunk.count) {
+            uint64_t val = 0;
+            for (int b = 0; b < 8; b++) {
+              val = (val << 8) | fn->chunk.code[ip + 1 + b];
+            }
+            double fval;
+            memcpy(&fval, &val, 8);
+            trace[stepcount].pushfval = fval;
+          }
+        } else if (op == OPPUSHBOOL) {
+          if (ip + 1 < fn->chunk.count) {
+            trace[stepcount].pushival = fn->chunk.code[ip + 1];
+          }
+        } else if (op == OPLOAD || op == OPSTORE) {
+          if (ip + 2 < fn->chunk.count) {
+            trace[stepcount].slot =
+                (fn->chunk.code[ip + 1] << 8) | fn->chunk.code[ip + 2];
+          }
+        } else if (op == OPJUMP || op == OPJUMPIFFALSE || op == OPJUMPIFNULL ||
+                   op == OPCOALESCE || op == OPTRYPUSH) {
+          if (ip + 4 < fn->chunk.count) {
+            int32_t offset =
+                (int32_t)((fn->chunk.code[ip + 1] << 24) |
+                          (fn->chunk.code[ip + 2] << 16) |
+                          (fn->chunk.code[ip + 3] << 8) | fn->chunk.code[ip + 4]);
+            trace[stepcount].jumpoffset = offset;
+          }
+        }
+        ip += len;
+        stepcount++;
+      }
+
+      if (can_jit && stepcount > 0) {
+        void *func = NULL;
+        int reldepth = fn->maxregisters > 0 ? fn->maxregisters : ((fn->localcount > fn->paramcount) ? fn->localcount : fn->paramcount);
+        if (vm->jitmode == 1) {
+          func = CompileX64Trace(vm, fn, startoffset, trace, stepcount, reldepth);
+        } else if (vm->jitmode == 2) {
+          func = CompileLLVMTrace(vm, fn, startoffset, trace, stepcount, reldepth);
+        } else if (vm->jitmode == 3) {
+          func = CompileQBETrace(vm, fn, startoffset, trace, stepcount, reldepth);
+        }
+        if (func) {
+          int idx = vm->jitloopcount++;
+          vm->jitloops[idx].fnid = fn->id;
+          vm->jitloops[idx].targetoffset = startoffset;
+          vm->jitloops[idx].libhandle = NULL;
+          vm->jitloops[idx].jitfn = (void (*)(AKSValue *, int *, AKSValue *, void *))func;
+          fprintf(stderr, "[JIT] In-memory compiled hot loop at offset %d (mode %d)\n",
+                  startoffset, vm->jitmode);
+          free(trace);
+          MutexUnlockNative(vm->globallock);
+          return;
+        }
+      }
+      free(trace);
     }
   }
 
@@ -31641,7 +31743,7 @@ static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
       vm->jitloops[idx].libhandle = lib;
       vm->jitloops[idx].jitfn =
           (void (*)(AKSValue *, int *, AKSValue *, void *))jitfnptr;
-      printf("[JIT] Compiled hot loop at offset %d\n", startoffset);
+      fprintf(stderr, "[JIT] Compiled hot loop at offset %d\n", startoffset);
     } else {
 #ifdef _WIN32
       FreeLibrary((HMODULE)lib);
@@ -31652,13 +31754,6 @@ static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
   }
   MutexUnlockNative(vm->globallock);
 }
-
-extern void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset,
-                             TraceStep *trace, int stepcount, int startdepth);
-extern void *CompileLLVMTrace(VM *vm, FnProto *fn, int startoffset,
-                              TraceStep *trace, int stepcount, int startdepth);
-extern void *CompileQBETrace(VM *vm, FnProto *fn, int startoffset,
-                             TraceStep *trace, int stepcount, int startdepth);
 
 static void TriggerTracingJIT(VM *vm, VMTask *task, FnProto *fn,
                               int startoffset, int targetoffset,
@@ -31702,11 +31797,13 @@ static void TriggerTracingJIT(VM *vm, VMTask *task, FnProto *fn,
 
   if (vm->jitmode > 0) {
     void *func = NULL;
+    int base_reg = fn->maxregisters > 0 ? fn->maxregisters : ((fn->localcount > fn->paramcount) ? fn->localcount : fn->paramcount);
     int reldepth = (targetoffset == -1)
-                       ? fn->paramcount
+                       ? base_reg
                        : (task ? (task->stacktop -
                                   task->frames[task->framecount - 1].slotsbase)
-                               : 0);
+                               : base_reg);
+    if (reldepth < base_reg) reldepth = base_reg;
     if (vm->jitmode == 1) {
       func = CompileX64Trace(vm, fn, startoffset, trace, stepcount, reldepth);
     } else if (vm->jitmode == 2) {
@@ -31722,7 +31819,7 @@ static void TriggerTracingJIT(VM *vm, VMTask *task, FnProto *fn,
       vm->jitloops[idx].libhandle = NULL;
       vm->jitloops[idx].jitfn =
           (void (*)(AKSValue *, int *, AKSValue *, void *))func;
-      printf("[Tracing JIT] Compiled hot trace at offset %d (mode %d)\n",
+      fprintf(stderr, "[Tracing JIT] Compiled hot trace at offset %d (mode %d)\n",
              startoffset, vm->jitmode);
       MutexUnlockNative(vm->globallock);
       return;
@@ -32276,14 +32373,14 @@ static void TriggerTracingJIT(VM *vm, VMTask *task, FnProto *fn,
           (void (*)(AKSValue *, int *, AKSValue *, void *))jitfnptr;
       if (stepcount > 0) {
         extern const char *StackOpName(int op);
-        printf("[Tracing JIT] Compiled hot loop for function %s (ID %d) at "
+        fprintf(stderr, "[Tracing JIT] Compiled hot loop for function %s (ID %d) at "
                "offset %d with %d trace steps\n",
                fn->name, fn->id, startoffset, stepcount);
         for (int s = 0; s < stepcount; s++) {
-          printf("  Step %d: Opcode %d (%s) at IP offset %d\n", s, trace[s].op,
+          fprintf(stderr, "  Step %d: Opcode %d (%s) at IP offset %d\n", s, trace[s].op,
                  StackOpName(trace[s].op), trace[s].ipoffset);
         }
-        fflush(stdout);
+        fflush(stderr);
       }
     } else {
 #ifdef _WIN32
@@ -33518,7 +33615,7 @@ while (0)
         frameslots[dst] = ret;
       } else {
         frame->ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
-        if (fnid < 1024) {
+        if (fnid < 4096) {
           vm->fncallcounts[fnid]++;
           if (vm->fncallcounts[fnid] >= 100 &&
               !HasJITCompiled(callee, -1, vm)) {
@@ -33539,8 +33636,11 @@ while (0)
           newframe->slotsbase = (int)(canarypos + 1 - task->stack);
           newframe->argc = argc;
 
-          STACK_GROW(newframe->slotsbase + callee->maxregisters + 1);
-          for (int i = argc; i < callee->maxregisters; i++) {
+          int maxreg = callee->maxregisters;
+          if (maxreg == 0)
+            maxreg = callee->localcount;
+          STACK_GROW(newframe->slotsbase + maxreg + 1);
+          for (int i = argc; i < maxreg; i++) {
             task->stack[newframe->slotsbase + i] = ValNull();
           }
           stacktop = task->stack + newframe->slotsbase + argc;
@@ -33758,8 +33858,11 @@ while (0)
           newframe->slotsbase = (int)(canarypos + 1 - task->stack);
           newframe->argc = argc;
 
-          STACK_GROW(newframe->slotsbase + callee->maxregisters + 1);
-          for (int i = argc; i < callee->maxregisters; i++) {
+          int maxreg = callee->maxregisters;
+          if (maxreg == 0)
+            maxreg = callee->localcount;
+          STACK_GROW(newframe->slotsbase + maxreg + 1);
+          for (int i = argc; i < maxreg; i++) {
             task->stack[newframe->slotsbase + i] = ValNull();
           }
           stacktop = task->stack + newframe->slotsbase + argc;
@@ -36151,7 +36254,7 @@ enter_stack_interpreter: for (;;) {
         }
       }
 
-      if (frame->fn->chunk.loopcounters[targetoffset] >= 100 &&
+      if (frame->fn->chunk.loopcounters[targetoffset] >= 50 &&
           !HasJITCompiled(frame->fn, targetoffset, vm)) {
         TriggerJIT(vm, frame->fn, targetoffset,
                    (int)(ip - frame->fn->chunk.code));
@@ -36982,20 +37085,46 @@ enter_stack_interpreter: for (;;) {
         exit(1);
       }
 
-      if (frame->fn->regcode) {
+      if (frame->fn->regcode && vm->jitmode == 0) {
         uint8_t *call_ip = NULL;
-        if (ip - 4 >= frame->fn->chunk.code && *(ip - 4) == OPCALL) {
-          call_ip = ip - 4;
-        } else if (ip - 2 >= frame->fn->chunk.code &&
-                   *(ip - 2) == OPCALLDYNAMIC) {
-          call_ip = ip - 2;
+        uint8_t *ip_val = frame->ip;
+        if (ip_val >= frame->fn->chunk.code &&
+            ip_val < frame->fn->chunk.code + frame->fn->chunk.count) {
+          if (*ip_val == OPCALL || *ip_val == OPCALLDYNAMIC) {
+            call_ip = ip_val;
+          }
+        }
+        if (!call_ip) {
+          if (ip_val - 4 >= frame->fn->chunk.code &&
+              *(ip_val - 4) == OPCALL) {
+            call_ip = ip_val - 4;
+          } else if (ip_val - 2 >= frame->fn->chunk.code &&
+                     *(ip_val - 2) == OPCALLDYNAMIC) {
+            call_ip = ip_val - 2;
+          }
         }
         if (call_ip) {
           int call_bytecode_offset = (int)(call_ip - frame->fn->chunk.code);
           int regoffset = frame->fn->offsettomap[call_bytecode_offset];
+          regip = (RegInst *)frame->fn->regcode + regoffset + 1;
           RegInst *callinst = (RegInst *)frame->fn->regcode + regoffset;
           ValFree(&frameslots[callinst->dst]);
           frameslots[callinst->dst] = ValNull();
+          frame->ip = call_ip + (*call_ip == OPCALL ? 4 : 2);
+          ip = frame->ip;
+        } else {
+          int bytecodeoffset = (int)(frame->ip - frame->fn->chunk.code);
+          int regoffset = frame->fn->offsettomap[bytecodeoffset];
+          regip = (RegInst *)frame->fn->regcode + regoffset + 1;
+          RegInst *callinst = (RegInst *)frame->fn->regcode + regoffset;
+          ValFree(&frameslots[callinst->dst]);
+          frameslots[callinst->dst] = ValNull();
+        }
+        if (vm->jitmode == 0) {
+          int maxreg = frame->fn->maxregisters;
+          if (maxreg == 0) maxreg = frame->fn->localcount;
+          stacktop = task->stack + frame->slotsbase + maxreg;
+          goto enter_register_interpreter_loop;
         }
       } else {
         PUSH(ValNull());
@@ -37044,22 +37173,46 @@ enter_stack_interpreter: for (;;) {
         exit(1);
       }
 
-      if (frame->fn->regcode) {
+      if (frame->fn->regcode && vm->jitmode == 0) {
         uint8_t *call_ip = NULL;
-        if (ip - 4 >= frame->fn->chunk.code && *(ip - 4) == OPCALL) {
-          call_ip = ip - 4;
-        } else if (ip - 2 >= frame->fn->chunk.code &&
-                   *(ip - 2) == OPCALLDYNAMIC) {
-          call_ip = ip - 2;
+        uint8_t *ip_val = frame->ip;
+        if (ip_val >= frame->fn->chunk.code &&
+            ip_val < frame->fn->chunk.code + frame->fn->chunk.count) {
+          if (*ip_val == OPCALL || *ip_val == OPCALLDYNAMIC) {
+            call_ip = ip_val;
+          }
+        }
+        if (!call_ip) {
+          if (ip_val - 4 >= frame->fn->chunk.code &&
+              *(ip_val - 4) == OPCALL) {
+            call_ip = ip_val - 4;
+          } else if (ip_val - 2 >= frame->fn->chunk.code &&
+                     *(ip_val - 2) == OPCALLDYNAMIC) {
+            call_ip = ip_val - 2;
+          }
         }
         if (call_ip) {
           int call_bytecode_offset = (int)(call_ip - frame->fn->chunk.code);
           int regoffset = frame->fn->offsettomap[call_bytecode_offset];
+          regip = (RegInst *)frame->fn->regcode + regoffset + 1;
           RegInst *callinst = (RegInst *)frame->fn->regcode + regoffset;
           ValFree(&frameslots[callinst->dst]);
           frameslots[callinst->dst] = ret;
+          frame->ip = call_ip + (*call_ip == OPCALL ? 4 : 2);
+          ip = frame->ip;
         } else {
-          PUSH(ret);
+          int bytecodeoffset = (int)(frame->ip - frame->fn->chunk.code);
+          int regoffset = frame->fn->offsettomap[bytecodeoffset];
+          regip = (RegInst *)frame->fn->regcode + regoffset + 1;
+          RegInst *callinst = (RegInst *)frame->fn->regcode + regoffset;
+          ValFree(&frameslots[callinst->dst]);
+          frameslots[callinst->dst] = ret;
+        }
+        if (vm->jitmode == 0) {
+          int maxreg = frame->fn->maxregisters;
+          if (maxreg == 0) maxreg = frame->fn->localcount;
+          stacktop = task->stack + frame->slotsbase + maxreg;
+          goto enter_register_interpreter_loop;
         }
       } else {
         PUSH(ret);
@@ -37617,6 +37770,13 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPINC: {
+    if (stacktop > frameslots && ValKind(*(stacktop - 1)) == VALINT) {
+      int64_t v = ValToIntUnchecked(*(stacktop - 1));
+      if (v < INT64_MAX) {
+        *(stacktop - 1) = ValInt(v + 1);
+        break;
+      }
+    }
     AKSValue val = POP();
     if (ValKind(val) == VALINT) {
       int64_t res;
@@ -37645,6 +37805,13 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPDEC: {
+    if (stacktop > frameslots && ValKind(*(stacktop - 1)) == VALINT) {
+      int64_t v = ValToIntUnchecked(*(stacktop - 1));
+      if (v > INT64_MIN) {
+        *(stacktop - 1) = ValInt(v - 1);
+        break;
+      }
+    }
     AKSValue val = POP();
     if (ValKind(val) == VALINT) {
       int64_t res;
@@ -38403,9 +38570,9 @@ static void VMLoadPGOProfile(VM *vm) {
           }
         }
       } else if (strcmp(type, "call") == 0) {
-        if (fnid >= 0 && fnid < 1024) {
+        if (fnid >= 0 && fnid < 4096) {
           vm->fncallcounts[fnid] = count;
-          if (count >= 100 && fnid < vm->fncount && vm->fns[fnid] &&
+          if (count >= 50 && fnid < vm->fncount && vm->fns[fnid] &&
               vm->jitmode > 0) {
             TriggerMethodJIT(vm, NULL, vm->fns[fnid]);
           }

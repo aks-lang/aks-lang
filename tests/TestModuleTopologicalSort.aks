@@ -1,0 +1,18 @@
+// TestModuleTopologicalSort.aks
+// Verifies module dependency DAG topological sorting and resolution.
+
+import "ModuleHelperB.aks";
+
+module topotest {
+    pub fn compute() {
+        return helper_b::double_val() + 10;
+    }
+}
+
+let res = topotest::compute();
+print("Topological module result: " + res);
+if (res != 210) {
+    print("FAILED: expected 210, got " + res);
+} else {
+    print("SUCCESS: TestModuleTopologicalSort passed.");
+}

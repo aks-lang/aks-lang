@@ -643,7 +643,7 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                 void *targetfn = GetJITCompiledFn(vm, fn, targetoffset);
                 if (targetfn) {
                     JITEmitStoreAbsoluteVtop(&buf, vtop);
-                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x83, 0xC4, 0x20}, 4);
+                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x83, 0xC4, 0x28}, 4);
                     JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5F}, 2); // pop r15
                     JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5E}, 2); // pop r14
                     JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5D}, 2); // pop r13
@@ -929,7 +929,8 @@ void *CompileX64Method(VM *vm, FnProto *fn) {
         stepcount++;
     }
 
-    void *exec = CompileX64Trace(vm, fn, 0, trace, stepcount, fn->paramcount);
+    int reldepth = fn->maxregisters > 0 ? fn->maxregisters : ((fn->localcount > fn->paramcount) ? fn->localcount : fn->paramcount);
+    void *exec = CompileX64Trace(vm, fn, 0, trace, stepcount, reldepth);
     free(trace);
     return exec;
 }

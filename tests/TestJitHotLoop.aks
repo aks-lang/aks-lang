@@ -1,0 +1,17 @@
+fn sum_loop(n) {
+    let mut total = 0;
+    let mut i = 0;
+    while (i < n) {
+        total = total + i;
+        i = i + 1;
+    }
+    return total;
+}
+
+let result = sum_loop(100);
+print("JIT Loop result: " + result);
+if (result != 4950) {
+    print("FAILED: Expected 4950, got " + result);
+} else {
+    print("SUCCESS: JIT Loop verified.");
+}

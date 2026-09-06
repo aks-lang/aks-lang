@@ -64,6 +64,7 @@ struct VMTask {
     AKSValue *stack;
     int stacktop;
     int stackcap;
+    int stack_peak;  /* peak stack slot index ever reached (watermark) */
     CallFrame *frames;
     int framecount;
     int framecap;
@@ -187,7 +188,7 @@ typedef struct {
         void (*jitfn)(AKSValue *stack, int *stacktop, AKSValue *locals, void *vm);
     } jitloops[128];
     int jitloopcount;
-    int fncallcounts[1024];
+    int fncallcounts[4096];
 
     // concurrency scheduling fields
     VMTask *maintask;

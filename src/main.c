@@ -1869,7 +1869,7 @@ static void ParseSafetyFlags(int *argcptr, char ***argvptr) {
         } else if (strcmp(argv[i], "--allow-ffi") == 0) {
             if (!gCustomPermissions) { gPermissions = 0; gCustomPermissions = 1; }
             gPermissions |= PERMFFI;
-        } else if (strcmp(argv[i], "--jit=x64") == 0) {
+        } else if (strcmp(argv[i], "--jit") == 0 || strcmp(argv[i], "--jit=x64") == 0) {
             gJitMode = 1;
         } else if (strcmp(argv[i], "--jit=llvm") == 0) {
             gJitMode = 2;

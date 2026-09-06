@@ -10,6 +10,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 int gNoBoundsCheck = 0;
 int gStrictOvf = 0;
@@ -38,6 +41,8 @@ static int ResolveGlobal(Compiler *c, const char *name, int line);
 static FnProto *NewFn(Compiler *c, const char *name);
 static void Error(Compiler *c, int line, const char *msg);
 static void CheckBorrows(Compiler *c, Node *n, Node *root);
+static Module *CompilerFindModule(Compiler *c, const char *name);
+static Module *CompilerAddModule(Compiler *c, const char *name, const char *path, Node *ast);
 
 int gContractCheck = 0;
 
@@ -858,7 +863,12 @@ static void Error(Compiler *c, int line, const char *msg) {
         }
         return;
     }
-    fprintf(stderr,"Compiler error on line %d: %s\n",line,msg);
+    if (c->error_count < 50) {
+        fprintf(stderr,"Compiler error on line %d: %s\n",line,msg);
+    } else if (c->error_count == 50) {
+        fprintf(stderr,"... (further compiler errors suppressed)\n");
+    }
+    c->error_count++;
     c->haderror=1;
 }
 
@@ -6326,11 +6336,25 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             c->currentfilepath[sizeof(c->currentfilepath) - 1] = '\0';
             /* Pop active import stack */
             if (c->import_depth > 0) c->import_depth--;
-            /* Mark file as compiled */
+            /* Mark file as compiled and track dependency in module table */
             if (c->compiled_file_count < 256) {
                 strncpy(c->compiled_files[c->compiled_file_count], finalpath, 511);
                 c->compiled_files[c->compiled_file_count][511] = '\0';
                 c->compiled_file_count++;
+            }
+            CompilerAddModule(c, path, finalpath, importedast);
+            if (savedpath[0] != '\0') {
+                Module *parent_mod = CompilerFindModule(c, savedpath);
+                if (!parent_mod) parent_mod = CompilerAddModule(c, savedpath, savedpath, NULL);
+                if (parent_mod && parent_mod->dep_count < 32) {
+                    int exists = 0;
+                    for (int di = 0; di < parent_mod->dep_count; di++) {
+                        if (strcmp(parent_mod->dependencies[di], path) == 0) { exists = 1; break; }
+                    }
+                    if (!exists) {
+                        strncpy(parent_mod->dependencies[parent_mod->dep_count++], path, 255);
+                    }
+                }
             }
             if (c->imported_ast_count < 1024) {
                 c->imported_asts[c->imported_ast_count++] = importedast;
@@ -7856,7 +7880,7 @@ static Module *CompilerAddModule(Compiler *c, const char *name, const char *path
     if (!c || !name) return NULL;
     Module *m = CompilerFindModule(c, name);
     if (m) return m;
-    if (c->module_count >= 64) return NULL;
+    if (c->module_count >= 256) return NULL;
     m = &c->modules[c->module_count++];
     memset(m, 0, sizeof(Module));
     strncpy(m->name, name, 255);
@@ -7864,6 +7888,116 @@ static Module *CompilerAddModule(Compiler *c, const char *name, const char *path
     m->ast = ast;
     m->is_loaded = 1;
     return m;
+}
+
+static int TopoDFS(Compiler *c, int idx, int *visited, int *order, int *count) {
+    if (visited[idx] == 1) return 0; /* cycle detected */
+    if (visited[idx] == 2) return 1; /* already processed */
+    visited[idx] = 1;
+    Module *m = &c->modules[idx];
+    for (int d = 0; d < m->dep_count; d++) {
+        for (int j = 0; j < c->module_count; j++) {
+            if (strcmp(c->modules[j].name, m->dependencies[d]) == 0 ||
+                strcmp(c->modules[j].path, m->dependencies[d]) == 0) {
+                if (!TopoDFS(c, j, visited, order, count)) return 0;
+                break;
+            }
+        }
+    }
+    visited[idx] = 2;
+    order[(*count)++] = idx;
+    return 1;
+}
+
+int CompilerSortModulesTopological(Compiler *c, int *out_order, int *out_count) {
+    if (!c || !out_order || !out_count) return 0;
+    *out_count = 0;
+    int visited[256] = {0};
+    for (int i = 0; i < c->module_count; i++) {
+        if (visited[i] == 0) {
+            if (!TopoDFS(c, i, visited, out_order, out_count)) {
+                return 0; /* circular dependency */
+            }
+        }
+    }
+    return 1;
+}
+
+typedef struct {
+    const char *filepath;
+    Node       *ast;
+    int         parse_error;
+} ParallelModuleTask;
+
+#ifdef _WIN32
+static DWORD WINAPI ParallelParseWorker(LPVOID param) {
+    ParallelModuleTask *task = (ParallelModuleTask *)param;
+    char *src = CompReadFile(task->filepath);
+    if (!src) {
+        task->parse_error = 1;
+        task->ast = NULL;
+        return 0;
+    }
+    task->ast = Parse(src, &task->parse_error);
+    free(src);
+    return 0;
+}
+#endif
+
+int CompilerParallelCompileModules(Compiler *c, const char **module_paths, int count) {
+    if (!c || !module_paths || count <= 0) return 0;
+    if (count == 1) {
+        char *src = CompReadFile(module_paths[0]);
+        if (!src) return 0;
+        int err = 0;
+        Node *ast = Parse(src, &err);
+        free(src);
+        if (err || !ast) return 0;
+        CompilerAddModule(c, module_paths[0], module_paths[0], ast);
+        if (c->imported_ast_count < 1024) {
+            c->imported_asts[c->imported_ast_count++] = ast;
+        }
+        return 1;
+    }
+
+#ifdef _WIN32
+    ParallelModuleTask tasks[64];
+    HANDLE threads[64];
+    int n = count > 64 ? 64 : count;
+    for (int i = 0; i < n; i++) {
+        tasks[i].filepath = module_paths[i];
+        tasks[i].ast = NULL;
+        tasks[i].parse_error = 0;
+        threads[i] = CreateThread(NULL, 0, ParallelParseWorker, &tasks[i], 0, NULL);
+    }
+    WaitForMultipleObjects(n, threads, TRUE, INFINITE);
+    for (int i = 0; i < n; i++) {
+        CloseHandle(threads[i]);
+        if (!tasks[i].parse_error && tasks[i].ast) {
+            CompilerAddModule(c, tasks[i].filepath, tasks[i].filepath, tasks[i].ast);
+            if (c->imported_ast_count < 1024) {
+                c->imported_asts[c->imported_ast_count++] = tasks[i].ast;
+            }
+        }
+    }
+    return 1;
+#else
+    for (int i = 0; i < count; i++) {
+        char *src = CompReadFile(module_paths[i]);
+        if (src) {
+            int err = 0;
+            Node *ast = Parse(src, &err);
+            free(src);
+            if (!err && ast) {
+                CompilerAddModule(c, module_paths[i], module_paths[i], ast);
+                if (c->imported_ast_count < 1024) {
+                    c->imported_asts[c->imported_ast_count++] = ast;
+                }
+            }
+        }
+    }
+    return 1;
+#endif
 }
 
 static void PreregisterFns(Compiler *c, Node *n) {

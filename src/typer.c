@@ -17,6 +17,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
 
 /* Primitive SType singletons (allocated once per Compiler) */
 
@@ -46,21 +51,237 @@ SType *StypeInternGet(Compiler *c, STypeKind kind, const char *name) {
     if (!c) return NULL;
     const char *sname = name ? name : "";
     unsigned int idx = StypeHash(kind, sname);
-    /* Walk the bucket chain to find an existing intern */
-    for (SType *t = c->stype_intern[idx]; t; t = t->next_intern) {
+    /* Walk the per-bucket chain (next_bucket) — O(bucket_size), not O(total_types) */
+    for (SType *t = c->stype_intern[idx]; t; t = t->next_bucket) {
         if (t->kind == kind && strcmp(t->name, sname) == 0) return t;
     }
-    /* New type: allocate and chain it at the bucket head.
-     * StypeAlloc sets next_intern = c->all_stypes and updates c->all_stypes,
-     * so next_intern forms the global GC list.  We then point the bucket slot
-     * at the new node; future lookups walk next_intern from this node, which
-     * traverses the entire all_stypes list — this is O(total_types) in the
-     * worst case but is correct and safe.  A two-pointer improvement can follow. */
+    /* Not found: allocate and chain at the bucket head.
+     * next_intern is updated by StypeAlloc (global GC list).
+     * next_bucket links only types in this specific bucket. */
     SType *t = StypeAlloc(c, kind);
     strncpy(t->name, sname, sizeof(t->name) - 1);
     if (kind == STYPE_INT || kind == STYPE_FLOAT || kind == STYPE_BOOL) t->is_copy = 1;
-    c->stype_intern[idx] = t;  /* bucket head now points at newest interned type */
+    t->next_bucket = c->stype_intern[idx];  /* push at bucket head */
+    c->stype_intern[idx] = t;
     return t;
+}
+
+/* Incremental Signature Cache */
+FnSigCache gFnSigCache = {0};
+
+uint64_t TyperComputeNodeHash(Node *n) {
+    if (!n) return 0xcbf29ce484222325ULL;
+    uint64_t h = 0xcbf29ce484222325ULL;
+    #define HASH_BYTE(b) do { h ^= (uint8_t)(b); h *= 0x100000001b3ULL; } while (0)
+    #define HASH_INT(i) do { uint64_t v = (uint64_t)(i); for (int k=0; k<8; k++) HASH_BYTE((v >> (k*8)) & 0xFF); } while (0)
+    #define HASH_STR(s) do { if (s) { for (const char *p = (s); *p; p++) HASH_BYTE(*p); } } while (0)
+
+    HASH_INT(n->type);
+    HASH_INT(n->line);
+    if (n->type == NINT) {
+        HASH_INT(n->ival);
+    } else if (n->type == NFLOAT) {
+        uint64_t bits; memcpy(&bits, &n->fval, 8); HASH_INT(bits);
+    } else if (n->type == NSTR || n->type == NIDENT) {
+        HASH_STR(n->sval);
+    } else if (n->type == NBINOP) {
+        HASH_STR(n->binop.op);
+        h ^= TyperComputeNodeHash(n->binop.left);
+        h *= 0x100000001b3ULL;
+        h ^= TyperComputeNodeHash(n->binop.right);
+        h *= 0x100000001b3ULL;
+    } else if (n->type == NUNOP) {
+        HASH_STR(n->binop.op);
+        h ^= TyperComputeNodeHash(n->binop.left);
+        h *= 0x100000001b3ULL;
+    } else if (n->type == NVARDECL || n->type == NCONSTDECL) {
+        HASH_STR(n->decl.name);
+        HASH_STR(n->decl.tname);
+        h ^= TyperComputeNodeHash(n->decl.init);
+        h *= 0x100000001b3ULL;
+    } else if (n->type == NBLOCK || n->type == NPROGRAM) {
+        HASH_INT(n->block.count);
+        for (int i = 0; i < n->block.count; i++) {
+            h ^= TyperComputeNodeHash(n->block.stmts[i]);
+            h *= 0x100000001b3ULL;
+        }
+    } else if (n->type == NIF) {
+        h ^= TyperComputeNodeHash(n->ifn.cond);
+        h *= 0x100000001b3ULL;
+        h ^= TyperComputeNodeHash(n->ifn.then);
+        h *= 0x100000001b3ULL;
+        h ^= TyperComputeNodeHash(n->ifn.els);
+        h *= 0x100000001b3ULL;
+    } else if (n->type == NWHILE) {
+        h ^= TyperComputeNodeHash(n->whilen.cond);
+        h *= 0x100000001b3ULL;
+        h ^= TyperComputeNodeHash(n->whilen.body);
+        h *= 0x100000001b3ULL;
+    } else if (n->type == NCALL) {
+        h ^= TyperComputeNodeHash(n->call.callee);
+        h *= 0x100000001b3ULL;
+        HASH_INT(n->call.argc);
+        for (int i = 0; i < n->call.argc; i++) {
+            h ^= TyperComputeNodeHash(n->call.args[i]);
+            h *= 0x100000001b3ULL;
+        }
+    } else if (n->type == NASSIGN) {
+        h ^= TyperComputeNodeHash(n->assign.target);
+        h *= 0x100000001b3ULL;
+        h ^= TyperComputeNodeHash(n->assign.value);
+        h *= 0x100000001b3ULL;
+    } else if (n->type == NMEMBER) {
+        h ^= TyperComputeNodeHash(n->member.obj);
+        h *= 0x100000001b3ULL;
+        HASH_STR(n->member.field);
+    } else if (n->type == NINDEX) {
+        h ^= TyperComputeNodeHash(n->index.arr);
+        h *= 0x100000001b3ULL;
+        h ^= TyperComputeNodeHash(n->index.idx);
+        h *= 0x100000001b3ULL;
+    } else if (n->type == NRETURN || n->type == NEXPRSTMT) {
+        h ^= TyperComputeNodeHash(n->single.expr);
+        h *= 0x100000001b3ULL;
+    }
+    #undef HASH_BYTE
+    #undef HASH_INT
+    #undef HASH_STR
+    return h;
+}
+
+FnSigEntry *TyperLookupSig(const char *name) {
+    if (!name) return NULL;
+    for (int i = 0; i < gFnSigCache.count; i++) {
+        if (strcmp(gFnSigCache.entries[i].name, name) == 0) {
+            return &gFnSigCache.entries[i];
+        }
+    }
+    return NULL;
+}
+
+void TyperStoreSig(const char *name, uint64_t body_hash, SType *ret_type,
+                   SType **param_types, int param_count,
+                   char deps[32][128], int dep_count) {
+    if (!name) return;
+    FnSigEntry *entry = TyperLookupSig(name);
+    if (!entry) {
+        if (gFnSigCache.count >= 1024) return;
+        entry = &gFnSigCache.entries[gFnSigCache.count++];
+    }
+    strncpy(entry->name, name, sizeof(entry->name) - 1);
+    entry->name[sizeof(entry->name) - 1] = '\0';
+    entry->body_hash = body_hash;
+    entry->ret_type = ret_type;
+    entry->param_count = (param_count > 32) ? 32 : param_count;
+    for (int i = 0; i < entry->param_count; i++) {
+        entry->param_types[i] = param_types ? param_types[i] : NULL;
+    }
+    entry->dep_count = (dep_count > 32) ? 32 : dep_count;
+    for (int i = 0; i < entry->dep_count; i++) {
+        strncpy(entry->deps[i], deps[i], sizeof(entry->deps[i]) - 1);
+        entry->deps[i][sizeof(entry->deps[i]) - 1] = '\0';
+    }
+    entry->is_valid = 1;
+}
+
+int TyperIsSigValid(FnSigEntry *sig) {
+    if (!sig || !sig->is_valid) return 0;
+    for (int i = 0; i < sig->dep_count; i++) {
+        FnSigEntry *dep = TyperLookupSig(sig->deps[i]);
+        if (dep && !dep->is_valid) return 0;
+    }
+    return 1;
+}
+
+void TyperSaveSigCache(Compiler *c, const char *cache_path) {
+    if (!cache_path || gFnSigCache.count == 0) return;
+    char dirbuf[512];
+    strncpy(dirbuf, cache_path, sizeof(dirbuf) - 1);
+    dirbuf[sizeof(dirbuf) - 1] = '\0';
+    char *slash = strrchr(dirbuf, '/');
+    if (!slash) slash = strrchr(dirbuf, '\\');
+    if (slash) {
+        *slash = '\0';
+#ifdef _WIN32
+        _mkdir(dirbuf);
+#else
+        mkdir(dirbuf, 0755);
+#endif
+    }
+
+    FILE *f = fopen(cache_path, "wb");
+    if (!f) return;
+    const char magic[8] = "AKSIG1\0";
+    fwrite(magic, 1, 8, f);
+    uint32_t count = (uint32_t)gFnSigCache.count;
+    fwrite(&count, sizeof(uint32_t), 1, f);
+    for (int i = 0; i < gFnSigCache.count; i++) {
+        FnSigEntry *e = &gFnSigCache.entries[i];
+        fwrite(e->name, 1, 128, f);
+        fwrite(&e->body_hash, sizeof(uint64_t), 1, f);
+        int32_t pcount = e->param_count;
+        fwrite(&pcount, sizeof(int32_t), 1, f);
+        for (int p = 0; p < e->param_count; p++) {
+            char tname[64] = {0};
+            if (e->param_types[p]) StypeName(e->param_types[p], tname, sizeof(tname));
+            fwrite(tname, 1, 64, f);
+        }
+        char rname[64] = {0};
+        if (e->ret_type) StypeName(e->ret_type, rname, sizeof(rname));
+        fwrite(rname, 1, 64, f);
+        int32_t dcount = e->dep_count;
+        fwrite(&dcount, sizeof(int32_t), 1, f);
+        for (int d = 0; d < e->dep_count; d++) {
+            fwrite(e->deps[d], 1, 128, f);
+        }
+        int32_t valid = e->is_valid;
+        fwrite(&valid, sizeof(int32_t), 1, f);
+    }
+    fclose(f);
+}
+
+void TyperLoadSigCache(Compiler *c, const char *cache_path) {
+    if (!cache_path) return;
+    FILE *f = fopen(cache_path, "rb");
+    if (!f) return;
+    char magic[8];
+    if (fread(magic, 1, 8, f) != 8 || memcmp(magic, "AKSIG1\0", 8) != 0) {
+        fclose(f);
+        return;
+    }
+    uint32_t count = 0;
+    if (fread(&count, sizeof(uint32_t), 1, f) != 1) {
+        fclose(f);
+        return;
+    }
+    if (count > 1024) count = 1024;
+    gFnSigCache.count = (int)count;
+    for (uint32_t i = 0; i < count; i++) {
+        FnSigEntry *e = &gFnSigCache.entries[i];
+        if (fread(e->name, 1, 128, f) != 128) break;
+        if (fread(&e->body_hash, sizeof(uint64_t), 1, f) != 1) break;
+        int32_t pcount = 0;
+        if (fread(&pcount, sizeof(int32_t), 1, f) != 1) break;
+        e->param_count = (pcount > 32) ? 32 : pcount;
+        for (int p = 0; p < e->param_count; p++) {
+            char tname[64] = {0};
+            if (fread(tname, 1, 64, f) != 64) break;
+            e->param_types[p] = (tname[0] != '\0') ? TyperResolveName(c, tname) : NULL;
+        }
+        char rname[64] = {0};
+        if (fread(rname, 1, 64, f) != 64) break;
+        e->ret_type = (rname[0] != '\0') ? TyperResolveName(c, rname) : NULL;
+        int32_t dcount = 0;
+        if (fread(&dcount, sizeof(int32_t), 1, f) != 1) break;
+        e->dep_count = (dcount > 32) ? 32 : dcount;
+        for (int d = 0; d < e->dep_count; d++) {
+            if (fread(e->deps[d], 1, 128, f) != 128) break;
+        }
+        int32_t valid = 0;
+        if (fread(&valid, sizeof(int32_t), 1, f) != 1) break;
+        e->is_valid = valid;
+    }
+    fclose(f);
 }
 
 SType *StypeMakeArray(Compiler *c, SType *elem, int len) {
@@ -204,7 +425,7 @@ static void EnvFreeLocal(TypeEnv *e) {
 /* Error reporting */
 
 static void TyperError(TyperCtx *ctx, int line, const char *msg) {
-    if (ctx->error_count < 20) {
+    if (ctx->error_count < 50) {
         const char *file = (ctx->comp && ctx->comp->currentfilepath[0])
                            ? ctx->comp->currentfilepath : NULL;
         if (file) {
@@ -212,7 +433,7 @@ static void TyperError(TyperCtx *ctx, int line, const char *msg) {
         } else {
             fprintf(stderr, "Type error on line %d: %s\n", line, msg);
         }
-    } else if (ctx->error_count == 20) {
+    } else if (ctx->error_count == 50) {
         fprintf(stderr, "... (further type errors suppressed)\n");
     }
     ctx->error_count++;
@@ -760,6 +981,18 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
         }
 
         case NCALL: {
+            /* If collecting dependencies for incremental typing, track callee */
+            if (ctx->collecting_deps && n->call.callee && n->call.callee->type == NIDENT && ctx->dep_count < 32) {
+                int found = 0;
+                for (int d = 0; d < ctx->dep_count; d++) {
+                    if (strcmp(ctx->current_deps[d], n->call.callee->sval) == 0) {
+                        found = 1; break;
+                    }
+                }
+                if (!found) {
+                    strncpy(ctx->current_deps[ctx->dep_count++], n->call.callee->sval, 127);
+                }
+            }
             /* Look up function return type */
             if (n->call.callee && n->call.callee->type == NIDENT) {
                 const char *fname = n->call.callee->sval;
@@ -812,30 +1045,58 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             TypeEnv *inner = EnvPush(env);
             SType *ret_t = n->fn.ret ? TyperResolveName(c, n->fn.ret)
                                      : StypeInternGet(c, STYPE_VOID, "void");
-            for (int i = 0; i < n->fn.pc; i++) {
+            SType *param_stypes[32] = {0};
+            for (int i = 0; i < n->fn.pc && i < 32; i++) {
                 if (n->fn.pnames && n->fn.ptypes) {
                     SType *pt = TyperResolveName(c, n->fn.ptypes[i]);
+                    param_stypes[i] = pt;
                     EnvSet(inner, n->fn.pnames[i], pt);
+                } else {
+                    param_stypes[i] = StypeInternGet(c, STYPE_UNKNOWN, "");
                 }
             }
+
+            /* Incremental signature cache verification */
+            uint64_t body_hash = TyperComputeNodeHash(n->fn.body);
+            FnSigEntry *cached = n->fn.name ? TyperLookupSig(n->fn.name) : NULL;
+            if (cached && cached->is_valid && cached->body_hash == body_hash && TyperIsSigValid(cached)) {
+                if (cached->ret_type) ret_t = cached->ret_type;
+                result = StypeMakeFn(c, cached->param_types, cached->param_count, ret_t);
+                n->stype = result;
+                EnvFreeLocal(inner); EnvPop(inner);
+                if (n->fn.name) EnvSet(env, n->fn.name, result);
+                break;
+            }
+
             SType *saved_ret = ctx->current_fn_ret;
             ctx->current_fn_ret = ret_t;
             int saved_const = ctx->in_const_fn;
-            /* Check if this is a const fn (annotated via n->fn.effect or similar) */
-            /* For now: treat fn named "const_..." as const fn */
             if (n->fn.name && strncmp(n->fn.name, "const_", 6) == 0) ctx->in_const_fn = 1;
+
+            /* Track dependencies during body inference */
+            int saved_collecting = ctx->collecting_deps;
+            int saved_dep_count = ctx->dep_count;
+            char saved_deps[32][128];
+            memcpy(saved_deps, ctx->current_deps, sizeof(saved_deps));
+            ctx->collecting_deps = 1;
+            ctx->dep_count = 0;
+
             if (n->fn.body) InferNode(ctx, inner, n->fn.body);
+
+            /* Save signature to cache */
+            if (n->fn.name) {
+                TyperStoreSig(n->fn.name, body_hash, ret_t, param_stypes, n->fn.pc,
+                              ctx->current_deps, ctx->dep_count);
+            }
+
+            ctx->collecting_deps = saved_collecting;
+            ctx->dep_count = saved_dep_count;
+            memcpy(ctx->current_deps, saved_deps, sizeof(saved_deps));
+
             ctx->current_fn_ret = saved_ret;
             ctx->in_const_fn = saved_const;
-            /* Build fn SType */
-            SType **param_stypes = (SType**)malloc(n->fn.pc * sizeof(SType*));
-            for (int i = 0; i < n->fn.pc; i++) {
-                param_stypes[i] = n->fn.ptypes
-                    ? TyperResolveName(c, n->fn.ptypes[i])
-                    : StypeInternGet(c, STYPE_UNKNOWN, "");
-            }
+
             result = StypeMakeFn(c, param_stypes, n->fn.pc, ret_t);
-            free(param_stypes);
             EnvFreeLocal(inner); EnvPop(inner);
             if (n->fn.name) EnvSet(env, n->fn.name, result);
             break;
@@ -1045,6 +1306,9 @@ int TyperRun(Compiler *c, Node *program) {
     ctx.env = &root;
     ctx.current_fn_ret = StypeInternGet(c, STYPE_VOID, "void");
 
+    /* Load incremental signature cache if present */
+    TyperLoadSigCache(c, ".akscache/signatures.bin");
+
     /* Pre-intern primitive types */
     StypeInternGet(c, STYPE_INT, "int");
     StypeInternGet(c, STYPE_FLOAT, "float");
@@ -1070,6 +1334,11 @@ int TyperRun(Compiler *c, Node *program) {
     /* Flush local root env */
     EnvFreeLocal(&root);
 
+    if (ctx.error_count > 0) {
+        fprintf(stderr, "Type checking failed: %d error(s) found.\n", ctx.error_count);
+    } else {
+        TyperSaveSigCache(c, ".akscache/signatures.bin");
+    }
     return ctx.had_error ? 0 : 1;
 }
 

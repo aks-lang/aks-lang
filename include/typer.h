@@ -52,6 +52,10 @@ typedef struct {
     /* Monomorphization stack to detect recursion */
     char        mono_stack[32][256];
     int         mono_depth;
+    /* Incremental dependency tracking */
+    int         collecting_deps;
+    char        current_deps[32][128];
+    int         dep_count;
 } TyperCtx;
 
 /* Public API (implemented in typer.c) */
@@ -86,4 +90,43 @@ SType *TyperResolveName(Compiler *c, const char *typename_str);
    Returns 1 if folded (n->type changed to NINT/NFLOAT/NBOOL), 0 otherwise. */
 int TyperConstFold(Compiler *c, Node *n);
 
-#endif // Typerh
+/* Incremental Type Checking & Signature Caching */
+typedef struct FnSigEntry {
+    char        name[128];
+    uint64_t    body_hash;
+    SType      *ret_type;
+    SType      *param_types[32];
+    int         param_count;
+    char        deps[32][128];
+    int         dep_count;
+    int         is_valid;
+} FnSigEntry;
+
+typedef struct FnSigCache {
+    FnSigEntry  entries[1024];
+    int         count;
+} FnSigCache;
+
+extern FnSigCache gFnSigCache;
+
+/* Compute FNV-1a hash of an AST node tree */
+uint64_t TyperComputeNodeHash(Node *n);
+
+/* Lookup cached signature for function */
+FnSigEntry *TyperLookupSig(const char *name);
+
+/* Cache or update signature for function */
+void TyperStoreSig(const char *name, uint64_t body_hash, SType *ret_type,
+                   SType **param_types, int param_count,
+                   char deps[32][128], int dep_count);
+
+/* Check if cached signature is still valid (its dependencies have not changed) */
+int TyperIsSigValid(FnSigEntry *sig);
+
+/* Persist signature cache to disk */
+void TyperSaveSigCache(Compiler *c, const char *cache_path);
+
+/* Load signature cache from disk */
+void TyperLoadSigCache(Compiler *c, const char *cache_path);
+
+#endif // TYPERH

@@ -44,7 +44,8 @@ struct SType {
     int         is_const;     /* 1 = const fn (foldable at compile time) */
     int         is_unsafe;    /* 1 = fn declared unsafe */
     /* Intern identity: two SType* with same kind+name are pointer-equal after interning */
-    struct SType *next_intern; /* linked list in intern table */
+    struct SType *next_intern;  /* GC list: links ALL allocated SType objects for cleanup */
+    struct SType *next_bucket;  /* bucket chain: links types in the SAME hash bucket only */
 };
 
 /* Static-mode local variable (parallel to dynamic-mode Local) */
@@ -235,12 +236,13 @@ typedef struct {
     int strcount;
     int strcap;
     StrPoolEntry *str_hash[STRPOOL_BUCKETS];
-    Module modules[64];
+    Module modules[256];
     int module_count;
     FnProto *fns[MAXFNS];
     int fncount;
     FnProto *current;
     int haderror;
+    int error_count;
     int isrepl;
     int iseval;
     MacroDecl macros[512];
@@ -367,5 +369,11 @@ int StaticCodeGenEmit(Compiler *c, struct Node *program, const char *outpath);
 /* Enforced static borrow check  */
 void StaticBorrowCheck(Compiler *c, struct Node *fn_node);
 void StaticLifetimeInfer(Compiler *c, struct Node *fn_node);
+
+/* Module topological sort for dependency resolution */
+int CompilerSortModulesTopological(Compiler *c, int *out_order, int *out_count);
+
+/* Parallel module compilation across worker threads */
+int CompilerParallelCompileModules(Compiler *c, const char **module_paths, int count);
 
 #endif // Comph
