@@ -4,9 +4,9 @@ This appendix details the complete Bytecode Instruction Set Architecture (ISA) i
 
 ---
 
-## B.1 Virtual Machine Execution Model
+## B.1 Virtual Machine Execution Model & Subsystems
 
-The AKS Virtual Machine operates on a contiguous evaluation stack of 16-byte `AKSValue` NaN-tagged union structures. 
+The AKS Virtual Machine operates on a contiguous evaluation stack of 16-byte `AKSValue` NaN-tagged union structures, optimized with specialized fast paths and dynamic native JIT compilation.
 
 - **Stack Pointer (`stacktop`)**: Points to the slot immediately above the top active value on the stack.
 - **Instruction Pointer (`ip`)**: Points to the next bytecode byte in the compiled chunk's bytecode stream.
@@ -18,6 +18,20 @@ The AKS Virtual Machine operates on a contiguous evaluation stack of 16-byte `AK
 | Opcode (1B)   | Operands (0, 1, 2, 4 or 8B) |
 +---------------+-----------------------------+
 ```
+
+### B.1.1 Modular Subsystem Architecture
+
+The execution engine is organized into dedicated, cohesive subsystems:
+- **`src/vm.c`**: Core VM state lifecycle, value stack management, call-frame mechanics, and primary opcode dispatch loop.
+- **`src/vm_tasks.inc.c`**: Fiber scheduling, work-stealing deque, lock-free channels, mutexes, condition variables, semaphores, and task arenas.
+- **`src/vm_stdlib.inc.c`**: Full standard library native execution dispatcher (`ExecuteStdlib`), SIMD vector operations, cryptographic algorithms, math routines, and OS interop.
+- **`src/vm_jit.inc.c`**: Tracing JIT hot-loop backedge tracking (50 backedge threshold), loop trace synthesis, and in-memory native x64 execution.
+
+### B.1.2 Dispatch Loop Optimizations & In-Place Fast Paths
+
+- **In-Place Increment/Decrement**: `OPINC` and `OPDEC` evaluate local slot integers directly in-place, eliminating the overhead of popping from the stack, re-tagging, and re-pushing.
+- **Specialized Arithmetic**: Fast integer/float bypasses skip general dynamic type resolution for numeric registers.
+- **Hot-Loop Tracing JIT**: Loops that iterate over 50 times are compiled on-the-fly into native x64 machine code (`VirtualAlloc` with `PAGE_EXECUTE_READWRITE`), executing directly on the CPU with condition bailout back to the interpreter.
 
 ---
 

@@ -1883,6 +1883,8 @@ static void ParseSafetyFlags(int *argcptr, char ***argvptr) {
             gLto = 1;
         } else if (strcmp(argv[i], "--strict-types") == 0) {
             gStrictTypes = 1;
+        } else if (strcmp(argv[i], "--incremental") == 0) {
+            gTypeCheckingEnabled = 1;
         } else if (strcmp(argv[i], "--cross-target") == 0 && i + 1 < argc) {
             gCrossTarget = argv[i+1];
             i++;

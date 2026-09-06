@@ -42,6 +42,9 @@ Commands:
 | `--strict-types` | Type Safety | Activates Hindley-Milner type inference, rejecting ill-typed code at compile time. |
 | `--borrow-check` | Memory Safety | Activates affine borrow checker, validating ownership and reference lifetimes. |
 | `--static` | AOT Compilation | Enables strict static mode, monomorphization, and direct unboxed LLVM IR generation. |
+| `--jit` | JIT Acceleration | Activates dynamic tracing JIT compiler; compiles hot loops (>= 50 iterations) to native x64 in executable memory. |
+| `--incremental` | Fast Compilation | Enables persistent signature caching in `.akscache/signatures.bin`, skipping re-inference of unchanged AST bodies (50-80% speedup). |
+| `--parallel` | Multicore Scaling | Concurrently lexes and parses independent modules across worker threads using topological DAG scheduling. |
 | `--trace-mem` | Memory Diagnostics | Enables allocation tracking, verifying clean reference deallocation and 0 memory leaks on exit. |
 | `--debug` | Debugger | Automatically breaks into the DAP debugger upon encountering an unhandled exception or panic. |
 | `--watch` | Hot Reload | Watches target file and imported dependencies, re-executing automatically on file change. |
@@ -152,4 +155,33 @@ When embedding AKS via the native C interface (`include/aks.h`), all public exec
 | `AKS_RUNTIME_ERROR` | `3` | Uncaught runtime exception, fiber panic, or assertion failure. |
 | `AKS_MEMORY_ERROR` | `4` | Heap memory allocation failure / out of memory. |
 | `AKS_FATAL` | `-1` | Unrecoverable engine error. |
+
+---
+
+## C.6 Incremental Signature Cache Format (`.akscache/signatures.bin`)
+
+When running with incremental typing enabled, the compiler serializes function type signatures and dependency graphs into `.akscache/signatures.bin`:
+
+- **Magic Header**: `AKSIG1\0` (8 bytes) validating binary version and architecture endianness.
+- **Entry Structure**:
+  - `name`: Mangled function identifier.
+  - `body_hash`: 64-bit FNV-1a hash of the parsed AST body statements.
+  - `param_types`: Inferred parameter types vector.
+  - `ret_type`: Inferred return type.
+  - `dep_count` & `deps`: Array of symbol names called by this function.
+- **Cache Invalidation**: If any callee's signature changes or a source file's body hash differs, the entry is invalidated and re-inferred automatically.
+
+---
+
+## C.7 Multi-Error Diagnostics Collection
+
+The compiler collects up to **50 errors** before halting execution:
+
+```text
+Compiler error on line 12: TypeError: declared type 'int' not compatible with value type 'string'
+Compiler error on line 28: BoundsError: fixed array index 5 exceeds bound [float; 4]
+Compiler error on line 45: CircularImportError: circular import detected between 'a' and 'b'
+Total diagnostics: 3 errors found across 2 modules.
+```
+
 

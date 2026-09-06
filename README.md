@@ -11,9 +11,10 @@
 
 ## Key Highlights
 
-- **Multi-Tier Execution Engine**: Fast stack-based bytecode virtual machine with runtime optimization, tracing JIT engine, and LLVM/C AOT static compilation.
-- **Dual-Mode Type System**: Optional dynamic typing for rapid scripting coupled with static mode (`--strict-types`) featuring Hindley-Milner type inference, dependent arrays, and compile-time pattern exhaustiveness checking.
+- **Multi-Tier Execution Engine**: Fast stack-based bytecode virtual machine with runtime optimization, in-memory dynamic tracing JIT engine (`--jit`), and LLVM/C AOT static compilation.
+- **Dual-Mode Type System**: Optional dynamic typing for rapid scripting coupled with static mode (`--strict-types`) featuring Hindley-Milner type inference, persistent incremental signature caching (`--incremental`), dependent arrays, and multi-error diagnostic recovery.
 - **Affine Borrow Checker**: Compile-time ownership, non-lexical lifetimes, and zero-cost move semantics eliminating use-after-free and data races without garbage collection pauses.
+- **Modular Compilation System**: Circular import detection, topological DAG dependency ordering, and multicore parallel module compilation (`--parallel`).
 - **First-Class Algebraic Effects**: Full delimited continuations (`effect`, `perform`, `handle ... with`, `resume`) allowing modular, composable effect handling.
 - **Native Automatic Differentiation**: Forward-mode dual number arithmetic (`Dual`, `grad`, `jvp`) for scientific computing, physics simulations, and numerical optimization.
 - **Actor Model Concurrency**: Isolated mutable state communicating via lock-free mailboxes (`actor`, `Spawn`, `Send`, `Call`), fibers, and channels.

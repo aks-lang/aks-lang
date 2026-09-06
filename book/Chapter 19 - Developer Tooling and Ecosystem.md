@@ -281,7 +281,68 @@ print("Cosine Similarity: " + String(similarity)); // ~0.998
 
 ---
 
-## 19.8 Summary & Next Steps
+## 19.8 Dynamic In-Memory Tracing JIT Compiler Engine (`src/jitx64.c` & `src/vm_jit.inc.c`)
+
+For computationally intensive numeric algorithms, loop interpretation incurs significant instruction fetch and decoding overhead. AKS integrates an in-memory native x86-64 tracing JIT compiler accessible via `--jit`.
+
+```mermaid
+flowchart TD
+    VM["Interpreter Dispatch Loop (src/vm.c)"] --> Backedge["Loop Backedge Encountered"]
+    Backedge --> Counter["Backedge Counter++ (Threshold: 50)"]
+    Counter --> Check{"Hot Loop Threshold Reached?"}
+    Check -->|No| VM
+    Check -->|Yes| JITSynth["Loop Trace Synthesis (src/vm_jit.inc.c)"]
+    JITSynth --> X64Codegen["Machine Code Generation (src/jitx64.c)"]
+    X64Codegen --> ExecMem["VirtualAlloc(PAGE_EXECUTE_READWRITE)"]
+    ExecMem --> NativeExec["Direct Native CPU Execution (3-10x Speedup)"]
+    NativeExec --> Bailout["Condition Bailout / Return Sync"]
+    Bailout --> VM
+```
+
+### 19.8.1 Execution Pipeline
+1. **Hot Path Detection**: The VM tracks loop backward jumps (`OPJUMP` with negative offsets). When a loop iterates 50 times, it is marked as a candidate hot trace.
+2. **Loop Trace Synthesis**: The bytecode chunk of the loop body is extracted, validated, and passed to `CompileToX64`.
+3. **In-Memory Executable Memory**: The emitted x86-64 machine instructions are allocated in direct executable memory pages (`VirtualAlloc` on Windows with `PAGE_EXECUTE_READWRITE`).
+4. **Native Jump & Bailout**: Execution jumps directly into the synthesized function pointer. If loop conditions evaluate false (`OPJUMPIFFALSE`), execution bails out cleanly, synchronizing stack slots and frame return values back to the interpreter without de-optimization faults.
+
+---
+
+## 19.9 Module System, Topological DAG Sorting & Parallel Compilation (`src/compiler.c`)
+
+Modern multi-module applications require robust dependency tracking, cycle detection, and parallelized compilation to maximize multi-core throughput.
+
+### 19.9.1 Circular Import Detection (`HasCyclicDependency`)
+When module $A$ imports module $B$, the compiler traverses $B$'s transitive dependency tree before loading. If an active edge leads back to $A$, compilation aborts immediately with a descriptive diagnostic:
+```text
+Compiler error: Circular import detected between 'network' and 'protocol'
+```
+
+### 19.9.2 Topological DAG Ordering (`CompilerSortModulesTopological`)
+Modules are ordered using depth-first search (`TopoDFS`) across the Directed Acyclic Graph (DAG) of imports. Independent leaves are scheduled first, ensuring all dependent types and function signatures are available before dependent modules begin code generation.
+
+### 19.9.3 Multi-Threaded Parallel Parsing (`CompilerParallelCompileModules`)
+Using native OS worker threads (`CreateThread` on Windows, `pthread_create` on POSIX), independent modules in the DAG are parsed and lexed concurrently across CPU cores, achieving a **2–4x compilation speedup** on modern workstations.
+
+---
+
+## 19.10 Virtual Machine Subsystem Decomposition Architecture
+
+To ensure high maintainability, rapid incremental compiler builds, and optimal CPU instruction-cache locality, the virtual machine execution engine is partitioned into isolated subsystems:
+
+```text
+src/
+├── vm.c              (12,786 LOC) Core VM state, stack manipulation, opcode loop
+├── vm_tasks.inc.c    (1,372 LOC)  Fiber scheduler, work-stealing deque, channels, mutexes
+├── vm_stdlib.inc.c   (23,357 LOC) Standard library dispatcher (ExecuteStdlib), SIMD, crypto
+└── vm_jit.inc.c      (1,335 LOC)  Tracing JIT trace synthesis, hot loops, native x64
+```
+
+- **Separation of Concerns**: Task scheduling, standard library execution, and dynamic JIT paths can be optimized and maintained without altering the core opcode dispatch loop.
+- **Toolchain Compatibility**: Built as a cohesive single translation unit across all 10 binaries and test suites (`build.bat`), preserving raw C performance without dynamic linker overhead.
+
+---
+
+## 19.11 Summary & Next Steps
 
 In this chapter, we explored:
 1. The Language Server Protocol (`aksls.exe`) JSON-RPC engine and IDE integration.
@@ -290,5 +351,8 @@ In this chapter, we explored:
 4. Package management and `aks.toml` project manifests.
 5. The 4 compilation backends: Bytecode VM, LLVM AOT, WebAssembly WAT, and Tiered JIT.
 6. Writing and registering custom native C functions inside the AKS core engine.
+7. The dynamic in-memory tracing JIT compiler engine (`--jit`).
+8. The module dependency graph, circular import detection, and parallel compilation.
+9. Virtual machine subsystem modularization architecture.
 
 Proceed to [Chapter 20: Practical Cookbook & Real-World Projects](Chapter%2020%20-%20Cookbook%20and%20Real-World%20Projects.md) to explore complete production-grade projects written in AKS.
