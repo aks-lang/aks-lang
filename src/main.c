@@ -10,6 +10,8 @@
 #include <windows.h>
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
+#else
+#include <pthread.h>
 #endif
 
 #include "lexer.h"
@@ -38,6 +40,7 @@ extern int gCustomPermissions;
 int gJitMode = 0; // =c, 1=x64, 2=llvm, 3=qbe
 int gJitCacheEnabled = 0;
 int gLto = 0;
+extern int gParallelCompilation;
 const char *gCrossTarget = NULL;
 const char *gPgoProfile = NULL;
 const char *gPgoUse = NULL;
@@ -1839,6 +1842,9 @@ static void ParseSafetyFlags(int *argcptr, char ***argvptr) {
     if (getenv("AKSINCREMENTAL") || getenv("AKSTYPECACHE")) {
         gIncrementalTyping = 1;
     }
+    if (getenv("AKSPARALLEL")) {
+        gParallelCompilation = 1;
+    }
 
     int writeidx = 1;
     for (int i = 1; i < argc; i++) {
@@ -1889,6 +1895,14 @@ static void ParseSafetyFlags(int *argcptr, char ***argvptr) {
         } else if (strcmp(argv[i], "--incremental") == 0) {
             gIncrementalTyping = 1;
             gTypeCheckingEnabled = 1;
+        } else if (strcmp(argv[i], "--parallel") == 0 || strcmp(argv[i], "-j") == 0) {
+            gParallelCompilation = 1;
+        } else if (strncmp(argv[i], "-j", 2) == 0 && strlen(argv[i]) > 2) {
+            gParallelCompilation = atoi(argv[i] + 2);
+            if (gParallelCompilation <= 0) gParallelCompilation = 1;
+        } else if (strcmp(argv[i], "--jobs") == 0 && i + 1 < argc) {
+            gParallelCompilation = atoi(argv[++i]);
+            if (gParallelCompilation <= 0) gParallelCompilation = 1;
         } else if (strcmp(argv[i], "--cross-target") == 0 && i + 1 < argc) {
             gCrossTarget = argv[i+1];
             i++;
@@ -2562,4 +2576,10 @@ int main(int argc, char **argv) {
         return 1;
     }
 }
+
+int CompileModulesParallel(Compiler *c, const char **module_paths, int count) {
+    if (!c || !module_paths || count <= 0) return 0;
+    return CompilerParallelCompileModules(c, module_paths, count);
+}
+
 #endif // No_main

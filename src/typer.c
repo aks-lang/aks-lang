@@ -461,30 +461,47 @@ static void TyperWarn(TyperCtx *ctx, int line, const char *msg) {
 
 SType *TyperResolveName(Compiler *c, const char *tname) {
     if (!tname || tname[0] == '\0') return StypeInternGet(c, STYPE_UNKNOWN, "");
-    if (strcmp(tname, "int") == 0 || strcmp(tname, "i64") == 0 || strcmp(tname, "i32") == 0)
+    char clean[256];
+    int cidx = 0;
+    for (int i = 0; tname[i] && cidx < 255; i++) {
+        if (tname[i] != ' ' && tname[i] != '\t' && tname[i] != '\r' && tname[i] != '\n') {
+            clean[cidx++] = tname[i];
+        }
+    }
+    clean[cidx] = '\0';
+    if (clean[0] == '\0') return StypeInternGet(c, STYPE_UNKNOWN, "");
+
+    /* Strip effect annotations like !IO */
+    char *bang = strchr(clean, '!');
+    if (bang && bang != clean) *bang = '\0';
+
+    if (strcmp(clean, "int") == 0 || strcmp(clean, "i64") == 0 || strcmp(clean, "i32") == 0)
         return StypeInternGet(c, STYPE_INT, "int");
-    if (strcmp(tname, "float") == 0 || strcmp(tname, "f64") == 0 || strcmp(tname, "f32") == 0)
+    if (strcmp(clean, "float") == 0 || strcmp(clean, "f64") == 0 || strcmp(clean, "f32") == 0)
         return StypeInternGet(c, STYPE_FLOAT, "float");
-    if (strcmp(tname, "bool") == 0)
+    if (strcmp(clean, "bool") == 0)
         return StypeInternGet(c, STYPE_BOOL, "bool");
-    if (strcmp(tname, "str") == 0 || strcmp(tname, "string") == 0)
+    if (strcmp(clean, "str") == 0 || strcmp(clean, "string") == 0)
         return StypeInternGet(c, STYPE_STR, "str");
-    if (strcmp(tname, "void") == 0)
+    if (strcmp(clean, "void") == 0)
         return StypeInternGet(c, STYPE_VOID, "void");
-    if (tname[0] == '!') return StypeInternGet(c, STYPE_NEVER, "!");
+    if (clean[0] == '!') return StypeInternGet(c, STYPE_NEVER, "!");
+
     /* Check for Option<T> */
-    if (strncmp(tname, "Option<", 7) == 0) {
+    if (strncmp(clean, "Option<", 7) == 0) {
         char inner_name[64];
-        strncpy(inner_name, tname + 7, sizeof(inner_name)-1);
+        strncpy(inner_name, clean + 7, sizeof(inner_name)-1);
+        inner_name[sizeof(inner_name)-1] = '\0';
         int len = (int)strlen(inner_name);
         if (len > 0 && inner_name[len-1] == '>') inner_name[len-1] = '\0';
         SType *inner = TyperResolveName(c, inner_name);
         return StypeMakeOption(c, inner);
     }
     /* Check for Result<T,E> */
-    if (strncmp(tname, "Result<", 7) == 0) {
+    if (strncmp(clean, "Result<", 7) == 0) {
         char rest[128];
-        strncpy(rest, tname + 7, sizeof(rest)-1);
+        strncpy(rest, clean + 7, sizeof(rest)-1);
+        rest[sizeof(rest)-1] = '\0';
         char *comma = strchr(rest, ',');
         if (comma) {
             *comma = '\0';
@@ -494,9 +511,25 @@ SType *TyperResolveName(Compiler *c, const char *tname) {
             return StypeMakeResult(c, TyperResolveName(c, rest), TyperResolveName(c, errpart));
         }
     }
+    /* Check for Array<T, N> */
+    if (strncmp(clean, "Array<", 6) == 0) {
+        char rest[128];
+        strncpy(rest, clean + 6, sizeof(rest)-1);
+        rest[sizeof(rest)-1] = '\0';
+        char *comma = strchr(rest, ',');
+        if (comma) {
+            *comma = '\0';
+            char *npart = comma + 1;
+            int nlen = (int)strlen(npart);
+            if (nlen > 0 && npart[nlen-1] == '>') npart[nlen-1] = '\0';
+            int n = atoi(npart);
+            return StypeMakeArray(c, TyperResolveName(c, rest), n);
+        }
+    }
     /* Check for array [T; N] */
-    if (tname[0] == '[') {
-        char rest[64]; strncpy(rest, tname+1, sizeof(rest)-1);
+    if (clean[0] == '[') {
+        char rest[64]; strncpy(rest, clean+1, sizeof(rest)-1);
+        rest[sizeof(rest)-1] = '\0';
         char *semi = strchr(rest, ';');
         if (semi) {
             *semi = '\0'; char *nstr = semi + 1;
@@ -510,22 +543,76 @@ SType *TyperResolveName(Compiler *c, const char *tname) {
         if (len2 > 0 && rest[len2-1] == ']') rest[len2-1] = '\0';
         return StypeMakeArray(c, TyperResolveName(c, rest), -1);
     }
-    /* Look up as struct/enum name */
-    for (int i = 0; i < c->structcount; i++) {
-        if (strcmp(c->structs[i].name, tname) == 0)
-            return StypeInternGet(c, STYPE_STRUCT, tname);
+    /* Check for tuple (T1, T2, ...) */
+    if (clean[0] == '(') {
+        char rest[256]; strncpy(rest, clean+1, sizeof(rest)-1);
+        rest[sizeof(rest)-1] = '\0';
+        int len2 = (int)strlen(rest);
+        if (len2 > 0 && rest[len2-1] == ')') rest[len2-1] = '\0';
+        SType *elems[32];
+        int elem_count = 0;
+        char *token = strtok(rest, ",");
+        while (token && elem_count < 32) {
+            elems[elem_count++] = TyperResolveName(c, token);
+            token = strtok(NULL, ",");
+        }
+        return StypeMakeTuple(c, elems, elem_count);
     }
-    for (int i = 0; i < c->enumcount; i++) {
-        if (strcmp(c->enums[i].name, tname) == 0)
-            return StypeInternGet(c, STYPE_ENUM, tname);
+    /* Look up type aliases */
+    if (c) {
+        for (int i = 0; i < c->aliascount; i++) {
+            if (strcmp(c->aliases[i].name, clean) == 0) {
+                if (c->aliases[i].isopaque)
+                    return StypeInternGet(c, STYPE_STRUCT, clean);
+                char target_buf[256];
+                strncpy(target_buf, c->aliases[i].target, sizeof(target_buf)-1);
+                target_buf[sizeof(target_buf)-1] = '\0';
+                char *where_kw = strstr(target_buf, "where");
+                if (where_kw) *where_kw = '\0';
+                return TyperResolveName(c, target_buf);
+            }
+            int aname_len = (int)strlen(c->aliases[i].name);
+            if (strncmp(clean, c->aliases[i].name, aname_len) == 0 && clean[aname_len] == '<') {
+                char targ[64] = {0};
+                strncpy(targ, clean + aname_len + 1, sizeof(targ)-1);
+                int tlen = (int)strlen(targ);
+                if (tlen > 0 && targ[tlen-1] == '>') targ[tlen-1] = '\0';
+                char target_buf[256];
+                strncpy(target_buf, c->aliases[i].target, sizeof(target_buf)-1);
+                target_buf[sizeof(target_buf)-1] = '\0';
+                if (c->aliases[i].tpc > 0 && c->aliases[i].tparams) {
+                    const char *pname = c->aliases[i].tparams[0];
+                    char replaced[256] = {0};
+                    char *pos = target_buf;
+                    char *match;
+                    int rlen = 0;
+                    while ((match = strstr(pos, pname)) != NULL && rlen < 240) {
+                        int prefix = (int)(match - pos);
+                        strncat(replaced, pos, prefix);
+                        strcat(replaced, targ);
+                        pos = match + strlen(pname);
+                    }
+                    strcat(replaced, pos);
+                    return TyperResolveName(c, replaced);
+                }
+            }
+        }
+        for (int i = 0; i < c->structcount; i++) {
+            if (strcmp(c->structs[i].name, clean) == 0)
+                return StypeInternGet(c, STYPE_STRUCT, clean);
+        }
+        for (int i = 0; i < c->enumcount; i++) {
+            if (strcmp(c->enums[i].name, clean) == 0)
+                return StypeInternGet(c, STYPE_ENUM, clean);
+        }
     }
     /* SIMD types */
-    if (strncmp(tname, "f32x", 4) == 0 || strncmp(tname, "i32x", 4) == 0 ||
-        strncmp(tname, "f64x", 4) == 0 || strncmp(tname, "i64x", 4) == 0) {
-        return StypeInternGet(c, STYPE_SIMD, tname);
+    if (strncmp(clean, "f32x", 4) == 0 || strncmp(clean, "i32x", 4) == 0 ||
+        strncmp(clean, "f64x", 4) == 0 || strncmp(clean, "i64x", 4) == 0) {
+        return StypeInternGet(c, STYPE_SIMD, clean);
     }
     /* Generic parameter  -  leave as STYPE_GENERIC for monomorphization */
-    return StypeInternGet(c, STYPE_GENERIC, tname);
+    return StypeInternGet(c, STYPE_GENERIC, clean);
 }
 
 /* Unification */
@@ -550,12 +637,23 @@ SType *TyperUnify(Compiler *c, SType *a, SType *b, int line) {
                   (b->array_len == -1) ? a->array_len : -2;
         if (len == -2) {
             const char *file = (c && c->currentfilepath[0]) ? c->currentfilepath : NULL;
-            if (file)
-                fprintf(stderr, "Type error in '%s' on line %d: array length mismatch: [_;%d] vs [_;%d]\n",
-                        file, line, a->array_len, b->array_len);
-            else
+            if (c) {
+                if (c->error_count < 50) {
+                    if (file)
+                        fprintf(stderr, "Type error in '%s' on line %d: array length mismatch: [_;%d] vs [_;%d]\n",
+                                file, line, a->array_len, b->array_len);
+                    else
+                        fprintf(stderr, "Type error on line %d: array length mismatch: [_;%d] vs [_;%d]\n",
+                                line, a->array_len, b->array_len);
+                } else if (c->error_count == 50) {
+                    fprintf(stderr, "... (further type errors suppressed)\n");
+                }
+                c->error_count++;
+                c->haderror = 1;
+            } else {
                 fprintf(stderr, "Type error on line %d: array length mismatch: [_;%d] vs [_;%d]\n",
                         line, a->array_len, b->array_len);
+            }
             return NULL;
         }
         return StypeMakeArray(c, inner, len);
@@ -565,16 +663,47 @@ SType *TyperUnify(Compiler *c, SType *a, SType *b, int line) {
         SType *inner = TyperUnify(c, a->inner, b->inner, line);
         return inner ? StypeMakeRef(c, inner, a->kind == STYPE_MUTREF) : NULL;
     }
+    /* Option unification */
+    if (a->kind == STYPE_OPTION && b->kind == STYPE_OPTION) {
+        SType *inner = TyperUnify(c, a->inner, b->inner, line);
+        return inner ? StypeMakeOption(c, inner) : NULL;
+    }
+    /* Result unification */
+    if (a->kind == STYPE_RESULT && b->kind == STYPE_RESULT) {
+        SType *ok = TyperUnify(c, a->inner, b->inner, line);
+        SType *err = TyperUnify(c, a->inner2, b->inner2, line);
+        return (ok && err) ? StypeMakeResult(c, ok, err) : NULL;
+    }
+    /* Tuple unification */
+    if (a->kind == STYPE_TUPLE && b->kind == STYPE_TUPLE && a->param_count == b->param_count) {
+        SType *elems[32];
+        for (int i = 0; i < a->param_count && i < 32; i++) {
+            elems[i] = TyperUnify(c, a->params[i], b->params[i], line);
+            if (!elems[i]) return NULL;
+        }
+        return StypeMakeTuple(c, elems, a->param_count);
+    }
     /* Mismatch */
     char na[64], nb[64];
     StypeName(a, na, sizeof(na)); StypeName(b, nb, sizeof(nb));
     const char *file = (c && c->currentfilepath[0]) ? c->currentfilepath : NULL;
-    if (file)
-        fprintf(stderr, "Type error in '%s' on line %d: type mismatch: expected '%s', found '%s'\n",
-                file, line, na, nb);
-    else
+    if (c) {
+        if (c->error_count < 50) {
+            if (file)
+                fprintf(stderr, "Type error in '%s' on line %d: type mismatch: expected '%s', found '%s'\n",
+                        file, line, na, nb);
+            else
+                fprintf(stderr, "Type error on line %d: type mismatch: expected '%s', found '%s'\n",
+                        line, na, nb);
+        } else if (c->error_count == 50) {
+            fprintf(stderr, "... (further type errors suppressed)\n");
+        }
+        c->error_count++;
+        c->haderror = 1;
+    } else {
         fprintf(stderr, "Type error on line %d: type mismatch: expected '%s', found '%s'\n",
                 line, na, nb);
+    }
     return NULL;
 }
 
@@ -861,7 +990,11 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
                     result = StypeInternGet(c, STYPE_STR, "str");
                 } else {
                     result = TyperUnify(c, lt, rt, n->line);
-                    if (!result) result = lt;
+                    if (!result) {
+                        ctx->had_error = 1;
+                        ctx->error_count++;
+                        result = lt;
+                    }
                 }
             }
             /* Always attempt const folding  -  regardless of const_fn.
@@ -886,8 +1019,10 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             SType *ret_t = n->single.expr
                 ? InferNode(ctx, env, n->single.expr)
                 : StypeInternGet(c, STYPE_VOID, "void");
-            if (ctx->current_fn_ret) {
+            if (ctx->current_fn_ret && ctx->current_fn_ret->kind != STYPE_UNKNOWN) {
                 TyperUnify(c, ctx->current_fn_ret, ret_t, n->line);
+            } else if (ctx->current_fn_ret && ctx->current_fn_ret->kind == STYPE_UNKNOWN) {
+                ctx->current_fn_ret = ret_t;
             }
             result = StypeInternGet(c, STYPE_NEVER, "!");
             break;
@@ -1007,6 +1142,22 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
                         break;
                     }
                 }
+            } else if (n->call.callee && n->call.callee->type == NMEMBER) {
+                Node *m = n->call.callee;
+                if (m->member.obj && m->member.obj->type == NIDENT && m->member.field) {
+                    if (strcmp(m->member.obj->sval, "Option") == 0) {
+                        SType *arg_t = (n->call.argc > 0) ? InferNode(ctx, env, n->call.args[0]) : StypeInternGet(c, STYPE_UNKNOWN, "");
+                        result = StypeMakeOption(c, arg_t);
+                    } else if (strcmp(m->member.obj->sval, "Result") == 0) {
+                        if (strcmp(m->member.field, "Ok") == 0) {
+                            SType *arg_t = (n->call.argc > 0) ? InferNode(ctx, env, n->call.args[0]) : StypeInternGet(c, STYPE_UNKNOWN, "");
+                            result = StypeMakeResult(c, arg_t, StypeInternGet(c, STYPE_UNKNOWN, ""));
+                        } else {
+                            SType *arg_t = (n->call.argc > 0) ? InferNode(ctx, env, n->call.args[0]) : StypeInternGet(c, STYPE_UNKNOWN, "");
+                            result = StypeMakeResult(c, StypeInternGet(c, STYPE_UNKNOWN, ""), arg_t);
+                        }
+                    }
+                }
             }
             /* Infer arg types too */
             for (int i = 0; i < n->call.argc; i++) {
@@ -1018,6 +1169,12 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
 
         case NMEMBER: {
             SType *obj_t = InferNode(ctx, env, n->member.obj);
+            if (n->member.obj && n->member.obj->type == NIDENT && n->member.field) {
+                if (strcmp(n->member.obj->sval, "Option") == 0) {
+                    result = StypeMakeOption(c, StypeInternGet(c, STYPE_UNKNOWN, ""));
+                    break;
+                }
+            }
             /* Field type lookup for known structs */
             if (obj_t && obj_t->kind == STYPE_STRUCT) {
                 for (int i = 0; i < c->structcount; i++) {
@@ -1041,6 +1198,12 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             InferNode(ctx, env, n->index.idx);
             if (arr_t && arr_t->kind == STYPE_ARRAY && arr_t->inner)
                 result = arr_t->inner;
+            else if (arr_t && arr_t->kind == STYPE_TUPLE && n->index.idx && n->index.idx->type == NINT) {
+                int idx = (int)n->index.idx->ival;
+                if (idx >= 0 && idx < arr_t->param_count) {
+                    result = arr_t->params[idx];
+                }
+            }
             break;
         }
 
@@ -1048,7 +1211,7 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             /* Annotate param types in env, infer body */
             TypeEnv *inner = EnvPush(env);
             SType *ret_t = n->fn.ret ? TyperResolveName(c, n->fn.ret)
-                                     : StypeInternGet(c, STYPE_VOID, "void");
+                                     : StypeInternGet(c, STYPE_UNKNOWN, "");
             SType *param_stypes[32] = {0};
             for (int i = 0; i < n->fn.pc && i < 32; i++) {
                 if (n->fn.pnames && n->fn.ptypes) {
@@ -1086,6 +1249,13 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             ctx->dep_count = 0;
 
             if (n->fn.body) InferNode(ctx, inner, n->fn.body);
+
+            if (ret_t->kind == STYPE_UNKNOWN && ctx->current_fn_ret && ctx->current_fn_ret->kind != STYPE_UNKNOWN) {
+                ret_t = ctx->current_fn_ret;
+            }
+            if (ret_t->kind == STYPE_UNKNOWN) {
+                ret_t = StypeInternGet(c, STYPE_VOID, "void");
+            }
 
             /* Save signature to cache */
             if (n->fn.name) {
@@ -1194,10 +1364,22 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             }
             SType *arm_t = StypeInternGet(c, STYPE_UNKNOWN, "");
             for (int i = 0; i < n->match.count; i++) {
+                TypeEnv *inner = EnvPush(env);
+                Node *pat = n->match.patterns[i];
+                if (pat && pat->type == NCALL && pat->call.callee && pat->call.callee->type == NMEMBER) {
+                    if (pat->call.argc > 0 && pat->call.args[0]->type == NIDENT) {
+                        SType *bind_t = (subj_t && subj_t->inner) ? subj_t->inner : StypeInternGet(c, STYPE_UNKNOWN, "");
+                        if (pat->call.callee->member.field && strcmp(pat->call.callee->member.field, "Err") == 0 && subj_t && subj_t->inner2) {
+                            bind_t = subj_t->inner2;
+                        }
+                        EnvSet(inner, pat->call.args[0]->sval, bind_t);
+                    }
+                }
                 if (n->match.bodies[i]) {
-                    SType *bt = InferNode(ctx, env, n->match.bodies[i]);
+                    SType *bt = InferNode(ctx, inner, n->match.bodies[i]);
                     arm_t = TyperUnify(c, arm_t, bt, n->line);
                 }
+                EnvFreeLocal(inner); EnvPop(inner);
             }
             result = arm_t ? arm_t : StypeInternGet(c, STYPE_VOID, "void");
             break;
@@ -1219,6 +1401,22 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
         case NSPAWN: {
             result = StypeInternGet(c, STYPE_UNKNOWN, "task");
             if (n->spawnn.expr) InferNode(ctx, env, n->spawnn.expr);
+            break;
+        }
+
+        case NTRYPROPAGATE: {
+            SType *t = InferNode(ctx, env, n->single.expr);
+            if (t && (t->kind == STYPE_OPTION || t->kind == STYPE_RESULT)) {
+                result = t->inner ? t->inner : StypeInternGet(c, STYPE_UNKNOWN, "");
+            } else {
+                result = StypeInternGet(c, STYPE_UNKNOWN, "");
+            }
+            break;
+        }
+
+        case NCAST: {
+            if (n->cast.expr) InferNode(ctx, env, n->cast.expr);
+            result = TyperResolveName(c, n->cast.targettype);
             break;
         }
 
@@ -1353,6 +1551,10 @@ SType *TyperInfer(Compiler *c, Node *n) {
     ctx.env = &root;
     ctx.current_fn_ret = StypeInternGet(c, STYPE_VOID, "void");
     SType *t = InferNode(&ctx, &root, n);
+    if (ctx.error_count > 50) {
+        EnvFreeLocal(&root);
+        return t;
+    }
     EnvFreeLocal(&root);
     return t;
 }

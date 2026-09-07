@@ -338,6 +338,7 @@ extern int gBorrowCheckerEnabled;
 extern int gImmutableByDefault;
 extern int gStrictTypes;
 extern int gIncrementalTyping;
+extern int gParallelCompilation;
 
 /* Static mode global  -  when 1, borrow/type enforcement is always-on */
 extern int gStaticMode;
@@ -373,8 +374,42 @@ void StaticLifetimeInfer(Compiler *c, struct Node *fn_node);
 
 /* Module topological sort for dependency resolution */
 int CompilerSortModulesTopological(Compiler *c, int *out_order, int *out_count);
+int HasCircularDependency(Module *m, const char *dep_name);
 
 /* Parallel module compilation across worker threads */
 int CompilerParallelCompileModules(Compiler *c, const char **module_paths, int count);
+
+/* Incremental Type Checking & Function Dependency Graph */
+typedef struct FunctionDependency {
+    char from[128]; /* caller function name */
+    char to[128];   /* callee function name */
+} FunctionDependency;
+
+typedef struct FileInfo {
+    char path[512];
+    uint64_t mtime;
+    uint32_t hash;
+} FileInfo;
+
+typedef struct FunctionDeps {
+    char name[128];
+    char callers[32][128];
+    int caller_count;
+    char callees[32][128];
+    int callee_count;
+} FunctionDeps;
+
+typedef struct CachedSignature {
+    char function_name[128];
+    SType *return_type;
+    SType *param_types[32];
+    int param_count;
+    uint64_t body_hash;
+    uint64_t file_mtime;
+    int is_valid;
+} CachedSignature;
+
+int CompilerCheckIncremental(Compiler *c, const char *filepath);
+void CompilerTrackFunctionDependency(Compiler *c, const char *caller, const char *callee);
 
 #endif // Comph

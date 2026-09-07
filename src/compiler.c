@@ -21,6 +21,7 @@ int gBorrowCheckerEnabled = 1;
 int gImmutableByDefault = 0;
 int gStrictTypes = 0;
 int gIncrementalTyping = 0;
+int gParallelCompilation = 0;
 /* static mode globals */
 /* NOTE: gStaticMode and gDebugBuild are defined in src/staticcodegen.c
    (where they are first used) and declared extern here via compiler.h */
@@ -7935,6 +7936,33 @@ int CompilerSortModulesTopological(Compiler *c, int *out_order, int *out_count) 
     return 1;
 }
 
+int HasCircularDependency(Module *m, const char *dep_name) {
+    if (!m || !dep_name) return 0;
+    for (int i = 0; i < m->dep_count; i++) {
+        if (strcmp(m->dependencies[i], dep_name) == 0) return 1;
+    }
+    return 0;
+}
+
+int CompilerCheckIncremental(Compiler *c, const char *filepath) {
+    if (!c || !filepath) return 0;
+    if (!gIncrementalTyping) return 0;
+    FILE *f = fopen(".akscache/signatures.bin", "rb");
+    if (!f) return 0;
+    fclose(f);
+    return 1;
+}
+
+void CompilerTrackFunctionDependency(Compiler *c, const char *caller, const char *callee) {
+    if (!c || !caller || !callee) return;
+    for (int i = 0; i < c->module_count; i++) {
+        if (strcmp(c->modules[i].name, caller) == 0 && c->modules[i].dep_count < 32) {
+            strncpy(c->modules[i].dependencies[c->modules[i].dep_count++], callee, 255);
+            break;
+        }
+    }
+}
+
 typedef struct {
     const char *filepath;
     Node       *ast;
@@ -7953,6 +7981,20 @@ static DWORD WINAPI ParallelParseWorker(LPVOID param) {
     task->ast = Parse(src, &task->parse_error);
     free(src);
     return 0;
+}
+#else
+#include <pthread.h>
+static void *ParallelParseWorkerPOSIX(void *param) {
+    ParallelModuleTask *task = (ParallelModuleTask *)param;
+    char *src = CompReadFile(task->filepath);
+    if (!src) {
+        task->parse_error = 1;
+        task->ast = NULL;
+        return NULL;
+    }
+    task->ast = Parse(src, &task->parse_error);
+    free(src);
+    return NULL;
 }
 #endif
 
@@ -7994,17 +8036,21 @@ int CompilerParallelCompileModules(Compiler *c, const char **module_paths, int c
     }
     return 1;
 #else
-    for (int i = 0; i < count; i++) {
-        char *src = CompReadFile(module_paths[i]);
-        if (src) {
-            int err = 0;
-            Node *ast = Parse(src, &err);
-            free(src);
-            if (!err && ast) {
-                CompilerAddModule(c, module_paths[i], module_paths[i], ast);
-                if (c->imported_ast_count < 1024) {
-                    c->imported_asts[c->imported_ast_count++] = ast;
-                }
+    ParallelModuleTask tasks[64];
+    pthread_t threads[64];
+    int n = count > 64 ? 64 : count;
+    for (int i = 0; i < n; i++) {
+        tasks[i].filepath = module_paths[i];
+        tasks[i].ast = NULL;
+        tasks[i].parse_error = 0;
+        pthread_create(&threads[i], NULL, ParallelParseWorkerPOSIX, &tasks[i]);
+    }
+    for (int i = 0; i < n; i++) {
+        pthread_join(threads[i], NULL);
+        if (!tasks[i].parse_error && tasks[i].ast) {
+            CompilerAddModule(c, tasks[i].filepath, tasks[i].filepath, tasks[i].ast);
+            if (c->imported_ast_count < 1024) {
+                c->imported_asts[c->imported_ast_count++] = tasks[i].ast;
             }
         }
     }
@@ -9697,7 +9743,7 @@ int CompCompile(Compiler *c, Node *program) {
                 if (resolved) free(resolved);
             }
         }
-        if (mod_count > 1) {
+        if (mod_count > 1 || (gParallelCompilation && mod_count > 0)) {
             CompilerParallelCompileModules(c, mod_paths, mod_count);
             int topo_order[256];
             int topo_count = 0;

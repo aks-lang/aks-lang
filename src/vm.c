@@ -841,6 +841,8 @@ VM *VMNew(void) {
         (((uint64_t)rand() << 16) | (uint64_t)rand()) & 0x00007FFFFFFFFFFFULL;
     vm->instructionlimit = 10000000;
     vm->instructioncount = 0;
+    vm->hot_loop_threshold = 50;
+    vm->hot_func_threshold = 50;
     vm->flame_node_count = 0;
     vm->flame_profiling_enabled = 0;
     vm->flame_current_node = 0;
@@ -6719,6 +6721,8 @@ while (0)
       return 0;
     }
     instructionsrun++;
+    vm->instructioncount++;
+    gVMProfiling.total_instructions++;
 
     if (vm->sandboxenabled) {
       task->totalinstructionsrun++;
@@ -9428,6 +9432,8 @@ enter_stack_interpreter: for (;;) {
     return 0; // gave up the time slice
   }
   instructionsrun++;
+  vm->instructioncount++;
+  gVMProfiling.total_instructions++;
 
   if (vm->sandboxenabled) {
     task->totalinstructionsrun++;
@@ -10185,9 +10191,8 @@ enter_stack_interpreter: for (;;) {
       int targetoffset = (int)(ip + offset - frame->fn->chunk.code);
       frame->fn->chunk.loopcounters[targetoffset]++;
 
-      // tracing JIT hotspot detection (at 50 backedges): profile guided
-      // optimization (PGO) drives compilation
-      if (frame->fn->chunk.loopcounters[targetoffset] >= 50 &&
+      int hot_thresh = vm->hot_loop_threshold > 0 ? vm->hot_loop_threshold : 50;
+      if (frame->fn->chunk.loopcounters[targetoffset] >= hot_thresh &&
           !HasJITCompiled(frame->fn, targetoffset, vm)) {
         if (task->tracingmode == 0) {
           task->tracingmode = 1;
@@ -10196,7 +10201,7 @@ enter_stack_interpreter: for (;;) {
         }
       }
 
-      if (frame->fn->chunk.loopcounters[targetoffset] >= 50 &&
+      if (frame->fn->chunk.loopcounters[targetoffset] >= hot_thresh &&
           !HasJITCompiled(frame->fn, targetoffset, vm)) {
         TriggerJIT(vm, frame->fn, targetoffset,
                    (int)(ip - frame->fn->chunk.code));
@@ -10313,7 +10318,7 @@ enter_stack_interpreter: for (;;) {
     } else {
       if (fnid < 4096) {
         vm->fncallcounts[fnid]++;
-        if (vm->fncallcounts[fnid] >= 50 && !HasJITCompiled(callee, -1, vm)) {
+        if (DetectHotFunction(vm, callee) && !HasJITCompiled(callee, -1, vm)) {
           TriggerMethodJIT(vm, task, callee);
         }
       }

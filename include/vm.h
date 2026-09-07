@@ -189,6 +189,8 @@ typedef struct {
     } jitloops[128];
     int jitloopcount;
     int fncallcounts[4096];
+    int hot_loop_threshold;
+    int hot_func_threshold;
 
     // concurrency scheduling fields
     VMTask *maintask;
@@ -360,5 +362,19 @@ void DAPInit(int port);
 void DAPCheckDebugger(VM *vm, VMTask *task, CallFrame *frame, int offset);
 int RunTaskSlice(VM *vm, VMTask *task, int maxinstructions);
 int VMGenerateFlamegraphSVG(VM *vm, const char *filepath);
+
+/* JIT Hot Path Profiling and Detection Infrastructure */
+typedef struct VMProfilingStats {
+    uint64_t total_instructions;
+    uint64_t hot_loop_triggers;
+    uint64_t hot_function_triggers;
+    uint64_t jit_tierings;
+    uint64_t native_executions;
+} VMProfilingStats;
+
+extern VMProfilingStats gVMProfiling;
+
+int DetectHotFunction(VM *vm, FnProto *fn);
+int DetectHotLoop(VM *vm, FnProto *fn, int offset);
 
 #endif // Vmh

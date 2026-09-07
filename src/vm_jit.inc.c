@@ -5,9 +5,24 @@ extern void *CompileLLVMTrace(VM *vm, FnProto *fn, int startoffset,
 extern void *CompileQBETrace(VM *vm, FnProto *fn, int startoffset,
                              TraceStep *trace, int stepcount, int startdepth);
 
+VMProfilingStats gVMProfiling = {0};
+
+int DetectHotFunction(VM *vm, FnProto *fn) {
+  if (!vm || !fn || fn->id < 0 || fn->id >= 4096) return 0;
+  int thresh = vm->hot_func_threshold > 0 ? vm->hot_func_threshold : 50;
+  return (vm->fncallcounts[fn->id] >= thresh);
+}
+
+int DetectHotLoop(VM *vm, FnProto *fn, int offset) {
+  if (!vm || !fn || !fn->chunk.loopcounters || offset < 0 || offset >= fn->chunk.count) return 0;
+  int thresh = vm->hot_loop_threshold > 0 ? vm->hot_loop_threshold : 50;
+  return (fn->chunk.loopcounters[offset] >= thresh);
+}
+
 static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
   if (vm->sandboxenabled)
     return;
+  gVMProfiling.hot_loop_triggers++;
   MutexLockNative(vm->globallock);
   if (vm->jitloopcount >= 128) {
     MutexUnlockNative(vm->globallock);
@@ -110,6 +125,7 @@ static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
           vm->jitloops[idx].targetoffset = startoffset;
           vm->jitloops[idx].libhandle = NULL;
           vm->jitloops[idx].jitfn = (void (*)(AKSValue *, int *, AKSValue *, void *))func;
+          gVMProfiling.jit_tierings++;
           fprintf(stderr, "[JIT] In-memory compiled hot loop at offset %d (mode %d)\n",
                   startoffset, effective_jitmode);
           free(trace);
@@ -1232,6 +1248,7 @@ static void TriggerTracingJIT(VM *vm, VMTask *task, FnProto *fn,
 static void TriggerMethodJIT(VM *vm, VMTask *task, FnProto *fn) {
   if (vm->sandboxenabled)
     return;
+  gVMProfiling.hot_function_triggers++;
   if (!fn->chunk.code || fn->chunk.count == 0)
     return; /* skip empty stdlib stubs */
   if (vm->jitloopcount >= 128)
@@ -1336,6 +1353,7 @@ static void ExecuteJITCompiled(VM *vm, VMTask *task, FnProto *fn,
           task->stack, &top, task->stack + (*frameptr)->slotsbase, vm, ValCopy,
           ValFreeFunc);
       *stacktopptr = task->stack + top;
+      gVMProfiling.native_executions++;
       if (resumeoffset >= 0 && resumeoffset < fn->chunk.count) {
         *ipptr = fn->chunk.code + resumeoffset;
       }
