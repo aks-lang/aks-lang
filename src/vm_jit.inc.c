@@ -22,8 +22,13 @@ static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
     }
   }
 
-  /* In-memory native JIT compilation if JIT mode is active (x64, LLVM, or QBE) */
-  if (vm->jitmode > 0 && fn->chunk.code && fn->chunk.count > 0) {
+  /* In-memory native JIT compilation if JIT mode is active (x64, LLVM, or QBE) or auto-tiering on x86_64 */
+#if defined(__x86_64__) || defined(_M_X64)
+  int effective_jitmode = (vm->jitmode > 0) ? vm->jitmode : 1;
+#else
+  int effective_jitmode = vm->jitmode;
+#endif
+  if (effective_jitmode > 0 && fn->chunk.code && fn->chunk.count > 0) {
     int stepcount = 0;
     int looplen = endoffset - startoffset + 1;
     if (looplen <= 0 || looplen > 2048) looplen = 256;
@@ -92,11 +97,11 @@ static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
       if (can_jit && stepcount > 0) {
         void *func = NULL;
         int reldepth = fn->maxregisters > 0 ? fn->maxregisters : ((fn->localcount > fn->paramcount) ? fn->localcount : fn->paramcount);
-        if (vm->jitmode == 1) {
+        if (effective_jitmode == 1) {
           func = CompileX64Trace(vm, fn, startoffset, trace, stepcount, reldepth);
-        } else if (vm->jitmode == 2) {
+        } else if (effective_jitmode == 2) {
           func = CompileLLVMTrace(vm, fn, startoffset, trace, stepcount, reldepth);
-        } else if (vm->jitmode == 3) {
+        } else if (effective_jitmode == 3) {
           func = CompileQBETrace(vm, fn, startoffset, trace, stepcount, reldepth);
         }
         if (func) {
@@ -106,7 +111,7 @@ static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
           vm->jitloops[idx].libhandle = NULL;
           vm->jitloops[idx].jitfn = (void (*)(AKSValue *, int *, AKSValue *, void *))func;
           fprintf(stderr, "[JIT] In-memory compiled hot loop at offset %d (mode %d)\n",
-                  startoffset, vm->jitmode);
+                  startoffset, effective_jitmode);
           free(trace);
           MutexUnlockNative(vm->globallock);
           return;
@@ -622,7 +627,12 @@ static void TriggerTracingJIT(VM *vm, VMTask *task, FnProto *fn,
     }
   }
 
-  if (vm->jitmode > 0) {
+#if defined(__x86_64__) || defined(_M_X64)
+  int effective_mode = (vm->jitmode > 0) ? vm->jitmode : 1;
+#else
+  int effective_mode = vm->jitmode;
+#endif
+  if (effective_mode > 0) {
     void *func = NULL;
     int base_reg = fn->maxregisters > 0 ? fn->maxregisters : ((fn->localcount > fn->paramcount) ? fn->localcount : fn->paramcount);
     int reldepth = (targetoffset == -1)
@@ -631,11 +641,11 @@ static void TriggerTracingJIT(VM *vm, VMTask *task, FnProto *fn,
                                   task->frames[task->framecount - 1].slotsbase)
                                : base_reg);
     if (reldepth < base_reg) reldepth = base_reg;
-    if (vm->jitmode == 1) {
+    if (effective_mode == 1) {
       func = CompileX64Trace(vm, fn, startoffset, trace, stepcount, reldepth);
-    } else if (vm->jitmode == 2) {
+    } else if (effective_mode == 2) {
       func = CompileLLVMTrace(vm, fn, startoffset, trace, stepcount, reldepth);
-    } else if (vm->jitmode == 3) {
+    } else if (effective_mode == 3) {
       func = CompileQBETrace(vm, fn, startoffset, trace, stepcount, reldepth);
     }
 

@@ -337,6 +337,7 @@ extern int gTypeCheckingEnabled;
 extern int gBorrowCheckerEnabled;
 extern int gImmutableByDefault;
 extern int gStrictTypes;
+extern int gIncrementalTyping;
 
 /* Static mode global  -  when 1, borrow/type enforcement is always-on */
 extern int gStaticMode;

@@ -40,11 +40,14 @@ aks.exe run tests\TestAutoDiff.aks || exit /b 1
 aks.exe run tests\TestMatrixDualDeepSuite.aks || exit /b 1
 aks.exe run tests\TestContractsVerified.aks || exit /b 1
 aks.exe run tests\TestAlgebraicEffects.aks || exit /b 1
+aks.exe run --jit tests\TestJitHotLoop.aks || exit /b 1
+aks.exe run tests\TestModuleTopologicalSort.aks || exit /b 1
 
 echo Running strict type tests
 aks.exe run --strict-types tests\TestStrict.aks || exit /b 1
 aks.exe run --strict-types tests\TestStrictFail.aks 2>nul
 aks.exe run --strict-types tests\TestAdvancedTypes.aks || exit /b 1
+aks.exe run --incremental tests\TestIncrementalTyping.aks || exit /b 1
 aks.exe run --strict-types tests\TestFailOpaque.aks && exit /b 1
 aks.exe run --strict-types tests\TestFailRefine.aks && exit /b 1
 aks.exe run --strict-types tests\TestFailArray.aks && exit /b 1
@@ -62,6 +65,8 @@ tests\TestProtocols.exe || exit /b 1
 
 del /f /q akscoredump.json 2>nul
 del /f /q jittrace*.* 2>nul
+del /f /q compilejit_*.* 2>nul
+del /f /q jitloop*.* 2>nul
 del /f /q outtarget.c.map 2>nul
 del /f /q *.svg 2>nul
 del /f /q tests\*.svg 2>nul

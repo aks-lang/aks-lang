@@ -10311,6 +10311,41 @@ enter_stack_interpreter: for (;;) {
     } else if (res == 1) {
       // stdlib call completed
     } else {
+      if (fnid < 4096) {
+        vm->fncallcounts[fnid]++;
+        if (vm->fncallcounts[fnid] >= 50 && !HasJITCompiled(callee, -1, vm)) {
+          TriggerMethodJIT(vm, task, callee);
+        }
+      }
+      if (HasJITCompiled(callee, -1, vm)) {
+        AKSValue *canarypos = stacktop - argc;
+        for (AKSValue *p = stacktop; p > canarypos; p--) {
+          *p = *(p - 1);
+        }
+        *canarypos = ValInt(vm->stackcanary);
+        stacktop++;
+
+        FRAME_GROW();
+        CallFrame *newframe = &task->frames[task->framecount++];
+        newframe->fn = callee;
+        newframe->slotsbase = (int)(canarypos + 1 - task->stack);
+        newframe->argc = argc;
+
+        int maxreg = callee->maxregisters > argc ? callee->maxregisters : (callee->localcount > argc ? callee->localcount : argc);
+        STACK_GROW(newframe->slotsbase + maxreg + 1);
+        for (int i = argc; i < maxreg; i++) {
+          task->stack[newframe->slotsbase + i] = ValNull();
+        }
+        stacktop = task->stack + newframe->slotsbase + argc;
+
+        ExecuteJITCompiled(vm, task, callee, -1, &stacktop, &newframe,
+                           &frameslots, &ip);
+
+        frame = &task->frames[task->framecount - 1];
+        frameslots = task->stack + frame->slotsbase;
+        ip = frame->ip;
+        break;
+      }
       if (task->framecount >= MAXFRAMES) {
         RaiseX(vm, "stack overflow (too many call frames)", &ip, &stacktop,
                &frame, &frameslots);

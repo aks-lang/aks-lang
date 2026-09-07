@@ -856,9 +856,13 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             } else if (strcmp(op, "&&") == 0 || strcmp(op, "||") == 0) {
                 result = StypeInternGet(c, STYPE_BOOL, "bool");
             } else {
-                /* Arithmetic: unify operand types */
-                result = TyperUnify(c, lt, rt, n->line);
-                if (!result) result = lt;
+                /* Arithmetic / string concatenation: unify operand types */
+                if (op && strcmp(op, "+") == 0 && (lt->kind == STYPE_STR || rt->kind == STYPE_STR)) {
+                    result = StypeInternGet(c, STYPE_STR, "str");
+                } else {
+                    result = TyperUnify(c, lt, rt, n->line);
+                    if (!result) result = lt;
+                }
             }
             /* Always attempt const folding  -  regardless of const_fn.
                This propagates literals through all arithmetic chains,

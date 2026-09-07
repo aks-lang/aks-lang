@@ -14,6 +14,7 @@ typedef struct {
   int err;
   int suppresserrors;
   int recursion_depth;
+  int error_count;
 } Parser;
 
 static Node *ParseStmt(Parser *p);
@@ -33,11 +34,16 @@ static int Check2(Parser *p, TType t) { return p->peek.type == t; }
 static Token Expect(Parser *p, TType t) {
   if (!Check(p, t)) {
     if (!p->suppresserrors) {
-      fprintf(
-          stderr,
-          "Syntax error on line %d: expected '%s' (%d) but found '%s' (%d)\n",
-          p->cur.line, ToktypeName(t), t, ToktypeName(p->cur.type),
-          p->cur.type);
+      if (p->error_count < 50) {
+        fprintf(
+            stderr,
+            "Syntax error on line %d: expected '%s' (%d) but found '%s' (%d)\n",
+            p->cur.line, ToktypeName(t), t, ToktypeName(p->cur.type),
+            p->cur.type);
+      } else if (p->error_count == 50) {
+        fprintf(stderr, "... (further syntax errors suppressed)\n");
+      }
+      p->error_count++;
     }
     p->err = 1;
   }
@@ -196,8 +202,13 @@ static void ParseBaseType(Parser *p, TypeStr *ts) {
   } else {
     Token tok = Consume(p);
     if (!p->suppresserrors) {
-      fprintf(stderr, "Syntax error on line %d: expected type but found '%s'\n",
-              tok.line, tok.val);
+      if (p->error_count < 50) {
+        fprintf(stderr, "Syntax error on line %d: expected type but found '%s'\n",
+                tok.line, tok.val);
+      } else if (p->error_count == 50) {
+        fprintf(stderr, "... (further syntax errors suppressed)\n");
+      }
+      p->error_count++;
     }
     TypeStrAppend(ts, tok.val);
     TokFree(&tok);
@@ -4507,8 +4518,15 @@ static Node *ParsePrimary(Parser *p) {
     n->spread.expr = expr;
     return n;
   }
-  fprintf(stderr, "Parser error on line %d: unexpected token '%s'\n", line,
-          p->cur.val);
+  if (!p->suppresserrors) {
+    if (p->error_count < 50) {
+      fprintf(stderr, "Parser error on line %d: unexpected token '%s'\n", line,
+              p->cur.val);
+    } else if (p->error_count == 50) {
+      fprintf(stderr, "... (further syntax errors suppressed)\n");
+    }
+    p->error_count++;
+  }
   p->err = 1;
   Token bad = Consume(p);
   TokFree(&bad);
@@ -4521,6 +4539,7 @@ Node *Parse(const char *source, int *haderror) {
   p.err = 0;
   p.suppresserrors = 0;
   p.recursion_depth = 0;
+  p.error_count = 0;
   p.cur = LexNext(&p.lex);
   p.peek = LexNext(&p.lex);
 
@@ -4551,6 +4570,7 @@ Node *ParseExpr(const char *source, int *haderror) {
   p.err = 0;
   p.suppresserrors = 0;
   p.recursion_depth = 0;
+  p.error_count = 0;
   p.cur = LexNext(&p.lex);
   p.peek = LexNext(&p.lex);
   Node *expr = ParserExpr(&p);

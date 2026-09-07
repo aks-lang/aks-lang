@@ -20,6 +20,7 @@ int gTypeCheckingEnabled = 1;
 int gBorrowCheckerEnabled = 1;
 int gImmutableByDefault = 0;
 int gStrictTypes = 0;
+int gIncrementalTyping = 0;
 /* static mode globals */
 /* NOTE: gStaticMode and gDebugBuild are defined in src/staticcodegen.c
    (where they are first used) and declared extern here via compiler.h */
@@ -6301,24 +6302,29 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             }
             if (already_done) break;
 
-            char *src = CompReadFile(finalpath);
-            if (!src) {
-                char errbuf3[600];
-                snprintf(errbuf3, sizeof(errbuf3),
-                         "Could not open imported module file: %s", finalpath);
-                Error(c, n->line, errbuf3);
-                break;
-            }
-            int parseerr = 0;
-            Node *importedast = Parse(src, &parseerr);
-            free(src);
-            if (parseerr || !importedast) {
-                char errbuf4[600];
-                snprintf(errbuf4, sizeof(errbuf4),
-                         "Failed to parse imported module: %s", finalpath);
-                Error(c, n->line, errbuf4);
-                if (importedast) NodeFree(importedast);
-                break;
+            Module *existing_mod = CompilerFindModule(c, finalpath);
+            if (!existing_mod) existing_mod = CompilerFindModule(c, path);
+            Node *importedast = (existing_mod && existing_mod->ast) ? existing_mod->ast : NULL;
+            if (!importedast) {
+                char *src = CompReadFile(finalpath);
+                if (!src) {
+                    char errbuf3[600];
+                    snprintf(errbuf3, sizeof(errbuf3),
+                             "Could not open imported module file: %s", finalpath);
+                    Error(c, n->line, errbuf3);
+                    break;
+                }
+                int parseerr = 0;
+                importedast = Parse(src, &parseerr);
+                free(src);
+                if (parseerr || !importedast) {
+                    char errbuf4[600];
+                    snprintf(errbuf4, sizeof(errbuf4),
+                             "Failed to parse imported module: %s", finalpath);
+                    Error(c, n->line, errbuf4);
+                    if (importedast) NodeFree(importedast);
+                    break;
+                }
             }
             /* Push active import stack */
             if (c->import_depth < 64) {
@@ -6357,7 +6363,13 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                 }
             }
             if (c->imported_ast_count < 1024) {
-                c->imported_asts[c->imported_ast_count++] = importedast;
+                int already_tracked = 0;
+                for (int ai = 0; ai < c->imported_ast_count; ai++) {
+                    if (c->imported_asts[ai] == importedast) { already_tracked = 1; break; }
+                }
+                if (!already_tracked) {
+                    c->imported_asts[c->imported_ast_count++] = importedast;
+                }
             } else {
                 NodeFree(importedast);
             }
@@ -9654,12 +9666,57 @@ static void MarkStaticSafeNodes(Node *n) {
 }
 
 int CompCompile(Compiler *c, Node *program) {
+    if (program && program->type == NPROGRAM) {
+        char mod_paths_buf[64][512];
+        const char *mod_paths[64];
+        int mod_count = 0;
+        for (int i = 0; i < program->block.count; i++) {
+            Node *stmt = program->block.stmts[i];
+            if (stmt && stmt->type == NIMPORT && stmt->single.var && !stmt->decl.isconstflag) {
+                const char *path = stmt->single.var;
+                char *resolved = PkgResolveImport(path, c->currentfilepath);
+                const char *use_path = resolved ? resolved : path;
+                int already = 0;
+                for (int m = 0; m < c->module_count; m++) {
+                    if (strcmp(c->modules[m].name, path) == 0 ||
+                        strcmp(c->modules[m].path, use_path) == 0) {
+                        already = 1; break;
+                    }
+                }
+                for (int m = 0; m < c->compiled_file_count; m++) {
+                    if (strcmp(c->compiled_files[m], use_path) == 0) {
+                        already = 1; break;
+                    }
+                }
+                if (!already && mod_count < 64) {
+                    strncpy(mod_paths_buf[mod_count], use_path, 511);
+                    mod_paths_buf[mod_count][511] = '\0';
+                    mod_paths[mod_count] = mod_paths_buf[mod_count];
+                    mod_count++;
+                }
+                if (resolved) free(resolved);
+            }
+        }
+        if (mod_count > 1) {
+            CompilerParallelCompileModules(c, mod_paths, mod_count);
+            int topo_order[256];
+            int topo_count = 0;
+            if (!CompilerSortModulesTopological(c, topo_order, &topo_count)) {
+                Error(c, 1, "CircularImportError: circular dependency detected among imported modules");
+            }
+        }
+    }
     ASTSpecialize(c, program, program);
     PreregisterTypes(c, program);
     PreregisterFns(c, program);
     if (gTypeCheckingEnabled) {
         NodeFlowTypeCheck(c, program);
         RunStaticChecks(c, program);
+        if (gIncrementalTyping || gStrictTypes || c->is_static_mode) {
+            if (!TyperRun(c, program)) {
+                c->haderror = 1;
+            }
+        }
     }
     if (gBorrowCheckerEnabled) {
         g_moved_count = 0;

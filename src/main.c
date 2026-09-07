@@ -1836,6 +1836,9 @@ static void ParseSafetyFlags(int *argcptr, char ***argvptr) {
     if (getenv("AKSCAPMODE")) {
         gCapMode = 1;
     }
+    if (getenv("AKSINCREMENTAL") || getenv("AKSTYPECACHE")) {
+        gIncrementalTyping = 1;
+    }
 
     int writeidx = 1;
     for (int i = 1; i < argc; i++) {
@@ -1884,6 +1887,7 @@ static void ParseSafetyFlags(int *argcptr, char ***argvptr) {
         } else if (strcmp(argv[i], "--strict-types") == 0) {
             gStrictTypes = 1;
         } else if (strcmp(argv[i], "--incremental") == 0) {
+            gIncrementalTyping = 1;
             gTypeCheckingEnabled = 1;
         } else if (strcmp(argv[i], "--cross-target") == 0 && i + 1 < argc) {
             gCrossTarget = argv[i+1];
