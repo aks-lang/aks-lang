@@ -1,0 +1,97 @@
+// Comprehensive test suite for compile-time meta-execution (comptime).
+
+fn fib(n) {
+    if (n <= 1) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+fn square(x) {
+    return x * x;
+}
+
+fn main() {
+    print("Test 1: Compile-Time Constant Arithmetic");
+    let c1 = comptime(10 * 5 + 4);
+    if (c1 == 54) {
+        print("PASS: comptime(10 * 5 + 4) == 54");
+    } else {
+        print("FAIL: Expected 54, got " + String(c1));
+        exit(1);
+    }
+
+    print("Test 2: Compile-Time Block & Loop (Factorial)");
+    let fact7 = comptime {
+        let acc = 1;
+        let k = 1;
+        while (k <= 7) {
+            acc = acc * k;
+            k = k + 1;
+        }
+        acc;
+    };
+    if (fact7 == 5040) {
+        print("PASS: comptime factorial(7) == 5040");
+    } else {
+        print("FAIL: Expected 5040, got " + String(fact7));
+        exit(1);
+    }
+
+    print("Test 3: Compile-Time String Concatenation");
+    let str_val = comptime {
+        let prefix = "AKS ";
+        let suffix = "Comptime Engine";
+        prefix + suffix;
+    };
+    if (str_val == "AKS Comptime Engine") {
+        print("PASS: comptime string concatenation == 'AKS Comptime Engine'");
+    } else {
+        print("FAIL: Expected 'AKS Comptime Engine', got " + String(str_val));
+        exit(1);
+    }
+
+    print("Test 4: Compile-Time Function Calls");
+    let fib10 = comptime {
+        fib(10);
+    };
+    let sq12 = comptime {
+        square(12);
+    };
+    if (fib10 == 55 && sq12 == 144) {
+        print("PASS: comptime fib(10) == 55 and square(12) == 144");
+    } else {
+        print("FAIL: Expected fib10=55, sq12=144, got fib10=" + String(fib10) + ", sq12=" + String(sq12));
+        exit(1);
+    }
+
+    print("Test 5: Compile-Time Dynamic Lookup Table Generation");
+    let lookup_table = comptime {
+        let tbl = [];
+        let i = 0;
+        while (i < 8) {
+            append(tbl, i * i * i); // cubic lookup table
+            i = i + 1;
+        }
+        tbl;
+    };
+    if (Length(lookup_table) == 8 && lookup_table[3] == 27 && lookup_table[7] == 343) {
+        print("PASS: Precomputed cubic lookup table (8 items, 3^3=27, 7^3=343)");
+    } else {
+        print("FAIL: Precomputed lookup table mismatch");
+        exit(1);
+    }
+
+    print("Test 6: Nested Comptime Expressions");
+    let nested = comptime(comptime(100 + 20) + comptime(5 * 5));
+    if (nested == 145) {
+        print("PASS: Nested comptime expressions == 145");
+    } else {
+        print("FAIL: Expected 145, got " + String(nested));
+        exit(1);
+    }
+
+    print("All Comptime Meta-Execution Tests PASSED!");
+}
+
+main();

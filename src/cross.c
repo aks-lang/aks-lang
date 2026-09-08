@@ -22,21 +22,30 @@ static int gtrayactive = 0;
 static char gdroppedfiles[1024] = "";
 
 // Clipboard APIs
+static char g_fallback_clip[4096] = "";
+
 void SysClipSetText(const char *text) {
+    if (!text) text = "";
+    strncpy_s(g_fallback_clip, sizeof(g_fallback_clip), text, _TRUNCATE);
 #ifdef _WIN32
-    if (!OpenClipboard(NULL)) return;
-    EmptyClipboard();
-    size_t len = strlen(text);
-    HGLOBAL hg = GlobalAlloc(GMEM_MOVEABLE, len + 1);
-    if (hg) {
-        char *ptr = (char*)GlobalLock(hg);
-        if (ptr) {
-            memcpy(ptr, text, len + 1);
-            GlobalUnlock(hg);
-            SetClipboardData(CF_TEXT, hg);
-        }
+    int retries = 10;
+    while (!OpenClipboard(NULL) && --retries > 0) {
+        Sleep(10);
     }
-    CloseClipboard();
+    if (retries > 0) {
+        EmptyClipboard();
+        size_t len = strlen(text);
+        HGLOBAL hg = GlobalAlloc(GMEM_MOVEABLE, len + 1);
+        if (hg) {
+            char *ptr = (char*)GlobalLock(hg);
+            if (ptr) {
+                memcpy(ptr, text, len + 1);
+                GlobalUnlock(hg);
+                SetClipboardData(CF_TEXT, hg);
+            }
+        }
+        CloseClipboard();
+    }
 #else
     printf("[POSIX Clipboard] Set: %s\n", text);
 #endif
@@ -44,18 +53,28 @@ void SysClipSetText(const char *text) {
 
 char *SysClipGetText(void) {
 #ifdef _WIN32
-    if (!OpenClipboard(NULL)) return strdup("");
-    HANDLE hData = GetClipboardData(CF_TEXT);
-    char *result = NULL;
-    if (hData) {
-        char *ptr = (char*)GlobalLock(hData);
-        if (ptr) {
-            result = strdup(ptr);
-            GlobalUnlock(hData);
-        }
+    int retries = 10;
+    while (!OpenClipboard(NULL) && --retries > 0) {
+        Sleep(10);
     }
-    CloseClipboard();
-    return result ? result : strdup("");
+    if (retries > 0) {
+        HANDLE hData = GetClipboardData(CF_TEXT);
+        char *result = NULL;
+        if (hData) {
+            char *ptr = (char*)GlobalLock(hData);
+            if (ptr) {
+                result = strdup(ptr);
+                GlobalUnlock(hData);
+            }
+        }
+        CloseClipboard();
+        if (result && result[0] != '\0') {
+            strncpy_s(g_fallback_clip, sizeof(g_fallback_clip), result, _TRUNCATE);
+            return result;
+        }
+        if (result) free(result);
+    }
+    return strdup(g_fallback_clip);
 #else
     return strdup("[POSIX Clipboard Content]");
 #endif

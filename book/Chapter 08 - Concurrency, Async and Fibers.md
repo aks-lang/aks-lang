@@ -218,6 +218,45 @@ account.Stop();
 
 ---
 
+## 8.6 Structured Concurrency: Nurseries & Lexical Regions
+
+Unstructured concurrency (e.g. Go goroutines, C++ raw threads) often leads to orphaned background workers, leaked file descriptors, and silently abandoned failures. AKS solves this by enforcing **Structured Concurrency** through scope-bounded **Nurseries** and **Lexical Region Scopes**.
+
+### Nurseries (`nursery`)
+
+A `nursery` establishes a lexical boundary around concurrent task execution. The language runtime guarantees that **no spawned fiber can outlive the nursery scope**: execution cannot leave the block until every child fiber has completed or been joined.
+
+```aks
+// Structured Nursery block: execution blocks at '}' until all child tasks finish
+nursery (n) {
+    n.Spawn(task_worker_1);
+    n.SpawnArg(task_worker_2, payload);
+    
+    // Dynamically track existing spawned tasks
+    let t = spawn background_compute();
+    n.Track(t);
+}
+// Guaranteed Invariant: 100% of tasks spawned inside n have completed here!
+```
+
+If an error or cancellation occurs within the nursery, `n.CancelAll()` can proactively signal all active sibling tasks.
+
+### Lexical Region Memory Scopes (`region`)
+
+Region scopes integrate structured memory management with task execution. A `region` binds an arena bump-allocator that cleans up in $O(1)$ batch time at scope exit:
+
+```aks
+region (r) {
+    // Fast contiguous allocations tied to the lexical region
+    let buffer = r.AllocArray(1024);
+    let scratch = r.AllocStruct("ScratchState");
+    // Work with buffer and scratch...
+}
+// All region allocations are instantaneously deallocated in O(1) batch time
+```
+
+---
+
 ## 8.7 Summary & Next Steps
 
 In this chapter, we explored:
@@ -226,5 +265,6 @@ In this chapter, we explored:
 3. Message-passing communication via typed channels (`chan`).
 4. Synchronization primitives: Mutexes, Spinlocks, Barriers, Condition Variables, and RWLocks.
 5. The Actor Model: isolated state, lock-free mailboxes, non-blocking `Send`, and request-reply `Call`.
+6. Structured Concurrency: scope-bounded `nursery` blocks with guaranteed zero task leaks and lexical `region` scopes.
 
 Proceed to [Chapter 09: Lock-Free Concurrency, Data Structures & Memory Reclamation](Chapter%2009%20-%20Lock-Free%20Data%20Structures.md) to explore hardware atomic CAS instructions, lock-free queues, and Hazard Pointers.

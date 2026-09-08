@@ -7491,6 +7491,15 @@ while (0)
               !HasJITCompiled(frame->fn, targetoffset, vm)) {
             TriggerJIT(vm, frame->fn, targetoffset, endoffset);
           }
+          if (HasJITCompiled(frame->fn, targetoffset, vm)) {
+            task->tracingmode = 0;
+            task->tracestepcount = 0;
+            task->stacktop = (int)(stacktop - task->stack);
+            ExecuteJITCompiled(vm, task, frame->fn, targetoffset, &stacktop, &frame,
+                               &frameslots, &ip);
+            regip = (RegInst *)frame->fn->regcode + curr_inst->targetip;
+            REG_DISPATCH_OR_BREAK();
+          }
         }
       }
       regip = (RegInst *)frame->fn->regcode + curr_inst->targetip;
@@ -7513,6 +7522,15 @@ while (0)
             if (DetectHotLoop(vm, frame->fn, targetoffset) &&
                 !HasJITCompiled(frame->fn, targetoffset, vm)) {
               TriggerJIT(vm, frame->fn, targetoffset, endoffset);
+            }
+            if (HasJITCompiled(frame->fn, targetoffset, vm)) {
+              task->tracingmode = 0;
+              task->tracestepcount = 0;
+              task->stacktop = (int)(stacktop - task->stack);
+              ExecuteJITCompiled(vm, task, frame->fn, targetoffset, &stacktop, &frame,
+                                 &frameslots, &ip);
+              regip = (RegInst *)frame->fn->regcode + curr_inst->targetip;
+              REG_DISPATCH_OR_BREAK();
             }
           }
         }

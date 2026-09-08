@@ -1,0 +1,97 @@
+// Test suite for supervised actor trees
+
+actor WorkerNode {
+    val: int;
+
+    fn Inc(amount) {
+        self.val = self.val + amount;
+        return self.val;
+    }
+
+    fn Get() {
+        return self.val;
+    }
+}
+
+fn spawn_worker_a() { return WorkerNode.Spawn({ val: 10 }); }
+fn spawn_worker_b() { return WorkerNode.Spawn({ val: 100 }); }
+fn spawn_node_1() { return WorkerNode.Spawn({ val: 50 }); }
+fn spawn_node_2() { return WorkerNode.Spawn({ val: 500 }); }
+
+fn main() {
+    print("Test 1: OneForOne Actor Supervision Strategy");
+    let sup = Supervisor("OneForOne", 5, 10000);
+
+    let w1 = sup.AddChild("worker_a", spawn_worker_a);
+    let w2 = sup.AddChild("worker_b", spawn_worker_b);
+
+    // Send messages to actors
+    let r1 = w1.Call({ type: "Inc", amount: 5 }, 1000);
+    let r2 = w2.Call({ type: "Inc", amount: 25 }, 1000);
+    print("worker_a initial state: " + String(r1));
+    print("worker_b initial state: " + String(r2));
+
+    if (r1 == 15 && r2 == 125) {
+        print("PASS: Both supervised child actors operational");
+    } else {
+        print("FAIL: Supervised child actor state incorrect");
+        exit(1);
+    }
+
+    // Trigger OneForOne restart of worker_a
+    print("Restarting worker_a under OneForOne strategy");
+    let w1_new = sup.RestartChild("worker_a");
+    let r1_fresh = w1_new.Call({ type: "Get" }, 1000);
+    let r2_still = w2.Call({ type: "Get" }, 1000);
+
+    print("worker_a fresh state after restart: " + String(r1_fresh));
+    print("worker_b state untouched: " + String(r2_still));
+
+    let restarts_a = sup.GetRestartCount("worker_a");
+    let restarts_b = sup.GetRestartCount("worker_b");
+
+    if (r1_fresh == 10 && r2_still == 125 && restarts_a == 1 && restarts_b == 0) {
+        print("PASS: OneForOne strategy isolated failure and restarted only target child");
+    } else {
+        print("FAIL: OneForOne supervision restart error");
+        exit(1);
+    }
+
+    print("Test 2: OneForAll Actor Supervision Strategy");
+    let group_sup = Supervisor("OneForAll", 5, 10000);
+    let g1 = group_sup.AddChild("node_1", spawn_node_1);
+    let g2 = group_sup.AddChild("node_2", spawn_node_2);
+
+    g1.Call({ type: "Inc", amount: 20 }, 1000);
+    g2.Call({ type: "Inc", amount: 50 }, 1000);
+
+    // OneForAll restart of node_1 triggers sibling restart of node_2
+    print("Restarting node_1 under OneForAll strategy");
+    group_sup.RestartChild("node_1");
+
+    let g1_new = group_sup.GetChild("node_1");
+    let g2_new = group_sup.GetChild("node_2");
+
+    let g1_state = g1_new.Call({ type: "Get" }, 1000);
+    let g2_state = g2_new.Call({ type: "Get" }, 1000);
+
+    let g1_restarts = group_sup.GetRestartCount("node_1");
+    let g2_restarts = group_sup.GetRestartCount("node_2");
+
+    print("node_1 state after OneForAll: " + String(g1_state) + ", restarts: " + String(g1_restarts));
+    print("node_2 state after OneForAll: " + String(g2_state) + ", restarts: " + String(g2_restarts));
+
+    if (g1_state == 50 && g2_state == 500 && g1_restarts == 1 && g2_restarts == 1) {
+        print("PASS: OneForAll strategy cascaded restart across all siblings");
+    } else {
+        print("FAIL: OneForAll supervision restart error");
+        exit(1);
+    }
+
+    // Clean shutdown
+    sup.Stop();
+    group_sup.Stop();
+    print("All Supervised Actor Tree Tests PASSED cleanly");
+}
+
+main();

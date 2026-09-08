@@ -1,3 +1,326 @@
+/* Reverse-mode automatic differentiation computational graph and tape engine */
+
+typedef struct {
+  int id;
+  int op;    /* 0=VAR, 1=CONST, 2=ADD, 3=SUB, 4=MUL, 5=DIV, 6=NEG, 7=POW,
+                8=EXP, 9=LOG, 10=SIN, 11=COS, 12=TAN, 13=RELU, 14=SIGMOID,
+                15=TANH, 16=SQRT, 17=TENSOR_VAR, 18=TENSOR_MATMUL, 19=TENSOR_ADD, 20=TENSOR_RELU */
+  double val;
+  double grad;
+  int lhs;   /* Node index of first operand (-1 if none) */
+  int rhs;   /* Node index of second operand (-1 if none) */
+  double aux;/* Auxiliary scalar constant (for scalar ops or constants) */
+  int is_tensor;
+  int rows;
+  int cols;
+  double *tval;
+  double *tgrad;
+} TapeNode;
+
+typedef struct {
+  int id;
+  int active;
+  TapeNode *nodes;
+  int count;
+  int capacity;
+} AutodiffTape;
+
+#define MAX_AUTODIFF_TAPES 64
+static AutodiffTape g_autodiff_tapes[MAX_AUTODIFF_TAPES];
+static int g_autodiff_inited = 0;
+
+static void AutodiffFreeTapeNodes(AutodiffTape *t) {
+  if (!t || !t->nodes) return;
+  for (int i = 0; i < t->count; i++) {
+    if (t->nodes[i].is_tensor) {
+      if (t->nodes[i].tval) { free(t->nodes[i].tval); t->nodes[i].tval = NULL; }
+      if (t->nodes[i].tgrad) { free(t->nodes[i].tgrad); t->nodes[i].tgrad = NULL; }
+    }
+  }
+  t->count = 0;
+}
+
+static void AutodiffInitTapes(void) {
+  if (g_autodiff_inited) return;
+  memset(g_autodiff_tapes, 0, sizeof(g_autodiff_tapes));
+  g_autodiff_tapes[0].id = 0;
+  g_autodiff_tapes[0].active = 1;
+  g_autodiff_tapes[0].capacity = 1024;
+  g_autodiff_tapes[0].nodes = (TapeNode *)malloc(sizeof(TapeNode) * 1024);
+  memset(g_autodiff_tapes[0].nodes, 0, sizeof(TapeNode) * 1024);
+  g_autodiff_tapes[0].count = 0;
+  g_autodiff_inited = 1;
+}
+
+static AutodiffTape *AutodiffGetTape(int tape_id) {
+  AutodiffInitTapes();
+  if (tape_id < 0 || tape_id >= MAX_AUTODIFF_TAPES) return &g_autodiff_tapes[0];
+  if (!g_autodiff_tapes[tape_id].active) {
+    g_autodiff_tapes[tape_id].id = tape_id;
+    g_autodiff_tapes[tape_id].active = 1;
+    g_autodiff_tapes[tape_id].capacity = 1024;
+    g_autodiff_tapes[tape_id].nodes = (TapeNode *)malloc(sizeof(TapeNode) * 1024);
+    memset(g_autodiff_tapes[tape_id].nodes, 0, sizeof(TapeNode) * 1024);
+    g_autodiff_tapes[tape_id].count = 0;
+  }
+  return &g_autodiff_tapes[tape_id];
+}
+
+static int AutodiffAllocNode(AutodiffTape *t, int op, double val, int lhs, int rhs, double aux) {
+  if (t->count >= t->capacity) {
+    int oldcap = t->capacity;
+    t->capacity = (t->capacity < 1024) ? 1024 : (t->capacity * 2);
+    t->nodes = (TapeNode *)realloc(t->nodes, sizeof(TapeNode) * t->capacity);
+    memset(t->nodes + oldcap, 0, sizeof(TapeNode) * (t->capacity - oldcap));
+  }
+  int nid = t->count++;
+  t->nodes[nid].id = nid;
+  t->nodes[nid].op = op;
+  t->nodes[nid].val = val;
+  t->nodes[nid].grad = 0.0;
+  t->nodes[nid].lhs = lhs;
+  t->nodes[nid].rhs = rhs;
+  t->nodes[nid].aux = aux;
+  t->nodes[nid].is_tensor = 0;
+  t->nodes[nid].rows = 0;
+  t->nodes[nid].cols = 0;
+  t->nodes[nid].tval = NULL;
+  t->nodes[nid].tgrad = NULL;
+  return nid;
+}
+
+static int AutodiffAllocTensorNode(AutodiffTape *t, int op, int rows, int cols, int lhs, int rhs, const double *init_val) {
+  if (t->count >= t->capacity) {
+    int oldcap = t->capacity;
+    t->capacity = (t->capacity < 1024) ? 1024 : (t->capacity * 2);
+    t->nodes = (TapeNode *)realloc(t->nodes, sizeof(TapeNode) * t->capacity);
+    memset(t->nodes + oldcap, 0, sizeof(TapeNode) * (t->capacity - oldcap));
+  }
+  int nid = t->count++;
+  TapeNode *n = &t->nodes[nid];
+  n->id = nid;
+  n->op = op;
+  n->val = 0.0;
+  n->grad = 0.0;
+  n->lhs = lhs;
+  n->rhs = rhs;
+  n->aux = 0.0;
+  n->is_tensor = 1;
+  n->rows = rows;
+  n->cols = cols;
+  int total = rows * cols;
+  n->tval = (double *)calloc(total > 0 ? total : 1, sizeof(double));
+  n->tgrad = (double *)calloc(total > 0 ? total : 1, sizeof(double));
+  if (init_val && total > 0) {
+    memcpy(n->tval, init_val, sizeof(double) * total);
+  }
+  return nid;
+}
+
+static int AutodiffForwardOp(AutodiffTape *t, int op, int lhs, int rhs, double aux) {
+  double lv = (lhs >= 0 && lhs < t->count) ? t->nodes[lhs].val : 0.0;
+  double rv = (rhs >= 0 && rhs < t->count) ? t->nodes[rhs].val : aux;
+  double out = 0.0;
+  switch (op) {
+    case 1: /* CONST */ out = aux; break;
+    case 2: /* ADD */ out = lv + rv; break;
+    case 3: /* SUB */ out = lv - rv; break;
+    case 4: /* MUL */ out = lv * rv; break;
+    case 5: /* DIV */ out = (fabs(rv) < 1e-15) ? 0.0 : (lv / rv); break;
+    case 6: /* NEG */ out = -lv; break;
+    case 7: /* POW */ out = pow(lv, rv); break;
+    case 8: /* EXP */ out = exp(lv); break;
+    case 9: /* LOG */ out = (lv > 1e-15) ? log(lv) : log(1e-15); break;
+    case 10: /* SIN */ out = sin(lv); break;
+    case 11: /* COS */ out = cos(lv); break;
+    case 12: /* TAN */ out = tan(lv); break;
+    case 13: /* RELU */ out = (lv > 0.0) ? lv : 0.0; break;
+    case 14: /* SIGMOID */ out = 1.0 / (1.0 + exp(-lv)); break;
+    case 15: /* TANH */ out = tanh(lv); break;
+    case 16: /* SQRT */ out = (lv >= 0.0) ? sqrt(lv) : 0.0; break;
+    default: out = lv; break;
+  }
+  return AutodiffAllocNode(t, op, out, lhs, rhs, aux);
+}
+
+static void AutodiffBackward(AutodiffTape *t, int loss_nid) {
+  if (!t || loss_nid < 0 || loss_nid >= t->count) return;
+  for (int i = 0; i < t->count; i++) {
+    t->nodes[i].grad = 0.0;
+    if (t->nodes[i].is_tensor && t->nodes[i].tgrad) {
+      memset(t->nodes[i].tgrad, 0, sizeof(double) * t->nodes[i].rows * t->nodes[i].cols);
+    }
+  }
+  if (t->nodes[loss_nid].is_tensor && t->nodes[loss_nid].tgrad) {
+    int total = t->nodes[loss_nid].rows * t->nodes[loss_nid].cols;
+    for (int k = 0; k < total; k++) {
+      t->nodes[loss_nid].tgrad[k] = 1.0;
+    }
+  } else {
+    t->nodes[loss_nid].grad = 1.0;
+  }
+  for (int i = loss_nid; i >= 0; i--) {
+    if (t->nodes[i].is_tensor) {
+      int lhs = t->nodes[i].lhs;
+      int rhs = t->nodes[i].rhs;
+      int rows = t->nodes[i].rows;
+      int cols = t->nodes[i].cols;
+      int total = rows * cols;
+      switch (t->nodes[i].op) {
+        case 17: /* TENSOR_VAR */
+          break;
+        case 19: /* TENSOR_ADD */
+          for (int k = 0; k < total; k++) {
+            double gk = t->nodes[i].tgrad[k];
+            if (lhs >= 0 && t->nodes[lhs].tgrad) t->nodes[lhs].tgrad[k] += gk;
+            if (rhs >= 0 && t->nodes[rhs].tgrad) t->nodes[rhs].tgrad[k] += gk;
+          }
+          break;
+        case 20: /* TENSOR_RELU */
+          for (int k = 0; k < total; k++) {
+            double gk = t->nodes[i].tgrad[k];
+            if (lhs >= 0 && t->nodes[lhs].tgrad && t->nodes[lhs].tval) {
+              if (t->nodes[lhs].tval[k] > 0.0) t->nodes[lhs].tgrad[k] += gk;
+            }
+          }
+          break;
+        case 18: /* TENSOR_MATMUL */ {
+          int M = rows;
+          int N = cols;
+          int K = (lhs >= 0) ? t->nodes[lhs].cols : 0;
+          if (lhs >= 0 && t->nodes[lhs].tgrad && rhs >= 0 && t->nodes[rhs].tval) {
+            for (int r = 0; r < M; r++) {
+              for (int k = 0; k < K; k++) {
+                double sum = 0.0;
+                for (int c = 0; c < N; c++) {
+                  sum += t->nodes[i].tgrad[r * N + c] * t->nodes[rhs].tval[k * N + c];
+                }
+                t->nodes[lhs].tgrad[r * K + k] += sum;
+              }
+            }
+          }
+          if (rhs >= 0 && t->nodes[rhs].tgrad && lhs >= 0 && t->nodes[lhs].tval) {
+            for (int k = 0; k < K; k++) {
+              for (int c = 0; c < N; c++) {
+                double sum = 0.0;
+                for (int r = 0; r < M; r++) {
+                  sum += t->nodes[lhs].tval[r * K + k] * t->nodes[i].tgrad[r * N + c];
+                }
+                t->nodes[rhs].tgrad[k * N + c] += sum;
+              }
+            }
+          }
+          break;
+        }
+        default:
+          break;
+      }
+      continue;
+    }
+    double g = t->nodes[i].grad;
+    if (g == 0.0) continue;
+    int lhs = t->nodes[i].lhs;
+    int rhs = t->nodes[i].rhs;
+    double aux = t->nodes[i].aux;
+    switch (t->nodes[i].op) {
+      case 0: /* VAR */
+      case 1: /* CONST */
+        break;
+      case 2: /* ADD */
+        if (lhs >= 0) t->nodes[lhs].grad += g;
+        if (rhs >= 0) t->nodes[rhs].grad += g;
+        break;
+      case 3: /* SUB */
+        if (lhs >= 0) t->nodes[lhs].grad += g;
+        if (rhs >= 0) t->nodes[rhs].grad -= g;
+        break;
+      case 4: /* MUL */
+        if (lhs >= 0 && rhs >= 0) {
+          t->nodes[lhs].grad += g * t->nodes[rhs].val;
+          t->nodes[rhs].grad += g * t->nodes[lhs].val;
+        } else if (lhs >= 0) {
+          t->nodes[lhs].grad += g * aux;
+        }
+        break;
+      case 5: /* DIV */
+        if (lhs >= 0 && rhs >= 0) {
+          double denom = t->nodes[rhs].val;
+          if (fabs(denom) < 1e-15) denom = (denom < 0 ? -1e-15 : 1e-15);
+          t->nodes[lhs].grad += g / denom;
+          t->nodes[rhs].grad -= g * t->nodes[lhs].val / (denom * denom);
+        } else if (lhs >= 0) {
+          double denom = (fabs(aux) < 1e-15) ? (aux < 0 ? -1e-15 : 1e-15) : aux;
+          t->nodes[lhs].grad += g / denom;
+        }
+        break;
+      case 6: /* NEG */
+        if (lhs >= 0) t->nodes[lhs].grad -= g;
+        break;
+      case 7: /* POW */ {
+        double p = (rhs >= 0) ? t->nodes[rhs].val : aux;
+        if (lhs >= 0) {
+          double base = t->nodes[lhs].val;
+          t->nodes[lhs].grad += g * p * pow(base, p - 1.0);
+        }
+        if (rhs >= 0) {
+          double base = t->nodes[lhs].val;
+          if (base > 0.0) {
+            t->nodes[rhs].grad += g * pow(base, p) * log(base);
+          }
+        }
+        break;
+      }
+      case 8: /* EXP */
+        if (lhs >= 0) t->nodes[lhs].grad += g * exp(t->nodes[lhs].val);
+        break;
+      case 9: /* LOG */
+        if (lhs >= 0) {
+          double lv = t->nodes[lhs].val;
+          if (fabs(lv) < 1e-15) lv = (lv < 0 ? -1e-15 : 1e-15);
+          t->nodes[lhs].grad += g / lv;
+        }
+        break;
+      case 10: /* SIN */
+        if (lhs >= 0) t->nodes[lhs].grad += g * cos(t->nodes[lhs].val);
+        break;
+      case 11: /* COS */
+        if (lhs >= 0) t->nodes[lhs].grad -= g * sin(t->nodes[lhs].val);
+        break;
+      case 12: /* TAN */
+        if (lhs >= 0) {
+          double c = cos(t->nodes[lhs].val);
+          if (fabs(c) < 1e-15) c = (c < 0 ? -1e-15 : 1e-15);
+          t->nodes[lhs].grad += g / (c * c);
+        }
+        break;
+      case 13: /* RELU */
+        if (lhs >= 0) t->nodes[lhs].grad += (t->nodes[lhs].val > 0.0 ? g : 0.0);
+        break;
+      case 14: /* SIGMOID */
+        if (lhs >= 0) {
+          double s = t->nodes[i].val;
+          t->nodes[lhs].grad += g * s * (1.0 - s);
+        }
+        break;
+      case 15: /* TANH */
+        if (lhs >= 0) {
+          double th = t->nodes[i].val;
+          t->nodes[lhs].grad += g * (1.0 - th * th);
+        }
+        break;
+      case 16: /* SQRT */
+        if (lhs >= 0) {
+          double sq = t->nodes[i].val;
+          if (sq < 1e-15) sq = 1e-15;
+          t->nodes[lhs].grad += g / (2.0 * sq);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+}
+
 static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
                          AKSValue **stacktopptr) {
   AKSValue *stacktop = *stacktopptr;
@@ -11861,7 +12184,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     if (argc != 1) { fprintf(stderr, "Runtime error: MTNewC() expects 1 arg (seed)\n"); return -1; }
     AKSValue SeedV = POP();
     uint64_t seed = (uint64_t)ValToInt(SeedV);
-    // MT19937-64: state array of 312 uint64_t stored in AKS array
+    // MT19937-64: state array of 312 uint64_t stored in array
     AKSValue StateArr = ValArr(313);
     AKSArray *SA = ValToArr(StateArr);
     SA->count = 313; SA->capacity = 313;
@@ -23348,6 +23671,340 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     ValFree(&node_val);
     ValFree(&fn_val);
     PUSH(actor_res);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeNew") == 0) {
+    AutodiffInitTapes();
+    int slot = -1;
+    for (int i = 1; i < MAX_AUTODIFF_TAPES; i++) {
+      if (!g_autodiff_tapes[i].active) {
+        slot = i;
+        break;
+      }
+    }
+    if (slot < 0) slot = 0;
+    AutodiffTape *t = AutodiffGetTape(slot);
+    t->count = 0;
+    PUSH(ValInt(slot));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeFree") == 0) {
+    if (argc < 1) {
+      fprintf(stderr, "Runtime error: TapeFree() expects 1 argument (tape_id)\n");
+      return -1;
+    }
+    AKSValue tid_val = POP();
+    int tid = (int)ValToInt(tid_val);
+    ValFree(&tid_val);
+    if (tid > 0 && tid < MAX_AUTODIFF_TAPES && g_autodiff_tapes[tid].active) {
+      AutodiffFreeTapeNodes(&g_autodiff_tapes[tid]);
+      if (g_autodiff_tapes[tid].nodes) free(g_autodiff_tapes[tid].nodes);
+      g_autodiff_tapes[tid].nodes = NULL;
+      g_autodiff_tapes[tid].count = 0;
+      g_autodiff_tapes[tid].capacity = 0;
+      g_autodiff_tapes[tid].active = 0;
+    }
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeDefault") == 0) {
+    PUSH(ValInt(0));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeVar") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: TapeVar() expects 2 arguments (tape_id, val)\n");
+      return -1;
+    }
+    AKSValue val_val = POP();
+    AKSValue tape_val = POP();
+    int tid = (int)ValToInt(tape_val);
+    double v = (ValKind(val_val) == VALFLOAT) ? ValToFloat(val_val) : (double)ValToInt(val_val);
+    ValFree(&val_val);
+    ValFree(&tape_val);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    int nid = AutodiffAllocNode(t, 0, v, -1, -1, 0.0);
+    PUSH(ValInt(nid));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeOp") == 0) {
+    if (argc < 5) {
+      fprintf(stderr, "Runtime error: TapeOp() expects 5 arguments (tape_id, op, lhs, rhs, aux)\n");
+      return -1;
+    }
+    AKSValue aux_val = POP();
+    AKSValue rhs_val = POP();
+    AKSValue lhs_val = POP();
+    AKSValue op_val = POP();
+    AKSValue tid_val = POP();
+    int tid = (int)ValToInt(tid_val);
+    int op = (int)ValToInt(op_val);
+    int lhs = (int)ValToInt(lhs_val);
+    int rhs = (int)ValToInt(rhs_val);
+    double aux = (ValKind(aux_val) == VALFLOAT) ? ValToFloat(aux_val) : (double)ValToInt(aux_val);
+    ValFree(&aux_val);
+    ValFree(&rhs_val);
+    ValFree(&lhs_val);
+    ValFree(&op_val);
+    ValFree(&tid_val);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    int nid = AutodiffForwardOp(t, op, lhs, rhs, aux);
+    PUSH(ValInt(nid));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeGetVal") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: TapeGetVal() expects 2 arguments (tape_id, nid)\n");
+      return -1;
+    }
+    AKSValue nid_val = POP();
+    AKSValue tid_val = POP();
+    int tid = (int)ValToInt(tid_val);
+    int nid = (int)ValToInt(nid_val);
+    ValFree(&nid_val);
+    ValFree(&tid_val);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    double res = (nid >= 0 && nid < t->count) ? t->nodes[nid].val : 0.0;
+    PUSH(ValFloat(res));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeGetGrad") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: TapeGetGrad() expects 2 arguments (tape_id, nid)\n");
+      return -1;
+    }
+    AKSValue nid_val = POP();
+    AKSValue tid_val = POP();
+    int tid = (int)ValToInt(tid_val);
+    int nid = (int)ValToInt(nid_val);
+    ValFree(&nid_val);
+    ValFree(&tid_val);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    double res = (nid >= 0 && nid < t->count) ? t->nodes[nid].grad : 0.0;
+    PUSH(ValFloat(res));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeBackward") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: TapeBackward() expects 2 arguments (tape_id, loss_nid)\n");
+      return -1;
+    }
+    AKSValue nid_val = POP();
+    AKSValue tid_val = POP();
+    int tid = (int)ValToInt(tid_val);
+    int nid = (int)ValToInt(nid_val);
+    ValFree(&nid_val);
+    ValFree(&tid_val);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    AutodiffBackward(t, nid);
+    PUSH(ValFloat(1.0));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeTensorVar") == 0) {
+    if (argc < 4) {
+      fprintf(stderr, "Runtime error: TapeTensorVar() expects 4 arguments (tape_id, rows, cols, data_array)\n");
+      return -1;
+    }
+    AKSValue arr_val = POP();
+    AKSValue cols_val = POP();
+    AKSValue rows_val = POP();
+    AKSValue tid_val = POP();
+    int tid = (int)ValToInt(tid_val);
+    int rows = (int)ValToInt(rows_val);
+    int cols = (int)ValToInt(cols_val);
+    ValFree(&tid_val);
+    ValFree(&rows_val);
+    ValFree(&cols_val);
+    int total = rows * cols;
+    double *buf = (double *)calloc(total > 0 ? total : 1, sizeof(double));
+    if (ValKind(arr_val) == VALARR) {
+      AKSArray *oa = ValToArr(arr_val);
+      for (int k = 0; k < total && k < oa->count; k++) {
+        buf[k] = (ValKind(oa->items[k]) == VALFLOAT) ? ValToFloat(oa->items[k]) : (double)ValToInt(oa->items[k]);
+      }
+    }
+    ValFree(&arr_val);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    int nid = AutodiffAllocTensorNode(t, 17 /* TENSOR_VAR */, rows, cols, -1, -1, buf);
+    free(buf);
+    PUSH(ValInt(nid));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeTensorMatMul") == 0) {
+    if (argc < 3) {
+      fprintf(stderr, "Runtime error: TapeTensorMatMul() expects 3 arguments (tape_id, lhs_nid, rhs_nid)\n");
+      return -1;
+    }
+    AKSValue rhs_val = POP();
+    AKSValue lhs_val = POP();
+    AKSValue tid_val = POP();
+    int tid = (int)ValToInt(tid_val);
+    int lhs_nid = (int)ValToInt(lhs_val);
+    int rhs_nid = (int)ValToInt(rhs_val);
+    ValFree(&rhs_val);
+    ValFree(&lhs_val);
+    ValFree(&tid_val);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    TapeNode *ln = &t->nodes[lhs_nid];
+    TapeNode *rn = &t->nodes[rhs_nid];
+    int M = ln->rows;
+    int K = ln->cols;
+    int N = rn->cols;
+    double *C = (double *)calloc(M * N > 0 ? M * N : 1, sizeof(double));
+    for (int r = 0; r < M; r++) {
+      for (int k = 0; k < K; k++) {
+        double av = ln->tval[r * K + k];
+        for (int c = 0; c < N; c++) {
+          C[r * N + c] += av * rn->tval[k * N + c];
+        }
+      }
+    }
+    int nid = AutodiffAllocTensorNode(t, 18 /* TENSOR_MATMUL */, M, N, lhs_nid, rhs_nid, C);
+    free(C);
+    PUSH(ValInt(nid));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeTensorAdd") == 0) {
+    if (argc < 3) {
+      fprintf(stderr, "Runtime error: TapeTensorAdd() expects 3 arguments (tape_id, lhs_nid, rhs_nid)\n");
+      return -1;
+    }
+    AKSValue rhs_val = POP();
+    AKSValue lhs_val = POP();
+    AKSValue tid_val = POP();
+    int tid = (int)ValToInt(tid_val);
+    int lhs_nid = (int)ValToInt(lhs_val);
+    int rhs_nid = (int)ValToInt(rhs_val);
+    ValFree(&rhs_val);
+    ValFree(&lhs_val);
+    ValFree(&tid_val);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    TapeNode *ln = &t->nodes[lhs_nid];
+    TapeNode *rn = &t->nodes[rhs_nid];
+    int rows = ln->rows;
+    int cols = ln->cols;
+    int total = rows * cols;
+    double *C = (double *)calloc(total > 0 ? total : 1, sizeof(double));
+    for (int k = 0; k < total; k++) {
+      C[k] = ln->tval[k] + rn->tval[k];
+    }
+    int nid = AutodiffAllocTensorNode(t, 19 /* TENSOR_ADD */, rows, cols, lhs_nid, rhs_nid, C);
+    free(C);
+    PUSH(ValInt(nid));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeTensorRelu") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: TapeTensorRelu() expects 2 arguments (tape_id, lhs_nid)\n");
+      return -1;
+    }
+    AKSValue lhs_val = POP();
+    AKSValue tid_val = POP();
+    int tid = (int)ValToInt(tid_val);
+    int lhs_nid = (int)ValToInt(lhs_val);
+    ValFree(&lhs_val);
+    ValFree(&tid_val);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    TapeNode *ln = &t->nodes[lhs_nid];
+    int rows = ln->rows;
+    int cols = ln->cols;
+    int total = rows * cols;
+    double *C = (double *)calloc(total > 0 ? total : 1, sizeof(double));
+    for (int k = 0; k < total; k++) {
+      C[k] = (ln->tval[k] > 0.0) ? ln->tval[k] : 0.0;
+    }
+    int nid = AutodiffAllocTensorNode(t, 20 /* TENSOR_RELU */, rows, cols, lhs_nid, -1, C);
+    free(C);
+    PUSH(ValInt(nid));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeTensorGetVal") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: TapeTensorGetVal() expects 2 arguments (tape_id, nid)\n");
+      return -1;
+    }
+    AKSValue nid_val = POP();
+    AKSValue tid_val = POP();
+    int tid = (int)ValToInt(tid_val);
+    int nid = (int)ValToInt(nid_val);
+    ValFree(&nid_val);
+    ValFree(&tid_val);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    TapeNode *n = &t->nodes[nid];
+    int total = n->rows * n->cols;
+    AKSValue arr_val = ValArr(total);
+    AKSArray *arr = ValToArr(arr_val);
+    for (int k = 0; k < total; k++) {
+      arr->items[arr->count++] = ValFloat(n->tval ? n->tval[k] : 0.0);
+    }
+    PUSH(arr_val);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeTensorGetGrad") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: TapeTensorGetGrad() expects 2 arguments (tape_id, nid)\n");
+      return -1;
+    }
+    AKSValue nid_val = POP();
+    AKSValue tid_val = POP();
+    int tid = (int)ValToInt(tid_val);
+    int nid = (int)ValToInt(nid_val);
+    ValFree(&nid_val);
+    ValFree(&tid_val);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    TapeNode *n = &t->nodes[nid];
+    int total = n->rows * n->cols;
+    AKSValue arr_val = ValArr(total);
+    AKSArray *arr = ValToArr(arr_val);
+    for (int k = 0; k < total; k++) {
+      arr->items[arr->count++] = ValFloat(n->tgrad ? n->tgrad[k] : 0.0);
+    }
+    PUSH(arr_val);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeTensorBackward") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: TapeTensorBackward() expects 2 arguments (tape_id, loss_nid)\n");
+      return -1;
+    }
+    AKSValue nid_val = POP();
+    AKSValue tid_val = POP();
+    int tid = (int)ValToInt(tid_val);
+    int nid = (int)ValToInt(nid_val);
+    ValFree(&nid_val);
+    ValFree(&tid_val);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    AutodiffBackward(t, nid);
+    PUSH(ValFloat(1.0));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "TapeReset") == 0) {
+    if (argc < 1) {
+      fprintf(stderr, "Runtime error: TapeReset() expects at least 1 argument (tape_id)\n");
+      return -1;
+    }
+    AKSValue tid_val = POP();
+    int tid = (int)ValToInt(tid_val);
+    ValFree(&tid_val);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    AutodiffFreeTapeNodes(t);
+    PUSH(ValNull());
     *stacktopptr = stacktop;
     return 1;
   }

@@ -4863,6 +4863,17 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             if (n->nursery.body) {
                 EmitNode(c, n->nursery.body);
             }
+            if (nslot >= 0) {
+                int waitfn = ResolveGlobal(c, "NurseryWaitAll", 0);
+                if (waitfn >= 0) {
+                    ChunkWrite(ch, OPLOAD, n->line);
+                    ChunkWriteU16(ch, (uint16_t)nslot, n->line);
+                    ChunkWrite(ch, OPCALL, n->line);
+                    ChunkWriteU16(ch, (uint16_t)waitfn, n->line);
+                    ChunkWrite(ch, 1, n->line);
+                    ChunkWrite(ch, OPPOP, n->line);
+                }
+            }
             break;
         }
         case NREGION: {
@@ -4892,6 +4903,17 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             
             if (n->region.body) {
                 EmitNode(c, n->region.body);
+            }
+            if (rslot >= 0) {
+                int exitfn = ResolveGlobal(c, "RegionExit", 0);
+                if (exitfn >= 0) {
+                    ChunkWrite(ch, OPLOAD, n->line);
+                    ChunkWriteU16(ch, (uint16_t)rslot, n->line);
+                    ChunkWrite(ch, OPCALL, n->line);
+                    ChunkWriteU16(ch, (uint16_t)exitfn, n->line);
+                    ChunkWrite(ch, 1, n->line);
+                    ChunkWrite(ch, OPPOP, n->line);
+                }
             }
             break;
         }
@@ -7133,7 +7155,25 @@ Compiler *CompNew(void) {
     NewFn(c, "spawn_remote");
     NewFn(c, "MatMul");
     NewFn(c, "NurseryNew");
+    NewFn(c, "NurseryWaitAll");
     NewFn(c, "RegionNew");
+    NewFn(c, "RegionExit");
+    NewFn(c, "TapeNew");
+    NewFn(c, "TapeFree");
+    NewFn(c, "TapeDefault");
+    NewFn(c, "TapeVar");
+    NewFn(c, "TapeOp");
+    NewFn(c, "TapeGetVal");
+    NewFn(c, "TapeGetGrad");
+    NewFn(c, "TapeBackward");
+    NewFn(c, "TapeReset");
+    NewFn(c, "TapeTensorVar");
+    NewFn(c, "TapeTensorMatMul");
+    NewFn(c, "TapeTensorAdd");
+    NewFn(c, "TapeTensorRelu");
+    NewFn(c, "TapeTensorGetVal");
+    NewFn(c, "TapeTensorGetGrad");
+    NewFn(c, "TapeTensorBackward");
 
     // Systems Built-in Functions
     NewFn(c, "MMapOpen");

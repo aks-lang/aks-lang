@@ -1,0 +1,131 @@
+// Comprehensive test suite for reverse-mode automatic differentiation engine
+
+fn main() {
+    print("Test 1: Basic Scalar Variable and Gradient");
+    let x = Var(2.0);
+    let z = x.Mul(x).Mul(3.0).Add(x.Mul(5.0)).Add(7.0); // 3x^2 + 5x + 7
+    z.backward();
+    let grad_x = x.grad();
+    print("x = " + String(x.val()) + ", z = " + String(z.val()) + ", dz/dx = " + String(grad_x));
+    if (grad_x > 16.999 && grad_x < 17.001) {
+        print("PASS: Basic scalar gradient matches exact analytical derivative (17.0)");
+    } else {
+        print("FAIL: Expected 17.0, got " + String(grad_x));
+        exit(1);
+    }
+
+    print("Test 2: Multivariable Backpropagation");
+    // z = x^2 * y + 2 * y^3
+    // dz/dx = 2 * x * y
+    // dz/dy = x^2 + 6 * y^2
+    // At x = 3, y = 4:
+    // dz/dx = 2 * 3 * 4 = 24
+    // dz/dy = 9 + 6 * 16 = 105
+    let vx = Var(3.0);
+    let vy = Var(4.0);
+    let term1 = vx.Mul(vx).Mul(vy);
+    let term2 = vy.Mul(vy).Mul(vy).Mul(2.0);
+    let loss = term1.Add(term2);
+    loss.backward();
+
+    let g_x = vx.grad();
+    let g_y = vy.grad();
+    print("loss = " + String(loss.val()));
+    print("dz/dx = " + String(g_x) + " (expected 24.0)");
+    print("dz/dy = " + String(g_y) + " (expected 105.0)");
+
+    if (g_x > 23.999 && g_x < 24.001 && g_y > 104.999 && g_y < 105.001) {
+        print("PASS: Multivariable gradients match exact analytical derivatives");
+    } else {
+        print("FAIL: Multivariable gradient calculation error");
+        exit(1);
+    }
+
+    print("Test 3: Non-Linear Activation and Transcendental Ops");
+    // Test Sigmoid: d(sigmoid(x))/dx = sigmoid(x)*(1 - sigmoid(x))
+    let s_in = Var(0.0);
+    let s_out = s_in.Sigmoid();
+    s_out.backward();
+    let s_grad = s_in.grad();
+    print("sigmoid(0.0) = " + String(s_out.val()) + ", grad = " + String(s_grad));
+    if (s_out.val() > 0.499 && s_out.val() < 0.501 && s_grad > 0.249 && s_grad < 0.251) {
+        print("PASS: Sigmoid activation and gradient correct (val=0.5, grad=0.25)");
+    } else {
+        print("FAIL: Sigmoid test error");
+        exit(1);
+    }
+
+    // Test ReLU: d(relu(x))/dx = 1 if x > 0, 0 if x < 0
+    let r_pos = Var(3.5);
+    let r_out = r_pos.Relu();
+    r_out.backward();
+    if (r_pos.grad() > 0.999 && r_pos.grad() < 1.001) {
+        print("PASS: ReLU positive gradient correct (1.0)");
+    } else {
+        print("FAIL: ReLU gradient error");
+        exit(1);
+    }
+
+    // Test Sin / Cos: d(sin(x))/dx = cos(x)
+    let trig_x = Var(0.0);
+    let trig_y = trig_x.Sin();
+    trig_y.backward();
+    if (trig_x.grad() > 0.999 && trig_x.grad() < 1.001) {
+        print("PASS: Sin gradient at 0 is cos(0) = 1.0");
+    } else {
+        print("FAIL: Sin gradient error");
+        exit(1);
+    }
+
+    print("Test 4: High-Level grad_reverse Function");
+    let quad_fn = fn(a, b) {
+        return a.Mul(a).Add(b.Mul(b).Mul(2.0)); // a^2 + 2b^2 -> grad [2a, 4b]
+    };
+    let grads = grad_reverse(quad_fn, 5.0, 3.0);
+    print("grad_reverse result: [" + String(grads[0]) + ", " + String(grads[1]) + "]");
+    if (grads[0] > 9.999 && grads[0] < 10.001 && grads[1] > 11.999 && grads[1] < 12.001) {
+        print("PASS: grad_reverse accurately computes analytical gradient vector [10.0, 12.0]");
+    } else {
+        print("FAIL: grad_reverse vector error");
+        exit(1);
+    }
+
+    print("Test 5: Gradient Descent Optimization Loop");
+    // Minimize f(w) = (w - 7)^2 using reverse-mode autodiff
+    let w = 0.0;
+    let lr = 0.2;
+    let step = 0;
+    while (step < 25) {
+        TapeReset(0);
+        let var_w = Var(w);
+        let diff = var_w.Sub(7.0);
+        let loss_w = diff.Mul(diff);
+        loss_w.backward();
+        let grad_w = var_w.grad();
+        w = w - (lr * grad_w);
+        step++;
+    }
+    print("Optimized w after 25 steps: " + String(w) + " (target: 7.0)");
+    if (w > 6.99 && w < 7.01) {
+        print("PASS: Gradient descent converged to optimum w=7.0 with 0 overhead!");
+    } else {
+        print("FAIL: Optimization did not converge to target 7.0, got " + String(w));
+        exit(1);
+    }
+
+    print("Test 6: Method Chaining Autodiff");
+    let a = Var(3.0);
+    let b = Var(4.0);
+    let c = a.Mul(a).Add(b.Mul(b)); // dz/da = 2a = 6.0, dz/db = 2b = 8.0
+    c.backward();
+    if (a.grad() > 5.999 && a.grad() < 6.001 && b.grad() > 7.999 && b.grad() < 8.001) {
+        print("PASS: Method chaining (.Mul and .Add) on AutoVar correctly backpropagated!");
+    } else {
+        print("FAIL: Method chaining autodiff mismatch");
+        exit(1);
+    }
+
+    print("All Reverse-Mode Autodiff Tests PASSED!");
+}
+
+main();

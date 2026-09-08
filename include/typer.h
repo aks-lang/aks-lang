@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
-// Bidirectional Hindley-Milner type inference for AKS static mode.
+// Bidirectional Hindley-Milner type inference for static mode.
 //
 // The typer walks the AST *before* bytecode emission. It annotates every Node
 // with a SType* (n->stype) representing its concrete, compile-time type.
@@ -16,6 +16,7 @@
 typedef struct TypeEnvEntry {
     char name[128];
     SType *stype;
+    int is_region_scoped;
     struct TypeEnvEntry *next; /* hash chain */
 } TypeEnvEntry;
 
@@ -49,6 +50,8 @@ typedef struct {
     int         in_const_fn;
     /* Unsafe context: non-NULL if inside unsafe{} */
     int         in_unsafe;
+    /* Region depth for affine lifetime escape checks */
+    int         region_depth;
     /* Monomorphization stack to detect recursion */
     char        mono_stack[32][256];
     int         mono_depth;

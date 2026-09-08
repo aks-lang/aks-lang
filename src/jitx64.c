@@ -230,6 +230,29 @@ static AKSValue JITHelperEq(AKSValue a, AKSValue b) {
     return ValBool(a == b);
 }
 
+static AKSValue JITHelperLte(AKSValue a, AKSValue b) {
+    if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
+        return ValBool(ValToInt(a) <= ValToInt(b));
+    }
+    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
+    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
+    return ValBool(fa <= fb);
+}
+
+static AKSValue JITHelperGte(AKSValue a, AKSValue b) {
+    if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
+        return ValBool(ValToInt(a) >= ValToInt(b));
+    }
+    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
+    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
+    return ValBool(fa >= fb);
+}
+
+static AKSValue JITHelperNeq(AKSValue a, AKSValue b) {
+    AKSValue eq = JITHelperEq(a, b);
+    return ValBool(!ValToBool(eq));
+}
+
 static int JITHelperIsTruthy(AKSValue v) {
     return (ValKind(v) != VALNULL && 
             !(ValKind(v) == VALBOOL && !ValToBool(v)) && 
@@ -434,7 +457,51 @@ static void JITEmitStoreAbsoluteVtop(JITBuffer *buf, int vtop) {
     JITEmitBytes(buf, (const uint8_t[]){0x41, 0x89, 0x07}, 3);
 }
 
+static int IsX64SupportedOp(uint8_t op) {
+    switch (op) {
+        case OPPUSHINT:
+        case OPPUSHFLOAT:
+        case OPPUSHBOOL:
+        case OPPUSHNULL:
+        case OPLOAD:
+        case OPSTORE:
+        case OPADD:
+        case OPSUB:
+        case OPMUL:
+        case OPDIV:
+        case OPMOD:
+        case OPSHL:
+        case OPSHR:
+        case OPBITAND:
+        case OPBITOR:
+        case OPBITXOR:
+        case OPBITNOT:
+        case OPINC:
+        case OPDEC:
+        case OPLT:
+        case OPGT:
+        case OPEQ:
+        case OPNEQ:
+        case OPLTE:
+        case OPGTE:
+        case OPDUP:
+        case OPPOP:
+        case OPJUMP:
+        case OPJUMPIFFALSE:
+        case OPRETURNVAL:
+        case OPRETURN:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
 void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, int stepcount, int startdepth) {
+    if (!trace || stepcount <= 0) return NULL;
+    for (int i = 0; i < stepcount; i++) {
+        if (!IsX64SupportedOp(trace[i].op)) return NULL;
+    }
+
     JITBuffer buf;
     JITBufferInit(&buf);
 
@@ -486,6 +553,29 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
     int patchcount = 0;
 
     int vtop = startdepth;
+
+    // Linear scan register allocation:
+    // Determine the hottest local slot accessed across the trace
+    int slot_freq[256];
+    memset(slot_freq, 0, sizeof(slot_freq));
+    for (int i = 0; i < stepcount; i++) {
+        if ((trace[i].op == OPLOAD || trace[i].op == OPSTORE) && trace[i].slot >= 0 && trace[i].slot < 256) {
+            slot_freq[trace[i].slot]++;
+        }
+    }
+    int hot_slot = -1;
+    int max_freq = 1;
+    for (int s = 0; s < 256; s++) {
+        if (slot_freq[s] > max_freq) {
+            max_freq = slot_freq[s];
+            hot_slot = s;
+        }
+    }
+    if (hot_slot >= 0) {
+        // Pre-load hot slot into rbx: mov rbx, [r13 + hot_slot * 8]
+        JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x8B, 0x9D}, 3);
+        JITEmitDword(&buf, (uint32_t)(hot_slot * 8));
+    }
     
     // Process trace steps
     for (int i = 0; i < stepcount; i++) {
@@ -508,12 +598,27 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                 vtop++;
                 break;
             case OPLOAD:
-                JITEmitLoadLocal(&buf, step->slot, vtop);
+                if (step->slot == hot_slot) {
+                    // mov [r13 + vtop * 8], rbx
+                    JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x89, 0x9D}, 3);
+                    JITEmitDword(&buf, (uint32_t)(vtop * 8));
+                } else {
+                    JITEmitLoadLocal(&buf, step->slot, vtop);
+                }
                 vtop++;
                 break;
             case OPSTORE:
                 vtop--;
-                JITEmitStoreLocal(&buf, step->slot, vtop);
+                if (step->slot == hot_slot) {
+                    // mov rbx, [r13 + vtop * 8]
+                    JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x8B, 0x9D}, 3);
+                    JITEmitDword(&buf, (uint32_t)(vtop * 8));
+                    // mov [r13 + hot_slot * 8], rbx
+                    JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x89, 0x9D}, 3);
+                    JITEmitDword(&buf, (uint32_t)(hot_slot * 8));
+                } else {
+                    JITEmitStoreLocal(&buf, step->slot, vtop);
+                }
                 break;
             case OPADD:
                 vtop--;
@@ -628,6 +733,27 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                 JITEmitCall(&buf, (void*)JITHelperEq);
                 JITEmitSaveRax(&buf, vtop - 1);
                 break;
+            case OPNEQ:
+                vtop--;
+                JITEmitLoadArg(&buf, vtop - 1, 0);
+                JITEmitLoadArg(&buf, vtop, 1);
+                JITEmitCall(&buf, (void*)JITHelperNeq);
+                JITEmitSaveRax(&buf, vtop - 1);
+                break;
+            case OPLTE:
+                vtop--;
+                JITEmitLoadArg(&buf, vtop - 1, 0);
+                JITEmitLoadArg(&buf, vtop, 1);
+                JITEmitCall(&buf, (void*)JITHelperLte);
+                JITEmitSaveRax(&buf, vtop - 1);
+                break;
+            case OPGTE:
+                vtop--;
+                JITEmitLoadArg(&buf, vtop - 1, 0);
+                JITEmitLoadArg(&buf, vtop, 1);
+                JITEmitCall(&buf, (void*)JITHelperGte);
+                JITEmitSaveRax(&buf, vtop - 1);
+                break;
             case OPDUP:
                 JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x8B, 0x85}, 3);
                 JITEmitDword(&buf, (uint32_t)((vtop - 1) * 8));
@@ -640,29 +766,12 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                 break;
             case OPJUMP: {
                 int targetoffset = step->jumpoffset < 0 ? (step->ipoffset + 5 + step->jumpoffset) : (step->ipoffset + 5);
-                void *targetfn = GetJITCompiledFn(vm, fn, targetoffset);
-                if (targetfn) {
-                    JITEmitStoreAbsoluteVtop(&buf, vtop);
-                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x83, 0xC4, 0x28}, 4);
-                    JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5F}, 2); // pop r15
-                    JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5E}, 2); // pop r14
-                    JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5D}, 2); // pop r13
-                    JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5C}, 2); // pop r12
-                    JITEmitByte(&buf, 0x5E); // pop rsi
-                    JITEmitByte(&buf, 0x5F); // pop rdi
-                    JITEmitByte(&buf, 0x5B); // pop rbx
-                    JITEmitByte(&buf, 0x5D); // pop rbp
-                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0xB8}, 2);
-                    JITEmitQword(&buf, (uint64_t)targetfn);
-                    JITEmitBytes(&buf, (const uint8_t[]){0xFF, 0xE0}, 2);
-                } else {
-                    JITEmitStoreAbsoluteVtop(&buf, vtop);
-                    JITEmitByte(&buf, 0xB8);
-                    JITEmitDword(&buf, (uint32_t)targetoffset);
-                    JITEmitByte(&buf, 0xE9);
-                    patches[patchcount++] = buf.size;
-                    JITEmitDword(&buf, 0);
-                }
+                JITEmitStoreAbsoluteVtop(&buf, vtop);
+                JITEmitByte(&buf, 0xB8);
+                JITEmitDword(&buf, (uint32_t)targetoffset);
+                JITEmitByte(&buf, 0xE9);
+                patches[patchcount++] = buf.size;
+                JITEmitDword(&buf, 0);
                 break;
             }
             case OPJUMPIFFALSE: {
@@ -672,7 +781,6 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                 JITEmitBytes(&buf, (const uint8_t[]){0x83, 0xF8, 0x00}, 3);
                 
                 int targetoffset = (step->guardoutcome == 1) ? (step->ipoffset + 5) : (step->ipoffset + 5 + step->jumpoffset);
-                void *targetfn = GetJITCompiledFn(vm, fn, targetoffset);
                 
                 if (step->guardoutcome == 1) {
                     JITEmitByte(&buf, 0x74); // je label_ok
@@ -681,26 +789,11 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                     
                     // Bailout block
                     JITEmitStoreAbsoluteVtop(&buf, vtop);
-                    if (targetfn) {
-                        JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x83, 0xC4, 0x28}, 4);
-                        JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5F}, 2); // pop r15
-                        JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5E}, 2); // pop r14
-                        JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5D}, 2); // pop r13
-                        JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5C}, 2); // pop r12
-                        JITEmitByte(&buf, 0x5E); // pop rsi
-                        JITEmitByte(&buf, 0x5F); // pop rdi
-                        JITEmitByte(&buf, 0x5B); // pop rbx
-                        JITEmitByte(&buf, 0x5D); // pop rbp
-                        JITEmitBytes(&buf, (const uint8_t[]){0x48, 0xB8}, 2);
-                        JITEmitQword(&buf, (uint64_t)targetfn);
-                        JITEmitBytes(&buf, (const uint8_t[]){0xFF, 0xE0}, 2);
-                    } else {
-                        JITEmitByte(&buf, 0xB8);
-                        JITEmitDword(&buf, (uint32_t)targetoffset);
-                        JITEmitByte(&buf, 0xE9);
-                        patches[patchcount++] = buf.size;
-                        JITEmitDword(&buf, 0);
-                    }
+                    JITEmitByte(&buf, 0xB8);
+                    JITEmitDword(&buf, (uint32_t)targetoffset);
+                    JITEmitByte(&buf, 0xE9);
+                    patches[patchcount++] = buf.size;
+                    JITEmitDword(&buf, 0);
                     buf.code[patchpos] = (uint8_t)(buf.size - patchpos - 1);
                 } else {
                     JITEmitByte(&buf, 0x75); // jne label_ok
@@ -709,26 +802,11 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                     
                     // Bailout block
                     JITEmitStoreAbsoluteVtop(&buf, vtop);
-                    if (targetfn) {
-                        JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x83, 0xC4, 0x28}, 4);
-                        JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5F}, 2); // pop r15
-                        JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5E}, 2); // pop r14
-                        JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5D}, 2); // pop r13
-                        JITEmitBytes(&buf, (const uint8_t[]){0x41, 0x5C}, 2); // pop r12
-                        JITEmitByte(&buf, 0x5E); // pop rsi
-                        JITEmitByte(&buf, 0x5F); // pop rdi
-                        JITEmitByte(&buf, 0x5B); // pop rbx
-                        JITEmitByte(&buf, 0x5D); // pop rbp
-                        JITEmitBytes(&buf, (const uint8_t[]){0x48, 0xB8}, 2);
-                        JITEmitQword(&buf, (uint64_t)targetfn);
-                        JITEmitBytes(&buf, (const uint8_t[]){0xFF, 0xE0}, 2);
-                    } else {
-                        JITEmitByte(&buf, 0xB8);
-                        JITEmitDword(&buf, (uint32_t)targetoffset);
-                        JITEmitByte(&buf, 0xE9);
-                        patches[patchcount++] = buf.size;
-                        JITEmitDword(&buf, 0);
-                    }
+                    JITEmitByte(&buf, 0xB8);
+                    JITEmitDword(&buf, (uint32_t)targetoffset);
+                    JITEmitByte(&buf, 0xE9);
+                    patches[patchcount++] = buf.size;
+                    JITEmitDword(&buf, 0);
                     buf.code[patchpos] = (uint8_t)(buf.size - patchpos - 1);
                 }
                 break;
@@ -849,6 +927,11 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
 
     // Epilogue label/block
     int epilogueoffset = buf.size;
+    if (hot_slot >= 0) {
+        // Flush rbx back to memory slot: mov [r13 + hot_slot * 8], rbx
+        JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x89, 0x9D}, 3);
+        JITEmitDword(&buf, (uint32_t)(hot_slot * 8));
+    }
     // add rsp, 40
     JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x83, 0xC4, 0x28}, 4);
     // pop registers

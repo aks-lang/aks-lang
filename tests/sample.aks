@@ -1,4 +1,4 @@
-// Automatically generated AKS FFI bindings for 'sample.dll'
+// Automatically generated FFI bindings for 'sample.dll'
 
 let _ffi_lib = FFILoad("sample.dll");
 

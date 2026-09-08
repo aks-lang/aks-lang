@@ -261,3 +261,25 @@ if (stats[1] > 0) {
 } else {
     print("All 60 language feature tests passed successfully.");
 }
+
+stats = null;
+arr = null;
+numbers = null;
+tup = null;
+p = null;
+c = null;
+r = null;
+nums = null;
+doubled = null;
+evens = null;
+reversed_nums = null;
+joined_str = null;
+s1 = null;
+s2 = null;
+sample_obj = null;
+obj_dict = null;
+json_str = null;
+ch = null;
+msg1 = null;
+msg2 = null;
+

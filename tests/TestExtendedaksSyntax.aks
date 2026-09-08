@@ -18,7 +18,7 @@ let p = Point { x: 3, y: 4 };
 println("In-struct method p.sum(): " + String(p.sum()));
 println("In-struct method p.distance_sq(): " + String(p.distance_sq()));
 
-// Python/JS-Style Array Multiplication ([0] * 50)
+// Array Multiplication ([0] * 50)
 let zeros = [0] * 50;
 println("\nArray multiplication [0] * 50 length: " + String(zeros.len));
 

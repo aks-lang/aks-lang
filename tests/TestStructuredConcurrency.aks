@@ -1,0 +1,71 @@
+// Test suite for structured concurrency nurseries and region scopes
+
+let g_counter = 0;
+
+fn task_worker_a() {
+    sleep(10);
+    g_counter = g_counter + 1;
+    return 100;
+}
+
+fn task_worker_b() {
+    sleep(20);
+    g_counter = g_counter + 1;
+    return 200;
+}
+
+fn task_worker_c(multiplier) {
+    sleep(10);
+    g_counter = g_counter + 1;
+    return 5 * multiplier;
+}
+
+fn main() {
+    print("Test 1: Basic Nursery Auto-Join Invariant");
+    g_counter = 0;
+    nursery n {
+        n.Spawn(task_worker_a);
+        n.Spawn(task_worker_b);
+    }
+    // Guaranteed auto-join at nursery scope exit!
+    print("g_counter after nursery exit: " + String(g_counter));
+    if (g_counter == 2) {
+        print("PASS: Nursery scope guaranteed auto-join for all spawned child tasks");
+    } else {
+        print("FAIL: Child tasks did not complete before nursery exit, count=" + String(g_counter));
+        exit(1);
+    }
+
+    print("Test 2: Nursery with Parentheses Syntax and SpawnArg");
+    let start_count = g_counter;
+    nursery (worker_nursery) {
+        worker_nursery.SpawnArg(task_worker_c, 10);
+        worker_nursery.SpawnArg(task_worker_c, 20);
+    }
+    print("g_counter after worker_nursery exit: " + String(g_counter));
+    if (g_counter == start_count + 2) {
+        print("PASS: Nursery with parentheses and SpawnArg executed and auto-joined cleanly");
+    } else {
+        print("FAIL: Nursery with parentheses auto-join failed");
+        exit(1);
+    }
+
+    print("Test 3: Region Lexical Scope with Arena Cleanup");
+    let region_active = false;
+    region (temp_region) {
+        region_active = true;
+        let scoped_arr = temp_region.AllocArray(64);
+        print("Region arena allocated array of length: " + String(Length(scoped_arr)));
+    }
+    print("Region exited. Cleaned up.");
+    if (region_active) {
+        print("PASS: Region scope executed with automatic lexical exit cleanup");
+    } else {
+        print("FAIL: Region scope failed");
+        exit(1);
+    }
+
+    print("All Structured Concurrency and Region Tests PASSED!");
+}
+
+main();

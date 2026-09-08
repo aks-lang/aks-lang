@@ -43,7 +43,13 @@ aks.exe run tests\TestAlgebraicEffects.aks || exit /b 1
 aks.exe run --jit tests\TestJitHotLoop.aks || exit /b 1
 aks.exe run --jit tests\TestJitRegisterHotLoop.aks || exit /b 1
 aks.exe run --parallel tests\TestParallelCompilation.aks || exit /b 1
-aks.exe run -j 4 tests\TestParallelCompilation.aks || exit /b 1
+aks.exe run tests\TestReverseModeAutodiff.aks || exit /b 1
+aks.exe run tests\TestTensorAutodiff.aks || exit /b 1
+aks.exe run tests\TestStructuredConcurrency.aks || exit /b 1
+aks.exe run tests\TestSupervisedActors.aks || exit /b 1
+aks.exe run tests\TestRegionSafety.aks || exit /b 1
+aks.exe run tests\TestComptimeExecution.aks || exit /b 1
+aks.exe run --jit tests\TestJitOsrRegAlloc.aks || exit /b 1
 aks.exe run tests\TestModuleTopologicalSort.aks || exit /b 1
 
 echo Running strict type tests

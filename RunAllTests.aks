@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
-// Automated Test Runner written in AKS
+// Automated test runner
 
 print("AKS Native Test Suite Runner");
 
@@ -285,7 +285,7 @@ let passed = 0;
 let failed = 0;
 let idx = 1;
 
-// Run all individual AKS test scripts
+// Run all individual test scripts
 for (let i = 0; i < Length(tests); i++) {
     let t = tests[i];
     let file = "tests/" + t.name;

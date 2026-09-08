@@ -2587,12 +2587,22 @@ static Node *ParseNursery(Parser *p) {
   Token kw = Consume(p);
   TokFree(&kw);
   char *nursery_name = NULL;
+  int has_paren = 0;
+  if (Check(p, TLPAREN)) {
+    Token lp = Consume(p);
+    TokFree(&lp);
+    has_paren = 1;
+  }
   if (Check(p, TIDENT)) {
     Token nt = Consume(p);
     nursery_name = strdup(nt.val);
     TokFree(&nt);
   } else {
     nursery_name = strdup("n");
+  }
+  if (has_paren && Check(p, TRPAREN)) {
+    Token rp = Consume(p);
+    TokFree(&rp);
   }
   Node *body = ParseBlock(p);
   Node *n = NodeNew(NNURSERY, line);
@@ -2606,12 +2616,22 @@ static Node *ParseRegion(Parser *p) {
   Token kw = Consume(p);
   TokFree(&kw);
   char *region_name = NULL;
+  int has_paren = 0;
+  if (Check(p, TLPAREN)) {
+    Token lp = Consume(p);
+    TokFree(&lp);
+    has_paren = 1;
+  }
   if (Check(p, TIDENT)) {
     Token rt = Consume(p);
     region_name = strdup(rt.val);
     TokFree(&rt);
   } else {
     region_name = strdup("region");
+  }
+  if (has_paren && Check(p, TRPAREN)) {
+    Token rp = Consume(p);
+    TokFree(&rp);
   }
   Node *body = ParseBlock(p);
   Node *n = NodeNew(NREGION, line);

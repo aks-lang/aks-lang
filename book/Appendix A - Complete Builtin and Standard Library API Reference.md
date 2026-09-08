@@ -337,6 +337,20 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `ShmRingPopC` | `ShmRingPopC(ring)` | `str` | Dequeues frame from shared memory ring buffer. |
 | `ShmRingAvailableC` | `ShmRingAvailableC(ring)` | `int` | Queries byte payload count available to consume in ring. |
 | `ShmRingCloseC` | `ShmRingCloseC(ring)` | `bool` | Unmaps and closes shared memory ring buffer mapping. |
+| `nursery` | `nursery (n) { ... }` | `block` | Structured concurrency block with guaranteed scope-bounded auto-join at exit. |
+| `NurseryNew` | `NurseryNew()` | `Nursery` | Creates nursery instance managing child fiber lifecycles. |
+| `Nursery.Spawn` | `n.Spawn(worker)` | `task` | Spawns worker fiber tracked by nursery scope. |
+| `Nursery.SpawnArg` | `n.SpawnArg(worker, arg)` | `task` | Spawns parameterized worker fiber tracked by nursery scope. |
+| `Nursery.Track` | `n.Track(task)` | `task` | Registers existing fiber task into nursery tracking list. |
+| `Nursery.JoinAll` | `n.JoinAll()` | `array` | Awaits all child fibers and returns results array. |
+| `Nursery.CancelAll` | `n.CancelAll()` | `nil` | Proactively signals cancellation to all child fibers. |
+| `NurseryWaitAll` | `NurseryWaitAll(n)` | `array` | Runtime auto-join dispatcher emitted at nursery scope exit. |
+| `region` | `region (r) { ... }` | `block` | Lexical memory region block with guaranteed $O(1)$ batch cleanup at exit. |
+| `RegionNew` | `RegionNew(name: str)` | `RegionScope` | Creates region scope backed by linear arena bump allocator. |
+| `RegionScope.AllocArray` | `r.AllocArray(size: int)` | `array` | Allocates fast arena array tied to region lifetime. |
+| `RegionScope.AllocStruct` | `r.AllocStruct(tname: str)`| `struct` | Allocates fast arena struct tied to region lifetime. |
+| `RegionScope.Dispose` | `r.Dispose()` | `nil` | Frees entire region arena buffer in $O(1)$ time. |
+| `RegionExit` | `RegionExit(r)` | `nil` | Runtime auto-cleanup dispatcher emitted at region scope exit. |
 
 ---
 
@@ -344,10 +358,23 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 
 | Function / Type | Signature | Return Type | Description |
 | :--- | :--- | :--- | :--- |
+| `Var` | `Var(val: float, tape_id: int = 0)` | `AutoVar` | Creates leaf autodiff variable tracked on reverse-mode tape. |
+| `AutoVar` | `AutoVar` | `struct` | Autodiff node with `.val()`, `.grad()`, `.backward()`, `.Add()`, `.Sub()`, `.Mul()`, `.Div()`, `.Pow()`, `.Exp()`, `.Log()`, `.Sin()`, `.Cos()`, `.Tan()`, `.Relu()`, `.Sigmoid()`, `.Tanh()`, `.Sqrt()`. |
+| `backward` | `backward(loss: AutoVar)` | `float` | Executes $O(1)$ reverse topological backpropagation sweep from loss. |
+| `grad_reverse` | `grad_reverse(f: fn, ...args)` | `float \| arr` | High-level analytical gradient vector evaluator using reverse-mode tape. |
+| `TapeNew` | `TapeNew()` | `int` | Allocates new isolated computational graph tape slot. |
+| `TapeFree` | `TapeFree(tape_id: int)` | `nil` | Deallocates computational tape memory buffers. |
+| `TapeDefault` | `TapeDefault()` | `int` | Returns default computational tape ID (0). |
+| `TapeReset` | `TapeReset(tape_id: int)` | `nil` | Resets tape count to 0 without reallocating underlying buffers. |
+| `TapeVar` | `TapeVar(tape_id, val)` | `int` | Low-level C built-in: allocates leaf variable node on tape. |
+| `TapeOp` | `TapeOp(tape_id, op, lhs, rhs, aux)` | `int` | Low-level C built-in: allocates operator node and computes forward value. |
+| `TapeGetVal` | `TapeGetVal(tape_id, nid)` | `float` | Low-level C built-in: retrieves forward evaluation value of tape node. |
+| `TapeGetGrad` | `TapeGetGrad(tape_id, nid)` | `float` | Low-level C built-in: retrieves propagated adjoint gradient of tape node. |
+| `TapeBackward` | `TapeBackward(tape_id, loss_nid)` | `float` | Low-level C built-in: executes reverse topological gradient sweep. |
 | `Dual` | `Dual(val: float, grad: float)` | `struct` | Dual number forward-mode auto-diff wrapper with `.Add()`, `.Mul()`, `.val`, `.grad`. |
 | `DualNew` | `DualNew(val: float, deriv: float)` | `struct` | Allocates dual number carrying scalar value and derivative component. |
 | `DualSin` | `DualSin(d: struct)` | `struct` | Computes sine of dual number with automatic chain rule propagation ($\sin(x) + x' \cos(x) \epsilon$). |
-| `grad` | `grad(f: fn, x: float)` | `float` | Computes exact derivative $f'(x)$ using forward-mode automatic differentiation. |
+| `grad` | `grad(f: fn, x: float)` | `float` | Computes derivative $f'(x)$ using forward-mode automatic differentiation. |
 | `jvp` | `jvp(f: fn, x: float, v: float)` | `float` | Computes Jacobian-Vector Product $J_f(x) \cdot v$. |
 | `MatrixNew` | `MatrixNew(rows: int, cols: int)` | `struct` | Allocates zero-initialized 2D numeric matrix with `.Get(r, c)` and `.Set(r, c, v)`. |
 | `MatrixFrom`| `MatrixFrom(rows: int, cols: int, data: arr)` | `struct` | Allocates 2D matrix populated from row-major flattened array. |

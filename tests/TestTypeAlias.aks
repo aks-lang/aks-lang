@@ -1,11 +1,11 @@
 println("Testing Type Aliases ('type' and 'typedef')");
 
-// Rust/TypeScript-style 'type' alias
+// 'type' alias
 type UserID = int;
 let id1: UserID = 1001;
 println("type UserID = int -> id1 = " + String(id1));
 
-// C-style 'typedef' alias
+// 'typedef' alias
 typedef AccountID = int;
 let acc1: AccountID = 5005;
 println("typedef AccountID = int -> acc1 = " + String(acc1));

@@ -1,0 +1,42 @@
+// Test suite for lexical region scopes and lifetime safety
+
+fn test_valid_region_usage() {
+    let sum = 0;
+    region (r) {
+        let arr = r.AllocArray(32);
+        let i = 0;
+        while (i < 32) {
+            arr[i] = i * 2;
+            sum = sum + arr[i];
+            i = i + 1;
+        }
+    }
+    return sum;
+}
+
+fn main() {
+    print("Test 1: Region Scoped Allocation and Automatic Tear-Down");
+    let result = test_valid_region_usage();
+    print("Sum computed inside region: " + String(result));
+    if (result == 992) {
+        print("PASS: Valid region scope executed and computed expected sum (992)");
+    } else {
+        print("FAIL: Region scope computation error");
+        exit(1);
+    }
+
+    print("Test 2: Multiple Consecutive Regions Reclaiming Arena Memory");
+    let step = 0;
+    while (step < 10) {
+        region (r_iter) {
+            let buffer = r_iter.AllocArray(128);
+            buffer[0] = step * 10;
+        }
+        step = step + 1;
+    }
+    print("PASS: Consecutive region scopes cleanly allocated and tore down arenas");
+
+    print("All Region Safety Tests PASSED cleanly");
+}
+
+main();

@@ -247,6 +247,7 @@ typedef struct {
     AKSValue panic_hook;
     CompilerStruct structs[512];
     int structcount;
+    int is_ctfe;
 } VM;
 
 typedef enum {

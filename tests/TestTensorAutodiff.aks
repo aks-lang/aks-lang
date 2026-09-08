@@ -1,0 +1,76 @@
+// Test suite for reverse-mode tensor autodiff engine
+
+fn main() {
+    print("Test 1: Tensor Matrix Multiplication Forward and Backpropagation");
+    // Matrix A: 2x2 [[1.0, 2.0], [3.0, 4.0]]
+    let a_data = [1.0, 2.0, 3.0, 4.0];
+    let tA = TensorVar(2, 2, a_data);
+
+    // Matrix B: 2x2 [[0.5, 1.5], [-1.0, 2.0]]
+    let b_data = [0.5, 1.5, -1.0, 2.0];
+    let tB = TensorVar(2, 2, b_data);
+
+    let tC = tA.MatMul(tB);
+    let c_vals = tC.val();
+    print("C = A * B -> [" + String(c_vals[0]) + ", " + String(c_vals[1]) + ", " + String(c_vals[2]) + ", " + String(c_vals[3]) + "]");
+
+    // Verify forward values
+    if (c_vals[0] > -1.501 && c_vals[0] < -1.499 &&
+        c_vals[1] > 5.499 && c_vals[1] < 5.501 &&
+        c_vals[2] > -2.501 && c_vals[2] < -2.499 &&
+        c_vals[3] > 12.499 && c_vals[3] < 12.501) {
+        print("PASS: Tensor forward MatMul matches exact matrix product");
+    } else {
+        print("FAIL: Tensor MatMul forward calculation error");
+        exit(1);
+    }
+
+    // Backpropagate
+    tC.backward();
+    let grad_A = tA.grad();
+    let grad_B = tB.grad();
+
+    print("grad_A: [" + String(grad_A[0]) + ", " + String(grad_A[1]) + ", " + String(grad_A[2]) + ", " + String(grad_A[3]) + "]");
+    print("grad_B: [" + String(grad_B[0]) + ", " + String(grad_B[1]) + ", " + String(grad_B[2]) + ", " + String(grad_B[3]) + "]");
+
+    // Analytical grad_A: [2.0, 1.0, 2.0, 1.0]
+    // Analytical grad_B: [4.0, 4.0, 6.0, 6.0]
+    if (grad_A[0] > 1.999 && grad_A[0] < 2.001 &&
+        grad_A[1] > 0.999 && grad_A[1] < 1.001 &&
+        grad_A[2] > 1.999 && grad_A[2] < 2.001 &&
+        grad_A[3] > 0.999 && grad_A[3] < 1.001 &&
+        grad_B[0] > 3.999 && grad_B[0] < 4.001 &&
+        grad_B[1] > 3.999 && grad_B[1] < 4.001 &&
+        grad_B[2] > 5.999 && grad_B[2] < 6.001 &&
+        grad_B[3] > 5.999 && grad_B[3] < 6.001) {
+        print("PASS: Tensor matrix backpropagation gradients match exact analytical adjoints");
+    } else {
+        print("FAIL: Tensor gradient adjoint calculation error");
+        exit(1);
+    }
+
+    print("Test 2: Tensor Addition and ReLU Activation");
+    TapeReset(0);
+    let tX = TensorVar(1, 4, [-3.0, 2.5, -0.5, 4.0]);
+    let tY = TensorVar(1, 4, [1.0, 1.0, 1.0, 1.0]);
+    let tSum = tX.Add(tY); // [-2.0, 3.5, 0.5, 5.0]
+    let tRelu = tSum.Relu(); // [0.0, 3.5, 0.5, 5.0]
+    tRelu.backward();
+
+    let gx = tX.grad();
+    print("tX grad after ReLU: [" + String(gx[0]) + ", " + String(gx[1]) + ", " + String(gx[2]) + ", " + String(gx[3]) + "]");
+    // Gradient should be 0.0 for first element (sum was -2.0 <= 0), and 1.0 for the rest
+    if (gx[0] > -0.001 && gx[0] < 0.001 &&
+        gx[1] > 0.999 && gx[1] < 1.001 &&
+        gx[2] > 0.999 && gx[2] < 1.001 &&
+        gx[3] > 0.999 && gx[3] < 1.001) {
+        print("PASS: Tensor addition and ReLU activation gradients verified");
+    } else {
+        print("FAIL: Tensor ReLU gradient error");
+        exit(1);
+    }
+
+    print("All Tensor Autodiff Tests PASSED cleanly");
+}
+
+main();

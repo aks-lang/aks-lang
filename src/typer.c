@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
-// Bidirectional Hindley-Milner type inference for AKS static mode.
+// Bidirectional Hindley-Milner type inference for static mode.
 //
 // Design:
 //  - Two-pass: first pre-register all top-level fn/struct/enum signatures,
@@ -410,6 +410,16 @@ static SType *EnvGet(TypeEnv *e, const char *name) {
         unsigned int idx = EnvHash(name);
         for (TypeEnvEntry *en = e->buckets[idx]; en; en = en->next) {
             if (strcmp(en->name, name) == 0) return en->stype;
+        }
+    }
+    return NULL;
+}
+
+static TypeEnvEntry *EnvGetEntry(TypeEnv *e, const char *name) {
+    for (; e; e = e->parent) {
+        unsigned int idx = EnvHash(name);
+        for (TypeEnvEntry *en = e->buckets[idx]; en; en = en->next) {
+            if (strcmp(en->name, name) == 0) return en;
         }
     }
     return NULL;
@@ -1099,7 +1109,13 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             } else {
                 result = decl_type ? decl_type : StypeInternGet(c, STYPE_UNKNOWN, "");
             }
-            if (n->decl.name) EnvSet(env, n->decl.name, result);
+            if (n->decl.name) {
+                EnvSet(env, n->decl.name, result);
+                if (ctx->region_depth > 0) {
+                    TypeEnvEntry *en = EnvGetEntry(env, n->decl.name);
+                    if (en) en->is_region_scoped = 1;
+                }
+            }
             /* Always try const folding on the init expr  -  eliminates
                dead computations before IR emission regardless of const_fn */
             if (n->decl.init) TyperConstFold(c, n->decl.init);
@@ -1150,6 +1166,14 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
         }
 
         case NRETURN: {
+            if (ctx->region_depth > 0 && n->single.expr) {
+                if (n->single.expr->type == NIDENT) {
+                    TypeEnvEntry *en = EnvGetEntry(env, n->single.expr->sval);
+                    if (en && en->is_region_scoped) {
+                        TyperError(ctx, n->line, "Affine lifetime error: region-scoped value cannot escape via return statement");
+                    }
+                }
+            }
             SType *ret_t = n->single.expr
                 ? InferNode(ctx, env, n->single.expr)
                 : StypeInternGet(c, STYPE_VOID, "void");
@@ -1248,7 +1272,20 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
 
         case NASSIGN: {
             SType *rhs = InferNode(ctx, env, n->assign.value);
-            if (n->assign.target) n->assign.target->stype = rhs;
+            if (n->assign.target) {
+                n->assign.target->stype = rhs;
+                if (ctx->region_depth > 0 && n->assign.target->type == NIDENT && n->assign.value) {
+                    TypeEnvEntry *target_en = EnvGetEntry(env, n->assign.target->sval);
+                    if (target_en && !target_en->is_region_scoped) {
+                        if (n->assign.value->type == NIDENT) {
+                            TypeEnvEntry *src_en = EnvGetEntry(env, n->assign.value->sval);
+                            if (src_en && src_en->is_region_scoped) {
+                                TyperError(ctx, n->line, "Affine lifetime error: region-scoped value cannot be assigned to an outer scope variable");
+                            }
+                        }
+                    }
+                }
+            }
             result = StypeInternGet(c, STYPE_VOID, "void");
             break;
         }
@@ -1601,6 +1638,25 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
         case NCAST: {
             if (n->cast.expr) InferNode(ctx, env, n->cast.expr);
             result = TyperResolveName(c, n->cast.targettype);
+            break;
+        }
+
+        case NREGION: {
+            TypeEnv *inner = EnvPush(env);
+            ctx->region_depth++;
+            if (n->region.name) {
+                SType *reg_t = StypeInternGet(c, STYPE_STRUCT, "RegionScope");
+                EnvSet(inner, n->region.name, reg_t);
+                TypeEnvEntry *en = EnvGetEntry(inner, n->region.name);
+                if (en) en->is_region_scoped = 1;
+            }
+            if (n->region.body) {
+                InferNode(ctx, inner, n->region.body);
+            }
+            ctx->region_depth--;
+            EnvFreeLocal(inner);
+            EnvPop(inner);
+            result = StypeInternGet(c, STYPE_VOID, "void");
             break;
         }
 

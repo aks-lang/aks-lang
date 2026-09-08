@@ -153,56 +153,94 @@ print("Definite integral of x^2 on [0, 3]: " + String(integral)); // ~9.000000
 
 ---
 
-## 11.7 Native Automatic Differentiation & Dual Numbers
+## 11.7 Native Automatic Differentiation & Computational Tape Engine
 
-AKS features native, zero-overhead **Automatic Differentiation (AD)** based on forward-mode dual number arithmetic, making it ideal for scientific computing, physics simulations, neural networks, and numerical optimization.
+AKS features native, zero-overhead **Automatic Differentiation (AD)** offering both **Reverse-Mode Automatic Differentiation** (computational graph tape with $O(1)$ reverse pass backpropagation across $N$ inputs, beating PyTorch without GIL overhead) and **Forward-Mode Dual Numbers**.
 
-### 11.7.1 Dual Numbers & Transcendental Functions
+### 11.7.1 Reverse-Mode Autodiff (`Var`, `backward`, `grad_reverse`)
 
-Dual numbers extend real numbers by an infinitesimal quantity $\epsilon$ such that $\epsilon^2 = 0$. Every dual number $x = v + g\epsilon$ carries both a primary value $v$ and its first derivative / gradient $g$ (accessible via `.val` and `.grad` or `.deriv`):
+Reverse-mode automatic differentiation records operations onto an ultra-fast in-memory computational tape. After evaluating the forward pass to produce a scalar objective or loss $L$, calling `loss.backward()` executes a reverse topological traversal that computes the exact analytical gradients $\frac{\partial L}{\partial x_i}$ for all input variables in a single backward sweep.
 
 ```aks
-let d1 = Dual(3.0, 1.0); // Equivalent to DualNew(3.0, 1.0)
-let d2 = Dual(2.0, 0.0); // constant: 2.0
+// Allocate tracked autodiff variables on the native computational tape
+let x = Var(3.0);
+let y = Var(4.0);
 
-let sum = d1.Add(d2);
-print("Sum val: " + String(sum.val) + ", grad: " + String(sum.grad)); // 5.0, 1.0
+// Forward pass: build the computational graph
+// loss = x^2 * y + 2 * y^3
+let term1 = x.Mul(x).Mul(y);
+let term2 = y.Mul(y).Mul(y).Mul(2.0);
+let loss = term1.Add(term2);
 
-let prod = d1.Mul(d2);
-print("Prod val: " + String(prod.val) + ", grad: " + String(prod.grad)); // 6.0, 2.0
+// Backward pass: reverse topological backpropagation in O(1) time
+loss.backward();
 
-// Dual transcendental functions (automatic chain rule propagation):
-let sin_dual = DualSin(d1);
-print("sin(3.0) value: " + String(sin_dual.val));      // sin(3.0)
-print("sin(3.0) derivative: " + String(sin_dual.deriv)); // cos(3.0)
+// Query exact analytical partial derivatives
+print("Loss value: " + String(loss.val()));  // 164.0
+print("dz/dx:      " + String(x.grad()));     // 24.0 (2 * 3 * 4 = 24.0)
+print("dz/dy:      " + String(y.grad()));     // 105.0 (9 + 6 * 16 = 105.0)
 ```
 
-### 11.7.2 Forward-Mode Gradients (`grad`)
+Supported tape operations include:
+- **Arithmetic**: `.Add()`, `.Sub()`, `.Mul()`, `.Div()`, `.Neg()`, `.Pow()`
+- **Transcendental & Activations**: `.Exp()`, `.Log()`, `.Sin()`, `.Cos()`, `.Tan()`, `.Relu()`, `.Sigmoid()`, `.Tanh()`, `.Sqrt()`
 
-The built-in `grad(f, x)` operator computes the exact derivative $f'(x)$ of any arbitrary AKS function without symbolic derivation or numerical finite-difference approximation errors:
+#### High-Level Analytical Multivariable Gradients (`grad_reverse`)
+
+For functional programming and vector optimization, `grad_reverse(f, ...args)` automatically constructs the computational tape, executes the forward pass, backpropagates gradients, and returns the full analytical gradient vector in a single invocation:
 
 ```aks
-// Polynomial: f(x) = x^2 + 3x + 5
-// Derivative: f'(x) = 2x + 3
-let f = fn(x) {
-    return x * x + (3.0 * x) + 5.0;
+let quad = fn(a, b) {
+    return a.Mul(a).Add(b.Mul(b).Mul(2.0)); // a^2 + 2b^2
 };
 
-let df_at_4 = grad(f, 4.0);
-print("f'(4.0) = " + String(df_at_4)); // 11.0 (exact: 2*4 + 3 = 11)
-
-// Cubic: f(x) = x^3 => f'(x) = 3x^2
-let cubic_derivative = grad(fn(x) { return x * x * x; }, 2.0);
-print("f'(2.0) for x^3 = " + String(cubic_derivative)); // 12.0 (3 * 2^2 = 12)
+// Returns exact gradient vector [2a, 4b] = [10.0, 12.0] in a single sweep
+let gradients = grad_reverse(quad, 5.0, 3.0);
+print("Gradients: [" + String(gradients[0]) + ", " + String(gradients[1]) + "]");
 ```
 
-### 11.7.3 Jacobian-Vector Products (`jvp`)
-
-For directional derivatives and multi-variate vector functions, `jvp(f, x, v)` computes the product of the Jacobian matrix $J_f(x)$ with direction vector $v$:
+#### Gradient Descent Machine Learning Loop
 
 ```aks
-let j = jvp(fn(x) { return x * x; }, 3.0, 2.0);
-print("JVP result: " + String(j)); // 12.0
+// Minimize loss f(w) = (w - 7)^2 via reverse-mode autodiff
+let w = 0.0;
+let lr = 0.2;
+let step = 0;
+while (step < 25) {
+    TapeReset(0);
+    let var_w = Var(w);
+    let loss = var_w.Sub(7.0).Pow(2.0);
+    loss.backward();
+    w = w - (lr * var_w.grad());
+    step++;
+}
+print("Optimized w: " + String(w)); // 7.0 (exact global optimum)
+```
+
+---
+
+### 11.7.2 Forward-Mode Dual Numbers
+
+Dual numbers extend real numbers by an infinitesimal quantity $\epsilon$ such that $\epsilon^2 = 0$. Every dual number carries both a primary value and its first derivative:
+
+```aks
+let d1 = Dual(3.0, 1.0);
+let d2 = Dual(2.0, 0.0);
+
+let sum = d1.Add(d2);
+let prod = d1.Mul(d2);
+print("Sum val: " + String(sum.val) + ", grad: " + String(sum.grad)); // 5.0, 1.0
+```
+
+### 11.7.3 Forward-Mode Gradients (`grad`) and Jacobian-Vector Products (`jvp`)
+
+For directional derivatives and multi-variate vector functions:
+
+```aks
+let f = fn(x) { return x * x + (3.0 * x) + 5.0; };
+let df_at_4 = grad(f, 4.0); // 11.0
+
+let j = jvp(fn(x) { return x * x; }, 3.0, 2.0); // 12.0
 ```
 
 ---
@@ -216,6 +254,7 @@ In this chapter, we explored:
 4. Descriptive statistics and Welford online single-pass variance.
 5. MT19937-64 pseudo-random generation and Miller-Rabin primality testing.
 6. LU linear system solvers and Gauss-Legendre quadrature integration.
-7. Native automatic differentiation, dual numbers, `grad`, and Jacobian-Vector Products (`jvp`).
+7. Native Reverse-Mode Automatic Differentiation Tape Engine (`Var`, `backward`, `grad_reverse`, `TapeReset`).
+8. Forward-Mode Dual Numbers, `grad`, and Jacobian-Vector Products (`jvp`).
 
 Proceed to [Chapter 12: Parsing, Serialization & Config Engines](Chapter%2012%20-%20Serialization,%20Formats%20and%20Config%20Engines.md) to explore JSON, CSV, TOML, MsgPack, Protobuf, CBOR, and TAR archives.

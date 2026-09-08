@@ -114,6 +114,15 @@ void LearnHelp(const char *topic) {
         printf("  trait Area { fn area(self) -> float; }\n");
     } else if (strcmp(topic, "concurrency") == 0) {
         printf("\033[36mConcurrency & Channels\033[0m\n");
+        printf("Structured Concurrency (Nurseries):\n");
+        printf("  nursery (n) {\n");
+        printf("      n.Spawn(task_worker_1);\n");
+        printf("      n.SpawnArg(task_worker_2, payload);\n");
+        printf("  } // Scope invariant: ALL spawned tasks auto-join at closing brace!\n\n");
+        printf("Lexical Region Memory Scopes:\n");
+        printf("  region (r) {\n");
+        printf("      let buf = r.AllocArray(1024);\n");
+        printf("  } // Scope invariant: O(1) batch arena deallocation at scope exit!\n\n");
         printf("Async Tasks:\n");
         printf("  let task = spawn fetch_metric(\"cpu\");\n");
         printf("  let result = await task;\n\n");
@@ -142,34 +151,29 @@ void LearnHelp(const char *topic) {
         printf("  GreatestCommonDivisor  GCD computation\n");
     } else if (strcmp(topic, "crypto") == 0) {
         printf("\033[36mCryptography & Security Engine\033[0m\n");
-        printf("  SHA256(data)           SHA-256 cryptographic digest\n");
-        printf("  AES256GCMEncrypt(...)  AES-256-GCM authenticated encryption\n");
-        printf("  Chacha20Poly1305Encrypt() Authenticated Encryption with Associated Data (AEAD)\n");
-        printf("  Ed25519Sign(k, msg)    Ed25519 digital signatures\n");
-        printf("  Argon2(pwd, salt, len) Argon2 memory-hard password hashing\n");
-        printf("  PBKDF2(pwd, salt, iter)RFC 2898 key derivation\n");
-        printf("  HMACSHA256(k, msg)     Hash-based Message Authentication Code\n");
+        printf("  CryptoSha256(data)     SHA-256 cryptographic digest\n");
+        printf("  CryptoAesGcmEncrypt(k, iv, pt) AES-256-GCM authenticated encryption\n");
+        printf("  CryptoAesGcmDecrypt(k, iv, ct, tag) Authenticated decryption\n");
+        printf("  CryptoChacha20Encrypt(k, n, pt) ChaCha20-Poly1305 AEAD stream\n");
+        printf("  CryptoEd25519Sign(priv, msg) Ed25519 digital signature\n");
     } else if (strcmp(topic, "simd") == 0) {
-        printf("\033[36mSIMD Hardware Acceleration & Bit Operations\033[0m\n");
-        printf("  SimdFma(a, b, c)       Hardware Fused Multiply-Add vector arithmetic\n");
-        printf("  SimdAddRaw(a, b)       Parallel SIMD vector addition\n");
-        printf("  SimdMulRaw(a, b)       Parallel SIMD vector multiplication\n");
-        printf("  SimdOp(op, a, b)       Generic SIMD lane operation\n");
+        printf("\033[36mSIMD Hardware Acceleration\033[0m\n");
+        printf("  SimdAddRaw(a, b)       256-bit AVX2 float32 vectorized addition\n");
+        printf("  SimdMulRaw(a, b)       Vectorized element-wise multiplication\n");
+        printf("  SimdFma(a, b, c)       Fused multiply-add: (a * b) + c\n");
+        printf("  SimdDot(a, b)          Vector dot product with horizontal add\n");
     } else if (strcmp(topic, "networking") == 0) {
-        printf("\033[36mNetworking, Sockets & Web Protocols\033[0m\n");
-        printf("  SocketConnect(host, p) TCP client socket connection\n");
-        printf("  SocketListen(port)     TCP server socket listener\n");
-        printf("  SocketSend(s, data)    Socket datagram transmission\n");
-        printf("  SocketReceive(s, len)  Socket datagram reception\n");
-        printf("  UdpSocket()            UDP datagram socket\n");
-        printf("  DnsResolve(host)       DNS domain name resolution\n");
+        printf("\033[36mNetworking & Sockets\033[0m\n");
+        printf("  SocketConnect(host, port) TCP socket connection\n");
+        printf("  SocketSend(sock, data)    Buffered stream send\n");
+        printf("  SocketReceive(sock, len)  Buffered stream receive\n");
+        printf("  DnsResolve(host)          IPv4 address resolution\n");
     } else if (strcmp(topic, "os") == 0) {
-        printf("\033[36mWindows OS Kernel & Systems Internals\033[0m\n");
-        printf("  ClipboardSet(text)     Windows OS clipboard write\n");
-        printf("  ClipboardGet()         Windows OS clipboard read\n");
-        printf("  MakeArena(size)        Contiguous linear arena allocator\n");
-        printf("  ShmOpen(name, size)    Named shared memory mapping\n");
-        printf("  ReadFile / WriteFile   High-speed file I/O\n");
+        printf("\033[36mOperating System & Kernel\033[0m\n");
+        printf("  ShmOpen(name, size)       POSIX/Windows shared memory handle\n");
+        printf("  ProcessSpawn(cmd)         Subprocess launcher\n");
+        printf("  MakeArena()               Fast linear arena bump allocator\n");
+        printf("  ClipboardSet(text)        System clipboard bridge\n");
     } else if (strcmp(topic, "ffi") == 0) {
         printf("\033[36mForeign Function Interface (FFI) & Native Interop\033[0m\n");
         printf("  FFILoad(dll_path)      Dynamic library loading (.dll, .so)\n");
@@ -226,14 +230,22 @@ void LearnHelp(const char *topic) {
         printf("Automatic Verification:\n");
         printf("  Violated contracts raise exceptions automatically in debug and verified builds.\n");
     } else if (strcmp(topic, "autodiff") == 0) {
-        printf("\033[36mNative Automatic Differentiation & Dual Numbers\033[0m\n");
-        printf("Dual Numbers:\n");
+        printf("\033[36mNative Reverse-Mode Automatic Differentiation & Computational Tape Engine\033[0m\n");
+        printf("Reverse-Mode AutoVar & Backpropagation (O(1) Reverse Pass):\n");
+        printf("  let x = Var(3.0);\n");
+        printf("  let y = Var(4.0);\n");
+        printf("  let loss = x.Mul(x).Add(y.Mul(y)); // z = x^2 + y^2\n");
+        printf("  loss.backward();                   // Backpropagate gradients\n");
+        printf("  print(x.grad());                   // 6.0 (dz/dx)\n");
+        printf("  print(y.grad());                   // 8.0 (dz/dy)\n\n");
+        printf("Analytical Multivariable Gradients:\n");
+        printf("  let f = fn(a, b) { return a.Mul(a).Add(b.Mul(b).Mul(2.0)); };\n");
+        printf("  let grads = grad_reverse(f, 5.0, 3.0); // [10.0, 12.0]\n\n");
+        printf("Dual Numbers (Forward-Mode):\n");
         printf("  let d1 = Dual(3.0, 1.0);  // value: 3.0, gradient: 1.0\n");
         printf("  let dProd = d1.Mul(Dual(2.0, 0.0));\n\n");
         printf("Gradient Computation:\n");
-        printf("  let f = fn(x) { return x * x + 3.0 * x + 5.0; };\n");
-        printf("  let derivative = grad(f, 4.0);  // 11.0\n");
-        printf("  let j = jvp(fn(x) { return x * x; }, 3.0, 2.0);\n");
+        printf("  let derivative = grad(fn(x) { return x * x + 3.0 * x + 5.0; }, 4.0); // 11.0\n");
     } else if (strcmp(topic, "units") == 0) {
         printf("\033[36mPhysical Units & Zero-Cost Dimensional Analysis\033[0m\n");
         printf("Unit Constructors:\n");
