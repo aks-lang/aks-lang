@@ -261,13 +261,32 @@ flowchart TD
 
 ---
 
-## 6.9 Multi-Error Recovery & Diagnostic Collection
+## 6.9 Multi-Error Recovery & Rich Diagnostics
 
-Rather than aborting compilation upon encountering the first syntax or type error, the AKS compiler (`src/compiler.c`) and type checker (`src/typer.c`) implement resilient diagnostic collection:
+Rather than aborting compilation upon encountering the first syntax or type error, the AKS compiler (`src/compiler.c`), parser (`src/parser.c`), and type checker (`src/typer.c`) implement resilient diagnostic collection and rich error reporting:
 
-- **Error Threshold**: Collects up to **50 distinct diagnostics** in a single compilation pass.
-- **Contextual Reporting**: Each diagnostic captures precise source file names, 1-based line numbers, column offsets, and explanatory hints.
-- **Cascading Prevention**: Synthetic fallback types (e.g. `TypeAny` / `TypeError`) are inserted at failed unification sites to prevent spurious secondary error cascades down the AST.
+- **Error Threshold**: Collects up to **50 distinct diagnostics** in a single compilation pass before terminating.
+- **Statement Synchronization (`ParseSynchronize`)**:
+  When a syntax error or unexpected token is encountered during AST parsing, the parser does not abort or generate cascading downstream errors. Instead, `ParseSynchronize` advances the lexer token stream until finding a statement boundary or synchronization token (`;`, `}`, `let`, `fn`, `struct`, `if`, `while`, `return`), re-synchronizing the parser state so subsequent statements and definitions can be correctly analyzed.
+- **Source-Line Context & Visual Carets (`^~~~`)**:
+  Diagnostics display the offending source line alongside a visual caret marker pointing directly to the column offset and highlighting token width:
+  ```
+  Error in tests/TestErrorRecovery.aks:4:11: Expected ';' after statement
+      let x = 10 let y = 20;
+                 ^~~~
+  ```
+- **Fuzzy "Did you mean?" Suggestions (Levenshtein Distance)**:
+  When an unknown identifier, function, type, or struct member is encountered, the compiler and type checker compute Levenshtein string edit distances against all valid candidate symbols in scope:
+  - **Unknown Local Variables & Parameters**: Suggests closest in-scope identifiers:
+    ```
+    Error in script.aks:8:14: Unknown identifier 'user_cont'. Did you mean 'user_count'?
+        print(user_cont);
+              ^~~~~~~~~
+    ```
+  - **Unresolved Function Calls**: Suggests closest declared or standard library functions (e.g. calling `SquareRot(x)` suggests `SquareRoot`).
+  - **Unknown Types**: Suggests valid primitive types or declared struct/enum types (e.g. `floatt` suggests `float`, `Vector2d` suggests `Vector2D`).
+  - **Struct Member Fields**: Suggests valid field members on the receiver struct (e.g. `p.magntude` suggests `p.magnitude`).
+- **Synthetic Fallback Types**: In static mode, fallback types (`TypeAny` / `TypeError`) are inserted at failed unification sites to prevent spurious secondary error cascades down the AST.
 
 ---
 
@@ -282,6 +301,6 @@ In this chapter, we explored:
 6. Traits, vtables, and LLVM AOT monomorphization.
 7. Physical unit types and dimensional analysis.
 8. Persistent incremental type checking and binary signature caching (`.akscache/signatures.bin`).
-9. Multi-error diagnostic recovery and compilation error resilience.
+9. Multi-error statement synchronization (`ParseSynchronize`), caret rendering (`^~~~`), and fuzzy Levenshtein suggestions.
 
 Proceed to [Chapter 07: Memory Model, Ownership & Borrow Checker](Chapter%2007%20-%20Ownership,%20Borrowing%20and%20Memory%20Model.md) to examine affine borrow checking, move semantics, and Non-Lexical Lifetimes.

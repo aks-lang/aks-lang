@@ -25,13 +25,14 @@ The execution engine is organized into dedicated, cohesive subsystems:
 - **`src/vm.c`**: Core VM state lifecycle, value stack management, call-frame mechanics, and primary opcode dispatch loop.
 - **`src/vm_tasks.inc.c`**: Fiber scheduling, work-stealing deque, lock-free channels, mutexes, condition variables, semaphores, and task arenas.
 - **`src/vm_stdlib.inc.c`**: Full standard library native execution dispatcher (`ExecuteStdlib`), SIMD vector operations, cryptographic algorithms, math routines, and OS interop.
-- **`src/vm_jit.inc.c`**: Tracing JIT hot-loop backedge tracking (50 backedge threshold), loop trace synthesis, and in-memory native x64 execution.
+- **`src/vm_jit.inc.c`**: Tracing JIT hot-loop backedge tracking (50 backedge threshold), loop trace synthesis, function call-site tiering, and in-memory native x64 execution.
 
 ### B.1.2 Dispatch Loop Optimizations & In-Place Fast Paths
 
 - **In-Place Increment/Decrement**: `OPINC` and `OPDEC` evaluate local slot integers directly in-place, eliminating the overhead of popping from the stack, re-tagging, and re-pushing.
 - **Specialized Arithmetic**: Fast integer/float bypasses skip general dynamic type resolution for numeric registers.
-- **Hot-Loop Tracing JIT**: Loops that iterate over 50 times are compiled on-the-fly into native x64 machine code (`VirtualAlloc` with `PAGE_EXECUTE_READWRITE`), executing directly on the CPU with condition bailout back to the interpreter.
+- **Hot-Loop Tracing JIT**: Loops that iterate over 50 times in both the stack VM (`OPJMPBACK` / backward `OPJUMP`) and register VM (`do_regopjmp`) are compiled on-the-fly into native x64 machine code (`VirtualAlloc` with `PAGE_EXECUTE_READWRITE`), executing directly on the CPU with condition bailout back to the interpreter.
+- **Function Call-Site Tiering**: Frequently invoked function call sites in both stack VM (`OPCALL`, `OPCALLDYNAMIC`) and register VM (`do_regopcall`, `do_regopcalldynamic`) automatically tier up to native x64 machine code, with caller frame restore (`task->framecount--`) and return stacktop synchronization upon native exit.
 
 ---
 
@@ -118,10 +119,10 @@ The execution engine is organized into dedicated, cohesive subsystems:
 
 | Opcode | Hex | Operands | Stack Transition | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `OPCALL` | `0x1F` | `fn_id: u16, argc: u8` | `[arg1..N] -> [res]` | Calls resolved function `fn_id` with `argc` arguments. |
+| `OPCALL` | `0x1F` | `fn_id: u16, argc: u8` | `[arg1..N] -> [res]` | Calls resolved function `fn_id` with `argc` arguments. Features JIT call-site auto-tiering. |
 | `OPRETURN` | `0x20` | None | `[] -> []` | Returns `null` from current function frame. |
 | `OPRETURNVAL` | `0x21` | None | `[ret_val] -> [ret_val]` | Returns top value from current function frame. |
-| `OPCALLDYNAMIC`| `0x2B` | `argc: u8` | `[callee, arg1..N] -> [res]` | Calls first-class function pointer or closure dynamically. |
+| `OPCALLDYNAMIC`| `0x2B` | `argc: u8` | `[callee, arg1..N] -> [res]` | Calls first-class function pointer or closure dynamically. Features JIT call-site auto-tiering. |
 | `OPTAILCALL` | `0x32` | `fn_id: u16, argc: u8` | `[arg1..N] -> [...]` | Performs proper tail call elimination reusing active frame. |
 | `OPSPAWN` | `0x34` | `fn_id: u16, argc: u8` | `[arg1..N] -> [task]` | Spawns function onto work-stealing fiber scheduler pool. |
 | `OPAWAIT` | `0x35` | None | `[task] -> [result]` | Cooperatively yields execution until task completes. |

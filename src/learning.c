@@ -68,10 +68,11 @@ void LearnHelp(const char *topic) {
         printf("  \033[33mcontracts\033[0m    Preconditions (requires) and postconditions (ensures)\n");
         printf("  \033[33mautodiff\033[0m     Automatic differentiation, dual numbers, and gradients\n");
         printf("  \033[33munits\033[0m        Physical unit types and dimensional analysis\n");
-        printf("  \033[33mactors\033[0m       State-isolated actor model concurrency\n");
-        printf("  \033[33mjit\033[0m          Dynamic tracing JIT engine, hot-loop detection, and native x64 execution\n");
+        printf("  \033[33mjit\033[0m          Dynamic tracing JIT, hot-loop backedge & call-site tiering\n");
         printf("  \033[33mincremental\033[0m  Persistent signature caching (.akscache/) and fast re-compilation\n");
         printf("  \033[33mmodules\033[0m      Topological DAG ordering, circular import detection, and parallel compilation\n");
+        printf("  \033[33mparallel\033[0m     Multi-threaded AST & bytecode chunk optimization (--parallel, -j, --jobs)\n");
+        printf("  \033[33mdiagnostics\033[0m  Parser statement sync, caret markers (^~~~), and 'Did you mean?' suggestions\n");
         printf("  \033[33mtooling\033[0m      CLI flags, LSP (aksls), DAP debugger, formatter, and linter\n\n");
         printf("Usage: aks help <topic>\n");
         return;
@@ -258,15 +259,16 @@ void LearnHelp(const char *topic) {
         printf("  let count = a.Call({ type: \"Get\" }, 1000);         // Synchronous request-reply\n");
         printf("  a.Stop();\n");
     } else if (strcmp(topic, "jit") == 0) {
-        printf("\033[36mDynamic Tracing JIT Engine\033[0m\n");
-        printf("Hot-Loop JIT Compilation:\n");
+        printf("\033[36mDynamic Tracing JIT Engine & Multi-Tiering\033[0m\n");
+        printf("Hot-Loop & Hot-Function JIT Compilation:\n");
         printf("  aks run --jit script.aks\n\n");
         printf("Architecture:\n");
-        printf("  1. Hot loop backedges are tracked during bytecode execution.\n");
-        printf("  2. At 50 backedges, the VM triggers in-memory JIT trace synthesis.\n");
-        printf("  3. Native x64 machine code is emitted directly into executable memory (PAGE_EXECUTE_READWRITE).\n");
-        printf("  4. The loop executes natively at direct machine speed, with condition bailout back to VM.\n");
-        printf("  5. Expected speedup: 3-10x on compute-intensive numeric loops.\n");
+        printf("  1. Hot loop backedges are tracked in register (do_regopjmp) and stack (OPJMPBACK) loops.\n");
+        printf("  2. At 50 backedges, the VM triggers in-memory JIT loop trace compilation.\n");
+        printf("  3. Hot function call-sites (OPCALL, OPCALLDYNAMIC, do_regopcall) tier up to native machine code.\n");
+        printf("  4. Native x64 machine code is emitted directly into executable memory (PAGE_EXECUTE_READWRITE).\n");
+        printf("  5. Seamless caller frame restore (task->framecount) and return value synchronization.\n");
+        printf("  6. Expected speedup: 3-10x on compute-intensive numeric loops and functions.\n");
     } else if (strcmp(topic, "incremental") == 0) {
         printf("\033[36mPersistent Incremental Type Checking\033[0m\n");
         printf("Incremental Re-compilation:\n");
@@ -277,14 +279,35 @@ void LearnHelp(const char *topic) {
         printf("  3. Validates callees and dependencies before skipping type inference.\n");
         printf("  4. Reduces re-type overhead from hundreds of milliseconds to under 20ms.\n");
     } else if (strcmp(topic, "modules") == 0) {
-        printf("\033[36mModular System & Parallel Compilation\033[0m\n");
+        printf("\033[36mModular System & Dependency DAG\033[0m\n");
         printf("Topological DAG Sorting:\n");
-        printf("  aks compile --parallel main.aks\n\n");
+        printf("  aks run tests/TestModuleTopologicalSort.aks\n\n");
         printf("Features:\n");
         printf("  1. HasCyclicDependency detects circular imports (A -> B -> A) at compile time.\n");
         printf("  2. TopoDFS orders module dependencies into a strictly valid compilation sequence.\n");
-        printf("  3. CompilerParallelCompileModules distributes AST parsing across worker threads.\n");
-        printf("  4. Scalable 2-4x compilation speedup on modern multi-core CPUs.\n");
+        printf("  3. Ensures all upstream module types are resolved before downstream code generation.\n");
+    } else if (strcmp(topic, "parallel") == 0) {
+        printf("\033[36mParallel Compilation Scaling\033[0m\n");
+        printf("Multi-Threaded Compilation Flags:\n");
+        printf("  aks run --parallel script.aks       // Auto-detect CPU cores\n");
+        printf("  aks run -j 4 script.aks             // 4 parallel worker threads\n");
+        printf("  aks run --jobs=8 script.aks         // 8 parallel worker threads\n");
+        printf("  Set AKSPARALLEL=1 or AKS_JOBS=N environment variables.\n\n");
+        printf("Architecture:\n");
+        printf("  1. Worker threads parse and optimize ASTs (NodeOpt, NodeCseOpt) per module in parallel.\n");
+        printf("  2. CompilerParallelOptimizeBytecode distributes peephole bytecode chunk optimization.\n");
+        printf("  3. Achieves 2-4x faster compilation on multi-core workstations.\n");
+    } else if (strcmp(topic, "diagnostics") == 0) {
+        printf("\033[36mEnhanced Error Recovery & Rich Diagnostics\033[0m\n");
+        printf("Rich Diagnostic Features:\n");
+        printf("  1. ParseSynchronize: Statement-level error synchronization skips to next delimiter (;, {), preventing cascade errors.\n");
+        printf("  2. Caret Context: Displays exact source-line context with visual caret markers (^~~~).\n");
+        printf("  3. Fuzzy Suggestions: Levenshtein distance 'Did you mean?' proposals for:\n");
+        printf("     - Unknown local variables and identifiers\n");
+        printf("     - Unresolved function calls\n");
+        printf("     - Unknown primitive, struct, and enum type names\n");
+        printf("     - Unmatched struct member fields\n");
+        printf("  4. Collects up to 50 diagnostics in a single compilation pass.\n");
     } else {
         printf("Unknown topic '%s'. Type 'aks help' for available topics.\n", topic);
     }
@@ -457,7 +480,27 @@ static AKSExample EXAMPLES[] = {
     {"modules", "Demonstrates module dependency import and execution",
      "import \"tests/Math.aks\";\n"
      "let even = iseven(42);\n"
-     "print(\"Math iseven(42): \" + String(even));\n"}
+     "print(\"Math iseven(42): \" + String(even));\n"},
+
+    {"parallel", "Demonstrates parallel compilation scaling with -j and --parallel",
+     "// Compile and run with multi-threaded AST & chunk optimization:\n"
+     "//   aks run --parallel script.aks\n"
+     "//   aks run -j 4 script.aks\n"
+     "fn compute_slice(id: int, count: int) -> int {\n"
+     "    let acc = 0;\n"
+     "    for (let i = 0; i < count; i += 1) {\n"
+     "        acc += (id * 100) + i;\n"
+     "    }\n"
+     "    return acc;\n"
+     "}\n\n"
+     "let total = compute_slice(1, 100) + compute_slice(2, 100);\n"
+     "print(\"Parallel task total: \" + String(total));\n"},
+
+    {"diagnostics", "Demonstrates rich diagnostics, parser sync, and suggestions",
+     "// Rich diagnostics provide source carets (^~~~) and 'Did you mean?' suggestions.\n"
+     "let user_count = 42;\n"
+     "print(\"Registered count: \" + String(user_count));\n"
+     "// If misspelled as 'user_cont', the compiler suggests 'user_count'\n"}
 };
 static const int EXAMPLECOUNT = sizeof(EXAMPLES) / sizeof(EXAMPLES[0]);
 
@@ -738,6 +781,8 @@ static const char *PLAYGROUNDHTML =
     "                <option value='autodiff'>Auto-Differentiation</option>\n"
     "                <option value='units'>Physical Units</option>\n"
     "                <option value='actors'>Actor Concurrency</option>\n"
+    "                <option value='parallel'>Parallel Compilation</option>\n"
+    "                <option value='diagnostics'>Rich Diagnostics & Carets</option>\n"
     "            </select>\n"
     "            <button onclick='runCode()'>Run (Ctrl+Enter)</button>\n"
     "        </div>\n"
@@ -774,7 +819,9 @@ static const char *PLAYGROUNDHTML =
     "            contracts: 'fn SafeDivide(a: int, b: int) -> int requires b != 0 ensures result != null { return a / b; }\\nprint(\"SafeDivide(20, 4) = \" + String(SafeDivide(20, 4)));',\n"
     "            autodiff: 'let f = fn(x) { return x * x + 3.0 * x + 5.0; };\\nprint(\"f\\x27(4.0) = \" + String(grad(f, 4.0)));',\n"
     "            units: 'let d = Meter(100.0);\\nlet t = Second(10.0);\\nlet v = Speed(d, t);\\nprint(\"Speed: \" + String(v.magnitude) + \" m/s\");',\n"
-    "            actors: 'actor Counter { count: int; fn Increment(amount) { self.count += amount; return self.count; } fn Get() { return self.count; } }\\nlet a = Counter.Spawn({ count: 10 });\\nprint(\"Actor Count: \" + String(a.Call({ type: \"Increment\", amount: 5 }, 1000)));\\na.Stop();'\n"
+    "            actors: 'actor Counter { count: int; fn Increment(amount) { self.count += amount; return self.count; } fn Get() { return self.count; } }\\nlet a = Counter.Spawn({ count: 10 });\\nprint(\"Actor Count: \" + String(a.Call({ type: \"Increment\", amount: 5 }, 1000)));\\na.Stop();',\n"
+    "            parallel: 'fn compute(id, n) { let s = 0; for (let i = 0; i < n; i += 1) { s += id * 10 + i; } return s; }\\nprint(\"Parallel task total: \" + String(compute(1, 100) + compute(2, 100)));',\n"
+    "            diagnostics: 'let total_value = 100;\\nprint(\"Value: \" + String(total_value));\\n// Compiler features caret pointers (^~~~) and fuzzy matching for typos\\n'\n"
     "        };\n"
     "        function loadExample() {\n"
     "            const key = document.getElementById('example-select').value;\n"
@@ -917,6 +964,9 @@ void LearnExplain(const char *err) {
         printf("  aks explain \"type\"    (Type mismatch error)\n");
         printf("  aks explain \"bounds\"  (Array index out of bounds)\n");
         printf("  aks explain \"panic\"   (Runtime panic and stack unwinding)\n");
+        printf("  aks explain \"parallel\" (Parallel compilation & worker jobs)\n");
+        printf("  aks explain \"sync\"     (Parser statement synchronization & recovery)\n");
+        printf("  aks explain \"suggest\"  (Fuzzy 'Did you mean?' suggestions)\n");
         return;
     }
 
@@ -1001,6 +1051,34 @@ void LearnExplain(const char *err) {
         printf("  A function's AST body hash or callee signature changed, requiring re-inference.\n\n");
         printf("How to resolve:\n");
         printf("  The compiler automatically re-types affected functions and updates .akscache/signatures.bin.\n");
+    } else if (strstr(lowererr, "parallel") || strstr(lowererr, "jobs")) {
+        printf("\033[33mParallel Compilation & Worker Concurrency\033[0m\n");
+        printf("Why this happens / How it works:\n");
+        printf("  AKS parallel mode runs AST optimization (NodeOpt, NodeCseOpt) across worker threads\n");
+        printf("  and peephole bytecode chunk optimization in parallel.\n\n");
+        printf("CLI & Environment Flags:\n");
+        printf("  1. 'aks run --parallel <file.aks>' auto-detects CPU core count.\n");
+        printf("  2. 'aks run -j 4' or '--jobs=4' explicitly assigns 4 worker threads.\n");
+        printf("  3. Set AKSPARALLEL=1 or AKS_JOBS=N environment variables.\n");
+    } else if (strstr(lowererr, "sync") || strstr(lowererr, "recovery") || strstr(lowererr, "syntax")) {
+        printf("\033[33mSyntax Error Recovery & Caret Context\033[0m\n");
+        printf("Why this happens / How it works:\n");
+        printf("  When a syntax error occurs, ParseSynchronize advances the lexer to the next\n");
+        printf("  statement delimiter (';', '}') to prevent spurious cascading errors.\n\n");
+        printf("Rich Diagnostic Features:\n");
+        printf("  1. Caret Context: The compiler displays the offending line of code and points\n");
+        printf("     directly to the column location with visual carets ('^~~~').\n");
+        printf("  2. Multi-Diagnostic Emission: Up to 50 syntax errors are collected in a single pass.\n");
+    } else if (strstr(lowererr, "suggest") || strstr(lowererr, "did you mean") || strstr(lowererr, "undefined") || strstr(lowererr, "unknown")) {
+        printf("\033[33mFuzzy Diagnostics: 'Did you mean?' Suggestions\033[0m\n");
+        printf("Why this happens / How it works:\n");
+        printf("  When the typer or compiler encounters an unrecognized identifier or symbol, it performs\n");
+        printf("  a Levenshtein distance search across valid symbols in scope.\n\n");
+        printf("Supported Suggestion Categories:\n");
+        printf("  1. Unknown Local Variables & Parameters: Suggests closest in-scope identifiers.\n");
+        printf("  2. Unresolved Function Calls: Suggests closest registered function names.\n");
+        printf("  3. Unknown Types: Suggests closest primitive, struct, or enum type names.\n");
+        printf("  4. Struct Field Access: Suggests closest declared field on the struct type.\n");
     } else {
         printf("No specific entry for '%s'. Check syntax, types, and resource lifespans.\n", err);
     }
@@ -1314,6 +1392,7 @@ static const char *CHEATSHEETMD =
     "```aks\n"
     "// Run with: aks run --jit script.aks\n"
     "// Hot loops compile to native x64 in executable memory at 50 backedges.\n"
+    "// Hot call-sites automatically tier up across register and stack VM frames.\n"
     "let sum = 0;\n"
     "for (let i = 0; i < 10000; i += 1) {\n"
     "    sum += i;\n"
@@ -1329,9 +1408,20 @@ static const char *CHEATSHEETMD =
     "```\n\n"
     "## 16. Modular System & Parallel Compilation\n"
     "```aks\n"
-    "// Run with: aks compile --parallel script.aks\n"
-    "// Topological DAG ordering prevents circular imports.\n"
+    "// Multi-threaded AST optimization and chunk bytecode optimization:\n"
+    "//   aks run --parallel script.aks       // Auto-detect CPU cores\n"
+    "//   aks run -j 4 script.aks             // 4 parallel worker threads\n"
+    "//   aks run --jobs=8 script.aks         // 8 parallel worker threads\n"
+    "// Environment variables: AKSPARALLEL=1, AKS_JOBS=4\n"
     "import \"math\";\n"
+    "```\n\n"
+    "## 17. Rich Diagnostics & Error Recovery\n"
+    "```aks\n"
+    "// Statement synchronization (ParseSynchronize) prevents cascading errors.\n"
+    "// Source caret markers (^~~~) highlight exact token locations.\n"
+    "// Levenshtein fuzzy matching suggests closest identifiers, functions, types, and struct fields.\n"
+    "// Try: aks explain suggest\n"
+    "// Try: aks explain sync\n"
     "```\n";
 
 void LearnCheatsheet(const char *outputpath) {

@@ -42,9 +42,10 @@ Commands:
 | `--strict-types` | Type Safety | Activates Hindley-Milner type inference, rejecting ill-typed code at compile time. |
 | `--borrow-check` | Memory Safety | Activates affine borrow checker, validating ownership and reference lifetimes. |
 | `--static` | AOT Compilation | Enables strict static mode, monomorphization, and direct unboxed LLVM IR generation. |
-| `--jit` | JIT Acceleration | Activates dynamic tracing JIT compiler; compiles hot loops (>= 50 iterations) to native x64 in executable memory. |
+| `--jit` | JIT Acceleration | Activates dynamic tracing JIT compiler; compiles hot loops (>= 50 backedges) and hot call-sites to native x64 in executable memory. |
 | `--incremental` | Fast Compilation | Enables persistent signature caching in `.akscache/signatures.bin`, skipping re-inference of unchanged AST bodies (50-80% speedup). |
-| `--parallel` | Multicore Scaling | Concurrently lexes and parses independent modules across worker threads using topological DAG scheduling. |
+| `--parallel` | Multicore Scaling | Concurrently optimizes ASTs (NodeOpt, NodeCseOpt) and bytecode chunks across worker threads using topological DAG scheduling. Auto-detects core count. |
+| `-j [N]`, `--jobs [N]` | Multicore Scaling | Sets the exact number of worker threads for parallel compilation (e.g. `-j 4`, `-j4`, `--jobs 8`, `--jobs=8`). Also controlled via `AKSPARALLEL=1` and `AKS_JOBS=N`. |
 | `--trace-mem` | Memory Diagnostics | Enables allocation tracking, verifying clean reference deallocation and 0 memory leaks on exit. |
 | `--debug` | Debugger | Automatically breaks into the DAP debugger upon encountering an unhandled exception or panic. |
 | `--watch` | Hot Reload | Watches target file and imported dependencies, re-executing automatically on file change. |
@@ -173,15 +174,31 @@ When running with incremental typing enabled, the compiler serializes function t
 
 ---
 
-## C.7 Multi-Error Diagnostics Collection
+## C.7 Multi-Error Diagnostics, Synchronization & Fuzzy Suggestions
 
-The compiler collects up to **50 errors** before halting execution:
+The compiler collects up to **50 errors** before halting execution, utilizing intelligent statement synchronization, source caret lines, and Levenshtein distance suggestions:
+
+### 1. Statement Synchronization (`ParseSynchronize`)
+When a syntax error occurs, the parser skips tokens until reaching a synchronization boundary (`;`, `}`, or a keyword such as `let`, `fn`, `struct`, `if`, `while`, `return`), preventing cascade failures and allowing multiple independent errors to be diagnosed in a single run:
 
 ```text
-Compiler error on line 12: TypeError: declared type 'int' not compatible with value type 'string'
-Compiler error on line 28: BoundsError: fixed array index 5 exceeds bound [float; 4]
-Compiler error on line 45: CircularImportError: circular import detected between 'a' and 'b'
-Total diagnostics: 3 errors found across 2 modules.
+Error in tests/TestErrorRecovery.aks:4:11: Expected ';' after statement
+    let x = 10 let y = 20;
+               ^~~~
 ```
+
+### 2. Source-Line Context & Carets (`^~~~`)
+Diagnostics render the exact line of offending code and a visual caret underline pointing to the column location and token width.
+
+### 3. Fuzzy "Did you mean?" Symbol Suggestions
+Unrecognized identifiers, calls, types, or struct fields trigger a Levenshtein edit-distance search:
+```text
+Error in script.aks:8:14: Unknown identifier 'user_cont'. Did you mean 'user_count'?
+    print(user_cont);
+          ^~~~~~~~~
+```
+- **Functions**: e.g., calling `SquareRot(16.0)` suggests `SquareRoot`.
+- **Types**: e.g., `floatt` suggests `float`.
+- **Struct Fields**: e.g., `point.x_cord` suggests `point.x`.
 
 

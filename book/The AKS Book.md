@@ -1759,13 +1759,32 @@ flowchart TD
 
 ---
 
-## 6.9 Multi-Error Recovery & Diagnostic Collection
+## 6.9 Multi-Error Recovery & Rich Diagnostics
 
-Rather than aborting compilation upon encountering the first syntax or type error, the AKS compiler (`src/compiler.c`) and type checker (`src/typer.c`) implement resilient diagnostic collection:
+Rather than aborting compilation upon encountering the first syntax or type error, the AKS compiler (`src/compiler.c`), parser (`src/parser.c`), and type checker (`src/typer.c`) implement resilient diagnostic collection and rich error reporting:
 
-- **Error Threshold**: Collects up to **50 distinct diagnostics** in a single compilation pass.
-- **Contextual Reporting**: Each diagnostic captures precise source file names, 1-based line numbers, column offsets, and explanatory hints.
-- **Cascading Prevention**: Synthetic fallback types (e.g. `TypeAny` / `TypeError`) are inserted at failed unification sites to prevent spurious secondary error cascades down the AST.
+- **Error Threshold**: Collects up to **50 distinct diagnostics** in a single compilation pass before terminating.
+- **Statement Synchronization (`ParseSynchronize`)**:
+  When a syntax error or unexpected token is encountered during AST parsing, the parser does not abort or generate cascading downstream errors. Instead, `ParseSynchronize` advances the lexer token stream until finding a statement boundary or synchronization token (`;`, `}`, `let`, `fn`, `struct`, `if`, `while`, `return`), re-synchronizing the parser state so subsequent statements and definitions can be correctly analyzed.
+- **Source-Line Context & Visual Carets (`^~~~`)**:
+  Diagnostics display the offending source line alongside a visual caret marker pointing directly to the column offset and highlighting token width:
+  ```
+  Error in tests/TestErrorRecovery.aks:4:11: Expected ';' after statement
+      let x = 10 let y = 20;
+                 ^~~~
+  ```
+- **Fuzzy "Did you mean?" Suggestions (Levenshtein Distance)**:
+  When an unknown identifier, function, type, or struct member is encountered, the compiler and type checker compute Levenshtein string edit distances against all valid candidate symbols in scope:
+  - **Unknown Local Variables & Parameters**: Suggests closest in-scope identifiers:
+    ```
+    Error in script.aks:8:14: Unknown identifier 'user_cont'. Did you mean 'user_count'?
+        print(user_cont);
+              ^~~~~~~~~
+    ```
+  - **Unresolved Function Calls**: Suggests closest declared or standard library functions (e.g. calling `SquareRot(x)` suggests `SquareRoot`).
+  - **Unknown Types**: Suggests valid primitive types or declared struct/enum types (e.g. `floatt` suggests `float`, `Vector2d` suggests `Vector2D`).
+  - **Struct Member Fields**: Suggests valid field members on the receiver struct (e.g. `p.magntude` suggests `p.magnitude`).
+- **Synthetic Fallback Types**: In static mode, fallback types (`TypeAny` / `TypeError`) are inserted at failed unification sites to prevent spurious secondary error cascades down the AST.
 
 ---
 
@@ -1780,7 +1799,7 @@ In this chapter, we explored:
 6. Traits, vtables, and LLVM AOT monomorphization.
 7. Physical unit types and dimensional analysis.
 8. Persistent incremental type checking and binary signature caching (`.akscache/signatures.bin`).
-9. Multi-error diagnostic recovery and compilation error resilience.
+9. Multi-error statement synchronization (`ParseSynchronize`), caret rendering (`^~~~`), and fuzzy Levenshtein suggestions.
 
 Proceed to [Chapter 07: Memory Model, Ownership & Borrow Checker](Chapter%2007%20-%20Ownership,%20Borrowing%20and%20Memory%20Model.md) to examine affine borrow checking, move semantics, and Non-Lexical Lifetimes.
 
@@ -4178,33 +4197,45 @@ print("Cosine Similarity: " + String(similarity)); // ~0.998
 
 ---
 
-## 19.8 Dynamic In-Memory Tracing JIT Compiler Engine (`src/jitx64.c` & `src/vm_jit.inc.c`)
+## 19.8 Dynamic In-Memory Tracing JIT Engine & Deep Call-Site Tiering (`src/jitx64.c` & `src/vm_jit.inc.c`)
 
-For computationally intensive numeric algorithms, loop interpretation incurs significant instruction fetch and decoding overhead. AKS integrates an in-memory native x86-64 tracing JIT compiler accessible via `--jit`.
+For computationally intensive numeric algorithms and recurring function calls, interpretation incurs instruction fetch, decoding, and dispatch overhead. AKS integrates an in-memory native x86-64 tracing JIT compiler with multi-tiering capabilities accessible via `--jit`.
 
 ```mermaid
 flowchart TD
-    VM["Interpreter Dispatch Loop (src/vm.c)"] --> Backedge["Loop Backedge Encountered"]
-    Backedge --> Counter["Backedge Counter++ (Threshold: 50)"]
-    Counter --> Check{"Hot Loop Threshold Reached?"}
-    Check -->|No| VM
-    Check -->|Yes| JITSynth["Loop Trace Synthesis (src/vm_jit.inc.c)"]
-    JITSynth --> X64Codegen["Machine Code Generation (src/jitx64.c)"]
+    subgraph Interpreter ["Dual Interpreters (Stack & Register VM)"]
+        LoopBackedge["Hot Loop Backedge (OPJMPBACK / do_regopjmp)"]
+        CallSite["Hot Call Site (OPCALL / do_regopcall)"]
+    end
+
+    LoopBackedge --> Counter["Backedge / Call Counter++ (Threshold: 50)"]
+    CallSite --> Counter
+    Counter --> Check{"Hot Threshold Reached?"}
+    Check -->|No| Interpreter
+    Check -->|Yes| JITSynth["JIT Trace Synthesis (src/vm_jit.inc.c)"]
+    JITSynth --> X64Codegen["x86-64 Native Codegen (src/jitx64.c)"]
     X64Codegen --> ExecMem["VirtualAlloc(PAGE_EXECUTE_READWRITE)"]
     ExecMem --> NativeExec["Direct Native CPU Execution (3-10x Speedup)"]
-    NativeExec --> Bailout["Condition Bailout / Return Sync"]
-    Bailout --> VM
+    NativeExec --> ReturnSync["Frame Pop (task->framecount--) & Stacktop Sync"]
+    ReturnSync --> Interpreter
 ```
 
-### 19.8.1 Execution Pipeline
-1. **Hot Path Detection**: The VM tracks loop backward jumps (`OPJUMP` with negative offsets). When a loop iterates 50 times, it is marked as a candidate hot trace.
-2. **Loop Trace Synthesis**: The bytecode chunk of the loop body is extracted, validated, and passed to `CompileToX64`.
-3. **In-Memory Executable Memory**: The emitted x86-64 machine instructions are allocated in direct executable memory pages (`VirtualAlloc` on Windows with `PAGE_EXECUTE_READWRITE`).
-4. **Native Jump & Bailout**: Execution jumps directly into the synthesized function pointer. If loop conditions evaluate false (`OPJUMPIFFALSE`), execution bails out cleanly, synchronizing stack slots and frame return values back to the interpreter without de-optimization faults.
+### 19.8.1 Multi-Tiering & Deep Hot Path Integration
+1. **Hot Loop Backedge Auto-Tiering**:
+   - Both the register VM (`do_regopjmp`) and stack VM (`OPJMPBACK` / `OPJUMP`) monitor backward branches.
+   - When a loop backedge fires 50 times, the VM synthesizes an in-memory JIT loop trace.
+   - If a loop condition bails out (`OPJUMPIFFALSE`), execution cleanly transitions back to bytecode interpretation without de-optimization panics.
+2. **Call-Site Tiering Across Register & Stack VMs**:
+   - Monitored at function call dispatch sites: `do_regopcall`, `do_regopcalldynamic`, `OPCALL`, and `OPCALLDYNAMIC`.
+   - When a function invocation count crosses the tiering threshold, the function body compiles to native x64.
+   - The native machine code runs directly on the CPU, and upon return, the VM synchronizes caller frame state (`task->framecount--`), restores instruction pointers (`ip`), and stores the result directly into caller destination slots (`task->stack[task->stacktop - 1]`).
+3. **Zero Linker Overhead & Executable Memory**:
+   - Native code is emitted directly into memory pages allocated with `VirtualAlloc(..., PAGE_EXECUTE_READWRITE)` on Windows and `mprotect(..., PROT_READ | PROT_WRITE | PROT_EXEC)` on POSIX.
+   - Yields a **3–10x execution speedup** on numeric computing, vector transforms, and recursion.
 
 ---
 
-## 19.9 Module System, Topological DAG Sorting & Parallel Compilation (`src/compiler.c`)
+## 19.9 Module System, Topological DAG Sorting & Parallel Compilation Scaling (`src/compiler.c`)
 
 Modern multi-module applications require robust dependency tracking, cycle detection, and parallelized compilation to maximize multi-core throughput.
 
@@ -4217,8 +4248,24 @@ Compiler error: Circular import detected between 'network' and 'protocol'
 ### 19.9.2 Topological DAG Ordering (`CompilerSortModulesTopological`)
 Modules are ordered using depth-first search (`TopoDFS`) across the Directed Acyclic Graph (DAG) of imports. Independent leaves are scheduled first, ensuring all dependent types and function signatures are available before dependent modules begin code generation.
 
-### 19.9.3 Multi-Threaded Parallel Parsing (`CompilerParallelCompileModules`)
-Using native OS worker threads (`CreateThread` on Windows, `pthread_create` on POSIX), independent modules in the DAG are parsed and lexed concurrently across CPU cores, achieving a **2–4x compilation speedup** on modern workstations.
+### 19.9.3 Multi-Threaded Parallel AST & Chunk Optimization
+AKS parallel compilation distributes heavy compiler pipelines across worker threads:
+1. **Parallel Module AST Optimization**:
+   Worker threads concurrently run constant folding (`NodeOpt`), common subexpression elimination (`NodeCseOpt`), and dead code pruning across separate module ASTs in parallel.
+2. **Parallel Bytecode Chunk Optimization (`CompilerParallelOptimizeBytecode`)**:
+   Independent bytecode chunks (functions and top-level scripts) have peephole optimization applied across concurrent threads.
+3. **CLI Concurrency Controls & Environment Variables**:
+   Parallel compilation can be configured from the CLI or shell environment:
+   ```bash
+   aks run --parallel script.aks       # Auto-detects physical/logical CPU core count
+   aks run -j 4 script.aks             # Spawns exactly 4 worker threads
+   aks run -j4 script.aks              # Shorthand syntax
+   aks run --jobs 8 script.aks         # Explicit worker count
+   aks run --jobs=8 script.aks         # Flag with equality assignment
+   ```
+   Alternatively, set `AKSPARALLEL=1` or `AKS_JOBS=N` in the environment to enforce parallel compilation system-wide.
+4. **Scalability**:
+   Delivers a **2–4x compilation speedup** on multi-core developer workstations and CI runners.
 
 ---
 
@@ -4239,7 +4286,34 @@ src/
 
 ---
 
-## 19.11 Summary & Next Steps
+## 19.11 Enhanced Error Recovery, Statement Synchronization & Caret Diagnostics
+
+Developer productivity depends on precise, actionable compiler diagnostics. Rather than stopping at the first failure or spamming cascading secondary errors, the AKS compiler suite (`src/parser.c`, `src/compiler.c`, `src/typer.c`) implements an advanced error recovery and diagnostic system:
+
+### 19.11.1 Parser Statement Synchronization (`ParseSynchronize`)
+When a syntax error (such as a missing semicolon or malformed expression) is detected:
+1. The compiler emits a localized diagnostic.
+2. `ParseSynchronize` scans forward through the lexer token stream until it reaches a statement delimiter (`;`, `}`) or a declaration boundary (`let`, `const`, `fn`, `struct`, `if`, `while`, `return`).
+3. Parsing resumes cleanly on the next statement, allowing up to **50 errors** to be captured in a single build invocation.
+
+### 19.11.2 Source-Line Context & Visual Carets (`^~~~`)
+Every compiler diagnostic formats the offending line of source code along with a visual caret underline:
+```text
+Error in src/app.aks:12:15: Expected ';' after expression
+    let total = 42 print("Done");
+                  ^~~~
+```
+
+### 19.11.3 Fuzzy "Did you mean?" Symbol Suggestions
+AKS employs Levenshtein string edit distance algorithms to propose accurate replacements for misspelled or unrecognized symbols:
+- **Local Variables & Parameters**: Suggests closest in-scope identifiers.
+- **Function Calls**: Suggests closest declared or standard library functions.
+- **Type Annotations**: Proposes closest primitive (`int`, `float`, `string`), struct, or enum types.
+- **Struct Member Fields**: Suggests closest field names declared on the target struct.
+
+---
+
+## 19.12 Summary & Next Steps
 
 In this chapter, we explored:
 1. The Language Server Protocol (`aksls.exe`) JSON-RPC engine and IDE integration.
@@ -4248,9 +4322,10 @@ In this chapter, we explored:
 4. Package management and `aks.toml` project manifests.
 5. The 4 compilation backends: Bytecode VM, LLVM AOT, WebAssembly WAT, and Tiered JIT.
 6. Writing and registering custom native C functions inside the AKS core engine.
-7. The dynamic in-memory tracing JIT compiler engine (`--jit`).
-8. The module dependency graph, circular import detection, and parallel compilation.
+7. The dynamic in-memory tracing JIT compiler engine with call-site tiering and hot-loop execution (`--jit`).
+8. The module dependency graph, circular import detection, and parallel compilation scaling (`--parallel`, `-j`).
 9. Virtual machine subsystem modularization architecture.
+10. Parser statement synchronization (`ParseSynchronize`), caret context rendering (`^~~~`), and fuzzy symbol suggestions.
 
 Proceed to [Chapter 20: Practical Cookbook & Real-World Projects](Chapter%2020%20-%20Cookbook%20and%20Real-World%20Projects.md) to explore complete production-grade projects written in AKS.
 
@@ -4874,13 +4949,14 @@ The execution engine is organized into dedicated, cohesive subsystems:
 - **`src/vm.c`**: Core VM state lifecycle, value stack management, call-frame mechanics, and primary opcode dispatch loop.
 - **`src/vm_tasks.inc.c`**: Fiber scheduling, work-stealing deque, lock-free channels, mutexes, condition variables, semaphores, and task arenas.
 - **`src/vm_stdlib.inc.c`**: Full standard library native execution dispatcher (`ExecuteStdlib`), SIMD vector operations, cryptographic algorithms, math routines, and OS interop.
-- **`src/vm_jit.inc.c`**: Tracing JIT hot-loop backedge tracking (50 backedge threshold), loop trace synthesis, and in-memory native x64 execution.
+- **`src/vm_jit.inc.c`**: Tracing JIT hot-loop backedge tracking (50 backedge threshold), loop trace synthesis, function call-site tiering, and in-memory native x64 execution.
 
 ### B.1.2 Dispatch Loop Optimizations & In-Place Fast Paths
 
 - **In-Place Increment/Decrement**: `OPINC` and `OPDEC` evaluate local slot integers directly in-place, eliminating the overhead of popping from the stack, re-tagging, and re-pushing.
 - **Specialized Arithmetic**: Fast integer/float bypasses skip general dynamic type resolution for numeric registers.
-- **Hot-Loop Tracing JIT**: Loops that iterate over 50 times are compiled on-the-fly into native x64 machine code (`VirtualAlloc` with `PAGE_EXECUTE_READWRITE`), executing directly on the CPU with condition bailout back to the interpreter.
+- **Hot-Loop Tracing JIT**: Loops that iterate over 50 times in both the stack VM (`OPJMPBACK` / backward `OPJUMP`) and register VM (`do_regopjmp`) are compiled on-the-fly into native x64 machine code (`VirtualAlloc` with `PAGE_EXECUTE_READWRITE`), executing directly on the CPU with condition bailout back to the interpreter.
+- **Function Call-Site Tiering**: Frequently invoked function call sites in both stack VM (`OPCALL`, `OPCALLDYNAMIC`) and register VM (`do_regopcall`, `do_regopcalldynamic`) automatically tier up to native x64 machine code, with caller frame restore (`task->framecount--`) and return stacktop synchronization upon native exit.
 
 ---
 
@@ -4967,10 +5043,10 @@ The execution engine is organized into dedicated, cohesive subsystems:
 
 | Opcode | Hex | Operands | Stack Transition | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `OPCALL` | `0x1F` | `fn_id: u16, argc: u8` | `[arg1..N] -> [res]` | Calls resolved function `fn_id` with `argc` arguments. |
+| `OPCALL` | `0x1F` | `fn_id: u16, argc: u8` | `[arg1..N] -> [res]` | Calls resolved function `fn_id` with `argc` arguments. Features JIT call-site auto-tiering. |
 | `OPRETURN` | `0x20` | None | `[] -> []` | Returns `null` from current function frame. |
 | `OPRETURNVAL` | `0x21` | None | `[ret_val] -> [ret_val]` | Returns top value from current function frame. |
-| `OPCALLDYNAMIC`| `0x2B` | `argc: u8` | `[callee, arg1..N] -> [res]` | Calls first-class function pointer or closure dynamically. |
+| `OPCALLDYNAMIC`| `0x2B` | `argc: u8` | `[callee, arg1..N] -> [res]` | Calls first-class function pointer or closure dynamically. Features JIT call-site auto-tiering. |
 | `OPTAILCALL` | `0x32` | `fn_id: u16, argc: u8` | `[arg1..N] -> [...]` | Performs proper tail call elimination reusing active frame. |
 | `OPSPAWN` | `0x34` | `fn_id: u16, argc: u8` | `[arg1..N] -> [task]` | Spawns function onto work-stealing fiber scheduler pool. |
 | `OPAWAIT` | `0x35` | None | `[task] -> [result]` | Cooperatively yields execution until task completes. |
@@ -5068,9 +5144,10 @@ Commands:
 | `--strict-types` | Type Safety | Activates Hindley-Milner type inference, rejecting ill-typed code at compile time. |
 | `--borrow-check` | Memory Safety | Activates affine borrow checker, validating ownership and reference lifetimes. |
 | `--static` | AOT Compilation | Enables strict static mode, monomorphization, and direct unboxed LLVM IR generation. |
-| `--jit` | JIT Acceleration | Activates dynamic tracing JIT compiler; compiles hot loops (>= 50 iterations) to native x64 in executable memory. |
+| `--jit` | JIT Acceleration | Activates dynamic tracing JIT compiler; compiles hot loops (>= 50 backedges) and hot call-sites to native x64 in executable memory. |
 | `--incremental` | Fast Compilation | Enables persistent signature caching in `.akscache/signatures.bin`, skipping re-inference of unchanged AST bodies (50-80% speedup). |
-| `--parallel` | Multicore Scaling | Concurrently lexes and parses independent modules across worker threads using topological DAG scheduling. |
+| `--parallel` | Multicore Scaling | Concurrently optimizes ASTs (NodeOpt, NodeCseOpt) and bytecode chunks across worker threads using topological DAG scheduling. Auto-detects core count. |
+| `-j [N]`, `--jobs [N]` | Multicore Scaling | Sets the exact number of worker threads for parallel compilation (e.g. `-j 4`, `-j4`, `--jobs 8`, `--jobs=8`). Also controlled via `AKSPARALLEL=1` and `AKS_JOBS=N`. |
 | `--trace-mem` | Memory Diagnostics | Enables allocation tracking, verifying clean reference deallocation and 0 memory leaks on exit. |
 | `--debug` | Debugger | Automatically breaks into the DAP debugger upon encountering an unhandled exception or panic. |
 | `--watch` | Hot Reload | Watches target file and imported dependencies, re-executing automatically on file change. |
@@ -5199,16 +5276,32 @@ When running with incremental typing enabled, the compiler serializes function t
 
 ---
 
-## C.7 Multi-Error Diagnostics Collection
+## C.7 Multi-Error Diagnostics, Synchronization & Fuzzy Suggestions
 
-The compiler collects up to **50 errors** before halting execution:
+The compiler collects up to **50 errors** before halting execution, utilizing intelligent statement synchronization, source caret lines, and Levenshtein distance suggestions:
+
+### 1. Statement Synchronization (`ParseSynchronize`)
+When a syntax error occurs, the parser skips tokens until reaching a synchronization boundary (`;`, `}`, or a keyword such as `let`, `fn`, `struct`, `if`, `while`, `return`), preventing cascade failures and allowing multiple independent errors to be diagnosed in a single run:
 
 ```text
-Compiler error on line 12: TypeError: declared type 'int' not compatible with value type 'string'
-Compiler error on line 28: BoundsError: fixed array index 5 exceeds bound [float; 4]
-Compiler error on line 45: CircularImportError: circular import detected between 'a' and 'b'
-Total diagnostics: 3 errors found across 2 modules.
+Error in tests/TestErrorRecovery.aks:4:11: Expected ';' after statement
+    let x = 10 let y = 20;
+               ^~~~
 ```
+
+### 2. Source-Line Context & Carets (`^~~~`)
+Diagnostics render the exact line of offending code and a visual caret underline pointing to the column location and token width.
+
+### 3. Fuzzy "Did you mean?" Symbol Suggestions
+Unrecognized identifiers, calls, types, or struct fields trigger a Levenshtein edit-distance search:
+```text
+Error in script.aks:8:14: Unknown identifier 'user_cont'. Did you mean 'user_count'?
+    print(user_cont);
+          ^~~~~~~~~
+```
+- **Functions**: e.g., calling `SquareRot(16.0)` suggests `SquareRoot`.
+- **Types**: e.g., `floatt` suggests `float`.
+- **Struct Fields**: e.g., `point.x_cord` suggests `point.x`.
 
 
 

@@ -11,10 +11,11 @@
 
 ## Key Highlights
 
-- **Multi-Tier Execution Engine**: Fast stack-based bytecode virtual machine with runtime optimization, in-memory dynamic tracing JIT engine (`--jit`), and LLVM/C AOT static compilation.
+- **Multi-Tier Execution Engine**: Fast stack/register hybrid bytecode virtual machine with runtime optimization, in-memory dynamic tracing JIT engine (`--jit`) with hot-loop and function call-site tiering, and LLVM/C AOT static compilation.
 - **Dual-Mode Type System**: Optional dynamic typing for rapid scripting coupled with static mode (`--strict-types`) featuring Hindley-Milner type inference, persistent incremental signature caching (`--incremental`), dependent arrays, and multi-error diagnostic recovery.
+- **Enhanced Error Diagnostics & Caret Recovery**: Statement synchronization (`ParseSynchronize`) preventing cascade errors, source-line visual caret rendering (`^~~~`), and Levenshtein distance "Did you mean?" suggestions for unknown identifiers, functions, types, and struct fields.
 - **Affine Borrow Checker**: Compile-time ownership, non-lexical lifetimes, and zero-cost move semantics eliminating use-after-free and data races without garbage collection pauses.
-- **Modular Compilation System**: Circular import detection, topological DAG dependency ordering, and multicore parallel module compilation (`--parallel`).
+- **Modular Compilation & Concurrency Scaling**: Circular import detection, topological DAG dependency ordering, and multicore parallel AST and bytecode chunk compilation (`--parallel`, `-j`, `--jobs`, `AKSPARALLEL`, `AKS_JOBS`).
 - **First-Class Algebraic Effects**: Full delimited continuations (`effect`, `perform`, `handle ... with`, `resume`) allowing modular, composable effect handling.
 - **Native Automatic Differentiation**: Forward-mode dual number arithmetic (`Dual`, `grad`, `jvp`) for scientific computing, physics simulations, and numerical optimization.
 - **Actor Model Concurrency**: Isolated mutable state communicating via lock-free mailboxes (`actor`, `Spawn`, `Send`, `Call`), fibers, and channels.
