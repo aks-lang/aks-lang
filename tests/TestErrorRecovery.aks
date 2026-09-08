@@ -1,0 +1,25 @@
+// TestErrorRecovery.aks
+// Tests error recovery, caret diagnostics, and fuzzy suggestions:
+// 1. Unknown type suggestion: 'innt' -> 'int'
+// 2. Unknown identifier suggestion: 'my_countr' -> 'my_counter'
+// 3. Unknown function suggestion: 'calculate_totl' -> 'calculate_total'
+// 4. Unknown struct field suggestion: 'xx' -> 'x'
+// 5. Multi-error recovery across statement boundaries
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+fn calculate_total() -> int {
+    return 100;
+}
+
+fn test_fn(my_counter: int) -> int {
+    let wrong_type: innt = 10;
+    let res = my_countr + 5;
+    let tot = calculate_totl();
+    let p = new Point();
+    let val = p.xx;
+    return res + tot;
+}

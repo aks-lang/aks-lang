@@ -378,6 +378,12 @@ int HasCircularDependency(Module *m, const char *dep_name);
 
 /* Parallel module compilation across worker threads */
 int CompilerParallelCompileModules(Compiler *c, const char **module_paths, int count);
+void CompilerParallelOptimizeBytecode(Compiler *c);
+
+/* Diagnostic string distance and suggestions */
+int CompLevenshteinDistance(const char *s1, const char *s2);
+const char *CompSuggestFunction(Compiler *c, const char *name);
+const char *CompSuggestLocal(Compiler *c, const char *name);
 
 /* Incremental Type Checking & Function Dependency Graph */
 typedef struct FunctionDependency {

@@ -1,0 +1,37 @@
+// TestParallelCompilation.aks
+// Tests parallel compilation pipeline across imported modules and bytecode chunks
+
+import "ModuleHelperA.aks";
+import "ModuleHelperB.aks";
+
+fn compute_worker_a(x) {
+    return x * 10 + 5;
+}
+
+fn compute_worker_b(y) {
+    return y * 20 + 3;
+}
+
+fn compute_worker_c(z) {
+    return z * 30 + 1;
+}
+
+fn compute_worker_d(w) {
+    return w * 40 + 7;
+}
+
+let v1 = helper_a::get_val();
+let v2 = helper_b::double_val();
+
+let res_a = compute_worker_a(2);
+let res_b = compute_worker_b(3);
+let res_c = compute_worker_c(4);
+let res_d = compute_worker_d(5);
+
+let total = v1 + v2 + res_a + res_b + res_c + res_d;
+
+if (total == 100 + 200 + 25 + 63 + 121 + 207) {
+    print("SUCCESS: Parallel compilation multi-module test passed.");
+} else {
+    print("FAILED: Unexpected total " + total);
+}

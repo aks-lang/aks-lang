@@ -135,6 +135,8 @@ static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
       }
       free(trace);
     }
+    MutexUnlockNative(vm->globallock);
+    return;
   }
 
   char cfile[128];
@@ -622,6 +624,15 @@ static void TriggerTracingJIT(VM *vm, VMTask *task, FnProto *fn,
     }
   }
 
+  for (int s = 0; s < stepcount; s++) {
+    uint8_t op = trace[s].op;
+    if (op == OPCALL || op == OPCALLDYNAMIC || op == OPSPAWN || op == OPAWAIT ||
+        op == OPTRYPUSH || op == OPTRYPOP || op == OPTAILCALL) {
+      MutexUnlockNative(vm->globallock);
+      return;
+    }
+  }
+
   if (vm->jitcacheenabled && vm->jitmode == 1) {
     NewDir(".akscache");
     NewDir(".akscache/jitcache");
@@ -677,6 +688,8 @@ static void TriggerTracingJIT(VM *vm, VMTask *task, FnProto *fn,
       MutexUnlockNative(vm->globallock);
       return;
     }
+    MutexUnlockNative(vm->globallock);
+    return;
   }
 
   char cfile[128];
@@ -1269,7 +1282,8 @@ static void TriggerMethodJIT(VM *vm, VMTask *task, FnProto *fn) {
   while (ip < fn->chunk.count) {
     uint8_t op = fn->chunk.code[ip];
     if (op == OPCALL || op == OPCALLDYNAMIC || op == OPSPAWN || op == OPAWAIT ||
-        op == OPTRYPUSH || op == OPTRYPOP || op == OPTAILCALL) {
+        op == OPTRYPUSH || op == OPTRYPOP || op == OPTAILCALL ||
+        op == OPJUMP || op == OPJUMPIFFALSE || op == OPJUMPIFNULL) {
       free(trace);
       return;
     }

@@ -7480,6 +7480,19 @@ while (0)
 #else
   case regopjmp: {
 #endif
+      int curr_idx = (int)(regip - (RegInst *)frame->fn->regcode);
+      if (curr_inst->targetip <= curr_idx && frame->fn->chunk.loopcounters) {
+        RegInst *target_inst = (RegInst *)frame->fn->regcode + curr_inst->targetip;
+        int targetoffset = target_inst->bytecodeoffset;
+        int endoffset = curr_inst->bytecodeoffset;
+        if (targetoffset >= 0 && targetoffset < frame->fn->chunk.count) {
+          frame->fn->chunk.loopcounters[targetoffset]++;
+          if (DetectHotLoop(vm, frame->fn, targetoffset) &&
+              !HasJITCompiled(frame->fn, targetoffset, vm)) {
+            TriggerJIT(vm, frame->fn, targetoffset, endoffset);
+          }
+        }
+      }
       regip = (RegInst *)frame->fn->regcode + curr_inst->targetip;
       REG_DISPATCH_OR_BREAK();
     }
@@ -7490,6 +7503,19 @@ while (0)
   case regopjmpiffalse: {
 #endif
       if (!ValIsTruthy(frameslots[curr_inst->src1])) {
+        int curr_idx = (int)(regip - (RegInst *)frame->fn->regcode);
+        if (curr_inst->targetip <= curr_idx && frame->fn->chunk.loopcounters) {
+          RegInst *target_inst = (RegInst *)frame->fn->regcode + curr_inst->targetip;
+          int targetoffset = target_inst->bytecodeoffset;
+          int endoffset = curr_inst->bytecodeoffset;
+          if (targetoffset >= 0 && targetoffset < frame->fn->chunk.count) {
+            frame->fn->chunk.loopcounters[targetoffset]++;
+            if (DetectHotLoop(vm, frame->fn, targetoffset) &&
+                !HasJITCompiled(frame->fn, targetoffset, vm)) {
+              TriggerJIT(vm, frame->fn, targetoffset, endoffset);
+            }
+          }
+        }
         regip = (RegInst *)frame->fn->regcode + curr_inst->targetip;
       }
       REG_DISPATCH_OR_BREAK();
@@ -7563,7 +7589,7 @@ while (0)
         frame->ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
         if (fnid < 4096) {
           vm->fncallcounts[fnid]++;
-          if (vm->fncallcounts[fnid] >= 100 &&
+          if (DetectHotFunction(vm, callee) &&
               !HasJITCompiled(callee, -1, vm)) {
             TriggerMethodJIT(vm, task, callee);
           }
@@ -7593,11 +7619,12 @@ while (0)
 
           ExecuteJITCompiled(vm, task, callee, -1, &stacktop, &newframe,
                              &frameslots, &ip);
-
+          AKSValue ret = POP();
+          task->framecount--;
           frame = &task->frames[task->framecount - 1];
           frameslots = task->stack + frame->slotsbase;
-          frame->ip = ip;
-          goto enter_stack_interpreter;
+          ValFree(&frameslots[dst]);
+          frameslots[dst] = ret;
           REG_DISPATCH_OR_BREAK();
         }
 
@@ -7790,6 +7817,12 @@ while (0)
         frameslots[dst] = ret;
       } else {
         frame->ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
+        if (callee && callee->id < 4096) {
+          vm->fncallcounts[callee->id]++;
+          if (DetectHotFunction(vm, callee) && !HasJITCompiled(callee, -1, vm)) {
+            TriggerMethodJIT(vm, task, callee);
+          }
+        }
         if (HasJITCompiled(callee, -1, vm)) {
           AKSValue *canarypos = stacktop - argc;
           for (AKSValue *p = stacktop; p > canarypos; p--) {
@@ -7815,11 +7848,13 @@ while (0)
 
           ExecuteJITCompiled(vm, task, callee, -1, &stacktop, &newframe,
                              &frameslots, &ip);
-
+          AKSValue ret = POP();
+          task->framecount--;
           frame = &task->frames[task->framecount - 1];
           frameslots = task->stack + frame->slotsbase;
-          frame->ip = ip;
-          goto enter_stack_interpreter;
+          ValFree(&frameslots[dst]);
+          frameslots[dst] = ret;
+          REG_DISPATCH_OR_BREAK();
         }
 
         if (task->framecount >= MAXFRAMES) {
@@ -9471,6 +9506,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   if (HasJITCompiled(frame->fn, currentoffset, vm)) {
+    task->tracingmode = 0;
+    task->tracestepcount = 0;
     task->stacktop = (int)(stacktop - task->stack);
     ExecuteJITCompiled(vm, task, frame->fn, currentoffset, &stacktop, &frame,
                        &frameslots, &ip);
@@ -10207,6 +10244,8 @@ enter_stack_interpreter: for (;;) {
                    (int)(ip - frame->fn->chunk.code));
       }
       if (HasJITCompiled(frame->fn, targetoffset, vm)) {
+        task->tracingmode = 0;
+        task->tracestepcount = 0;
         task->stacktop = (int)(stacktop - task->stack);
         ExecuteJITCompiled(vm, task, frame->fn, targetoffset, &stacktop, &frame,
                            &frameslots, &ip);
@@ -10345,7 +10384,7 @@ enter_stack_interpreter: for (;;) {
 
         ExecuteJITCompiled(vm, task, callee, -1, &stacktop, &newframe,
                            &frameslots, &ip);
-
+        task->framecount--;
         frame = &task->frames[task->framecount - 1];
         frameslots = task->stack + frame->slotsbase;
         ip = frame->ip;
@@ -10581,6 +10620,41 @@ enter_stack_interpreter: for (;;) {
     } else if (res == 1) {
       // stdlib call completed
     } else {
+      if (fnid < 4096) {
+        vm->fncallcounts[fnid]++;
+        if (DetectHotFunction(vm, callee) && !HasJITCompiled(callee, -1, vm)) {
+          TriggerMethodJIT(vm, task, callee);
+        }
+      }
+      if (HasJITCompiled(callee, -1, vm)) {
+        AKSValue *canarypos = stacktop - argc;
+        for (AKSValue *p = stacktop; p > canarypos; p--) {
+          *p = *(p - 1);
+        }
+        *canarypos = ValInt(vm->stackcanary);
+        stacktop++;
+
+        FRAME_GROW();
+        CallFrame *newframe = &task->frames[task->framecount++];
+        newframe->fn = callee;
+        newframe->slotsbase = (int)(canarypos + 1 - task->stack);
+        newframe->argc = argc;
+
+        int maxreg = callee->maxregisters > argc ? callee->maxregisters : (callee->localcount > argc ? callee->localcount : argc);
+        STACK_GROW(newframe->slotsbase + maxreg + 1);
+        for (int i = argc; i < maxreg; i++) {
+          task->stack[newframe->slotsbase + i] = ValNull();
+        }
+        stacktop = task->stack + newframe->slotsbase + argc;
+
+        ExecuteJITCompiled(vm, task, callee, -1, &stacktop, &newframe,
+                           &frameslots, &ip);
+        task->framecount--;
+        frame = &task->frames[task->framecount - 1];
+        frameslots = task->stack + frame->slotsbase;
+        ip = frame->ip;
+        break;
+      }
       if (task->framecount >= MAXFRAMES) {
         RaiseX(vm, "stack overflow (too many call frames)", &ip, &stacktop,
                &frame, &frameslots);

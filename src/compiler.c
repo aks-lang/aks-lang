@@ -853,6 +853,68 @@ void ChunkPatchJump(Chunk *ch, int offset) {
     ch->code[offset+3]=(uint8_t)(jump&0xFF);
 }
 
+int CompLevenshteinDistance(const char *s1, const char *s2) {
+    if (!s1 || !s2) return 999;
+    int len1 = (int)strlen(s1);
+    int len2 = (int)strlen(s2);
+    if (len1 == 0) return len2;
+    if (len2 == 0) return len1;
+    if (abs(len1 - len2) > 3) return 999;
+
+    int v0[128];
+    int v1[128];
+    if (len2 >= 127) return 999;
+
+    for (int i = 0; i <= len2; i++) v0[i] = i;
+
+    for (int i = 0; i < len1; i++) {
+        v1[0] = i + 1;
+        for (int j = 0; j < len2; j++) {
+            int cost = (s1[i] == s2[j]) ? 0 : 1;
+            int del = v0[j + 1] + 1;
+            int ins = v1[j] + 1;
+            int sub = v0[j] + cost;
+            int min = del < ins ? del : ins;
+            if (sub < min) min = sub;
+            v1[j + 1] = min;
+        }
+        for (int j = 0; j <= len2; j++) v0[j] = v1[j];
+    }
+    return v0[len2];
+}
+
+const char *CompSuggestFunction(Compiler *c, const char *name) {
+    if (!c || !name) return NULL;
+    const char *best = NULL;
+    int best_dist = 999;
+    for (int i = 0; i < c->fncount; i++) {
+        if (!c->fns[i] || !c->fns[i]->name) continue;
+        if (strcmp(c->fns[i]->name, name) == 0) continue;
+        int d = CompLevenshteinDistance(name, c->fns[i]->name);
+        if (d > 0 && d < best_dist && d <= (strlen(name) > 3 ? 2 : 1)) {
+            best_dist = d;
+            best = c->fns[i]->name;
+        }
+    }
+    return best;
+}
+
+const char *CompSuggestLocal(Compiler *c, const char *name) {
+    if (!c || !c->current || !name) return NULL;
+    const char *best = NULL;
+    int best_dist = 999;
+    for (int i = 0; i < c->current->localcount; i++) {
+        if (!c->current->locals[i].name) continue;
+        if (strcmp(c->current->locals[i].name, name) == 0) continue;
+        int d = CompLevenshteinDistance(name, c->current->locals[i].name);
+        if (d > 0 && d < best_dist && d <= (strlen(name) > 3 ? 2 : 1)) {
+            best_dist = d;
+            best = c->current->locals[i].name;
+        }
+    }
+    return best;
+}
+
 // compiler helpers
 static void Error(Compiler *c, int line, const char *msg) {
     if (c->trydepth > 0) {
@@ -866,7 +928,31 @@ static void Error(Compiler *c, int line, const char *msg) {
         return;
     }
     if (c->error_count < 50) {
-        fprintf(stderr,"Compiler error on line %d: %s\n",line,msg);
+        if (c->currentfilepath[0] != '\0') {
+            fprintf(stderr, "Compiler error in '%s' on line %d: %s\n", c->currentfilepath, line, msg);
+            if (line > 0) {
+                FILE *f = fopen(c->currentfilepath, "r");
+                if (f) {
+                    char linebuf[512];
+                    int cur_line = 1;
+                    while (fgets(linebuf, sizeof(linebuf), f)) {
+                        if (cur_line == line) {
+                            size_t l = strlen(linebuf);
+                            while (l > 0 && (linebuf[l - 1] == '\r' || linebuf[l - 1] == '\n')) {
+                                linebuf[--l] = '\0';
+                            }
+                            fprintf(stderr, "  %4d | %s\n", line, linebuf);
+                            fprintf(stderr, "       | ^~~~\n");
+                            break;
+                        }
+                        cur_line++;
+                    }
+                    fclose(f);
+                }
+            }
+        } else {
+            fprintf(stderr,"Compiler error on line %d: %s\n",line,msg);
+        }
     } else if (c->error_count == 50) {
         fprintf(stderr,"... (further compiler errors suppressed)\n");
     }
@@ -7980,6 +8066,10 @@ static DWORD WINAPI ParallelParseWorker(LPVOID param) {
     }
     task->ast = Parse(src, &task->parse_error);
     free(src);
+    if (!task->parse_error && task->ast) {
+        task->ast = NodeOpt(task->ast);
+        task->ast = NodeCseOpt(task->ast);
+    }
     return 0;
 }
 #else
@@ -7994,6 +8084,10 @@ static void *ParallelParseWorkerPOSIX(void *param) {
     }
     task->ast = Parse(src, &task->parse_error);
     free(src);
+    if (!task->parse_error && task->ast) {
+        task->ast = NodeOpt(task->ast);
+        task->ast = NodeCseOpt(task->ast);
+    }
     return NULL;
 }
 #endif
@@ -8360,6 +8454,97 @@ static void OptBytecode(Chunk *ch) {
 
         i += size;
     }
+}
+
+typedef struct {
+    Compiler *c;
+    int start;
+    int end;
+} ParallelBytecodeTask;
+
+#ifdef _WIN32
+static DWORD WINAPI ParallelBytecodeWorker(LPVOID param) {
+    ParallelBytecodeTask *task = (ParallelBytecodeTask *)param;
+    for (int i = task->start; i < task->end; i++) {
+        if (task->c && task->c->fns[i]) {
+            OptBytecode(&task->c->fns[i]->chunk);
+        }
+    }
+    return 0;
+}
+#else
+static void *ParallelBytecodeWorkerPOSIX(void *param) {
+    ParallelBytecodeTask *task = (ParallelBytecodeTask *)param;
+    for (int i = task->start; i < task->end; i++) {
+        if (task->c && task->c->fns[i]) {
+            OptBytecode(&task->c->fns[i]->chunk);
+        }
+    }
+    return NULL;
+}
+#endif
+
+void CompilerParallelOptimizeBytecode(Compiler *c) {
+    if (!c || c->fncount <= 0) return;
+    int num_fns = c->fncount;
+    if (num_fns < 4 || gParallelCompilation <= 1) {
+        for (int i = 0; i < num_fns; i++) {
+            if (c->fns[i]) OptBytecode(&c->fns[i]->chunk);
+        }
+        return;
+    }
+
+    int nthreads = gParallelCompilation > 0 ? gParallelCompilation : 4;
+    if (nthreads > 16) nthreads = 16;
+    if (nthreads > num_fns) nthreads = num_fns;
+
+#ifdef _WIN32
+    ParallelBytecodeTask tasks[16];
+    HANDLE threads[16];
+    int chunk_size = (num_fns + nthreads - 1) / nthreads;
+    int spawned = 0;
+
+    for (int t = 0; t < nthreads; t++) {
+        int start = t * chunk_size;
+        int end = start + chunk_size;
+        if (end > num_fns) end = num_fns;
+        if (start >= end) break;
+
+        tasks[t].c = c;
+        tasks[t].start = start;
+        tasks[t].end = end;
+        threads[t] = CreateThread(NULL, 0, ParallelBytecodeWorker, &tasks[t], 0, NULL);
+        if (threads[t]) spawned++;
+    }
+    if (spawned > 0) {
+        WaitForMultipleObjects(spawned, threads, TRUE, INFINITE);
+        for (int t = 0; t < spawned; t++) {
+            CloseHandle(threads[t]);
+        }
+    }
+#else
+    ParallelBytecodeTask tasks[16];
+    pthread_t threads[16];
+    int chunk_size = (num_fns + nthreads - 1) / nthreads;
+    int spawned = 0;
+
+    for (int t = 0; t < nthreads; t++) {
+        int start = t * chunk_size;
+        int end = start + chunk_size;
+        if (end > num_fns) end = num_fns;
+        if (start >= end) break;
+
+        tasks[t].c = c;
+        tasks[t].start = start;
+        tasks[t].end = end;
+        if (pthread_create(&threads[t], NULL, ParallelBytecodeWorkerPOSIX, &tasks[t]) == 0) {
+            spawned++;
+        }
+    }
+    for (int t = 0; t < spawned; t++) {
+        pthread_join(threads[t], NULL);
+    }
+#endif
 }
 
 static Node *SpecializeCall(Compiler *c, Node *program, Node *callnode) {
@@ -9712,6 +9897,14 @@ static void MarkStaticSafeNodes(Node *n) {
 }
 
 int CompCompile(Compiler *c, Node *program) {
+    if (gParallelCompilation <= 0) {
+        const char *env_par = getenv("AKSPARALLEL");
+        if (!env_par) env_par = getenv("AKS_JOBS");
+        if (env_par) {
+            gParallelCompilation = atoi(env_par);
+            if (gParallelCompilation <= 0) gParallelCompilation = 1;
+        }
+    }
     if (program && program->type == NPROGRAM) {
         char mod_paths_buf[64][512];
         const char *mod_paths[64];
@@ -9779,9 +9972,7 @@ int CompCompile(Compiler *c, Node *program) {
     program = NodeDceOpt(program);
     NodeEscapeAnalysis(program);
     EmitNode(c,program);
-    for (int i = 0; i < c->fncount; i++) {
-        OptBytecode(&c->fns[i]->chunk);
-    }
+    CompilerParallelOptimizeBytecode(c);
     ChunkWrite(&c->fns[0]->chunk, OPHALT, 0);
     return !c->haderror;
 }

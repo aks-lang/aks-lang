@@ -422,6 +422,73 @@ static void EnvFreeLocal(TypeEnv *e) {
     }
 }
 
+static const char *TyperSuggestEnvVar(TypeEnv *env, const char *name) {
+    if (!env || !name) return NULL;
+    const char *best = NULL;
+    int best_dist = 999;
+    for (TypeEnv *cur = env; cur; cur = cur->parent) {
+        for (int b = 0; b < 64; b++) {
+            for (TypeEnvEntry *e = cur->buckets[b]; e; e = e->next) {
+                if (!e->name) continue;
+                if (strcmp(e->name, name) == 0) continue;
+                int d = CompLevenshteinDistance(name, e->name);
+                if (d > 0 && d < best_dist && d <= (strlen(name) > 3 ? 2 : 1)) {
+                    best_dist = d;
+                    best = e->name;
+                }
+            }
+        }
+    }
+    return best;
+}
+
+static const char *TyperSuggestType(Compiler *c, const char *name) {
+    static const char *prims[] = {
+        "int", "float", "str", "bool", "void", "any", "never",
+        "Option", "Result", "Array", "Tuple"
+    };
+    const char *best = NULL;
+    int best_dist = 999;
+    for (int i = 0; i < (int)(sizeof(prims)/sizeof(prims[0])); i++) {
+        if (strcmp(name, prims[i]) == 0) continue;
+        int d = CompLevenshteinDistance(name, prims[i]);
+        if (d > 0 && d < best_dist && d <= (strlen(name) > 3 ? 2 : 1)) {
+            best_dist = d;
+            best = prims[i];
+        }
+    }
+    if (c) {
+        for (int i = 0; i < c->structcount; i++) {
+            if (!c->structs[i].name) continue;
+            if (strcmp(name, c->structs[i].name) == 0) continue;
+            int d = CompLevenshteinDistance(name, c->structs[i].name);
+            if (d > 0 && d < best_dist && d <= (strlen(name) > 3 ? 2 : 1)) {
+                best_dist = d;
+                best = c->structs[i].name;
+            }
+        }
+        for (int i = 0; i < c->enumcount; i++) {
+            if (!c->enums[i].name) continue;
+            if (strcmp(name, c->enums[i].name) == 0) continue;
+            int d = CompLevenshteinDistance(name, c->enums[i].name);
+            if (d > 0 && d < best_dist && d <= (strlen(name) > 3 ? 2 : 1)) {
+                best_dist = d;
+                best = c->enums[i].name;
+            }
+        }
+        for (int i = 0; i < c->aliascount; i++) {
+            if (!c->aliases[i].name) continue;
+            if (strcmp(name, c->aliases[i].name) == 0) continue;
+            int d = CompLevenshteinDistance(name, c->aliases[i].name);
+            if (d > 0 && d < best_dist && d <= (strlen(name) > 3 ? 2 : 1)) {
+                best_dist = d;
+                best = c->aliases[i].name;
+            }
+        }
+    }
+    return best;
+}
+
 /* Error reporting */
 
 static void TyperError(TyperCtx *ctx, int line, const char *msg) {
@@ -430,6 +497,24 @@ static void TyperError(TyperCtx *ctx, int line, const char *msg) {
                            ? ctx->comp->currentfilepath : NULL;
         if (file) {
             fprintf(stderr, "Type error in '%s' on line %d: %s\n", file, line, msg);
+            if (line > 0) {
+                FILE *f = fopen(file, "r");
+                if (f) {
+                    char linebuf[512];
+                    int cur = 1;
+                    while (fgets(linebuf, sizeof(linebuf), f)) {
+                        if (cur == line) {
+                            size_t l = strlen(linebuf);
+                            while (l > 0 && (linebuf[l - 1] == '\r' || linebuf[l - 1] == '\n')) linebuf[--l] = '\0';
+                            fprintf(stderr, "  %4d | %s\n", line, linebuf);
+                            fprintf(stderr, "       | ^~~~\n");
+                            break;
+                        }
+                        cur++;
+                    }
+                    fclose(f);
+                }
+            }
         } else {
             fprintf(stderr, "Type error on line %d: %s\n", line, msg);
         }
@@ -940,20 +1025,69 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
         case NIDENT: {
             SType *t = EnvGet(env, n->sval);
             if (!t) {
+                if (strcmp(n->sval, "Option") == 0 || strcmp(n->sval, "Result") == 0) {
+                    t = StypeInternGet(c, STYPE_UNKNOWN, n->sval);
+                } else if (c) {
+                    for (int i = 0; i < c->enumcount; i++) {
+                        if (c->enums[i].name && strcmp(c->enums[i].name, n->sval) == 0) {
+                            t = StypeInternGet(c, STYPE_ENUM, n->sval);
+                            break;
+                        }
+                    }
+                    if (!t) {
+                        for (int i = 0; i < c->structcount; i++) {
+                            if (c->structs[i].name && strcmp(c->structs[i].name, n->sval) == 0) {
+                                t = StypeInternGet(c, STYPE_STRUCT, n->sval);
+                                break;
+                            }
+                        }
+                    }
+                    if (!t) {
+                        for (int i = 0; i < c->fncount; i++) {
+                            if (c->fns[i] && c->fns[i]->name && strcmp(c->fns[i]->name, n->sval) == 0) {
+                                t = StypeMakeFn(c, NULL, c->fns[i]->paramcount,
+                                                TyperResolveName(c, c->fns[i]->rettype));
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (!t) {
+                const char *sugg = TyperSuggestEnvVar(env, n->sval);
                 char msg[256];
-                snprintf(msg, sizeof(msg), "undefined variable '%s'", n->sval);
-                /* Don't hard-error: dynamic mode allows late binding */
+                if (sugg) {
+                    snprintf(msg, sizeof(msg), "undefined variable '%s'. Did you mean '%s'?", n->sval, sugg);
+                } else {
+                    snprintf(msg, sizeof(msg), "undefined variable '%s'", n->sval);
+                }
+                extern int gStrictTypes;
+                if (gStrictTypes || (c && c->is_static_mode)) {
+                    TyperError(ctx, n->line, msg);
+                }
                 t = StypeInternGet(c, STYPE_UNKNOWN, "");
             }
             result = t;
             break;
         }
 
-        case NVARDECL: {
-            /* let x: T = expr  or  let x = expr */
+        case NVARDECL:
+        case NCONSTDECL: {
+            /* let x: T = expr  or  const x: T = expr */
             SType *decl_type = NULL;
             if (n->decl.tname && n->decl.tname[0]) {
                 decl_type = TyperResolveName(c, n->decl.tname);
+                if (decl_type && decl_type->kind == STYPE_GENERIC) {
+                    const char *sugg = TyperSuggestType(c, n->decl.tname);
+                    if (sugg && strcmp(sugg, n->decl.tname) != 0) {
+                        char msg[256];
+                        snprintf(msg, sizeof(msg), "unknown type '%s'. Did you mean '%s'?", n->decl.tname, sugg);
+                        extern int gStrictTypes;
+                        if (gStrictTypes || (c && c->is_static_mode)) {
+                            TyperError(ctx, n->line, msg);
+                        }
+                    }
+                }
             }
             if (n->decl.init) {
                 SType *init_type = InferNode(ctx, env, n->decl.init);
@@ -1135,11 +1269,24 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             /* Look up function return type */
             if (n->call.callee && n->call.callee->type == NIDENT) {
                 const char *fname = n->call.callee->sval;
+                int found = 0;
                 /* Look for FnProto */
                 for (int i = 0; i < c->fncount; i++) {
                     if (strcmp(c->fns[i]->name, fname) == 0) {
                         result = TyperResolveName(c, c->fns[i]->rettype);
+                        found = 1;
                         break;
+                    }
+                }
+                if (!found) {
+                    const char *sugg = CompSuggestFunction(c, fname);
+                    if (sugg && strcmp(sugg, fname) != 0) {
+                        char msg[256];
+                        snprintf(msg, sizeof(msg), "undefined function '%s'. Did you mean '%s'?", fname, sugg);
+                        extern int gStrictTypes;
+                        if (gStrictTypes || (c && c->is_static_mode)) {
+                            TyperError(ctx, n->line, msg);
+                        }
                     }
                 }
             } else if (n->call.callee && n->call.callee->type == NMEMBER) {
@@ -1177,13 +1324,37 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             }
             /* Field type lookup for known structs */
             if (obj_t && obj_t->kind == STYPE_STRUCT) {
+                int found_f = 0;
                 for (int i = 0; i < c->structcount; i++) {
                     if (strcmp(c->structs[i].name, obj_t->name) == 0) {
                         for (int j = 0; j < c->structs[i].fc; j++) {
                             if (c->structs[i].fnames && n->member.field &&
                                 strcmp(c->structs[i].fnames[j], n->member.field) == 0) {
                                 result = TyperResolveName(c, c->structs[i].ftypes ? c->structs[i].ftypes[j] : "");
+                                found_f = 1;
                                 break;
+                            }
+                        }
+                        if (!found_f && n->member.field) {
+                            const char *best_sugg = NULL;
+                            int best_d = 999;
+                            for (int j = 0; j < c->structs[i].fc; j++) {
+                                if (!c->structs[i].fnames || !c->structs[i].fnames[j]) continue;
+                                if (strcmp(c->structs[i].fnames[j], n->member.field) == 0) continue;
+                                int d = CompLevenshteinDistance(n->member.field, c->structs[i].fnames[j]);
+                                if (d > 0 && d < best_d && d <= (strlen(n->member.field) > 3 ? 2 : 1)) {
+                                    best_d = d;
+                                    best_sugg = c->structs[i].fnames[j];
+                                }
+                            }
+                            if (best_sugg) {
+                                char msg[256];
+                                snprintf(msg, sizeof(msg), "struct '%s' has no field '%s'. Did you mean '%s'?",
+                                         obj_t->name, n->member.field, best_sugg);
+                                extern int gStrictTypes;
+                                if (gStrictTypes || (c && c->is_static_mode)) {
+                                    TyperError(ctx, n->line, msg);
+                                }
                             }
                         }
                         break;
@@ -1207,6 +1378,12 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             break;
         }
 
+        case NNEW: {
+            const char *struct_name = n->newobj.name ? n->newobj.name : "Object";
+            result = TyperResolveName(c, struct_name);
+            break;
+        }
+
         case NFNDECL: {
             /* Annotate param types in env, infer body */
             TypeEnv *inner = EnvPush(env);
@@ -1214,12 +1391,13 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
                                      : StypeInternGet(c, STYPE_UNKNOWN, "");
             SType *param_stypes[32] = {0};
             for (int i = 0; i < n->fn.pc && i < 32; i++) {
-                if (n->fn.pnames && n->fn.ptypes) {
-                    SType *pt = TyperResolveName(c, n->fn.ptypes[i]);
-                    param_stypes[i] = pt;
-                    EnvSet(inner, n->fn.pnames[i], pt);
-                } else {
-                    param_stypes[i] = StypeInternGet(c, STYPE_UNKNOWN, "");
+                const char *pname = (n->fn.pnames) ? n->fn.pnames[i] : NULL;
+                const char *ptype = (n->fn.ptypes) ? n->fn.ptypes[i] : NULL;
+                SType *pt = (ptype && ptype[0]) ? TyperResolveName(c, ptype)
+                                                : StypeInternGet(c, STYPE_UNKNOWN, "");
+                param_stypes[i] = pt;
+                if (pname) {
+                    EnvSet(inner, pname, pt);
                 }
             }
 
@@ -1382,6 +1560,12 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
                 EnvFreeLocal(inner); EnvPop(inner);
             }
             result = arm_t ? arm_t : StypeInternGet(c, STYPE_VOID, "void");
+            break;
+        }
+
+        case NPRINT: {
+            if (n->single.expr) InferNode(ctx, env, n->single.expr);
+            result = StypeInternGet(c, STYPE_VOID, "void");
             break;
         }
 

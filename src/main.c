@@ -1892,16 +1892,27 @@ static void ParseSafetyFlags(int *argcptr, char ***argvptr) {
             gLto = 1;
         } else if (strcmp(argv[i], "--strict-types") == 0) {
             gStrictTypes = 1;
+            gTypeCheckingEnabled = 1;
         } else if (strcmp(argv[i], "--incremental") == 0) {
             gIncrementalTyping = 1;
             gTypeCheckingEnabled = 1;
-        } else if (strcmp(argv[i], "--parallel") == 0 || strcmp(argv[i], "-j") == 0) {
+        } else if (strcmp(argv[i], "--parallel") == 0) {
             gParallelCompilation = 1;
+        } else if (strcmp(argv[i], "-j") == 0) {
+            if (i + 1 < argc && argv[i+1][0] >= '0' && argv[i+1][0] <= '9') {
+                gParallelCompilation = atoi(argv[++i]);
+            } else {
+                gParallelCompilation = 1;
+            }
+            if (gParallelCompilation <= 0) gParallelCompilation = 1;
         } else if (strncmp(argv[i], "-j", 2) == 0 && strlen(argv[i]) > 2) {
             gParallelCompilation = atoi(argv[i] + 2);
             if (gParallelCompilation <= 0) gParallelCompilation = 1;
         } else if (strcmp(argv[i], "--jobs") == 0 && i + 1 < argc) {
             gParallelCompilation = atoi(argv[++i]);
+            if (gParallelCompilation <= 0) gParallelCompilation = 1;
+        } else if (strncmp(argv[i], "--jobs=", 7) == 0) {
+            gParallelCompilation = atoi(argv[i] + 7);
             if (gParallelCompilation <= 0) gParallelCompilation = 1;
         } else if (strcmp(argv[i], "--cross-target") == 0 && i + 1 < argc) {
             gCrossTarget = argv[i+1];

@@ -57,6 +57,36 @@ static int Match(Parser *p, TType t) {
   return 1;
 }
 
+static void ParseSynchronize(Parser *p) {
+  while (!Check(p, TEOF)) {
+    if (p->cur.type == TSEMI) {
+      Token semi = Consume(p);
+      TokFree(&semi);
+      return;
+    }
+    switch (p->cur.type) {
+      case TFN:
+      case TLET:
+      case TCONST:
+      case TIF:
+      case TWHILE:
+      case TFOR:
+      case TRETURN:
+      case TSTRUCT:
+      case TENUM:
+      case TIMPORT:
+      case TTYPE:
+      case TINTERFACE:
+      case TRBRACE:
+        return;
+      default:
+        break;
+    }
+    Token discard = Consume(p);
+    TokFree(&discard);
+  }
+}
+
 typedef struct {
   char *buf;
   size_t len;
@@ -386,8 +416,10 @@ static Node *ParseBlock(Parser *p) {
   blk->block.count = 0;
   while (!Check(p, TRBRACE) && !Check(p, TEOF)) {
     Node *s = ParseStmt(p);
-    if (!s)
+    if (!s) {
+      ParseSynchronize(p);
       continue;
+    }
     if (blk->block.count == cap) {
       cap *= 2;
       blk->block.stmts = realloc(blk->block.stmts, cap * sizeof(Node *));
@@ -4549,8 +4581,10 @@ Node *Parse(const char *source, int *haderror) {
   prog->block.count = 0;
   while (!Check(&p, TEOF)) {
     Node *s = ParseStmt(&p);
-    if (!s)
+    if (!s) {
+      ParseSynchronize(&p);
       continue;
+    }
     if (prog->block.count == cap) {
       cap *= 2;
       prog->block.stmts = realloc(prog->block.stmts, cap * sizeof(Node *));

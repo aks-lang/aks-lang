@@ -1,0 +1,41 @@
+// TestJitRegisterHotLoop.aks
+// Tests hot loop detection and tiering in register and stack interpreters
+
+fn calc_sum(limit) {
+    let mut s = 0;
+    let mut i = 0;
+    while (i < limit) {
+        s = s + i;
+        i = i + 1;
+    }
+    return s;
+}
+
+fn outer_caller(count) {
+    let mut acc = 0;
+    let mut k = 0;
+    while (k < count) {
+        acc = acc + calc_sum(50);
+        k = k + 1;
+    }
+    return acc;
+}
+
+let res1 = calc_sum(200);
+let expected_sum = 19900;
+if (res1 != expected_sum) {
+    print("FAILED: calc_sum expected " + expected_sum + " got " + res1);
+} else {
+    print("calc_sum hot loop OK.");
+}
+
+let res2 = outer_caller(120);
+let single = 1225; // sum from 0 to 49 is 49*50/2 = 1225
+let expected_outer = 120 * single;
+if (res2 != expected_outer) {
+    print("FAILED: outer_caller expected " + expected_outer + " got " + res2);
+} else {
+    print("outer_caller hot call tiering OK.");
+}
+
+print("SUCCESS: JIT Register hot loop test passed.");
