@@ -1,0 +1,48 @@
+fn Main() {
+    println("Testing Dynamic In-Memory Header Import and FFI Binding...");
+
+    let header_src = "double sqrt(double x); double pow(double base, double exp); double sin(double x);";
+    let hdr = CImportParseHeaderC(header_src);
+    assert(hdr != null, "Header parser returned null");
+
+    let sqrt_sig = hdr.sqrt;
+    let pow_sig = hdr.pow;
+    let sin_sig = hdr.sin;
+
+    assert(sqrt_sig == "d(d)", "sqrt signature mismatch");
+    assert(pow_sig == "d(dd)", "pow signature mismatch");
+    assert(sin_sig == "d(d)", "sin signature mismatch");
+
+    let lib = FFILoad("msvcrt.dll");
+    assert(lib != 0, "Failed to load msvcrt.dll");
+
+    let sqrt_val = FFICall(lib, "sqrt", hdr.sqrt, [49.0]);
+    let sqrt_diff = sqrt_val - 7.0;
+    if (sqrt_diff < 0.0) { sqrt_diff = -sqrt_diff; }
+    assert(sqrt_diff < 0.0001, "sqrt(49.0) result mismatch");
+
+    let pow_val = FFICall(lib, "pow", hdr.pow, [3.0, 4.0]);
+    let pow_diff = pow_val - 81.0;
+    if (pow_diff < 0.0) { pow_diff = -pow_diff; }
+    assert(pow_diff < 0.0001, "pow(3.0, 4.0) result mismatch");
+
+    let sin_val = FFICall(lib, "sin", hdr.sin, [0.0]);
+    let sin_diff = sin_val - 0.0;
+    if (sin_diff < 0.0) { sin_diff = -sin_diff; }
+    assert(sin_diff < 0.0001, "sin(0.0) result mismatch");
+
+    FFIFree(lib);
+
+    // Test high-level prelude CImportHeader and CModule
+    let cmod = CImportHeader("msvcrt.dll", header_src);
+    assert(cmod != null, "CImportHeader returned null");
+    let cmod_sqrt = cmod.Call("sqrt", [64.0]);
+    let cmod_diff = cmod_sqrt - 8.0;
+    if (cmod_diff < 0.0) { cmod_diff = -cmod_diff; }
+    assert(cmod_diff < 0.0001, "CModule.Call sqrt(64.0) result mismatch");
+    cmod.Close();
+
+    println("Dynamic In-Memory Header Import and FFI Binding passed successfully!");
+}
+
+Main();

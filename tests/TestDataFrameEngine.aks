@@ -1,0 +1,52 @@
+// Testing Columnar DataFrame Engine using built-in prelude implementations
+
+fn Main() {
+    println("Testing Columnar DataFrame Engine...");
+
+    let raw_csv = "dept,engineer,salary,score\nEng,Alice,120000,98.5\nDesign,Bob,95000,91.0\nEng,Charlie,135000,99.2\nProduct,Diana,110000,94.5\nEng,Evan,115000,92.0\nDesign,Fiona,102000,96.8\n";
+
+    let df = DataFrameFromCsv(raw_csv);
+    assert(df.RowCount() == 6, "Row count should be 6");
+    assert(df.ColumnCount() == 4, "Column count should be 4");
+
+    let cols = df.Columns();
+    assert(cols[0] == "dept", "Column 0 name mismatch");
+    assert(cols[1] == "engineer", "Column 1 name mismatch");
+    assert(cols[2] == "salary", "Column 2 name mismatch");
+    assert(cols[3] == "score", "Column 3 name mismatch");
+
+    let row2 = df.Row(2);
+    assert(row2[0] == "Eng", "Row 2 dept mismatch");
+    assert(row2[1] == "Charlie", "Row 2 engineer mismatch");
+    assert(row2[2] == 135000, "Row 2 salary mismatch");
+
+    let filtered = df.Filter("dept", fn(d) { return d == "Eng"; });
+    assert(filtered.RowCount() == 3, "Filtered Eng row count should be 3");
+
+    let sorted_asc = df.SortBy("salary", true);
+    assert(sorted_asc.Col("engineer")[0] == "Bob", "Lowest salary should be Bob");
+    assert(sorted_asc.Col("salary")[0] == 95000, "Lowest salary value mismatch");
+
+    let sorted_desc = df.SortBy("salary", false);
+    assert(sorted_desc.Col("engineer")[0] == "Charlie", "Highest salary should be Charlie");
+    assert(sorted_desc.Col("salary")[0] == 135000, "Highest salary value mismatch");
+
+    let grouped_mean = df.GroupBy("dept", "salary", "mean");
+    assert(grouped_mean.RowCount() == 3, "Group by dept count should be 3");
+    let eng_mean = grouped_mean.Col("salary_mean")[0];
+    let diff = eng_mean - 123333.3333;
+    if (diff < 0.0) { diff = -diff; }
+    assert(diff < 1.0, "Eng mean salary calculation mismatch");
+
+    let grouped_count = df.GroupBy("dept", "salary", "count");
+    assert(grouped_count.Col("salary_count")[0] == 3.0, "Eng group count mismatch");
+
+    let exported_csv = df.ToCsv();
+    let reloaded = DataFrameFromCsv(exported_csv);
+    assert(reloaded.RowCount() == 6, "Reloaded row count mismatch");
+    assert(reloaded.Col("salary")[2] == 135000, "Reloaded data value mismatch");
+
+    println("Columnar DataFrame Engine passed successfully!");
+}
+
+Main();

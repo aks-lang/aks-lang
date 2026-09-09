@@ -1,0 +1,89 @@
+// Testing Scientific ODE Solvers, Multidimensional Optimization, and Quadrature Suite
+// Tests the built-in prelude SolveOdeRk4, SolveOdeSystemRk4, OptimizeNelderMead, RootsNewtonRaphson, IntegrateSimpson
+
+fn TestExponentialDecayOde() {
+    let decay_fn = fn(t, y) {
+        return (0.0 - 0.5) * y;
+    };
+
+    let res = SolveOdeRk4(decay_fn, 10.0, 0.0, 2.0, 100);
+    let final_y = res.final;
+    let expected = 3.678794;
+    let diff = final_y - expected;
+    if (diff < 0.0) { diff = -diff; }
+    assert(diff < 0.001, "RK4 decay integration error exceeded tolerance");
+}
+
+fn TestCoupledHarmonicOscillator() {
+    let oscillator_fn = fn(t, y) {
+        let dy0 = y[1];
+        let dy1 = -y[0];
+        return [dy0, dy1];
+    };
+
+    let res = SolveOdeSystemRk4(oscillator_fn, [1.0, 0.0], 0.0, 3.14159265, 200);
+    let final_state = res.final;
+    let final_pos = final_state[0];
+    let final_vel = final_state[1];
+
+    let pos_diff = final_pos - (-1.0);
+    if (pos_diff < 0.0) { pos_diff = -pos_diff; }
+    let vel_diff = final_vel - 0.0;
+    if (vel_diff < 0.0) { vel_diff = -vel_diff; }
+
+    assert(pos_diff < 0.005, "Harmonic oscillator position mismatch at t = pi");
+    assert(vel_diff < 0.005, "Harmonic oscillator velocity mismatch at t = pi");
+}
+
+fn TestNelderMeadOptimization() {
+    let objective = fn(p) {
+        let dx = p[0] - 3.0;
+        let dy = p[1] - (-5.0);
+        return dx * dx + dy * dy;
+    };
+
+    let opt = OptimizeNelderMead(objective, [0.0, 0.0], 200, 0.00001);
+    let best = opt.best_params;
+    let x_err = best[0] - 3.0;
+    if (x_err < 0.0) { x_err = -x_err; }
+    let y_err = best[1] - (-5.0);
+    if (y_err < 0.0) { y_err = -y_err; }
+
+    assert(x_err < 0.01, "Nelder-Mead X parameter optimization failed");
+    assert(y_err < 0.01, "Nelder-Mead Y parameter optimization failed");
+    assert(opt.best_cost < 0.001, "Nelder-Mead cost tolerance exceeded");
+}
+
+fn TestNewtonRaphsonRootFinding() {
+    let f = fn(x) { return x * x * x - 2.0 * x - 5.0; };
+    let df = fn(x) { return 3.0 * x * x - 2.0; };
+
+    let root = RootsNewtonRaphson(f, df, 2.0, 50, 0.000001);
+    let err = root - 2.09455148;
+    if (err < 0.0) { err = -err; }
+
+    assert(err < 0.0001, "Newton-Raphson root finding failed to converge");
+}
+
+fn TestSimpsonQuadrature() {
+    let parabola = fn(x) { return x * x; };
+    let area = IntegrateSimpson(parabola, 0.0, 3.0, 60);
+    let diff = area - 9.0;
+    if (diff < 0.0) { diff = -diff; }
+
+    assert(diff < 0.0001, "Simpson composite quadrature integration error");
+}
+
+fn Main() {
+    println("Testing Scientific ODE Suite...");
+
+    TestExponentialDecayOde();
+    TestCoupledHarmonicOscillator();
+    TestNelderMeadOptimization();
+    TestNewtonRaphsonRootFinding();
+    TestSimpsonQuadrature();
+
+    println("Testing Scientific ODE Suite passed successfully!");
+}
+
+Main();

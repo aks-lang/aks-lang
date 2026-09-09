@@ -622,9 +622,6 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                 break;
             case OPADD:
                 vtop--;
-                // Type specialize: check if both are integer
-                JITEmitTypeGuard(&buf, vtop - 1, 0xFFF1, step->ipoffset, patches, &patchcount);
-                JITEmitTypeGuard(&buf, vtop, 0xFFF1, step->ipoffset, patches, &patchcount);
                 JITEmitLoadArg(&buf, vtop - 1, 0);
                 JITEmitLoadArg(&buf, vtop, 1);
                 JITEmitCall(&buf, (void*)JITHelperAdd);
@@ -632,8 +629,6 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                 break;
             case OPSUB:
                 vtop--;
-                JITEmitTypeGuard(&buf, vtop - 1, 0xFFF1, step->ipoffset, patches, &patchcount);
-                JITEmitTypeGuard(&buf, vtop, 0xFFF1, step->ipoffset, patches, &patchcount);
                 JITEmitLoadArg(&buf, vtop - 1, 0);
                 JITEmitLoadArg(&buf, vtop, 1);
                 JITEmitCall(&buf, (void*)JITHelperSub);
@@ -641,8 +636,6 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                 break;
             case OPMUL:
                 vtop--;
-                JITEmitTypeGuard(&buf, vtop - 1, 0xFFF1, step->ipoffset, patches, &patchcount);
-                JITEmitTypeGuard(&buf, vtop, 0xFFF1, step->ipoffset, patches, &patchcount);
                 JITEmitLoadArg(&buf, vtop - 1, 0);
                 JITEmitLoadArg(&buf, vtop, 1);
                 JITEmitCall(&buf, (void*)JITHelperMul);

@@ -27,6 +27,7 @@
 #include "typer.h"
 #include "staticcodegen.h"
 #include "wasmcodegen.h"
+#include "nostdcodegen.h"
 
 #include <time.h>
 static int ExecuteRunBinary(const char *binarypath);
@@ -365,6 +366,7 @@ static void PrintUsage(const char *programname) {
     printf("  %s compile-aot <file.aks> <out.exe|out.c>       Compile source to standalone native executable or C\n", programname);
     printf("  %s static <build|run> <file.aks> [-o <out>]     Compile directly to LLVM IR and native binary\n", programname);
     printf("  %s wasm <file.aks> [-o <output.wat>]            Compile source to WebAssembly text format (WAT)\n", programname);
+    printf("  %s compile-nostd <file.aks> [-o <out.c>]        Compile source to freestanding bare-metal C\n", programname);
     printf("  %s profile <file.aks>                           Execute script with instruction profiling\n", programname);
     printf("\nQuality & Testing Tools:\n");
     printf("  %s test [file.aks] [--coverage]                 Run test functions and optional code coverage report\n", programname);
@@ -2265,6 +2267,45 @@ int main(int argc, char **argv) {
                 return 0;
             } else {
                 fprintf(stderr, "Error: WASM codegen failed for '%s'\n", srcfile);
+                return 1;
+            }
+        } else if (strcmp(command, "compile-nostd") == 0) {
+            if (argc < 3) {
+                fprintf(stderr, "Usage: %s compile-nostd <file.aks> [-o output.c]\n", argv[0]);
+                return 1;
+            }
+            const char *srcfile = argv[2];
+            const char *outfile = "output.c";
+            for (int i = 3; i < argc; i++) {
+                if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+                    outfile = argv[i+1];
+                    i++;
+                } else if (argv[i][0] != '-') {
+                    outfile = argv[i];
+                }
+            }
+            char *rawsource = ReadFileToStr(srcfile);
+            if (!rawsource) {
+                fprintf(stderr, "Error: Could not read '%s'\n", srcfile);
+                return 1;
+            }
+            int parseError = 0;
+            Node *ast = Parse(rawsource, &parseError);
+            free(rawsource);
+            if (parseError || !ast) {
+                if (ast) NodeFree(ast);
+                fprintf(stderr, "Error: Parse failed for '%s'\n", srcfile);
+                return 1;
+            }
+            Compiler *sc = CompNew();
+            int ok = EmitNoStdCModule(sc, ast, outfile);
+            NodeFree(ast);
+            CompFree(sc);
+            if (ok) {
+                printf("[nostd] Freestanding bare-metal C module written to: %s\n", outfile);
+                return 0;
+            } else {
+                fprintf(stderr, "Error: Freestanding codegen failed for '%s'\n", srcfile);
                 return 1;
             }
         } else if (strcmp(command, "static") == 0) {

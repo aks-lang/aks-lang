@@ -1,0 +1,77 @@
+fn GenerateRandomArray(size, seed) {
+    let arr = [];
+    let state = seed;
+    for (let i = 0; i < size; i = i + 1) {
+        state = (state * 1103515245 + 12345) % 2147483647;
+        if (state < 0) { state = -state; }
+        let val = (state % 10000) / 10.0;
+        append(arr, val);
+    }
+    return arr;
+}
+
+fn GenerateMatrix(n, seed) {
+    let mat = [];
+    let state = seed;
+    for (let i = 0; i < n; i = i + 1) {
+        let row = [];
+        for (let j = 0; j < n; j = j + 1) {
+            state = (state * 1103515245 + 12345) % 2147483647;
+            if (state < 0) { state = -state; }
+            let val = (state % 100) / 10.0;
+            append(row, val);
+        }
+        append(mat, row);
+    }
+    return mat;
+}
+
+fn TestRawCompute() {
+    println("Testing Raw Compute Performance...");
+
+    // 1. Vector Dot Product Benchmark (100,000 elements)
+    let size = 100000;
+    let v1 = GenerateRandomArray(size, 1234);
+    let v2 = GenerateRandomArray(size, 5678);
+
+    let t0 = TimerNowNanos();
+    let dot = FastDotProduct(v1, v2);
+    let t1 = TimerNowNanos();
+    let dot_ms = (t1 - t0) / 1000000.0;
+    println("Dot product (100,000 elements): " + dot + " in " + dot_ms + " ms");
+    assert(dot > 0.0, "Dot product computation failed");
+
+    // 2. Cache-Tiled AVX2 Matrix Multiplication (128x128)
+    let dim = 128;
+    let A = GenerateMatrix(dim, 42);
+    let B = GenerateMatrix(dim, 84);
+
+    let m0 = TimerNowNanos();
+    let C = FastMatMul2D(A, B);
+    let m1 = TimerNowNanos();
+    let mat_ms = (m1 - m0) / 1000000.0;
+    println("Matrix multiply (" + dim + "x" + dim + ") C[0][0]: " + C[0][0] + " in " + mat_ms + " ms");
+    assert(C[0][0] > 0.0, "Matrix multiplication failed");
+
+    // 3. Dual-Pivot In-Place QuickSort (50,000 elements)
+    let sort_data = GenerateRandomArray(50000, 9999);
+    let s0 = TimerNowNanos();
+    let sorted = FastArraySort(sort_data);
+    let s1 = TimerNowNanos();
+    let sort_ms = (s1 - s0) / 1000000.0;
+    println("Array sort (50,000 elements) in " + sort_ms + " ms");
+    assert(sorted[0] <= sorted[1], "Sort verification failed at index 0");
+    assert(sorted[49998] <= sorted[49999], "Sort verification failed at last index");
+
+    // 4. Parallel Reduction
+    let r0 = TimerNowNanos();
+    let sum_val = FastParallelReduce(v1, "+");
+    let r1 = TimerNowNanos();
+    let red_ms = (r1 - r0) / 1000000.0;
+    println("Parallel sum reduction: " + sum_val + " in " + red_ms + " ms");
+    assert(sum_val > 0.0, "Parallel reduction failed");
+
+    println("Raw compute performance tests passed successfully!");
+}
+
+TestRawCompute();

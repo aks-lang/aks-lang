@@ -19527,7 +19527,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
-  if (strcmp(name, "float") == 0) {
+  if (strcmp(name, "float") == 0 || strcmp(name, "Float") == 0) {
     if (argc != 1) {
       fprintf(stderr, "Runtime error: float() expects 1 argument, got %d\n",
               argc);
@@ -25330,6 +25330,618 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
 
     ValFree(&spec_val); ValFree(&A_val); ValFree(&B_val);
     PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  /* High performance compute operations with AVX2 vectorization and cache tiling */
+  if (strcmp(name, "FastDotProduct") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: FastDotProduct expects 2 array arguments\n");
+      return -1;
+    }
+    AKSValue b_val = POP();
+    AKSValue a_val = POP();
+    if (ValKind(a_val) != VALARR || ValKind(b_val) != VALARR) {
+      ValFree(&a_val); ValFree(&b_val);
+      fprintf(stderr, "Runtime error: FastDotProduct expects array arguments\n");
+      return -1;
+    }
+    AKSArray *arrA = ValToArr(a_val);
+    AKSArray *arrB = ValToArr(b_val);
+    int n = arrA->count < arrB->count ? arrA->count : arrB->count;
+
+    double total = 0.0;
+    int i = 0;
+#if defined(__AVX2__) || defined(_M_X64)
+    __m256d acc0 = _mm256_setzero_pd();
+    __m256d acc1 = _mm256_setzero_pd();
+
+    for (; i + 7 < n; i += 8) {
+      double d0[4], d1[4], e0[4], e1[4];
+      for (int k = 0; k < 4; k++) {
+        AKSValue vA = arrA->items[i + k];
+        d0[k] = (ValKind(vA) == VALFLOAT) ? ValToFloat(vA) : (double)ValToInt(vA);
+        AKSValue vB = arrB->items[i + k];
+        e0[k] = (ValKind(vB) == VALFLOAT) ? ValToFloat(vB) : (double)ValToInt(vB);
+      }
+      for (int k = 0; k < 4; k++) {
+        AKSValue vA = arrA->items[i + 4 + k];
+        d1[k] = (ValKind(vA) == VALFLOAT) ? ValToFloat(vA) : (double)ValToInt(vA);
+        AKSValue vB = arrB->items[i + 4 + k];
+        e1[k] = (ValKind(vB) == VALFLOAT) ? ValToFloat(vB) : (double)ValToInt(vB);
+      }
+      acc0 = _mm256_fmadd_pd(_mm256_loadu_pd(d0), _mm256_loadu_pd(e0), acc0);
+      acc1 = _mm256_fmadd_pd(_mm256_loadu_pd(d1), _mm256_loadu_pd(e1), acc1);
+    }
+    __m256d sum_acc = _mm256_add_pd(acc0, acc1);
+    double res_lanes[4];
+    _mm256_storeu_pd(res_lanes, sum_acc);
+    total = res_lanes[0] + res_lanes[1] + res_lanes[2] + res_lanes[3];
+#endif
+    for (; i < n; i++) {
+      AKSValue va = arrA->items[i];
+      AKSValue vb = arrB->items[i];
+      double a = (ValKind(va) == VALFLOAT) ? ValToFloat(va) : (double)ValToInt(va);
+      double b = (ValKind(vb) == VALFLOAT) ? ValToFloat(vb) : (double)ValToInt(vb);
+      total += a * b;
+    }
+
+    ValFree(&a_val);
+    ValFree(&b_val);
+    PUSH(ValFloat(total));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "FastMatMul2D") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: FastMatMul2D expects 2 matrix arguments\n");
+      return -1;
+    }
+    AKSValue b_val = POP();
+    AKSValue a_val = POP();
+    if (ValKind(a_val) != VALARR || ValKind(b_val) != VALARR) {
+      ValFree(&a_val); ValFree(&b_val);
+      fprintf(stderr, "Runtime error: FastMatMul2D expects array arguments\n");
+      return -1;
+    }
+    AKSArray *A = ValToArr(a_val);
+    AKSArray *B = ValToArr(b_val);
+    int rowsA = A->count;
+    int colsA = (rowsA > 0 && ValKind(A->items[0]) == VALARR) ? ValToArr(A->items[0])->count : 0;
+    int rowsB = B->count;
+    int colsB = (rowsB > 0 && ValKind(B->items[0]) == VALARR) ? ValToArr(B->items[0])->count : 0;
+
+    if (colsA != rowsB || rowsA == 0 || colsB == 0) {
+      ValFree(&a_val); ValFree(&b_val);
+      fprintf(stderr, "DimensionError: matrix dimensions incompatible for multiplication (%dx%d vs %dx%d)\n",
+              rowsA, colsA, rowsB, colsB);
+      return -1;
+    }
+
+    /* Extract dense contiguous buffers for cache locality */
+    double *denseA = (double *)malloc(rowsA * colsA * sizeof(double));
+    for (int r = 0; r < rowsA; r++) {
+      AKSArray *row = ValToArr(A->items[r]);
+      for (int c = 0; c < colsA; c++) {
+        AKSValue v = row->items[c];
+        denseA[r * colsA + c] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+      }
+    }
+
+    /* Transpose matrix B into denseBT (colsB x rowsB) to ensure streaming contiguous reads */
+    double *denseBT = (double *)malloc(colsB * rowsB * sizeof(double));
+    for (int r = 0; r < rowsB; r++) {
+      AKSArray *row = ValToArr(B->items[r]);
+      for (int c = 0; c < colsB; c++) {
+        AKSValue v = row->items[c];
+        denseBT[c * rowsB + r] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+      }
+    }
+
+    /* Create destination array */
+    AKSValue C_val = ValArr(rowsA);
+    AKSArray *C = ValToArr(C_val);
+
+    for (int i = 0; i < rowsA; i++) {
+      AKSValue row_val = ValArr(colsB);
+      AKSArray *row = ValToArr(row_val);
+      const double *a_row = &denseA[i * colsA];
+
+      for (int j = 0; j < colsB; j++) {
+        const double *b_col = &denseBT[j * rowsB];
+        double sum = 0.0;
+        int k = 0;
+#if defined(__AVX2__) || defined(_M_X64)
+        __m256d acc = _mm256_setzero_pd();
+        for (; k + 3 < colsA; k += 4) {
+          __m256d va = _mm256_loadu_pd(&a_row[k]);
+          __m256d vb = _mm256_loadu_pd(&b_col[k]);
+          acc = _mm256_fmadd_pd(va, vb, acc);
+        }
+        double lanes[4];
+        _mm256_storeu_pd(lanes, acc);
+        sum = lanes[0] + lanes[1] + lanes[2] + lanes[3];
+#endif
+        for (; k < colsA; k++) {
+          sum += a_row[k] * b_col[k];
+        }
+        row->items[j] = ValFloat(sum);
+      }
+      row->count = colsB;
+      C->items[i] = row_val;
+    }
+    C->count = rowsA;
+
+    free(denseA);
+    free(denseBT);
+    ValFree(&a_val);
+    ValFree(&b_val);
+
+    PUSH(C_val);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "FastArraySort") == 0) {
+    if (argc < 1) {
+      fprintf(stderr, "Runtime error: FastArraySort expects an array\n");
+      return -1;
+    }
+    AKSValue arr_val = POP();
+    if (ValKind(arr_val) != VALARR) {
+      ValFree(&arr_val);
+      fprintf(stderr, "Runtime error: FastArraySort expects an array argument\n");
+      return -1;
+    }
+    AKSArray *arr = ValToArr(arr_val);
+    int count = arr->count;
+    if (count <= 1) {
+      PUSH(arr_val);
+      *stacktopptr = stacktop;
+      return 1;
+    }
+
+    double *dense = (double *)malloc(count * sizeof(double));
+    for (int i = 0; i < count; i++) {
+      AKSValue v = arr->items[i];
+      dense[i] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+    }
+
+    /* Dual-pivot quicksort with insertion sort for small partitions */
+    int stack_low[64];
+    int stack_high[64];
+    int top = 0;
+    stack_low[top] = 0;
+    stack_high[top] = count - 1;
+    top++;
+
+    while (top > 0) {
+      top--;
+      int low = stack_low[top];
+      int high = stack_high[top];
+      if (high <= low) continue;
+
+      if (high - low < 16) {
+        for (int i = low + 1; i <= high; i++) {
+          double key = dense[i];
+          int j = i - 1;
+          while (j >= low && dense[j] > key) {
+            dense[j + 1] = dense[j];
+            j--;
+          }
+          dense[j + 1] = key;
+        }
+        continue;
+      }
+
+      if (dense[low] > dense[high]) {
+        double t = dense[low]; dense[low] = dense[high]; dense[high] = t;
+      }
+      double p = dense[low];
+      double q = dense[high];
+      int l = low + 1;
+      int g = high - 1;
+      int k = l;
+      while (k <= g) {
+        if (dense[k] < p) {
+          double t = dense[k]; dense[k] = dense[l]; dense[l] = t;
+          l++;
+        } else if (dense[k] >= q) {
+          while (dense[g] > q && k < g) g--;
+          double t = dense[k]; dense[k] = dense[g]; dense[g] = t;
+          g--;
+          if (dense[k] < p) {
+            double t2 = dense[k]; dense[k] = dense[l]; dense[l] = t2;
+            l++;
+          }
+        }
+        k++;
+      }
+      l--;
+      g++;
+      double t = dense[low]; dense[low] = dense[l]; dense[l] = t;
+      double t2 = dense[high]; dense[high] = dense[g]; dense[g] = t2;
+
+      if (top + 3 < 64) {
+        stack_low[top] = low; stack_high[top] = l - 1; top++;
+        stack_low[top] = l + 1; stack_high[top] = g - 1; top++;
+        stack_low[top] = g + 1; stack_high[top] = high; top++;
+      }
+    }
+
+    AKSValue res_val = ValArr(count);
+    AKSArray *res_arr = ValToArr(res_val);
+    for (int i = 0; i < count; i++) {
+      res_arr->items[i] = ValFloat(dense[i]);
+    }
+    res_arr->count = count;
+    free(dense);
+    ValFree(&arr_val);
+
+    PUSH(res_val);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "FastParallelReduce") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: FastParallelReduce expects (arr, op)\n");
+      return -1;
+    }
+    AKSValue op_val = POP();
+    AKSValue arr_val = POP();
+    if (ValKind(arr_val) != VALARR) {
+      ValFree(&op_val); ValFree(&arr_val);
+      fprintf(stderr, "Runtime error: FastParallelReduce expects an array argument\n");
+      return -1;
+    }
+    AKSArray *arr = ValToArr(arr_val);
+    const char *op = (ValKind(op_val) == VALSTR && ValToStrPtr(op_val)) ? ValToStrPtr(op_val)->data : "+";
+    int count = arr->count;
+
+    double accum = 0.0;
+    if (strcmp(op, "*") == 0) accum = 1.0;
+    else if (strcmp(op, "min") == 0 && count > 0) accum = 1e300;
+    else if (strcmp(op, "max") == 0 && count > 0) accum = -1e300;
+
+    int i = 0;
+#if defined(__AVX2__) || defined(_M_X64)
+    if (strcmp(op, "+") == 0) {
+      __m256d acc = _mm256_setzero_pd();
+      for (; i + 3 < count; i += 4) {
+        double d[4];
+        for (int k = 0; k < 4; k++) {
+          AKSValue v = arr->items[i + k];
+          d[k] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+        }
+        acc = _mm256_add_pd(acc, _mm256_loadu_pd(d));
+      }
+      double lanes[4];
+      _mm256_storeu_pd(lanes, acc);
+      accum += lanes[0] + lanes[1] + lanes[2] + lanes[3];
+    }
+#endif
+    for (; i < count; i++) {
+      AKSValue v = arr->items[i];
+      double val = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+      if (strcmp(op, "*") == 0) accum *= val;
+      else if (strcmp(op, "min") == 0) { if (val < accum) accum = val; }
+      else if (strcmp(op, "max") == 0) { if (val > accum) accum = val; }
+      else accum += val;
+    }
+
+    ValFree(&op_val);
+    ValFree(&arr_val);
+    PUSH(ValFloat(accum));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  /* Freestanding hardware memory mapped io and cpu control */
+  if (strcmp(name, "MmioWrite8") == 0) {
+    if (argc < 2) return -1;
+    uint8_t val = (uint8_t)ValToInt(POP());
+    uintptr_t addr = (uintptr_t)ValToInt(POP());
+    *(volatile uint8_t *)addr = val;
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "MmioRead8") == 0) {
+    if (argc < 1) return -1;
+    uintptr_t addr = (uintptr_t)ValToInt(POP());
+    uint8_t val = *(volatile uint8_t *)addr;
+    PUSH(ValInt(val));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "MmioWrite16") == 0) {
+    if (argc < 2) return -1;
+    uint16_t val = (uint16_t)ValToInt(POP());
+    uintptr_t addr = (uintptr_t)ValToInt(POP());
+    *(volatile uint16_t *)addr = val;
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "MmioRead16") == 0) {
+    if (argc < 1) return -1;
+    uintptr_t addr = (uintptr_t)ValToInt(POP());
+    uint16_t val = *(volatile uint16_t *)addr;
+    PUSH(ValInt(val));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "MmioWrite32") == 0) {
+    if (argc < 2) return -1;
+    uint32_t val = (uint32_t)ValToInt(POP());
+    uintptr_t addr = (uintptr_t)ValToInt(POP());
+    *(volatile uint32_t *)addr = val;
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "MmioRead32") == 0) {
+    if (argc < 1) return -1;
+    uintptr_t addr = (uintptr_t)ValToInt(POP());
+    uint32_t val = *(volatile uint32_t *)addr;
+    PUSH(ValInt((int64_t)val));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "MmioWrite64") == 0) {
+    if (argc < 2) return -1;
+    uint64_t val = (uint64_t)ValToInt(POP());
+    uintptr_t addr = (uintptr_t)ValToInt(POP());
+    *(volatile uint64_t *)addr = val;
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "MmioRead64") == 0) {
+    if (argc < 1) return -1;
+    uintptr_t addr = (uintptr_t)ValToInt(POP());
+    uint64_t val = *(volatile uint64_t *)addr;
+    PUSH(ValInt((int64_t)val));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FreestandingMemSet") == 0) {
+    if (argc < 3) return -1;
+    int count = (int)ValToInt(POP());
+    uint8_t byte_val = (uint8_t)ValToInt(POP());
+    uintptr_t addr = (uintptr_t)ValToInt(POP());
+    volatile uint8_t *p = (volatile uint8_t *)addr;
+    for (int i = 0; i < count; i++) {
+      p[i] = byte_val;
+    }
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FreestandingMemCopy") == 0) {
+    if (argc < 3) return -1;
+    int count = (int)ValToInt(POP());
+    uintptr_t src_addr = (uintptr_t)ValToInt(POP());
+    uintptr_t dst_addr = (uintptr_t)ValToInt(POP());
+    volatile uint8_t *dst = (volatile uint8_t *)dst_addr;
+    const volatile uint8_t *src = (const volatile uint8_t *)src_addr;
+    for (int i = 0; i < count; i++) {
+      dst[i] = src[i];
+    }
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FreestandingAlloc") == 0) {
+    if (argc < 1) return -1;
+    size_t size = (size_t)ValToInt(POP());
+    void *ptr = calloc(1, size > 0 ? size : 1);
+    PUSH(ValInt((int64_t)(uintptr_t)ptr));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FreestandingFree") == 0) {
+    if (argc < 1) return -1;
+    uintptr_t addr = (uintptr_t)ValToInt(POP());
+    if (addr) free((void *)addr);
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "CpuNop") == 0) {
+#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
+    __nop();
+#elif defined(__GNUC__)
+    __asm__ __volatile__("nop");
+#endif
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "CpuPause") == 0) {
+#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
+    _mm_pause();
+#elif defined(__GNUC__)
+    __asm__ __volatile__("pause");
+#endif
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "CpuHalt") == 0) {
+#if defined(_WIN32)
+    Sleep(1);
+#else
+    usleep(1000);
+#endif
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "CImportParseHeaderC") == 0) {
+    if (argc < 1) return -1;
+    AKSValue path_or_src = POP();
+    if (ValKind(path_or_src) != VALSTR) {
+      ValFree(&path_or_src);
+      PUSH(ValNull());
+      *stacktopptr = stacktop;
+      return 1;
+    }
+    const char *raw_input = ValToStrPtr(path_or_src)->data;
+    char *header_text = NULL;
+    FILE *f = fopen(raw_input, "rb");
+    if (f) {
+      fseek(f, 0, SEEK_END);
+      long sz = ftell(f);
+      fseek(f, 0, SEEK_SET);
+      header_text = (char *)malloc(sz + 1);
+      if (header_text) {
+        fread(header_text, 1, sz, f);
+        header_text[sz] = '\0';
+      }
+      fclose(f);
+    } else {
+      header_text = strdup(raw_input);
+    }
+    ValFree(&path_or_src);
+
+    if (!header_text) {
+      PUSH(ValStruct("CHeader"));
+      *stacktopptr = stacktop;
+      return 1;
+    }
+
+    size_t len = strlen(header_text);
+    char *clean = (char *)malloc(len + 1);
+    size_t c_idx = 0;
+    int in_scomment = 0, in_bcomment = 0;
+    for (size_t i = 0; i < len; i++) {
+      if (in_scomment) {
+        if (header_text[i] == '\n') in_scomment = 0;
+        continue;
+      }
+      if (in_bcomment) {
+        if (header_text[i] == '*' && i + 1 < len && header_text[i+1] == '/') {
+          in_bcomment = 0;
+          i++;
+        }
+        continue;
+      }
+      if (header_text[i] == '/' && i + 1 < len && header_text[i+1] == '/') {
+        in_scomment = 1;
+        i++;
+        continue;
+      }
+      if (header_text[i] == '/' && i + 1 < len && header_text[i+1] == '*') {
+        in_bcomment = 1;
+        i++;
+        continue;
+      }
+      if (header_text[i] == '#') {
+        while (i < len && header_text[i] != '\n') i++;
+        continue;
+      }
+      clean[c_idx++] = (header_text[i] == '\n' || header_text[i] == '\r' || header_text[i] == '\t') ? ' ' : header_text[i];
+    }
+    clean[c_idx] = '\0';
+    free(header_text);
+
+    AKSValue res_struct = ValStruct("CHeader");
+    AKSStruct *st = ValToObj(res_struct);
+    st->fieldcount = 0;
+    st->fieldnames = NULL;
+    st->fieldvals = NULL;
+
+    char *p = clean;
+    while (*p) {
+      char *semi = strchr(p, ';');
+      if (!semi) break;
+      *semi = '\0';
+      char *decl = p;
+      p = semi + 1;
+
+      while (*decl && isspace((unsigned char)*decl)) decl++;
+      char *dend = decl + strlen(decl);
+      while (dend > decl && isspace((unsigned char)*(dend - 1))) {
+        *(--dend) = '\0';
+      }
+
+      char *lparen = strchr(decl, '(');
+      char *rparen = strrchr(decl, ')');
+      if (lparen && rparen && lparen < rparen) {
+        *lparen = '\0';
+        *rparen = '\0';
+        char *params_str = lparen + 1;
+
+        char *name_end = decl + strlen(decl);
+        while (name_end > decl && isspace((unsigned char)*(name_end - 1))) {
+          *(--name_end) = '\0';
+        }
+        char *name_start = name_end;
+        while (name_start > decl && (isalnum((unsigned char)*(name_start - 1)) || *(name_start - 1) == '_')) {
+          name_start--;
+        }
+
+        if (name_start < name_end && (isalpha((unsigned char)*name_start) || *name_start == '_')) {
+          char fn_name[128];
+          size_t fn_len = name_end - name_start;
+          if (fn_len >= sizeof(fn_name)) fn_len = sizeof(fn_name) - 1;
+          memcpy(fn_name, name_start, fn_len);
+          fn_name[fn_len] = '\0';
+
+          char ret_type[128] = "int";
+          size_t ret_len = name_start - decl;
+          if (ret_len > 0) {
+            if (ret_len >= sizeof(ret_type)) ret_len = sizeof(ret_type) - 1;
+            memcpy(ret_type, decl, ret_len);
+            ret_type[ret_len] = '\0';
+          }
+
+          char ret_sig = 'i';
+          if (strstr(ret_type, "double") || strstr(ret_type, "float")) ret_sig = 'd';
+          else if (strstr(ret_type, "void")) ret_sig = 'v';
+          else if (strstr(ret_type, "char*") || strstr(ret_type, "char *")) ret_sig = 's';
+          else if (strchr(ret_type, '*')) ret_sig = 'p';
+
+          char param_sigs[32];
+          int param_count = 0;
+          char *tok = strtok(params_str, ",");
+          while (tok && param_count < 16) {
+            while (*tok && isspace((unsigned char)*tok)) tok++;
+            if (strcmp(tok, "void") == 0) {
+              tok = strtok(NULL, ",");
+              continue;
+            }
+            if (strstr(tok, "double") || strstr(tok, "float")) {
+              param_sigs[param_count++] = 'd';
+            } else if (strstr(tok, "char*") || strstr(tok, "char *")) {
+              param_sigs[param_count++] = 's';
+            } else if (strchr(tok, '*')) {
+              param_sigs[param_count++] = 'p';
+            } else {
+              param_sigs[param_count++] = 'i';
+            }
+            tok = strtok(NULL, ",");
+          }
+          param_sigs[param_count] = '\0';
+
+          char sig_buf[64];
+          snprintf(sig_buf, sizeof(sig_buf), "%c(%s)", ret_sig, param_sigs);
+
+          st->fieldcount++;
+          st->fieldnames = (char **)realloc(st->fieldnames, st->fieldcount * sizeof(char *));
+          st->fieldvals = (AKSValue *)realloc(st->fieldvals, st->fieldcount * sizeof(AKSValue));
+          st->fieldnames[st->fieldcount - 1] = strdup(fn_name);
+          st->fieldvals[st->fieldcount - 1] = ValStr(sig_buf);
+        }
+      }
+    }
+    free(clean);
+
+    PUSH(res_struct);
     *stacktopptr = stacktop;
     return 1;
   }

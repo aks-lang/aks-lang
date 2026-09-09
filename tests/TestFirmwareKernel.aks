@@ -1,0 +1,38 @@
+// Bare metal firmware kernel for device peripherals
+fn UartInit(base, baud_divisor) {
+    MmioWrite32(base + 8, baud_divisor);
+    MmioWrite32(base + 12, 1);
+    return 0;
+}
+
+fn UartSendByte(base, byte_val) {
+    while ((MmioRead32(base + 4) & 1) == 0) {
+        CpuPause();
+    }
+    MmioWrite8(base, byte_val);
+    return 0;
+}
+
+fn TimerConfigure(base, match_ticks) {
+    MmioWrite32(base + 16, 0);
+    MmioWrite32(base + 20, match_ticks);
+    MmioWrite32(base + 24, 1);
+    return 0;
+}
+
+fn FirmwareMain() {
+    let uart_base = 1073741824;
+    let timer_base = 1073745920;
+
+    UartInit(uart_base, 115200);
+    TimerConfigure(timer_base, 1000);
+
+    UartSendByte(uart_base, 65);
+    UartSendByte(uart_base, 75);
+    UartSendByte(uart_base, 83);
+
+    CpuNop();
+    return 0;
+}
+
+FirmwareMain();

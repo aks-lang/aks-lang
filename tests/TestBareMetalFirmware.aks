@@ -1,0 +1,100 @@
+// Bare-Metal, Firmware and no_std execution validation suite
+
+fn TestMmioRegisters() {
+    let base = FreestandingAlloc(64);
+    assert(base > 0, "Failed to allocate simulated register memory space");
+
+    // Test 8-bit MMIO access
+    MmioWrite8(base + 0, 66);
+    let v8 = MmioRead8(base + 0);
+    assert(v8 == 66, "MMIO 8-bit read mismatch");
+
+    // Test 16-bit MMIO access
+    MmioWrite16(base + 2, 4660);
+    let v16 = MmioRead16(base + 2);
+    assert(v16 == 4660, "MMIO 16-bit read mismatch");
+
+    // Test 32-bit MMIO access
+    MmioWrite32(base + 4, 305419896);
+    let v32 = MmioRead32(base + 4);
+    assert(v32 == 305419896, "MMIO 32-bit read mismatch");
+
+    // Test 64-bit MMIO access
+    MmioWrite64(base + 8, 81985529216486895);
+    let v64 = MmioRead64(base + 8);
+    assert(v64 == 81985529216486895, "MMIO 64-bit read mismatch");
+
+    FreestandingFree(base);
+}
+
+fn TestFreestandingMemoryOperations() {
+    let size = 32;
+    let src = FreestandingAlloc(size);
+    let dst = FreestandingAlloc(size);
+
+    assert(src > 0, "Failed to allocate source memory buffer");
+    assert(dst > 0, "Failed to allocate destination memory buffer");
+
+    // Set source memory with byte 0xAA (170)
+    FreestandingMemSet(src, 170, size);
+    for (let i = 0; i < size; i = i + 1) {
+        let b = MmioRead8(src + i);
+        assert(b == 170, "FreestandingMemSet verification failed at offset " + i);
+    }
+
+    // Copy source buffer into destination buffer
+    FreestandingMemCopy(dst, src, size);
+    for (let j = 0; j < size; j = j + 1) {
+        let b_dst = MmioRead8(dst + j);
+        assert(b_dst == 170, "FreestandingMemCopy verification failed at offset " + j);
+    }
+
+    FreestandingFree(src);
+    FreestandingFree(dst);
+}
+
+fn TestCpuControlIntrinsics() {
+    // Verify CPU pipeline pause and nop instructions execute safely
+    CpuNop();
+    CpuPause();
+    CpuNop();
+}
+
+fn TestSimulatedDeviceDriver() {
+    let dev = FreestandingAlloc(64);
+    assert(dev > 0, "Failed to allocate device memory block");
+
+    // Device register map:
+    // Offset 0: Data register (TX/RX)
+    // Offset 4: Status register (Bit 0: TX Ready, Bit 1: RX Ready)
+    // Offset 8: Baud rate divisor register
+    // Offset 12: Control register (Bit 0: Enable, Bit 1: Interrupts)
+
+    // Configure peripheral device
+    MmioWrite32(dev + 8, 115200);
+    MmioWrite32(dev + 12, 3);
+    MmioWrite32(dev + 4, 1); // Mark TX ready
+
+    let status = MmioRead32(dev + 4);
+    assert((status & 1) != 0, "Peripheral TX ready bit not set");
+
+    // Transmit character 88 ('X')
+    MmioWrite8(dev + 0, 88);
+    let sent_char = MmioRead8(dev + 0);
+    assert(sent_char == 88, "Peripheral data register transmit error");
+
+    FreestandingFree(dev);
+}
+
+fn Main() {
+    println("Testing Bare Metal Firmware...");
+
+    TestMmioRegisters();
+    TestFreestandingMemoryOperations();
+    TestCpuControlIntrinsics();
+    TestSimulatedDeviceDriver();
+
+    println("Testing Bare Metal Firmware passed successfully!");
+}
+
+Main();

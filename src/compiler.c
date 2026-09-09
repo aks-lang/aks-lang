@@ -5094,38 +5094,40 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                 if (left->type == NIDENT) {
                     int slot = ResolveLocal(c, left->sval);
                     if (slot >= 0) {
-                        narrowedslot = slot;
-                        strncpy(originaltype, c->current->locals[slot].typename, sizeof(originaltype) - 1);
-                        
-                        char baseclean[64];
-                        strncpy(baseclean, originaltype, sizeof(baseclean) - 1);
-                        baseclean[sizeof(baseclean) - 1] = '\0';
-                        char *brace = strchr(baseclean, '{');
-                        if (brace) *brace = '\0';
-                        
                         char rstr[128];
                         GetNodeStr(right, rstr, sizeof(rstr));
-                        
-                        snprintf(c->current->locals[slot].typename, 63, "%s{_narrow_%s: _narrow_%s %s %s}",
-                                 baseclean, left->sval, left->sval, op, rstr);
+                        if (strcmp(rstr, "?") != 0) {
+                            narrowedslot = slot;
+                            strncpy(originaltype, c->current->locals[slot].typename, sizeof(originaltype) - 1);
+                            
+                            char baseclean[64];
+                            strncpy(baseclean, originaltype, sizeof(baseclean) - 1);
+                            baseclean[sizeof(baseclean) - 1] = '\0';
+                            char *brace = strchr(baseclean, '{');
+                            if (brace) *brace = '\0';
+                            
+                            snprintf(c->current->locals[slot].typename, 63, "%s{_narrow_%s: _narrow_%s %s %s}",
+                                     baseclean, left->sval, left->sval, op, rstr);
+                        }
                     }
                 } else if (right->type == NIDENT) {
                     int slot = ResolveLocal(c, right->sval);
                     if (slot >= 0) {
-                        narrowedslot = slot;
-                        strncpy(originaltype, c->current->locals[slot].typename, sizeof(originaltype) - 1);
-                        
-                        char baseclean[64];
-                        strncpy(baseclean, originaltype, sizeof(baseclean) - 1);
-                        baseclean[sizeof(baseclean) - 1] = '\0';
-                        char *brace = strchr(baseclean, '{');
-                        if (brace) *brace = '\0';
-                        
                         char lstr[128];
                         GetNodeStr(left, lstr, sizeof(lstr));
-                        
-                        snprintf(c->current->locals[slot].typename, 63, "%s{_narrow_%s: %s %s _narrow_%s}",
-                                 baseclean, right->sval, lstr, op, right->sval);
+                        if (strcmp(lstr, "?") != 0) {
+                            narrowedslot = slot;
+                            strncpy(originaltype, c->current->locals[slot].typename, sizeof(originaltype) - 1);
+                            
+                            char baseclean[64];
+                            strncpy(baseclean, originaltype, sizeof(baseclean) - 1);
+                            baseclean[sizeof(baseclean) - 1] = '\0';
+                            char *brace = strchr(baseclean, '{');
+                            if (brace) *brace = '\0';
+                            
+                            snprintf(c->current->locals[slot].typename, 63, "%s{_narrow_%s: %s %s _narrow_%s}",
+                                     baseclean, right->sval, lstr, op, right->sval);
+                        }
                     }
                 }
             }
@@ -6936,6 +6938,7 @@ Compiler *CompNew(void) {
     NewFn(c, "tanh");
     NewFn(c, "Integer");
     NewFn(c, "float");
+    NewFn(c, "Float");
 
     // comprehensive Math Library Extensions
     NewFn(c, "asinh");
@@ -7913,6 +7916,30 @@ Compiler *CompNew(void) {
     NewFn(c, "PhysVal");
     NewFn(c, "EinsteinSum");
     NewFn(c, "EinsumC");
+
+    /* High performance compute operations */
+    NewFn(c, "FastDotProduct");
+    NewFn(c, "FastMatMul2D");
+    NewFn(c, "FastArraySort");
+    NewFn(c, "FastParallelReduce");
+
+    /* Freestanding bare metal and memory mapped io operations */
+    NewFn(c, "MmioRead8");
+    NewFn(c, "MmioWrite8");
+    NewFn(c, "MmioRead16");
+    NewFn(c, "MmioWrite16");
+    NewFn(c, "MmioRead32");
+    NewFn(c, "MmioWrite32");
+    NewFn(c, "MmioRead64");
+    NewFn(c, "MmioWrite64");
+    NewFn(c, "FreestandingMemSet");
+    NewFn(c, "FreestandingMemCopy");
+    NewFn(c, "FreestandingAlloc");
+    NewFn(c, "FreestandingFree");
+    NewFn(c, "CpuNop");
+    NewFn(c, "CpuPause");
+    NewFn(c, "CpuHalt");
+    NewFn(c, "CImportParseHeaderC");
 
     return c;
 }
