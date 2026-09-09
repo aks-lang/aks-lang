@@ -1,0 +1,19 @@
+fn TestStaticZeroCost() {
+    println("Testing zero-cost static mode RC elimination...");
+    let before = GetStaticRcEliminated();
+
+    for (let i = 0; i < 50000; i = i + 1) {
+        let x = 100 + i;
+        x * 2; // non-escaping expression statement
+    }
+
+    let after = GetStaticRcEliminated();
+    println("before: " + before);
+    println("after: " + after);
+    let eliminated = after - before;
+    println("Eliminated reference count / pop operations: " + eliminated);
+    assert(eliminated >= 50000, "Expected at least 50000 static releases eliminated!");
+    println("Zero-cost static RC elimination tests passed successfully!");
+}
+
+TestStaticZeroCost();

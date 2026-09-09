@@ -4,7 +4,8 @@ typedef struct {
   int id;
   int op;    /* 0=VAR, 1=CONST, 2=ADD, 3=SUB, 4=MUL, 5=DIV, 6=NEG, 7=POW,
                 8=EXP, 9=LOG, 10=SIN, 11=COS, 12=TAN, 13=RELU, 14=SIGMOID,
-                15=TANH, 16=SQRT, 17=TENSOR_VAR, 18=TENSOR_MATMUL, 19=TENSOR_ADD, 20=TENSOR_RELU */
+                15=TANH, 16=SQRT, 17=TENSOR_VAR, 18=TENSOR_MATMUL, 19=TENSOR_ADD, 20=TENSOR_RELU,
+                21=TENSOR_MSE, 22=TENSOR_CROSS_ENTROPY */
   double val;
   double grad;
   int lhs;   /* Node index of first operand (-1 if none) */
@@ -169,13 +170,22 @@ static void AutodiffBackward(AutodiffTape *t, int loss_nid) {
       switch (t->nodes[i].op) {
         case 17: /* TENSOR_VAR */
           break;
-        case 19: /* TENSOR_ADD */
+        case 19: /* TENSOR_ADD */ {
+          int lhs_bcast = (lhs >= 0 && rhs >= 0 && t->nodes[lhs].cols == t->nodes[rhs].cols && t->nodes[rhs].rows == 1 && t->nodes[lhs].rows > 1);
           for (int k = 0; k < total; k++) {
             double gk = t->nodes[i].tgrad[k];
             if (lhs >= 0 && t->nodes[lhs].tgrad) t->nodes[lhs].tgrad[k] += gk;
-            if (rhs >= 0 && t->nodes[rhs].tgrad) t->nodes[rhs].tgrad[k] += gk;
+            if (rhs >= 0 && t->nodes[rhs].tgrad) {
+              if (lhs_bcast) {
+                int c = k % cols;
+                t->nodes[rhs].tgrad[c] += gk;
+              } else {
+                t->nodes[rhs].tgrad[k] += gk;
+              }
+            }
           }
           break;
+        }
         case 20: /* TENSOR_RELU */
           for (int k = 0; k < total; k++) {
             double gk = t->nodes[i].tgrad[k];
@@ -184,6 +194,41 @@ static void AutodiffBackward(AutodiffTape *t, int loss_nid) {
             }
           }
           break;
+        case 21: /* TENSOR_MSE */ {
+          if (lhs >= 0 && t->nodes[lhs].tgrad && rhs >= 0 && t->nodes[rhs].tval) {
+            int n_elems = t->nodes[lhs].rows * t->nodes[lhs].cols;
+            double scale = (n_elems > 0) ? (2.0 / (double)n_elems) : 1.0;
+            double out_g = (t->nodes[i].tgrad) ? t->nodes[i].tgrad[0] : 1.0;
+            for (int k = 0; k < n_elems; k++) {
+              double diff = t->nodes[lhs].tval[k] - t->nodes[rhs].tval[k];
+              t->nodes[lhs].tgrad[k] += out_g * scale * diff;
+            }
+          }
+          break;
+        }
+        case 22: /* TENSOR_CROSS_ENTROPY */ {
+          if (lhs >= 0 && t->nodes[lhs].tgrad && rhs >= 0 && t->nodes[rhs].tval) {
+            int M = t->nodes[lhs].rows;
+            int N = t->nodes[lhs].cols;
+            double out_g = (t->nodes[i].tgrad) ? t->nodes[i].tgrad[0] : 1.0;
+            for (int r = 0; r < M; r++) {
+              double max_val = -1e30;
+              for (int c = 0; c < N; c++) {
+                if (t->nodes[lhs].tval[r * N + c] > max_val) max_val = t->nodes[lhs].tval[r * N + c];
+              }
+              double sum_exp = 0.0;
+              for (int c = 0; c < N; c++) {
+                sum_exp += exp(t->nodes[lhs].tval[r * N + c] - max_val);
+              }
+              for (int c = 0; c < N; c++) {
+                double p = exp(t->nodes[lhs].tval[r * N + c] - max_val) / (sum_exp > 0.0 ? sum_exp : 1.0);
+                double target = t->nodes[rhs].tval[r * N + c];
+                t->nodes[lhs].tgrad[r * N + c] += out_g * (p - target) / (double)(M > 0 ? M : 1);
+              }
+            }
+          }
+          break;
+        }
         case 18: /* TENSOR_MATMUL */ {
           int M = rows;
           int N = cols;
@@ -319,6 +364,16 @@ static void AutodiffBackward(AutodiffTape *t, int loss_nid) {
         break;
     }
   }
+}
+
+static AKSValue *AksStructFindField(AKSStruct *s, const char *name) {
+  if (!s || !name) return NULL;
+  for (int i = 0; i < s->fieldcount; i++) {
+    if (s->fieldnames[i] && strcmp(s->fieldnames[i], name) == 0) {
+      return &s->fieldvals[i];
+    }
+  }
+  return NULL;
 }
 
 static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
@@ -23896,8 +23951,17 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     int cols = ln->cols;
     int total = rows * cols;
     double *C = (double *)calloc(total > 0 ? total : 1, sizeof(double));
-    for (int k = 0; k < total; k++) {
-      C[k] = ln->tval[k] + rn->tval[k];
+    if (rn->rows == 1 && rows > 1 && rn->cols == cols) {
+      for (int r = 0; r < rows; r++) {
+        for (int c = 0; c < cols; c++) {
+          C[r * cols + c] = ln->tval[r * cols + c] + rn->tval[c];
+        }
+      }
+    } else {
+      int rntot = rn->rows * rn->cols;
+      for (int k = 0; k < total; k++) {
+        C[k] = ln->tval[k] + (k < rntot ? rn->tval[k] : 0.0);
+      }
     }
     int nid = AutodiffAllocTensorNode(t, 19 /* TENSOR_ADD */, rows, cols, lhs_nid, rhs_nid, C);
     free(C);
@@ -24004,6 +24068,1267 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     ValFree(&tid_val);
     AutodiffTape *t = AutodiffGetTape(tid);
     AutodiffFreeTapeNodes(t);
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  /* Neural network layers, activation functions, loss calculation, and optimizers */
+  if (strcmp(name, "NnLinear") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: NnLinear() expects 2 arguments (in_dim, out_dim)\n");
+      return -1;
+    }
+    AKSValue out_val = POP();
+    AKSValue in_val = POP();
+    int in_dim = (int)ValToInt(in_val);
+    int out_dim = (int)ValToInt(out_val);
+    ValFree(&out_val);
+    ValFree(&in_val);
+    if (in_dim <= 0) in_dim = 1;
+    if (out_dim <= 0) out_dim = 1;
+
+    AKSValue root = ValStruct("NnLinear");
+    AKSStruct *s = ValToObj(root);
+    s->fieldnames = malloc(sizeof(char*) * 11);
+    s->fieldvals = malloc(sizeof(AKSValue) * 11);
+    s->fieldcount = 11;
+
+    int total_w = in_dim * out_dim;
+    AKSValue w_val = ValArr(total_w);
+    AKSArray *wa = ValToArr(w_val);
+    double scale = sqrt(2.0 / (double)in_dim);
+    for (int k = 0; k < total_w; k++) {
+      double r = (((double)rand() / (double)RAND_MAX) * 2.0 - 1.0) * scale;
+      wa->items[wa->count++] = ValFloat(r);
+    }
+
+    AKSValue b_val = ValArr(out_dim);
+    AKSArray *ba = ValToArr(b_val);
+    for (int k = 0; k < out_dim; k++) {
+      ba->items[ba->count++] = ValFloat(0.0);
+    }
+
+    AKSValue mw_val = ValArr(total_w);
+    AKSArray *mwa = ValToArr(mw_val);
+    for (int k = 0; k < total_w; k++) mwa->items[mwa->count++] = ValFloat(0.0);
+
+    AKSValue vw_val = ValArr(total_w);
+    AKSArray *vwa = ValToArr(vw_val);
+    for (int k = 0; k < total_w; k++) vwa->items[vwa->count++] = ValFloat(0.0);
+
+    AKSValue mb_val = ValArr(out_dim);
+    AKSArray *mba = ValToArr(mb_val);
+    for (int k = 0; k < out_dim; k++) mba->items[mba->count++] = ValFloat(0.0);
+
+    AKSValue vb_val = ValArr(out_dim);
+    AKSArray *vba = ValToArr(vb_val);
+    for (int k = 0; k < out_dim; k++) vba->items[vba->count++] = ValFloat(0.0);
+
+    s->fieldnames[0] = strdup("in_dim"); s->fieldvals[0] = ValInt(in_dim);
+    s->fieldnames[1] = strdup("out_dim"); s->fieldvals[1] = ValInt(out_dim);
+    s->fieldnames[2] = strdup("weights"); s->fieldvals[2] = w_val;
+    s->fieldnames[3] = strdup("bias"); s->fieldvals[3] = b_val;
+    s->fieldnames[4] = strdup("weight_nid"); s->fieldvals[4] = ValInt(-1);
+    s->fieldnames[5] = strdup("bias_nid"); s->fieldvals[5] = ValInt(-1);
+    s->fieldnames[6] = strdup("m_w"); s->fieldvals[6] = mw_val;
+    s->fieldnames[7] = strdup("v_w"); s->fieldvals[7] = vw_val;
+    s->fieldnames[8] = strdup("m_b"); s->fieldvals[8] = mb_val;
+    s->fieldnames[9] = strdup("v_b"); s->fieldvals[9] = vb_val;
+    s->fieldnames[10] = strdup("step"); s->fieldvals[10] = ValInt(0);
+
+    PUSH(root);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "NnForward") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: NnForward() expects at least 2 arguments (layer, input, [tape_id])\n");
+      return -1;
+    }
+    int tid = 0;
+    if (argc >= 3) {
+      AKSValue tid_v = POP();
+      tid = (int)ValToInt(tid_v);
+      ValFree(&tid_v);
+    }
+    AKSValue x_val = POP();
+    AKSValue layer_val = POP();
+
+    if (ValKind(layer_val) != VALSTRUCT) {
+      ValFree(&x_val); ValFree(&layer_val);
+      fprintf(stderr, "Runtime error: NnForward() first argument must be an NnLinear layer\n");
+      return -1;
+    }
+    AKSStruct *s = ValToObj(layer_val);
+    int in_dim = (int)ValToInt(*AksStructFindField(s, "in_dim"));
+    int out_dim = (int)ValToInt(*AksStructFindField(s, "out_dim"));
+    AutodiffTape *t = AutodiffGetTape(tid);
+
+    int x_nid = -1;
+    int B = 1;
+    if (ValKind(x_val) == VALARR) {
+      AKSArray *xa = ValToArr(x_val);
+      int total = xa->count;
+      B = (in_dim > 0) ? (total / in_dim) : 1;
+      if (B < 1) B = 1;
+      double *xbuf = (double *)calloc(total > 0 ? total : 1, sizeof(double));
+      for (int k = 0; k < total; k++) {
+        xbuf[k] = (ValKind(xa->items[k]) == VALFLOAT) ? ValToFloat(xa->items[k]) : (double)ValToInt(xa->items[k]);
+      }
+      x_nid = AutodiffAllocTensorNode(t, 17 /* TENSOR_VAR */, B, in_dim, -1, -1, xbuf);
+      free(xbuf);
+    } else {
+      x_nid = (int)ValToInt(x_val);
+      B = t->nodes[x_nid].rows;
+    }
+
+    AKSArray *wa = ValToArr(*AksStructFindField(s, "weights"));
+    int wtot = in_dim * out_dim;
+    double *wbuf = (double *)calloc(wtot > 0 ? wtot : 1, sizeof(double));
+    for (int k = 0; k < wtot && k < wa->count; k++) {
+      wbuf[k] = (ValKind(wa->items[k]) == VALFLOAT) ? ValToFloat(wa->items[k]) : (double)ValToInt(wa->items[k]);
+    }
+    int w_nid = AutodiffAllocTensorNode(t, 17 /* TENSOR_VAR */, in_dim, out_dim, -1, -1, wbuf);
+    free(wbuf);
+    *AksStructFindField(s, "weight_nid") = ValInt(w_nid);
+
+    AKSArray *ba = ValToArr(*AksStructFindField(s, "bias"));
+    double *bbuf = (double *)calloc(out_dim > 0 ? out_dim : 1, sizeof(double));
+    for (int k = 0; k < out_dim && k < ba->count; k++) {
+      bbuf[k] = (ValKind(ba->items[k]) == VALFLOAT) ? ValToFloat(ba->items[k]) : (double)ValToInt(ba->items[k]);
+    }
+    int b_nid = AutodiffAllocTensorNode(t, 17 /* TENSOR_VAR */, 1, out_dim, -1, -1, bbuf);
+    free(bbuf);
+    *AksStructFindField(s, "bias_nid") = ValInt(b_nid);
+
+    TapeNode *xn = &t->nodes[x_nid];
+    TapeNode *wn = &t->nodes[w_nid];
+    int M = xn->rows;
+    int K = xn->cols;
+    int N = wn->cols;
+    double *C = (double *)calloc(M * N > 0 ? M * N : 1, sizeof(double));
+    for (int r = 0; r < M; r++) {
+      for (int k = 0; k < K; k++) {
+        double av = xn->tval[r * K + k];
+        for (int c = 0; c < N; c++) {
+          C[r * N + c] += av * wn->tval[k * N + c];
+        }
+      }
+    }
+    int mm_nid = AutodiffAllocTensorNode(t, 18 /* TENSOR_MATMUL */, M, N, x_nid, w_nid, C);
+    free(C);
+
+    TapeNode *mn = &t->nodes[mm_nid];
+    TapeNode *bn = &t->nodes[b_nid];
+    double *Out = (double *)calloc(M * N > 0 ? M * N : 1, sizeof(double));
+    for (int r = 0; r < M; r++) {
+      for (int c = 0; c < N; c++) {
+        Out[r * N + c] = mn->tval[r * N + c] + bn->tval[c];
+      }
+    }
+    int out_nid = AutodiffAllocTensorNode(t, 19 /* TENSOR_ADD */, M, N, mm_nid, b_nid, Out);
+    free(Out);
+
+    ValFree(&x_val);
+    ValFree(&layer_val);
+    PUSH(ValInt(out_nid));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "NnRelu") == 0) {
+    if (argc < 1) {
+      fprintf(stderr, "Runtime error: NnRelu() expects at least 1 argument (nid, [tape_id])\n");
+      return -1;
+    }
+    int tid = 0;
+    if (argc >= 2) {
+      AKSValue tid_v = POP();
+      tid = (int)ValToInt(tid_v);
+      ValFree(&tid_v);
+    }
+    AKSValue nid_v = POP();
+    int nid = (int)ValToInt(nid_v);
+    ValFree(&nid_v);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    TapeNode *ln = &t->nodes[nid];
+    int rows = ln->rows;
+    int cols = ln->cols;
+    int total = rows * cols;
+    double *C = (double *)calloc(total > 0 ? total : 1, sizeof(double));
+    for (int k = 0; k < total; k++) {
+      C[k] = (ln->tval[k] > 0.0) ? ln->tval[k] : 0.0;
+    }
+    int relu_nid = AutodiffAllocTensorNode(t, 20 /* TENSOR_RELU */, rows, cols, nid, -1, C);
+    free(C);
+    PUSH(ValInt(relu_nid));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "NnSoftmax") == 0) {
+    if (argc < 1) {
+      fprintf(stderr, "Runtime error: NnSoftmax() expects at least 1 argument (arr_or_nid, [tape_id])\n");
+      return -1;
+    }
+    int tid = 0;
+    if (argc >= 2) {
+      AKSValue tid_v = POP();
+      tid = (int)ValToInt(tid_v);
+      ValFree(&tid_v);
+    }
+    AKSValue arg = POP();
+    int count = 0;
+    double *vals = NULL;
+    if (ValKind(arg) == VALARR) {
+      AKSArray *a = ValToArr(arg);
+      count = a->count;
+      vals = (double *)calloc(count > 0 ? count : 1, sizeof(double));
+      for (int k = 0; k < count; k++) {
+        vals[k] = (ValKind(a->items[k]) == VALFLOAT) ? ValToFloat(a->items[k]) : (double)ValToInt(a->items[k]);
+      }
+    } else {
+      int nid = (int)ValToInt(arg);
+      AutodiffTape *t = AutodiffGetTape(tid);
+      count = t->nodes[nid].rows * t->nodes[nid].cols;
+      vals = (double *)calloc(count > 0 ? count : 1, sizeof(double));
+      if (t->nodes[nid].tval) memcpy(vals, t->nodes[nid].tval, sizeof(double) * count);
+    }
+    ValFree(&arg);
+
+    double max_v = -1e30;
+    for (int k = 0; k < count; k++) if (vals[k] > max_v) max_v = vals[k];
+    double sum_exp = 0.0;
+    for (int k = 0; k < count; k++) sum_exp += exp(vals[k] - max_v);
+    AKSValue res_v = ValArr(count);
+    AKSArray *ra = ValToArr(res_v);
+    for (int k = 0; k < count; k++) {
+      double p = exp(vals[k] - max_v) / (sum_exp > 0.0 ? sum_exp : 1.0);
+      ra->items[ra->count++] = ValFloat(p);
+    }
+    free(vals);
+    PUSH(res_v);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "NnMseLoss") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: NnMseLoss() expects at least 2 arguments (pred_nid, target_arr, [tape_id])\n");
+      return -1;
+    }
+    int tid = 0;
+    if (argc >= 3) {
+      AKSValue tid_v = POP();
+      tid = (int)ValToInt(tid_v);
+      ValFree(&tid_v);
+    }
+    AKSValue target_v = POP();
+    AKSValue pred_v = POP();
+    AutodiffTape *t = AutodiffGetTape(tid);
+
+    int pred_nid = (int)ValToInt(pred_v);
+    TapeNode *pn = &t->nodes[pred_nid];
+    int rows = pn->rows;
+    int cols = pn->cols;
+    int total = rows * cols;
+
+    double *tbuf = (double *)calloc(total > 0 ? total : 1, sizeof(double));
+    if (ValKind(target_v) == VALARR) {
+      AKSArray *ta = ValToArr(target_v);
+      for (int k = 0; k < total && k < ta->count; k++) {
+        tbuf[k] = (ValKind(ta->items[k]) == VALFLOAT) ? ValToFloat(ta->items[k]) : (double)ValToInt(ta->items[k]);
+      }
+    }
+    int target_nid = AutodiffAllocTensorNode(t, 17 /* TENSOR_VAR */, rows, cols, -1, -1, tbuf);
+
+    double sum_sq = 0.0;
+    for (int k = 0; k < total; k++) {
+      double diff = pn->tval[k] - tbuf[k];
+      sum_sq += diff * diff;
+    }
+    free(tbuf);
+    double loss = (total > 0) ? (sum_sq / (double)total) : 0.0;
+
+    int loss_nid = AutodiffAllocTensorNode(t, 21 /* TENSOR_MSE */, 1, 1, pred_nid, target_nid, &loss);
+    ValFree(&pred_v);
+    ValFree(&target_v);
+
+    PUSH(ValInt(loss_nid));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "NnCrossEntropy") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: NnCrossEntropy() expects at least 2 arguments (logits_nid, target_arr, [tape_id])\n");
+      return -1;
+    }
+    int tid = 0;
+    if (argc >= 3) {
+      AKSValue tid_v = POP();
+      tid = (int)ValToInt(tid_v);
+      ValFree(&tid_v);
+    }
+    AKSValue target_v = POP();
+    AKSValue logits_v = POP();
+    AutodiffTape *t = AutodiffGetTape(tid);
+
+    int logits_nid = (int)ValToInt(logits_v);
+    TapeNode *ln = &t->nodes[logits_nid];
+    int M = ln->rows;
+    int N = ln->cols;
+    int total = M * N;
+
+    double *tbuf = (double *)calloc(total > 0 ? total : 1, sizeof(double));
+    if (ValKind(target_v) == VALARR) {
+      AKSArray *ta = ValToArr(target_v);
+      for (int k = 0; k < total && k < ta->count; k++) {
+        tbuf[k] = (ValKind(ta->items[k]) == VALFLOAT) ? ValToFloat(ta->items[k]) : (double)ValToInt(ta->items[k]);
+      }
+    }
+    int target_nid = AutodiffAllocTensorNode(t, 17 /* TENSOR_VAR */, M, N, -1, -1, tbuf);
+
+    double total_loss = 0.0;
+    for (int r = 0; r < M; r++) {
+      double max_v = -1e30;
+      for (int c = 0; c < N; c++) if (ln->tval[r * N + c] > max_v) max_v = ln->tval[r * N + c];
+      double sum_exp = 0.0;
+      for (int c = 0; c < N; c++) sum_exp += exp(ln->tval[r * N + c] - max_v);
+      for (int c = 0; c < N; c++) {
+        double p = exp(ln->tval[r * N + c] - max_v) / (sum_exp > 0.0 ? sum_exp : 1.0);
+        total_loss -= tbuf[r * N + c] * log(p > 1e-15 ? p : 1e-15);
+      }
+    }
+    free(tbuf);
+    double loss = (M > 0) ? (total_loss / (double)M) : 0.0;
+
+    int loss_nid = AutodiffAllocTensorNode(t, 22 /* TENSOR_CROSS_ENTROPY */, 1, 1, logits_nid, target_nid, &loss);
+    ValFree(&logits_v);
+    ValFree(&target_v);
+
+    PUSH(ValInt(loss_nid));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "NnLossVal") == 0) {
+    if (argc < 1) {
+      fprintf(stderr, "Runtime error: NnLossVal() expects at least 1 argument (loss_nid, [tape_id])\n");
+      return -1;
+    }
+    int tid = 0;
+    if (argc >= 2) {
+      AKSValue tid_v = POP();
+      tid = (int)ValToInt(tid_v);
+      ValFree(&tid_v);
+    }
+    AKSValue nid_v = POP();
+    int nid = (int)ValToInt(nid_v);
+    ValFree(&nid_v);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    double val = (t->nodes[nid].tval) ? t->nodes[nid].tval[0] : t->nodes[nid].val;
+    PUSH(ValFloat(val));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "NnGetVal") == 0) {
+    if (argc < 1) {
+      fprintf(stderr, "Runtime error: NnGetVal() expects at least 1 argument (nid, [tape_id])\n");
+      return -1;
+    }
+    int tid = 0;
+    if (argc >= 2) {
+      AKSValue tid_v = POP();
+      tid = (int)ValToInt(tid_v);
+      ValFree(&tid_v);
+    }
+    AKSValue nid_v = POP();
+    int nid = (int)ValToInt(nid_v);
+    ValFree(&nid_v);
+    AutodiffTape *t = AutodiffGetTape(tid);
+    int total = t->nodes[nid].rows * t->nodes[nid].cols;
+    AKSValue res_v = ValArr(total);
+    AKSArray *ra = ValToArr(res_v);
+    for (int k = 0; k < total; k++) {
+      ra->items[ra->count++] = ValFloat(t->nodes[nid].tval ? t->nodes[nid].tval[k] : 0.0);
+    }
+    PUSH(res_v);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "NnSGD") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: NnSGD() expects at least 2 arguments (layers, lr, [tape_id])\n");
+      return -1;
+    }
+    int tid = 0;
+    if (argc >= 3) {
+      AKSValue tid_v = POP();
+      tid = (int)ValToInt(tid_v);
+      ValFree(&tid_v);
+    }
+    AKSValue lr_v = POP();
+    AKSValue layers_v = POP();
+    double lr = (ValKind(lr_v) == VALFLOAT) ? ValToFloat(lr_v) : (double)ValToInt(lr_v);
+    ValFree(&lr_v);
+    AutodiffTape *t = AutodiffGetTape(tid);
+
+    AKSValue layer_list[64];
+    int layer_count = 0;
+    if (ValKind(layers_v) == VALARR) {
+      AKSArray *la = ValToArr(layers_v);
+      for (int i = 0; i < la->count && layer_count < 64; i++) {
+        if (ValKind(la->items[i]) == VALSTRUCT) layer_list[layer_count++] = la->items[i];
+      }
+    } else if (ValKind(layers_v) == VALSTRUCT) {
+      layer_list[layer_count++] = layers_v;
+    }
+
+    for (int i = 0; i < layer_count; i++) {
+      AKSStruct *s = ValToObj(layer_list[i]);
+      int w_nid = (int)ValToInt(*AksStructFindField(s, "weight_nid"));
+      int b_nid = (int)ValToInt(*AksStructFindField(s, "bias_nid"));
+      if (w_nid >= 0 && w_nid < t->count) {
+        TapeNode *wn = &t->nodes[w_nid];
+        AKSArray *wa = ValToArr(*AksStructFindField(s, "weights"));
+        for (int k = 0; k < wa->count && k < (wn->rows * wn->cols); k++) {
+          double cur = ValToFloat(wa->items[k]);
+          wa->items[k] = ValFloat(cur - lr * wn->tgrad[k]);
+        }
+      }
+      if (b_nid >= 0 && b_nid < t->count) {
+        TapeNode *bn = &t->nodes[b_nid];
+        AKSArray *ba = ValToArr(*AksStructFindField(s, "bias"));
+        int out_cols = bn->cols;
+        for (int c = 0; c < ba->count && c < out_cols; c++) {
+          double cur = ValToFloat(ba->items[c]);
+          double g = 0.0;
+          for (int r = 0; r < bn->rows; r++) g += bn->tgrad[r * out_cols + c];
+          ba->items[c] = ValFloat(cur - lr * g);
+        }
+      }
+    }
+    ValFree(&layers_v);
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "NnAdam") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: NnAdam() expects at least 2 arguments (layers, lr, [beta1, beta2, eps, tape_id])\n");
+      return -1;
+    }
+    int tid = 0;
+    double eps = 1e-8;
+    double beta2 = 0.999;
+    double beta1 = 0.9;
+    if (argc >= 6) {
+      AKSValue v = POP(); tid = (int)ValToInt(v); ValFree(&v);
+    }
+    if (argc >= 5) {
+      AKSValue v = POP(); eps = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v); ValFree(&v);
+    }
+    if (argc >= 4) {
+      AKSValue v = POP(); beta2 = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v); ValFree(&v);
+    }
+    if (argc >= 3) {
+      AKSValue v = POP(); beta1 = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v); ValFree(&v);
+    }
+    AKSValue lr_v = POP();
+    AKSValue layers_v = POP();
+    double lr = (ValKind(lr_v) == VALFLOAT) ? ValToFloat(lr_v) : (double)ValToInt(lr_v);
+    ValFree(&lr_v);
+    AutodiffTape *t = AutodiffGetTape(tid);
+
+    AKSValue layer_list[64];
+    int layer_count = 0;
+    if (ValKind(layers_v) == VALARR) {
+      AKSArray *la = ValToArr(layers_v);
+      for (int i = 0; i < la->count && layer_count < 64; i++) {
+        if (ValKind(la->items[i]) == VALSTRUCT) layer_list[layer_count++] = la->items[i];
+      }
+    } else if (ValKind(layers_v) == VALSTRUCT) {
+      layer_list[layer_count++] = layers_v;
+    }
+
+    for (int i = 0; i < layer_count; i++) {
+      AKSStruct *s = ValToObj(layer_list[i]);
+      int step = (int)ValToInt(*AksStructFindField(s, "step")) + 1;
+      *AksStructFindField(s, "step") = ValInt(step);
+      double bc1 = 1.0 - pow(beta1, (double)step);
+      double bc2 = 1.0 - pow(beta2, (double)step);
+      if (bc1 < 1e-15) bc1 = 1.0;
+      if (bc2 < 1e-15) bc2 = 1.0;
+
+      int w_nid = (int)ValToInt(*AksStructFindField(s, "weight_nid"));
+      int b_nid = (int)ValToInt(*AksStructFindField(s, "bias_nid"));
+      if (w_nid >= 0 && w_nid < t->count) {
+        TapeNode *wn = &t->nodes[w_nid];
+        AKSArray *wa = ValToArr(*AksStructFindField(s, "weights"));
+        AKSArray *mwa = ValToArr(*AksStructFindField(s, "m_w"));
+        AKSArray *vwa = ValToArr(*AksStructFindField(s, "v_w"));
+        for (int k = 0; k < wa->count && k < (wn->rows * wn->cols); k++) {
+          double g = wn->tgrad[k];
+          double m = beta1 * ValToFloat(mwa->items[k]) + (1.0 - beta1) * g;
+          double v = beta2 * ValToFloat(vwa->items[k]) + (1.0 - beta2) * g * g;
+          mwa->items[k] = ValFloat(m);
+          vwa->items[k] = ValFloat(v);
+          double m_hat = m / bc1;
+          double v_hat = v / bc2;
+          double cur = ValToFloat(wa->items[k]);
+          wa->items[k] = ValFloat(cur - lr * m_hat / (sqrt(v_hat) + eps));
+        }
+      }
+      if (b_nid >= 0 && b_nid < t->count) {
+        TapeNode *bn = &t->nodes[b_nid];
+        AKSArray *ba = ValToArr(*AksStructFindField(s, "bias"));
+        AKSArray *mba = ValToArr(*AksStructFindField(s, "m_b"));
+        AKSArray *vba = ValToArr(*AksStructFindField(s, "v_b"));
+        int out_cols = bn->cols;
+        for (int c = 0; c < ba->count && c < out_cols; c++) {
+          double g = 0.0;
+          for (int r = 0; r < bn->rows; r++) g += bn->tgrad[r * out_cols + c];
+          double m = beta1 * ValToFloat(mba->items[c]) + (1.0 - beta1) * g;
+          double v = beta2 * ValToFloat(vba->items[c]) + (1.0 - beta2) * g * g;
+          mba->items[c] = ValFloat(m);
+          vba->items[c] = ValFloat(v);
+          double m_hat = m / bc1;
+          double v_hat = v / bc2;
+          double cur = ValToFloat(ba->items[c]);
+          ba->items[c] = ValFloat(cur - lr * m_hat / (sqrt(v_hat) + eps));
+        }
+      }
+    }
+    ValFree(&layers_v);
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "NnRMSProp") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: NnRMSProp() expects at least 2 arguments (layers, lr, [alpha, eps, tape_id])\n");
+      return -1;
+    }
+    int tid = 0;
+    double eps = 1e-8;
+    double alpha = 0.99;
+    if (argc >= 5) {
+      AKSValue v = POP(); tid = (int)ValToInt(v); ValFree(&v);
+    }
+    if (argc >= 4) {
+      AKSValue v = POP(); eps = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v); ValFree(&v);
+    }
+    if (argc >= 3) {
+      AKSValue v = POP(); alpha = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v); ValFree(&v);
+    }
+    AKSValue lr_v = POP();
+    AKSValue layers_v = POP();
+    double lr = (ValKind(lr_v) == VALFLOAT) ? ValToFloat(lr_v) : (double)ValToInt(lr_v);
+    ValFree(&lr_v);
+    AutodiffTape *t = AutodiffGetTape(tid);
+
+    AKSValue layer_list[64];
+    int layer_count = 0;
+    if (ValKind(layers_v) == VALARR) {
+      AKSArray *la = ValToArr(layers_v);
+      for (int i = 0; i < la->count && layer_count < 64; i++) {
+        if (ValKind(la->items[i]) == VALSTRUCT) layer_list[layer_count++] = la->items[i];
+      }
+    } else if (ValKind(layers_v) == VALSTRUCT) {
+      layer_list[layer_count++] = layers_v;
+    }
+
+    for (int i = 0; i < layer_count; i++) {
+      AKSStruct *s = ValToObj(layer_list[i]);
+      int w_nid = (int)ValToInt(*AksStructFindField(s, "weight_nid"));
+      int b_nid = (int)ValToInt(*AksStructFindField(s, "bias_nid"));
+      if (w_nid >= 0 && w_nid < t->count) {
+        TapeNode *wn = &t->nodes[w_nid];
+        AKSArray *wa = ValToArr(*AksStructFindField(s, "weights"));
+        AKSArray *vwa = ValToArr(*AksStructFindField(s, "v_w"));
+        for (int k = 0; k < wa->count && k < (wn->rows * wn->cols); k++) {
+          double g = wn->tgrad[k];
+          double v = alpha * ValToFloat(vwa->items[k]) + (1.0 - alpha) * g * g;
+          vwa->items[k] = ValFloat(v);
+          double cur = ValToFloat(wa->items[k]);
+          wa->items[k] = ValFloat(cur - lr * g / (sqrt(v) + eps));
+        }
+      }
+      if (b_nid >= 0 && b_nid < t->count) {
+        TapeNode *bn = &t->nodes[b_nid];
+        AKSArray *ba = ValToArr(*AksStructFindField(s, "bias"));
+        AKSArray *vba = ValToArr(*AksStructFindField(s, "v_b"));
+        int out_cols = bn->cols;
+        for (int c = 0; c < ba->count && c < out_cols; c++) {
+          double g = 0.0;
+          for (int r = 0; r < bn->rows; r++) g += bn->tgrad[r * out_cols + c];
+          double v = alpha * ValToFloat(vba->items[c]) + (1.0 - alpha) * g * g;
+          vba->items[c] = ValFloat(v);
+          double cur = ValToFloat(ba->items[c]);
+          ba->items[c] = ValFloat(cur - lr * g / (sqrt(v) + eps));
+        }
+      }
+    }
+    ValFree(&layers_v);
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "NnZeroGrad") == 0) {
+    int tid = 0;
+    if (argc >= 2) {
+      AKSValue tid_v = POP();
+      tid = (int)ValToInt(tid_v);
+      ValFree(&tid_v);
+    }
+    if (argc >= 1) {
+      AKSValue dummy = POP();
+      ValFree(&dummy);
+    }
+    AutodiffTape *t = AutodiffGetTape(tid);
+    AutodiffFreeTapeNodes(t);
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "GetStaticRcEliminated") == 0) {
+    PUSH(ValInt((int64_t)vm->static_rc_eliminated));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  /* Work-stealing green scheduler helpers and task scheduling primitives */
+  if (strcmp(name, "GreenSchedWorkers") == 0) {
+    PUSH(ValInt(vm->workercount));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "GreenSchedStats") == 0) {
+    int active = 0;
+    int completed = 0;
+    for (int i = 0; i < vm->alltaskscount; i++) {
+      if (vm->alltasks[i]) {
+        if (vm->alltasks[i]->state == 3) completed++;
+        else active++;
+      }
+    }
+    AKSValue s_val = ValStruct("GreenSchedStats");
+    AKSStruct *s = ValToObj(s_val);
+    s->fieldcount = 5;
+    s->fieldnames = malloc(5 * sizeof(char *));
+    s->fieldvals = malloc(5 * sizeof(AKSValue));
+    s->fieldnames[0] = strdup("workers");
+    s->fieldvals[0] = ValInt(vm->workercount);
+    s->fieldnames[1] = strdup("active_tasks");
+    s->fieldvals[1] = ValInt(active);
+    s->fieldnames[2] = strdup("completed_tasks");
+    s->fieldvals[2] = ValInt(completed);
+    s->fieldnames[3] = strdup("total_tasks");
+    s->fieldvals[3] = ValInt(vm->alltaskscount);
+    s->fieldnames[4] = strdup("work_stealing");
+    s->fieldvals[4] = ValInt(1);
+    PUSH(s_val);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "GreenSchedYield") == 0) {
+#ifdef _WIN32
+    SwitchToThread();
+#else
+    sched_yield();
+#endif
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "GreenSchedSubmit") == 0) {
+    if (argc < 1) {
+      fprintf(stderr, "Runtime error: GreenSchedSubmit() expects at least 1 argument (fn, ...)\n");
+      return -1;
+    }
+    int extra_args = argc - 1;
+    AKSValue passed_args[32];
+    for (int i = extra_args - 1; i >= 0; i--) {
+      passed_args[i] = POP();
+    }
+    AKSValue fn_val = POP();
+    if (ValKind(fn_val) != VALFN) {
+      for (int i = 0; i < extra_args; i++) ValFree(&passed_args[i]);
+      ValFree(&fn_val);
+      fprintf(stderr, "Runtime error: GreenSchedSubmit() target is not a function\n");
+      return -1;
+    }
+    FnProto *callee = vm->fns[ValToFn(fn_val)];
+    ValFree(&fn_val);
+    VMTask *spawned = TaskNew(vm, callee, 0);
+    for (int i = 0; i < extra_args && i < callee->paramcount; i++) {
+      ValFree(&spawned->stack[i]);
+      spawned->stack[i] = passed_args[i];
+    }
+    for (int i = callee->paramcount; i < extra_args; i++) {
+      ValFree(&passed_args[i]);
+    }
+    int targetworker = rand() % vm->workercount;
+    WorkerPushTail(&vm->workers[targetworker], spawned);
+    PUSH(ValTask(spawned));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "GreenSchedParallelFor") == 0) {
+    if (argc < 3) {
+      fprintf(stderr, "Runtime error: GreenSchedParallelFor expects 3 arguments (start, end, fn)\n");
+      return -1;
+    }
+    AKSValue fn_val = POP();
+    AKSValue end_val = POP();
+    AKSValue start_val = POP();
+    int64_t start = ValToInt(start_val);
+    int64_t end = ValToInt(end_val);
+    ValFree(&start_val);
+    ValFree(&end_val);
+    if (ValKind(fn_val) != VALFN) {
+      ValFree(&fn_val);
+      fprintf(stderr, "Runtime error: GreenSchedParallelFor target is not a function\n");
+      return -1;
+    }
+    FnProto *callee = vm->fns[ValToFn(fn_val)];
+    ValFree(&fn_val);
+
+    int64_t nitems = end - start;
+    if (nitems <= 0) {
+      PUSH(ValNull());
+      *stacktopptr = stacktop;
+      return 1;
+    }
+
+    int ntasks = (int)(nitems > 16 ? 16 : nitems);
+    VMTask *tasks[16];
+    int64_t chunk_size = (nitems + ntasks - 1) / ntasks;
+
+    for (int t = 0; t < ntasks; t++) {
+      int64_t cstart = start + t * chunk_size;
+      int64_t cend = cstart + chunk_size;
+      if (cend > end) cend = end;
+      if (cstart >= cend) {
+        tasks[t] = NULL;
+        continue;
+      }
+      VMTask *sp = TaskNew(vm, callee, 0);
+      if (callee->paramcount >= 2) {
+        sp->stack[0] = ValInt(cstart);
+        sp->stack[1] = ValInt(cend);
+      } else if (callee->paramcount >= 1) {
+        sp->stack[0] = ValInt(cstart);
+      }
+      int targetworker = t % vm->workercount;
+      WorkerPushTail(&vm->workers[targetworker], sp);
+      tasks[t] = sp;
+    }
+
+    for (int t = 0; t < ntasks; t++) {
+      if (!tasks[t]) continue;
+      while (tasks[t]->state != 3 && !vm->shouldterminate) {
+#ifdef _WIN32
+        SwitchToThread();
+#else
+        sched_yield();
+#endif
+      }
+    }
+
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  /* Physical units with dimensional validation and Einstein summation */
+  if (strcmp(name, "PhysUnit") == 0) {
+    int s = (int)ValToInt(POP());
+    int kg = (int)ValToInt(POP());
+    int m = (int)ValToInt(POP());
+    AKSValue v_v = POP();
+    double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
+    ValFree(&v_v);
+    AKSValue p = ValStruct("PhysUnit");
+    AKSStruct *st = ValToObj(p);
+    st->fieldcount = 4;
+    st->fieldnames = malloc(4 * sizeof(char *));
+    st->fieldvals = malloc(4 * sizeof(AKSValue));
+    st->fieldnames[0] = strdup("val");
+    st->fieldvals[0] = ValFloat(val);
+    st->fieldnames[1] = strdup("m");
+    st->fieldvals[1] = ValInt(m);
+    st->fieldnames[2] = strdup("kg");
+    st->fieldvals[2] = ValInt(kg);
+    st->fieldnames[3] = strdup("s");
+    st->fieldvals[3] = ValInt(s);
+    PUSH(p);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "Meter") == 0) {
+    AKSValue v_v = POP();
+    double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
+    ValFree(&v_v);
+    AKSValue p = ValStruct("PhysUnit");
+    AKSStruct *st = ValToObj(p);
+    st->fieldcount = 4;
+    st->fieldnames = malloc(4 * sizeof(char *));
+    st->fieldvals = malloc(4 * sizeof(AKSValue));
+    st->fieldnames[0] = strdup("val");
+    st->fieldvals[0] = ValFloat(val);
+    st->fieldnames[1] = strdup("m");
+    st->fieldvals[1] = ValInt(1);
+    st->fieldnames[2] = strdup("kg");
+    st->fieldvals[2] = ValInt(0);
+    st->fieldnames[3] = strdup("s");
+    st->fieldvals[3] = ValInt(0);
+    PUSH(p);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "Kilogram") == 0) {
+    AKSValue v_v = POP();
+    double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
+    ValFree(&v_v);
+    AKSValue p = ValStruct("PhysUnit");
+    AKSStruct *st = ValToObj(p);
+    st->fieldcount = 4;
+    st->fieldnames = malloc(4 * sizeof(char *));
+    st->fieldvals = malloc(4 * sizeof(AKSValue));
+    st->fieldnames[0] = strdup("val");
+    st->fieldvals[0] = ValFloat(val);
+    st->fieldnames[1] = strdup("m");
+    st->fieldvals[1] = ValInt(0);
+    st->fieldnames[2] = strdup("kg");
+    st->fieldvals[2] = ValInt(1);
+    st->fieldnames[3] = strdup("s");
+    st->fieldvals[3] = ValInt(0);
+    PUSH(p);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "Second") == 0) {
+    AKSValue v_v = POP();
+    double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
+    ValFree(&v_v);
+    AKSValue p = ValStruct("PhysUnit");
+    AKSStruct *st = ValToObj(p);
+    st->fieldcount = 4;
+    st->fieldnames = malloc(4 * sizeof(char *));
+    st->fieldvals = malloc(4 * sizeof(AKSValue));
+    st->fieldnames[0] = strdup("val");
+    st->fieldvals[0] = ValFloat(val);
+    st->fieldnames[1] = strdup("m");
+    st->fieldvals[1] = ValInt(0);
+    st->fieldnames[2] = strdup("kg");
+    st->fieldvals[2] = ValInt(0);
+    st->fieldnames[3] = strdup("s");
+    st->fieldvals[3] = ValInt(1);
+    PUSH(p);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "Newton") == 0) {
+    AKSValue v_v = POP();
+    double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
+    ValFree(&v_v);
+    AKSValue p = ValStruct("PhysUnit");
+    AKSStruct *st = ValToObj(p);
+    st->fieldcount = 4;
+    st->fieldnames = malloc(4 * sizeof(char *));
+    st->fieldvals = malloc(4 * sizeof(AKSValue));
+    st->fieldnames[0] = strdup("val");
+    st->fieldvals[0] = ValFloat(val);
+    st->fieldnames[1] = strdup("m");
+    st->fieldvals[1] = ValInt(1);
+    st->fieldnames[2] = strdup("kg");
+    st->fieldvals[2] = ValInt(1);
+    st->fieldnames[3] = strdup("s");
+    st->fieldvals[3] = ValInt(-2);
+    PUSH(p);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "Joule") == 0) {
+    AKSValue v_v = POP();
+    double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
+    ValFree(&v_v);
+    AKSValue p = ValStruct("PhysUnit");
+    AKSStruct *st = ValToObj(p);
+    st->fieldcount = 4;
+    st->fieldnames = malloc(4 * sizeof(char *));
+    st->fieldvals = malloc(4 * sizeof(AKSValue));
+    st->fieldnames[0] = strdup("val");
+    st->fieldvals[0] = ValFloat(val);
+    st->fieldnames[1] = strdup("m");
+    st->fieldvals[1] = ValInt(2);
+    st->fieldnames[2] = strdup("kg");
+    st->fieldvals[2] = ValInt(1);
+    st->fieldnames[3] = strdup("s");
+    st->fieldvals[3] = ValInt(-2);
+    PUSH(p);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "Watt") == 0) {
+    AKSValue v_v = POP();
+    double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
+    ValFree(&v_v);
+    AKSValue p = ValStruct("PhysUnit");
+    AKSStruct *st = ValToObj(p);
+    st->fieldcount = 4;
+    st->fieldnames = malloc(4 * sizeof(char *));
+    st->fieldvals = malloc(4 * sizeof(AKSValue));
+    st->fieldnames[0] = strdup("val");
+    st->fieldvals[0] = ValFloat(val);
+    st->fieldnames[1] = strdup("m");
+    st->fieldvals[1] = ValInt(2);
+    st->fieldnames[2] = strdup("kg");
+    st->fieldvals[2] = ValInt(1);
+    st->fieldnames[3] = strdup("s");
+    st->fieldvals[3] = ValInt(-3);
+    PUSH(p);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "PhysVal") == 0) {
+    AKSValue u = POP();
+    double v = 0.0;
+    if (ValKind(u) == VALSTRUCT) {
+      AKSStruct *st = ValToObj(u);
+      for (int i = 0; i < st->fieldcount; i++) {
+        if (strcmp(st->fieldnames[i], "val") == 0) {
+          v = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
+          break;
+        }
+      }
+    } else if (ValKind(u) == VALFLOAT) {
+      v = ValToFloat(u);
+    } else if (ValKind(u) == VALINT) {
+      v = (double)ValToInt(u);
+    }
+    ValFree(&u);
+    PUSH(ValFloat(v));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "PhysMul") == 0) {
+    AKSValue u2 = POP();
+    AKSValue u1 = POP();
+    double v1 = 0, v2 = 0;
+    int m1 = 0, kg1 = 0, s1 = 0, m2 = 0, kg2 = 0, s2 = 0;
+    if (ValKind(u1) == VALSTRUCT) {
+      AKSStruct *st = ValToObj(u1);
+      for (int i = 0; i < st->fieldcount; i++) {
+        if (strcmp(st->fieldnames[i], "val") == 0) v1 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "m") == 0) m1 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "kg") == 0) kg1 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "s") == 0) s1 = (int)ValToInt(st->fieldvals[i]);
+      }
+    }
+    if (ValKind(u2) == VALSTRUCT) {
+      AKSStruct *st = ValToObj(u2);
+      for (int i = 0; i < st->fieldcount; i++) {
+        if (strcmp(st->fieldnames[i], "val") == 0) v2 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "m") == 0) m2 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "kg") == 0) kg2 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "s") == 0) s2 = (int)ValToInt(st->fieldvals[i]);
+      }
+    }
+    ValFree(&u1);
+    ValFree(&u2);
+    AKSValue p = ValStruct("PhysUnit");
+    AKSStruct *st = ValToObj(p);
+    st->fieldcount = 4;
+    st->fieldnames = malloc(4 * sizeof(char *));
+    st->fieldvals = malloc(4 * sizeof(AKSValue));
+    st->fieldnames[0] = strdup("val");
+    st->fieldvals[0] = ValFloat(v1 * v2);
+    st->fieldnames[1] = strdup("m");
+    st->fieldvals[1] = ValInt(m1 + m2);
+    st->fieldnames[2] = strdup("kg");
+    st->fieldvals[2] = ValInt(kg1 + kg2);
+    st->fieldnames[3] = strdup("s");
+    st->fieldvals[3] = ValInt(s1 + s2);
+    PUSH(p);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "PhysDiv") == 0) {
+    AKSValue u2 = POP();
+    AKSValue u1 = POP();
+    double v1 = 0, v2 = 0;
+    int m1 = 0, kg1 = 0, s1 = 0, m2 = 0, kg2 = 0, s2 = 0;
+    if (ValKind(u1) == VALSTRUCT) {
+      AKSStruct *st = ValToObj(u1);
+      for (int i = 0; i < st->fieldcount; i++) {
+        if (strcmp(st->fieldnames[i], "val") == 0) v1 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "m") == 0) m1 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "kg") == 0) kg1 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "s") == 0) s1 = (int)ValToInt(st->fieldvals[i]);
+      }
+    }
+    if (ValKind(u2) == VALSTRUCT) {
+      AKSStruct *st = ValToObj(u2);
+      for (int i = 0; i < st->fieldcount; i++) {
+        if (strcmp(st->fieldnames[i], "val") == 0) v2 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "m") == 0) m2 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "kg") == 0) kg2 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "s") == 0) s2 = (int)ValToInt(st->fieldvals[i]);
+      }
+    }
+    ValFree(&u1);
+    ValFree(&u2);
+    AKSValue p = ValStruct("PhysUnit");
+    AKSStruct *st = ValToObj(p);
+    st->fieldcount = 4;
+    st->fieldnames = malloc(4 * sizeof(char *));
+    st->fieldvals = malloc(4 * sizeof(AKSValue));
+    st->fieldnames[0] = strdup("val");
+    st->fieldvals[0] = ValFloat(v1 / v2);
+    st->fieldnames[1] = strdup("m");
+    st->fieldvals[1] = ValInt(m1 - m2);
+    st->fieldnames[2] = strdup("kg");
+    st->fieldvals[2] = ValInt(kg1 - kg2);
+    st->fieldnames[3] = strdup("s");
+    st->fieldvals[3] = ValInt(s1 - s2);
+    PUSH(p);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "PhysAdd") == 0) {
+    AKSValue u2 = POP();
+    AKSValue u1 = POP();
+    double v1 = 0, v2 = 0;
+    int m1 = 0, kg1 = 0, s1 = 0, m2 = 0, kg2 = 0, s2 = 0;
+    if (ValKind(u1) == VALSTRUCT) {
+      AKSStruct *st = ValToObj(u1);
+      for (int i = 0; i < st->fieldcount; i++) {
+        if (strcmp(st->fieldnames[i], "val") == 0) v1 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "m") == 0) m1 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "kg") == 0) kg1 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "s") == 0) s1 = (int)ValToInt(st->fieldvals[i]);
+      }
+    }
+    if (ValKind(u2) == VALSTRUCT) {
+      AKSStruct *st = ValToObj(u2);
+      for (int i = 0; i < st->fieldcount; i++) {
+        if (strcmp(st->fieldnames[i], "val") == 0) v2 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "m") == 0) m2 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "kg") == 0) kg2 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "s") == 0) s2 = (int)ValToInt(st->fieldvals[i]);
+      }
+    }
+    ValFree(&u1);
+    ValFree(&u2);
+    if (m1 != m2 || kg1 != kg2 || s1 != s2) {
+      fprintf(stderr, "DimensionalMismatchError: cannot add quantities of different physical dimensions [%d,%d,%d] vs [%d,%d,%d]\n", m1, kg1, s1, m2, kg2, s2);
+      return -1;
+    }
+    AKSValue p = ValStruct("PhysUnit");
+    AKSStruct *st = ValToObj(p);
+    st->fieldcount = 4;
+    st->fieldnames = malloc(4 * sizeof(char *));
+    st->fieldvals = malloc(4 * sizeof(AKSValue));
+    st->fieldnames[0] = strdup("val");
+    st->fieldvals[0] = ValFloat(v1 + v2);
+    st->fieldnames[1] = strdup("m");
+    st->fieldvals[1] = ValInt(m1);
+    st->fieldnames[2] = strdup("kg");
+    st->fieldvals[2] = ValInt(kg1);
+    st->fieldnames[3] = strdup("s");
+    st->fieldvals[3] = ValInt(s1);
+    PUSH(p);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "PhysSub") == 0) {
+    AKSValue u2 = POP();
+    AKSValue u1 = POP();
+    double v1 = 0, v2 = 0;
+    int m1 = 0, kg1 = 0, s1 = 0, m2 = 0, kg2 = 0, s2 = 0;
+    if (ValKind(u1) == VALSTRUCT) {
+      AKSStruct *st = ValToObj(u1);
+      for (int i = 0; i < st->fieldcount; i++) {
+        if (strcmp(st->fieldnames[i], "val") == 0) v1 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "m") == 0) m1 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "kg") == 0) kg1 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "s") == 0) s1 = (int)ValToInt(st->fieldvals[i]);
+      }
+    }
+    if (ValKind(u2) == VALSTRUCT) {
+      AKSStruct *st = ValToObj(u2);
+      for (int i = 0; i < st->fieldcount; i++) {
+        if (strcmp(st->fieldnames[i], "val") == 0) v2 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "m") == 0) m2 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "kg") == 0) kg2 = (int)ValToInt(st->fieldvals[i]);
+        else if (strcmp(st->fieldnames[i], "s") == 0) s2 = (int)ValToInt(st->fieldvals[i]);
+      }
+    }
+    ValFree(&u1);
+    ValFree(&u2);
+    if (m1 != m2 || kg1 != kg2 || s1 != s2) {
+      fprintf(stderr, "DimensionalMismatchError: cannot subtract quantities of different physical dimensions [%d,%d,%d] vs [%d,%d,%d]\n", m1, kg1, s1, m2, kg2, s2);
+      return -1;
+    }
+    AKSValue p = ValStruct("PhysUnit");
+    AKSStruct *st = ValToObj(p);
+    st->fieldcount = 4;
+    st->fieldnames = malloc(4 * sizeof(char *));
+    st->fieldvals = malloc(4 * sizeof(AKSValue));
+    st->fieldnames[0] = strdup("val");
+    st->fieldvals[0] = ValFloat(v1 - v2);
+    st->fieldnames[1] = strdup("m");
+    st->fieldvals[1] = ValInt(m1);
+    st->fieldnames[2] = strdup("kg");
+    st->fieldvals[2] = ValInt(kg1);
+    st->fieldnames[3] = strdup("s");
+    st->fieldvals[3] = ValInt(s1);
+    PUSH(p);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "EinsteinSum") == 0 || strcmp(name, "EinsumC") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: EinsteinSum expects (spec, A, [B])\n");
+      return -1;
+    }
+    AKSValue B_val = ValNull();
+    AKSValue A_val = ValNull();
+    AKSValue spec_val = ValNull();
+    if (argc >= 3) {
+      B_val = POP();
+      A_val = POP();
+      spec_val = POP();
+    } else {
+      A_val = POP();
+      spec_val = POP();
+    }
+    const char *spec = (ValKind(spec_val) == VALSTR && ValToStrPtr(spec_val)) ? ValToStrPtr(spec_val)->data : "";
+
+    // Matrix multiplication: "ij,jk->ik"
+    if (strstr(spec, "ij,jk->ik") && ValKind(A_val) == VALARR && ValKind(B_val) == VALARR) {
+      AKSArray *A = ValToArr(A_val);
+      AKSArray *B = ValToArr(B_val);
+      int rowsA = A->count;
+      int colsA = (rowsA > 0 && ValKind(A->items[0]) == VALARR) ? ValToArr(A->items[0])->count : 0;
+      int rowsB = B->count;
+      int colsB = (rowsB > 0 && ValKind(B->items[0]) == VALARR) ? ValToArr(B->items[0])->count : 0;
+      if (colsA != rowsB) {
+        ValFree(&spec_val); ValFree(&A_val); ValFree(&B_val);
+        fprintf(stderr, "DimensionError: einsum matrix inner dimensions mismatch (%d != %d)\n", colsA, rowsB);
+        return -1;
+      }
+      AKSValue C_val = ValArr(rowsA);
+      AKSArray *C = ValToArr(C_val);
+      for (int i = 0; i < rowsA; i++) {
+        AKSValue row_val = ValArr(colsB);
+        AKSArray *row = ValToArr(row_val);
+        AKSArray *A_row = ValToArr(A->items[i]);
+        for (int k = 0; k < colsB; k++) {
+          double sum = 0.0;
+          for (int j = 0; j < colsA; j++) {
+            double a_ij = (ValKind(A_row->items[j]) == VALFLOAT) ? ValToFloat(A_row->items[j]) : (double)ValToInt(A_row->items[j]);
+            AKSArray *B_j = ValToArr(B->items[j]);
+            double b_jk = (ValKind(B_j->items[k]) == VALFLOAT) ? ValToFloat(B_j->items[k]) : (double)ValToInt(B_j->items[k]);
+            sum += a_ij * b_jk;
+          }
+          row->items[k] = ValFloat(sum);
+        }
+        row->count = colsB;
+        C->items[i] = row_val;
+      }
+      C->count = rowsA;
+      ValFree(&spec_val); ValFree(&A_val); ValFree(&B_val);
+      PUSH(C_val);
+      *stacktopptr = stacktop;
+      return 1;
+    }
+
+    // Dot product: "i,i->"
+    if (strstr(spec, "i,i->") && ValKind(A_val) == VALARR && ValKind(B_val) == VALARR) {
+      AKSArray *A = ValToArr(A_val);
+      AKSArray *B = ValToArr(B_val);
+      int n = (A->count < B->count) ? A->count : B->count;
+      double dot = 0.0;
+      for (int i = 0; i < n; i++) {
+        double a_i = (ValKind(A->items[i]) == VALFLOAT) ? ValToFloat(A->items[i]) : (double)ValToInt(A->items[i]);
+        double b_i = (ValKind(B->items[i]) == VALFLOAT) ? ValToFloat(B->items[i]) : (double)ValToInt(B->items[i]);
+        dot += a_i * b_i;
+      }
+      ValFree(&spec_val); ValFree(&A_val); ValFree(&B_val);
+      PUSH(ValFloat(dot));
+      *stacktopptr = stacktop;
+      return 1;
+    }
+
+    // Matrix transpose: "ij->ji"
+    if (strstr(spec, "ij->ji") && ValKind(A_val) == VALARR) {
+      AKSArray *A = ValToArr(A_val);
+      int rows = A->count;
+      int cols = (rows > 0 && ValKind(A->items[0]) == VALARR) ? ValToArr(A->items[0])->count : 0;
+      AKSValue T_val = ValArr(cols);
+      AKSArray *T = ValToArr(T_val);
+      for (int j = 0; j < cols; j++) {
+        AKSValue col_val = ValArr(rows);
+        AKSArray *col = ValToArr(col_val);
+        for (int i = 0; i < rows; i++) {
+          col->items[i] = ValCopy(ValToArr(A->items[i])->items[j]);
+        }
+        col->count = rows;
+        T->items[j] = col_val;
+      }
+      T->count = cols;
+      ValFree(&spec_val); ValFree(&A_val); ValFree(&B_val);
+      PUSH(T_val);
+      *stacktopptr = stacktop;
+      return 1;
+    }
+
+    // Matrix trace / diagonal: "ii->"
+    if (strstr(spec, "ii->") && ValKind(A_val) == VALARR) {
+      AKSArray *A = ValToArr(A_val);
+      int n = A->count;
+      double trace = 0.0;
+      for (int i = 0; i < n; i++) {
+        if (ValKind(A->items[i]) == VALARR && i < ValToArr(A->items[i])->count) {
+          AKSValue diag = ValToArr(A->items[i])->items[i];
+          trace += (ValKind(diag) == VALFLOAT) ? ValToFloat(diag) : (double)ValToInt(diag);
+        }
+      }
+      ValFree(&spec_val); ValFree(&A_val); ValFree(&B_val);
+      PUSH(ValFloat(trace));
+      *stacktopptr = stacktop;
+      return 1;
+    }
+
+    ValFree(&spec_val); ValFree(&A_val); ValFree(&B_val);
     PUSH(ValNull());
     *stacktopptr = stacktop;
     return 1;

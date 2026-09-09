@@ -4922,7 +4922,14 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             if (c->isrepl && c->current->scopedepth == 0) {
                 ChunkWrite(ch,OPPRINTREPL,n->line);
             } else {
-                ChunkWrite(ch,OPPOP,n->line);
+                if (n->is_static_safe || (n->single.expr && n->single.expr->is_static_safe) || c->is_static_mode ||
+                    (n->single.expr && (n->single.expr->type == NBINOP || n->single.expr->type == NUNOP ||
+                                        n->single.expr->type == NINT || n->single.expr->type == NFLOAT ||
+                                        n->single.expr->type == NBOOL || n->single.expr->type == NIDENT))) {
+                    ChunkWrite(ch, OP_STATIC_RELEASE, n->line);
+                } else {
+                    ChunkWrite(ch,OPPOP,n->line);
+                }
             }
             break;
         case NPRINT:
@@ -5213,7 +5220,7 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             int continue_target = ch->count;
             if (n->forn.post) {
                 EmitExpr(c, n->forn.post);
-                ChunkWrite(ch, OPPOP, n->line);
+                ChunkWrite(ch, OP_STATIC_RELEASE, n->line);
             }
             
             ChunkWrite(ch, OPJUMP, n->line);
@@ -6822,7 +6829,8 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
         }
         case NCONST_EVAL: {
             if (n->single.expr) {
-                EmitNode(c, n->single.expr);
+                RunCTFE(c, n->single.expr, n->line);
+                ChunkWrite(ch, OP_STATIC_RELEASE, n->line);
             }
             break;
         }
@@ -7865,6 +7873,46 @@ Compiler *CompNew(void) {
     NewFn(c, "ZipArchiveCreateC");
     NewFn(c, "ZipArchiveExtractC");
     NewFn(c, "ZipArchiveListC");
+
+    /* Neural network operations */
+    NewFn(c, "NnLinear");
+    NewFn(c, "NnForward");
+    NewFn(c, "NnRelu");
+    NewFn(c, "NnSoftmax");
+    NewFn(c, "NnMseLoss");
+    NewFn(c, "NnCrossEntropy");
+    NewFn(c, "NnLossVal");
+    NewFn(c, "NnGetVal");
+    NewFn(c, "NnSGD");
+    NewFn(c, "NnAdam");
+    NewFn(c, "NnRMSProp");
+    NewFn(c, "NnZeroGrad");
+
+    /* Static mode optimization diagnostics */
+    NewFn(c, "GetStaticRcEliminated");
+
+    /* Work-stealing scheduler interface */
+    NewFn(c, "GreenSchedStats");
+    NewFn(c, "GreenSchedSubmit");
+    NewFn(c, "GreenSchedYield");
+    NewFn(c, "GreenSchedWorkers");
+    NewFn(c, "GreenSchedParallelFor");
+
+    /* Physical units and tensor operations */
+    NewFn(c, "PhysUnit");
+    NewFn(c, "Meter");
+    NewFn(c, "Kilogram");
+    NewFn(c, "Second");
+    NewFn(c, "Newton");
+    NewFn(c, "Joule");
+    NewFn(c, "Watt");
+    NewFn(c, "PhysMul");
+    NewFn(c, "PhysDiv");
+    NewFn(c, "PhysAdd");
+    NewFn(c, "PhysSub");
+    NewFn(c, "PhysVal");
+    NewFn(c, "EinsteinSum");
+    NewFn(c, "EinsumC");
 
     return c;
 }
@@ -9997,9 +10045,9 @@ int CompCompile(Compiler *c, Node *program) {
             }
         }
     }
-    if (gBorrowCheckerEnabled) {
+    if (gBorrowCheckerEnabled || c->is_static_mode) {
         g_moved_count = 0;
-        CheckBorrows(c, program, program);
+        if (gBorrowCheckerEnabled) CheckBorrows(c, program, program);
         if (!c->haderror) {
             MarkStaticSafeNodes(program);
         }

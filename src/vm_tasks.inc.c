@@ -334,6 +334,7 @@ static int GetInstrLen(uint8_t op, uint8_t *ip) {
   case OPDUP:
     return 1;
   case OPPOP:
+  case OP_STATIC_RELEASE:
     return 1;
   case OPPRINTLN:
     return 1;
@@ -709,7 +710,8 @@ void TranslateToRegister(VM *vm, FnProto *fn) {
       count++;
       break;
     }
-    case OPPOP: {
+    case OPPOP:
+    case OP_STATIC_RELEASE: {
       if (simstacktop > 0)
         simstacktop--;
       break;

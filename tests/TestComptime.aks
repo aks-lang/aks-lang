@@ -1,42 +1,27 @@
-fn Assert(cond, msg) {
-    if (!cond) {
-        panic(msg);
+fn Factorial(n) {
+    if (n <= 1) {
+        return 1;
     }
+    return n * Factorial(n - 1);
 }
 
-fn AssertEq(actual, expected, msg) {
-    if (actual != expected) {
-        panic(msg);
-    }
-}
+fn TestComptime() {
+    println("Testing comptime CTFE execution...");
+    let fact10 = comptime Factorial(10);
+    println("Comptime factorial(10): " + fact10);
+    assert(fact10 == 3628800.0, "Comptime factorial(10) mismatch!");
 
-fn TestComptimeBasic() {
-    let x = comptime {
-        let a = 10;
-        let b = 20;
-        return a + b;
-    };
-    AssertEq(x, 30, "Comptime basic failed");
-}
-
-fn TestComptimeArithmetic() {
-    let y = comptime {
+    let computed = comptime {
         let sum = 0;
-        let i = 1;
-        while (i <= 5) {
+        for (let i = 1; i <= 100; i = i + 1) {
             sum = sum + i;
-            i++;
         }
         return sum;
     };
-    AssertEq(y, 15, "Comptime loop failed");
+    println("Comptime sum(1..100): " + computed);
+    assert(computed == 5050, "Comptime loop sum mismatch!");
+
+    println("Comptime tests passed successfully!");
 }
 
-fn Main() {
-    print("Running Comptime Execution Tests");
-    TestComptimeBasic();
-    TestComptimeArithmetic();
-    print("Comptime Execution Tests Passed");
-}
-
-Main();
+TestComptime();

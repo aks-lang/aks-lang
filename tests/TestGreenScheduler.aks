@@ -1,0 +1,34 @@
+fn WorkerJob(id) {
+    GreenSchedYield();
+    return id * 10;
+}
+
+fn TestGreenScheduler() {
+    println("Testing M:N work-stealing GreenScheduler...");
+    let stats = GreenSchedStats();
+    println("Workers: " + stats.workers);
+    assert(stats.workers > 0, "Worker pool must have > 0 workers");
+    assert(stats.work_stealing == 1, "Work stealing must be enabled");
+
+    // Spawn green threads via work-stealing scheduler
+    let t1 = GreenSchedSubmit(WorkerJob, 1);
+    let t2 = GreenSchedSubmit(WorkerJob, 2);
+    let t3 = GreenSchedSubmit(WorkerJob, 3);
+
+    let r1 = await t1;
+    let r2 = await t2;
+    let r3 = await t3;
+
+    println("r1: " + r1 + ", r2: " + r2 + ", r3: " + r3);
+    assert(r1 == 10, "Task 1 failed");
+    assert(r2 == 20, "Task 2 failed");
+    assert(r3 == 30, "Task 3 failed");
+
+    let post_stats = GreenSchedStats();
+    println("Completed tasks: " + post_stats.completed_tasks);
+    assert(post_stats.completed_tasks >= 3, "Expected at least 3 completed tasks");
+
+    println("GreenScheduler tests passed successfully!");
+}
+
+TestGreenScheduler();

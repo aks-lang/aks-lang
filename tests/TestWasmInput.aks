@@ -1,0 +1,11 @@
+fn add(a, b) {
+    return a + b;
+}
+
+fn compute_sum(n) {
+    let s = 0;
+    for (let i = 1; i <= n; i = i + 1) {
+        s = s + i;
+    }
+    return s;
+}

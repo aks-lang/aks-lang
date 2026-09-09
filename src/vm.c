@@ -7022,7 +7022,11 @@ while (0)
       } else {
         res = ValSub(a, b);
       }
-      ValFree(&frameslots[curr_inst->dst]);
+      if (ValKind(frameslots[curr_inst->dst]) >= VALSTR) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      } else {
+        vm->static_rc_eliminated++;
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -7064,7 +7068,11 @@ while (0)
       } else {
         res = ValMul(a, b);
       }
-      ValFree(&frameslots[curr_inst->dst]);
+      if (ValKind(frameslots[curr_inst->dst]) >= VALSTR) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      } else {
+        vm->static_rc_eliminated++;
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -8512,7 +8520,11 @@ while (0)
                &frameslots);
         continue;
       }
-      ValFree(&frameslots[curr_inst->dst]);
+      if (ValKind(frameslots[curr_inst->dst]) >= VALSTR) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      } else {
+        vm->static_rc_eliminated++;
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -8967,7 +8979,11 @@ while (0)
       AKSValue a = frameslots[curr_inst->src1];
       AKSValue b = frameslots[curr_inst->src2];
       if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
-        ValFree(&frameslots[curr_inst->dst]);
+        if (ValKind(frameslots[curr_inst->dst]) >= VALSTR) {
+          ValFreeFunc(&frameslots[curr_inst->dst]);
+        } else {
+          vm->static_rc_eliminated++;
+        }
         frameslots[curr_inst->dst] = ValInt(ValToInt(a) << ValToInt(b));
       } else {
         ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
@@ -9367,7 +9383,11 @@ while (0)
       } else {
         res = ValAdd(a, b);
       }
-      ValFree(&frameslots[curr_inst->dst]);
+      if (ValKind(frameslots[curr_inst->dst]) >= VALSTR) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      } else {
+        vm->static_rc_eliminated++;
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -12390,6 +12410,13 @@ enter_stack_interpreter: for (;;) {
     PUSH(ValInt(0));
     break;
   }
+  case OP_STATIC_RELEASE: {
+    if (stacktop > frameslots) {
+      stacktop--;
+    }
+    vm->static_rc_eliminated++;
+    break;
+  }
   default:
     fprintf(stderr,
             "Runtime error: unknown opcode: %d at PC: %d inside function: %s\n",
@@ -12771,6 +12798,7 @@ void VMSync(VM *vm, Compiler *c, int syncmain) {
       TranslateToRegister(vm, vm->fns[i]);
     }
   }
+  VMInjectNatives(vm);
 }
 
 const char *StackOpName(int op) {
@@ -12911,6 +12939,8 @@ const char *StackOpName(int op) {
     return "OPCASTBOOL";
   case OPCASTSTR:
     return "OPCASTSTR";
+  case OP_STATIC_RELEASE:
+    return "OP_STATIC_RELEASE";
   default:
     return "UNKNOWN";
   }

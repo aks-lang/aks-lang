@@ -1,0 +1,37 @@
+fn TestNeuralNet() {
+    println("Testing Native Neural Network Training...");
+
+    // Create Linear Layer (2 inputs -> 1 output)
+    let layer = NnLinear(2, 1);
+    assert(layer != null, "NnLinear creation failed");
+
+    // Input sample [x1, x2] and target [y]
+    let x = [1.0, 2.0];
+    let target = [5.0];
+
+    let initial_loss = 0.0;
+    let final_loss = 0.0;
+
+    // Training loop (20 epochs)
+    for (let epoch = 0; epoch < 20; epoch = epoch + 1) {
+        NnZeroGrad(layer);
+        let pred = NnForward(layer, x);
+        let loss = NnMseLoss(pred, target);
+        let lval = NnLossVal(loss);
+        if (epoch == 0) {
+            initial_loss = lval;
+        }
+        final_loss = lval;
+        // Backward pass
+        TapeBackward(0, loss);
+        // Optimizer step
+        NnSGD(layer, 0.05);
+    }
+
+    println("Initial MSE loss: " + initial_loss);
+    println("Final MSE loss after 20 epochs: " + final_loss);
+    assert(final_loss < initial_loss, "Training failed to reduce loss");
+    println("Neural Net training passed successfully!");
+}
+
+TestNeuralNet();

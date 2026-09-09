@@ -79,6 +79,7 @@ static int GetInstrLen(uint8_t op, uint8_t *ip) {
         case OPTYPEOF: return 1;
         case OPAPPLY: return 1;
         case OPRESTARGS: return 2;
+        case OP_STATIC_RELEASE: return 1;
         default: return 1;
     }
 }
@@ -100,6 +101,7 @@ static int GetStackEffect(uint8_t op, uint8_t *ip) {
         case OPSTORE:
         case OPSTOREGLOBAL:
         case OPPOP:
+        case OP_STATIC_RELEASE:
         case OPPRINTLN:
         case OPADD:
         case OPSUB:

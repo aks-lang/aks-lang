@@ -1,0 +1,70 @@
+fn TestPhysicalUnits() {
+    println("Testing Physical Dimensional Units...");
+    let d = Meter(100.0);
+    let t = Second(9.58);
+    let speed = PhysDiv(d, t);
+    println("100m in 9.58s speed: " + PhysVal(speed) + " m/s");
+    assert(PhysVal(speed) > 10.4 && PhysVal(speed) < 10.5, "Speed calculation incorrect");
+
+    // Force = mass * acceleration: kg * (m/s^2) -> Newton
+    let m = Kilogram(80.0);
+    let a = PhysDiv(speed, t); // m/s^2
+    let f = PhysMul(m, a);
+    println("Force: " + PhysVal(f) + " N");
+    assert(f.m == 1 && f.kg == 1 && f.s == -2, "Force dimension must be [1, 1, -2]");
+
+    // Work = Force * Distance -> Joule
+    let work = PhysMul(f, d);
+    println("Work: " + PhysVal(work) + " J");
+    assert(work.m == 2 && work.kg == 1 && work.s == -2, "Work dimension must be [2, 1, -2]");
+
+    // Power = Work / Time -> Watt
+    let p = PhysDiv(work, t);
+    println("Power: " + PhysVal(p) + " W");
+    assert(p.m == 2 && p.kg == 1 && p.s == -3, "Power dimension must be [2, 1, -3]");
+
+    // Dimensional addition
+    let d1 = Meter(50.0);
+    let d2 = Meter(30.0);
+    let dtot = PhysAdd(d1, d2);
+    assert(PhysVal(dtot) == 80.0, "Meter addition failed");
+    println("Dimensional unit tests passed successfully!");
+}
+
+fn TestEinsteinSummation() {
+    println("Testing Einstein Summation Tensor Contraction...");
+    // Dot product: "i,i->"
+    let v1 = [1.0, 2.0, 3.0];
+    let v2 = [4.0, 5.0, 6.0];
+    let dot = EinsteinSum("i,i->", v1, v2);
+    println("Dot product (1*4 + 2*5 + 3*6): " + dot);
+    assert(dot == 32.0, "Dot product failed");
+
+    // Matrix multiplication: "ij,jk->ik"
+    let A = [
+        [1.0, 2.0],
+        [3.0, 4.0]
+    ];
+    let B = [
+        [2.0, 0.0],
+        [1.0, 2.0]
+    ];
+    let C = EinsteinSum("ij,jk->ik", A, B);
+    println("Matrix mult row 0: [" + C[0][0] + ", " + C[0][1] + "]");
+    println("Matrix mult row 1: [" + C[1][0] + ", " + C[1][1] + "]");
+    assert(C[0][0] == 4.0 && C[0][1] == 4.0, "Row 0 failed");
+    assert(C[1][0] == 10.0 && C[1][1] == 8.0, "Row 1 failed");
+
+    // Matrix transpose: "ij->ji"
+    let At = EinsteinSum("ij->ji", A);
+    assert(At[0][1] == 3.0 && At[1][0] == 2.0, "Transpose failed");
+
+    // Matrix trace: "ii->"
+    let tr = EinsteinSum("ii->", A);
+    assert(tr == 5.0, "Trace failed");
+
+    println("Einstein summation tests passed successfully!");
+}
+
+TestPhysicalUnits();
+TestEinsteinSummation();

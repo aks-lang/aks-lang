@@ -3400,8 +3400,13 @@ void NodeEscapeAnalysis(Node *n) {
                     }
                     if (!escapes && n->type == NBLOCK) {
                         init->isstack = 1;
+                        stmt->is_static_safe = 1;
+                        init->is_static_safe = 1;
                     }
                 }
+            } else if (stmt && stmt->type == NEXPRSTMT) {
+                stmt->is_static_safe = 1;
+                if (stmt->single.expr) stmt->single.expr->is_static_safe = 1;
             }
             NodeEscapeAnalysis(stmt);
         }

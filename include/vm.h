@@ -228,6 +228,8 @@ typedef struct {
     int flame_profiling_enabled;
     char flame_output_path[512];
     int flame_current_node;
+    uint64_t static_rc_eliminated;
+    void *gsched;
 
     VMTimer timers[1024];
     int timercount;
