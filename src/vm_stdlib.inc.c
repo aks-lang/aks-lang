@@ -376,6 +376,91 @@ static AKSValue *AksStructFindField(AKSStruct *s, const char *name) {
   return NULL;
 }
 
+static AKSValue MakePhysUnit(double val, int m, int kg, int s) {
+  AKSValue p = ValStruct("PhysUnit");
+  AKSStruct *st = ValToObj(p);
+  st->fieldcount = 8;
+  st->fieldnames = malloc(8 * sizeof(char *));
+  st->fieldvals = malloc(8 * sizeof(AKSValue));
+  st->fieldnames[0] = strdup("val");
+  st->fieldvals[0] = ValFloat(val);
+  st->fieldnames[1] = strdup("magnitude");
+  st->fieldvals[1] = ValFloat(val);
+  st->fieldnames[2] = strdup("m");
+  st->fieldvals[2] = ValInt(m);
+  st->fieldnames[3] = strdup("kg");
+  st->fieldvals[3] = ValInt(kg);
+  st->fieldnames[4] = strdup("s");
+  st->fieldvals[4] = ValInt(s);
+
+  AKSValue u = ValStruct("UnitDim");
+  AKSStruct *ust = ValToObj(u);
+  ust->fieldcount = 7;
+  ust->fieldnames = malloc(7 * sizeof(char *));
+  ust->fieldvals = malloc(7 * sizeof(AKSValue));
+  ust->fieldnames[0] = strdup("m");
+  ust->fieldvals[0] = ValInt(m);
+  ust->fieldnames[1] = strdup("kg");
+  ust->fieldvals[1] = ValInt(kg);
+  ust->fieldnames[2] = strdup("s");
+  ust->fieldvals[2] = ValInt(s);
+  ust->fieldnames[3] = strdup("a");
+  ust->fieldvals[3] = ValInt(0);
+  ust->fieldnames[4] = strdup("k");
+  ust->fieldvals[4] = ValInt(0);
+  ust->fieldnames[5] = strdup("mol");
+  ust->fieldvals[5] = ValInt(0);
+  ust->fieldnames[6] = strdup("cd");
+  ust->fieldvals[6] = ValInt(0);
+
+  st->fieldnames[5] = strdup("unit");
+  st->fieldvals[5] = u;
+  st->fieldnames[6] = strdup("dim");
+  st->fieldvals[6] = ValCopy(u);
+  st->fieldnames[7] = strdup("name");
+  st->fieldvals[7] = ValStr("PhysUnit");
+  return p;
+}
+
+static void PhysExtractUnit(AKSValue u, double *out_val, int *out_m, int *out_kg, int *out_s) {
+  double v = 0.0;
+  int m = 0, kg = 0, s = 0;
+  if (ValKind(u) == VALSTRUCT) {
+    AKSStruct *st = ValToObj(u);
+    for (int i = 0; i < st->fieldcount; i++) {
+      if (st->fieldnames[i]) {
+        if (strcmp(st->fieldnames[i], "val") == 0 || strcmp(st->fieldnames[i], "magnitude") == 0) {
+          v = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
+        } else if (strcmp(st->fieldnames[i], "m") == 0) {
+          m = (int)ValToInt(st->fieldvals[i]);
+        } else if (strcmp(st->fieldnames[i], "kg") == 0) {
+          kg = (int)ValToInt(st->fieldvals[i]);
+        } else if (strcmp(st->fieldnames[i], "s") == 0) {
+          s = (int)ValToInt(st->fieldvals[i]);
+        } else if ((strcmp(st->fieldnames[i], "unit") == 0 || strcmp(st->fieldnames[i], "dim") == 0) &&
+                   ValKind(st->fieldvals[i]) == VALSTRUCT) {
+          AKSStruct *ust = ValToObj(st->fieldvals[i]);
+          for (int j = 0; j < ust->fieldcount; j++) {
+            if (ust->fieldnames[j]) {
+              if (strcmp(ust->fieldnames[j], "m") == 0 && m == 0) m = (int)ValToInt(ust->fieldvals[j]);
+              else if (strcmp(ust->fieldnames[j], "kg") == 0 && kg == 0) kg = (int)ValToInt(ust->fieldvals[j]);
+              else if (strcmp(ust->fieldnames[j], "s") == 0 && s == 0) s = (int)ValToInt(ust->fieldvals[j]);
+            }
+          }
+        }
+      }
+    }
+  } else if (ValKind(u) == VALFLOAT) {
+    v = ValToFloat(u);
+  } else if (ValKind(u) == VALINT) {
+    v = (double)ValToInt(u);
+  }
+  *out_val = v;
+  *out_m = m;
+  *out_kg = kg;
+  *out_s = s;
+}
+
 static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
                          AKSValue **stacktopptr) {
   AKSValue *stacktop = *stacktopptr;
@@ -24856,25 +24941,13 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
 
   /* Physical units with dimensional validation and Einstein summation */
   if (strcmp(name, "PhysUnit") == 0) {
-    int s = (int)ValToInt(POP());
-    int kg = (int)ValToInt(POP());
-    int m = (int)ValToInt(POP());
-    AKSValue v_v = POP();
+    int s = (argc >= 4) ? (int)ValToInt(POP()) : 0;
+    int kg = (argc >= 3) ? (int)ValToInt(POP()) : 0;
+    int m = (argc >= 2) ? (int)ValToInt(POP()) : 0;
+    AKSValue v_v = (argc >= 1) ? POP() : ValFloat(0.0);
     double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
     ValFree(&v_v);
-    AKSValue p = ValStruct("PhysUnit");
-    AKSStruct *st = ValToObj(p);
-    st->fieldcount = 4;
-    st->fieldnames = malloc(4 * sizeof(char *));
-    st->fieldvals = malloc(4 * sizeof(AKSValue));
-    st->fieldnames[0] = strdup("val");
-    st->fieldvals[0] = ValFloat(val);
-    st->fieldnames[1] = strdup("m");
-    st->fieldvals[1] = ValInt(m);
-    st->fieldnames[2] = strdup("kg");
-    st->fieldvals[2] = ValInt(kg);
-    st->fieldnames[3] = strdup("s");
-    st->fieldvals[3] = ValInt(s);
+    AKSValue p = MakePhysUnit(val, m, kg, s);
     PUSH(p);
     *stacktopptr = stacktop;
     return 1;
@@ -24884,19 +24957,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     AKSValue v_v = POP();
     double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
     ValFree(&v_v);
-    AKSValue p = ValStruct("PhysUnit");
-    AKSStruct *st = ValToObj(p);
-    st->fieldcount = 4;
-    st->fieldnames = malloc(4 * sizeof(char *));
-    st->fieldvals = malloc(4 * sizeof(AKSValue));
-    st->fieldnames[0] = strdup("val");
-    st->fieldvals[0] = ValFloat(val);
-    st->fieldnames[1] = strdup("m");
-    st->fieldvals[1] = ValInt(1);
-    st->fieldnames[2] = strdup("kg");
-    st->fieldvals[2] = ValInt(0);
-    st->fieldnames[3] = strdup("s");
-    st->fieldvals[3] = ValInt(0);
+    AKSValue p = MakePhysUnit(val, 1, 0, 0);
     PUSH(p);
     *stacktopptr = stacktop;
     return 1;
@@ -24906,19 +24967,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     AKSValue v_v = POP();
     double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
     ValFree(&v_v);
-    AKSValue p = ValStruct("PhysUnit");
-    AKSStruct *st = ValToObj(p);
-    st->fieldcount = 4;
-    st->fieldnames = malloc(4 * sizeof(char *));
-    st->fieldvals = malloc(4 * sizeof(AKSValue));
-    st->fieldnames[0] = strdup("val");
-    st->fieldvals[0] = ValFloat(val);
-    st->fieldnames[1] = strdup("m");
-    st->fieldvals[1] = ValInt(0);
-    st->fieldnames[2] = strdup("kg");
-    st->fieldvals[2] = ValInt(1);
-    st->fieldnames[3] = strdup("s");
-    st->fieldvals[3] = ValInt(0);
+    AKSValue p = MakePhysUnit(val, 0, 1, 0);
     PUSH(p);
     *stacktopptr = stacktop;
     return 1;
@@ -24928,106 +24977,92 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     AKSValue v_v = POP();
     double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
     ValFree(&v_v);
-    AKSValue p = ValStruct("PhysUnit");
-    AKSStruct *st = ValToObj(p);
-    st->fieldcount = 4;
-    st->fieldnames = malloc(4 * sizeof(char *));
-    st->fieldvals = malloc(4 * sizeof(AKSValue));
-    st->fieldnames[0] = strdup("val");
-    st->fieldvals[0] = ValFloat(val);
-    st->fieldnames[1] = strdup("m");
-    st->fieldvals[1] = ValInt(0);
-    st->fieldnames[2] = strdup("kg");
-    st->fieldvals[2] = ValInt(0);
-    st->fieldnames[3] = strdup("s");
-    st->fieldvals[3] = ValInt(1);
+    AKSValue p = MakePhysUnit(val, 0, 0, 1);
     PUSH(p);
     *stacktopptr = stacktop;
     return 1;
   }
 
   if (strcmp(name, "Newton") == 0) {
-    AKSValue v_v = POP();
-    double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
-    ValFree(&v_v);
-    AKSValue p = ValStruct("PhysUnit");
-    AKSStruct *st = ValToObj(p);
-    st->fieldcount = 4;
-    st->fieldnames = malloc(4 * sizeof(char *));
-    st->fieldvals = malloc(4 * sizeof(AKSValue));
-    st->fieldnames[0] = strdup("val");
-    st->fieldvals[0] = ValFloat(val);
-    st->fieldnames[1] = strdup("m");
-    st->fieldvals[1] = ValInt(1);
-    st->fieldnames[2] = strdup("kg");
-    st->fieldvals[2] = ValInt(1);
-    st->fieldnames[3] = strdup("s");
-    st->fieldvals[3] = ValInt(-2);
-    PUSH(p);
-    *stacktopptr = stacktop;
-    return 1;
+    if (argc >= 2) {
+      AKSValue u2 = POP();
+      AKSValue u1 = POP();
+      double v1 = 0, v2 = 0;
+      int m1 = 0, kg1 = 0, s1 = 0, m2 = 0, kg2 = 0, s2 = 0;
+      PhysExtractUnit(u1, &v1, &m1, &kg1, &s1);
+      PhysExtractUnit(u2, &v2, &m2, &kg2, &s2);
+      ValFree(&u1);
+      ValFree(&u2);
+      AKSValue p = MakePhysUnit(v1 * v2, m1 + m2, kg1 + kg2, s1 + s2);
+      PUSH(p);
+      *stacktopptr = stacktop;
+      return 1;
+    } else {
+      AKSValue v_v = POP();
+      double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
+      ValFree(&v_v);
+      AKSValue p = MakePhysUnit(val, 1, 1, -2);
+      PUSH(p);
+      *stacktopptr = stacktop;
+      return 1;
+    }
   }
 
   if (strcmp(name, "Joule") == 0) {
-    AKSValue v_v = POP();
-    double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
-    ValFree(&v_v);
-    AKSValue p = ValStruct("PhysUnit");
-    AKSStruct *st = ValToObj(p);
-    st->fieldcount = 4;
-    st->fieldnames = malloc(4 * sizeof(char *));
-    st->fieldvals = malloc(4 * sizeof(AKSValue));
-    st->fieldnames[0] = strdup("val");
-    st->fieldvals[0] = ValFloat(val);
-    st->fieldnames[1] = strdup("m");
-    st->fieldvals[1] = ValInt(2);
-    st->fieldnames[2] = strdup("kg");
-    st->fieldvals[2] = ValInt(1);
-    st->fieldnames[3] = strdup("s");
-    st->fieldvals[3] = ValInt(-2);
-    PUSH(p);
-    *stacktopptr = stacktop;
-    return 1;
+    if (argc >= 2) {
+      AKSValue u2 = POP();
+      AKSValue u1 = POP();
+      double v1 = 0, v2 = 0;
+      int m1 = 0, kg1 = 0, s1 = 0, m2 = 0, kg2 = 0, s2 = 0;
+      PhysExtractUnit(u1, &v1, &m1, &kg1, &s1);
+      PhysExtractUnit(u2, &v2, &m2, &kg2, &s2);
+      ValFree(&u1);
+      ValFree(&u2);
+      AKSValue p = MakePhysUnit(v1 * v2, m1 + m2, kg1 + kg2, s1 + s2);
+      PUSH(p);
+      *stacktopptr = stacktop;
+      return 1;
+    } else {
+      AKSValue v_v = POP();
+      double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
+      ValFree(&v_v);
+      AKSValue p = MakePhysUnit(val, 2, 1, -2);
+      PUSH(p);
+      *stacktopptr = stacktop;
+      return 1;
+    }
   }
 
   if (strcmp(name, "Watt") == 0) {
-    AKSValue v_v = POP();
-    double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
-    ValFree(&v_v);
-    AKSValue p = ValStruct("PhysUnit");
-    AKSStruct *st = ValToObj(p);
-    st->fieldcount = 4;
-    st->fieldnames = malloc(4 * sizeof(char *));
-    st->fieldvals = malloc(4 * sizeof(AKSValue));
-    st->fieldnames[0] = strdup("val");
-    st->fieldvals[0] = ValFloat(val);
-    st->fieldnames[1] = strdup("m");
-    st->fieldvals[1] = ValInt(2);
-    st->fieldnames[2] = strdup("kg");
-    st->fieldvals[2] = ValInt(1);
-    st->fieldnames[3] = strdup("s");
-    st->fieldvals[3] = ValInt(-3);
-    PUSH(p);
-    *stacktopptr = stacktop;
-    return 1;
+    if (argc >= 2) {
+      AKSValue u2 = POP();
+      AKSValue u1 = POP();
+      double v1 = 0, v2 = 0;
+      int m1 = 0, kg1 = 0, s1 = 0, m2 = 0, kg2 = 0, s2 = 0;
+      PhysExtractUnit(u1, &v1, &m1, &kg1, &s1);
+      PhysExtractUnit(u2, &v2, &m2, &kg2, &s2);
+      ValFree(&u1);
+      ValFree(&u2);
+      AKSValue p = MakePhysUnit(v1 / v2, m1 - m2, kg1 - kg2, s1 - s2);
+      PUSH(p);
+      *stacktopptr = stacktop;
+      return 1;
+    } else {
+      AKSValue v_v = POP();
+      double val = (ValKind(v_v) == VALFLOAT) ? ValToFloat(v_v) : (double)ValToInt(v_v);
+      ValFree(&v_v);
+      AKSValue p = MakePhysUnit(val, 2, 1, -3);
+      PUSH(p);
+      *stacktopptr = stacktop;
+      return 1;
+    }
   }
 
   if (strcmp(name, "PhysVal") == 0) {
     AKSValue u = POP();
     double v = 0.0;
-    if (ValKind(u) == VALSTRUCT) {
-      AKSStruct *st = ValToObj(u);
-      for (int i = 0; i < st->fieldcount; i++) {
-        if (strcmp(st->fieldnames[i], "val") == 0) {
-          v = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
-          break;
-        }
-      }
-    } else if (ValKind(u) == VALFLOAT) {
-      v = ValToFloat(u);
-    } else if (ValKind(u) == VALINT) {
-      v = (double)ValToInt(u);
-    }
+    int m = 0, kg = 0, s = 0;
+    PhysExtractUnit(u, &v, &m, &kg, &s);
     ValFree(&u);
     PUSH(ValFloat(v));
     *stacktopptr = stacktop;
@@ -25039,39 +25074,11 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     AKSValue u1 = POP();
     double v1 = 0, v2 = 0;
     int m1 = 0, kg1 = 0, s1 = 0, m2 = 0, kg2 = 0, s2 = 0;
-    if (ValKind(u1) == VALSTRUCT) {
-      AKSStruct *st = ValToObj(u1);
-      for (int i = 0; i < st->fieldcount; i++) {
-        if (strcmp(st->fieldnames[i], "val") == 0) v1 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "m") == 0) m1 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "kg") == 0) kg1 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "s") == 0) s1 = (int)ValToInt(st->fieldvals[i]);
-      }
-    }
-    if (ValKind(u2) == VALSTRUCT) {
-      AKSStruct *st = ValToObj(u2);
-      for (int i = 0; i < st->fieldcount; i++) {
-        if (strcmp(st->fieldnames[i], "val") == 0) v2 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "m") == 0) m2 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "kg") == 0) kg2 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "s") == 0) s2 = (int)ValToInt(st->fieldvals[i]);
-      }
-    }
+    PhysExtractUnit(u1, &v1, &m1, &kg1, &s1);
+    PhysExtractUnit(u2, &v2, &m2, &kg2, &s2);
     ValFree(&u1);
     ValFree(&u2);
-    AKSValue p = ValStruct("PhysUnit");
-    AKSStruct *st = ValToObj(p);
-    st->fieldcount = 4;
-    st->fieldnames = malloc(4 * sizeof(char *));
-    st->fieldvals = malloc(4 * sizeof(AKSValue));
-    st->fieldnames[0] = strdup("val");
-    st->fieldvals[0] = ValFloat(v1 * v2);
-    st->fieldnames[1] = strdup("m");
-    st->fieldvals[1] = ValInt(m1 + m2);
-    st->fieldnames[2] = strdup("kg");
-    st->fieldvals[2] = ValInt(kg1 + kg2);
-    st->fieldnames[3] = strdup("s");
-    st->fieldvals[3] = ValInt(s1 + s2);
+    AKSValue p = MakePhysUnit(v1 * v2, m1 + m2, kg1 + kg2, s1 + s2);
     PUSH(p);
     *stacktopptr = stacktop;
     return 1;
@@ -25082,39 +25089,11 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     AKSValue u1 = POP();
     double v1 = 0, v2 = 0;
     int m1 = 0, kg1 = 0, s1 = 0, m2 = 0, kg2 = 0, s2 = 0;
-    if (ValKind(u1) == VALSTRUCT) {
-      AKSStruct *st = ValToObj(u1);
-      for (int i = 0; i < st->fieldcount; i++) {
-        if (strcmp(st->fieldnames[i], "val") == 0) v1 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "m") == 0) m1 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "kg") == 0) kg1 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "s") == 0) s1 = (int)ValToInt(st->fieldvals[i]);
-      }
-    }
-    if (ValKind(u2) == VALSTRUCT) {
-      AKSStruct *st = ValToObj(u2);
-      for (int i = 0; i < st->fieldcount; i++) {
-        if (strcmp(st->fieldnames[i], "val") == 0) v2 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "m") == 0) m2 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "kg") == 0) kg2 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "s") == 0) s2 = (int)ValToInt(st->fieldvals[i]);
-      }
-    }
+    PhysExtractUnit(u1, &v1, &m1, &kg1, &s1);
+    PhysExtractUnit(u2, &v2, &m2, &kg2, &s2);
     ValFree(&u1);
     ValFree(&u2);
-    AKSValue p = ValStruct("PhysUnit");
-    AKSStruct *st = ValToObj(p);
-    st->fieldcount = 4;
-    st->fieldnames = malloc(4 * sizeof(char *));
-    st->fieldvals = malloc(4 * sizeof(AKSValue));
-    st->fieldnames[0] = strdup("val");
-    st->fieldvals[0] = ValFloat(v1 / v2);
-    st->fieldnames[1] = strdup("m");
-    st->fieldvals[1] = ValInt(m1 - m2);
-    st->fieldnames[2] = strdup("kg");
-    st->fieldvals[2] = ValInt(kg1 - kg2);
-    st->fieldnames[3] = strdup("s");
-    st->fieldvals[3] = ValInt(s1 - s2);
+    AKSValue p = MakePhysUnit(v1 / v2, m1 - m2, kg1 - kg2, s1 - s2);
     PUSH(p);
     *stacktopptr = stacktop;
     return 1;
@@ -25125,43 +25104,15 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     AKSValue u1 = POP();
     double v1 = 0, v2 = 0;
     int m1 = 0, kg1 = 0, s1 = 0, m2 = 0, kg2 = 0, s2 = 0;
-    if (ValKind(u1) == VALSTRUCT) {
-      AKSStruct *st = ValToObj(u1);
-      for (int i = 0; i < st->fieldcount; i++) {
-        if (strcmp(st->fieldnames[i], "val") == 0) v1 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "m") == 0) m1 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "kg") == 0) kg1 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "s") == 0) s1 = (int)ValToInt(st->fieldvals[i]);
-      }
-    }
-    if (ValKind(u2) == VALSTRUCT) {
-      AKSStruct *st = ValToObj(u2);
-      for (int i = 0; i < st->fieldcount; i++) {
-        if (strcmp(st->fieldnames[i], "val") == 0) v2 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "m") == 0) m2 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "kg") == 0) kg2 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "s") == 0) s2 = (int)ValToInt(st->fieldvals[i]);
-      }
-    }
+    PhysExtractUnit(u1, &v1, &m1, &kg1, &s1);
+    PhysExtractUnit(u2, &v2, &m2, &kg2, &s2);
     ValFree(&u1);
     ValFree(&u2);
     if (m1 != m2 || kg1 != kg2 || s1 != s2) {
       fprintf(stderr, "DimensionalMismatchError: cannot add quantities of different physical dimensions [%d,%d,%d] vs [%d,%d,%d]\n", m1, kg1, s1, m2, kg2, s2);
       return -1;
     }
-    AKSValue p = ValStruct("PhysUnit");
-    AKSStruct *st = ValToObj(p);
-    st->fieldcount = 4;
-    st->fieldnames = malloc(4 * sizeof(char *));
-    st->fieldvals = malloc(4 * sizeof(AKSValue));
-    st->fieldnames[0] = strdup("val");
-    st->fieldvals[0] = ValFloat(v1 + v2);
-    st->fieldnames[1] = strdup("m");
-    st->fieldvals[1] = ValInt(m1);
-    st->fieldnames[2] = strdup("kg");
-    st->fieldvals[2] = ValInt(kg1);
-    st->fieldnames[3] = strdup("s");
-    st->fieldvals[3] = ValInt(s1);
+    AKSValue p = MakePhysUnit(v1 + v2, m1, kg1, s1);
     PUSH(p);
     *stacktopptr = stacktop;
     return 1;
@@ -25172,43 +25123,15 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     AKSValue u1 = POP();
     double v1 = 0, v2 = 0;
     int m1 = 0, kg1 = 0, s1 = 0, m2 = 0, kg2 = 0, s2 = 0;
-    if (ValKind(u1) == VALSTRUCT) {
-      AKSStruct *st = ValToObj(u1);
-      for (int i = 0; i < st->fieldcount; i++) {
-        if (strcmp(st->fieldnames[i], "val") == 0) v1 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "m") == 0) m1 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "kg") == 0) kg1 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "s") == 0) s1 = (int)ValToInt(st->fieldvals[i]);
-      }
-    }
-    if (ValKind(u2) == VALSTRUCT) {
-      AKSStruct *st = ValToObj(u2);
-      for (int i = 0; i < st->fieldcount; i++) {
-        if (strcmp(st->fieldnames[i], "val") == 0) v2 = (ValKind(st->fieldvals[i]) == VALFLOAT) ? ValToFloat(st->fieldvals[i]) : (double)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "m") == 0) m2 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "kg") == 0) kg2 = (int)ValToInt(st->fieldvals[i]);
-        else if (strcmp(st->fieldnames[i], "s") == 0) s2 = (int)ValToInt(st->fieldvals[i]);
-      }
-    }
+    PhysExtractUnit(u1, &v1, &m1, &kg1, &s1);
+    PhysExtractUnit(u2, &v2, &m2, &kg2, &s2);
     ValFree(&u1);
     ValFree(&u2);
     if (m1 != m2 || kg1 != kg2 || s1 != s2) {
       fprintf(stderr, "DimensionalMismatchError: cannot subtract quantities of different physical dimensions [%d,%d,%d] vs [%d,%d,%d]\n", m1, kg1, s1, m2, kg2, s2);
       return -1;
     }
-    AKSValue p = ValStruct("PhysUnit");
-    AKSStruct *st = ValToObj(p);
-    st->fieldcount = 4;
-    st->fieldnames = malloc(4 * sizeof(char *));
-    st->fieldvals = malloc(4 * sizeof(AKSValue));
-    st->fieldnames[0] = strdup("val");
-    st->fieldvals[0] = ValFloat(v1 - v2);
-    st->fieldnames[1] = strdup("m");
-    st->fieldvals[1] = ValInt(m1);
-    st->fieldnames[2] = strdup("kg");
-    st->fieldvals[2] = ValInt(kg1);
-    st->fieldnames[3] = strdup("s");
-    st->fieldvals[3] = ValInt(s1);
+    AKSValue p = MakePhysUnit(v1 - v2, m1, kg1, s1);
     PUSH(p);
     *stacktopptr = stacktop;
     return 1;

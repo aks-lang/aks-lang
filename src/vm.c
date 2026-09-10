@@ -8711,7 +8711,18 @@ while (0)
                 break;
               }
             }
-            if (found >= 0 && ValKind(s->fieldvals[found]) == VALFN) {
+            uint16_t global_fnid = 65535;
+            if (found < 0 && s->typename) {
+              char fullfnname[256];
+              snprintf(fullfnname, sizeof(fullfnname), "%s.%s", s->typename, methodname);
+              for (uint16_t k = 0; k < vm->fncount; k++) {
+                if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, fullfnname) == 0) {
+                  global_fnid = k;
+                  break;
+                }
+              }
+            }
+            if ((found >= 0 && ValKind(s->fieldvals[found]) == VALFN) || global_fnid != 65535) {
               for (int i = argc - 1; i >= 0; i--) {
                 ValFree(&frameslots[dst + i + 1]);
                 frameslots[dst + i + 1] = ValCopy(frameslots[dst + i]);
@@ -8719,7 +8730,11 @@ while (0)
               ValFree(&frameslots[dst]);
               frameslots[dst] = ValCopy(receiver);
               argc++;
-              calleeval = ValCopy(s->fieldvals[found]);
+              if (found >= 0) {
+                calleeval = ValCopy(s->fieldvals[found]);
+              } else {
+                calleeval = ValFn(global_fnid);
+              }
               ValFree(&receiver);
               free(methodname);
             } else {
@@ -9150,7 +9165,18 @@ while (0)
               break;
             }
           }
-          if (found >= 0 && ValKind(s->fieldvals[found]) == VALFN) {
+          uint16_t global_fnid = 65535;
+          if (found < 0 && s->typename) {
+            char fullfnname[256];
+            snprintf(fullfnname, sizeof(fullfnname), "%s.%s", s->typename, methodname);
+            for (uint16_t k = 0; k < vm->fncount; k++) {
+              if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, fullfnname) == 0) {
+                global_fnid = k;
+                break;
+              }
+            }
+          }
+          if ((found >= 0 && ValKind(s->fieldvals[found]) == VALFN) || global_fnid != 65535) {
             if (stacktop >= stacklimit) {
               ValFree(&receiver);
               free(methodname);
@@ -9164,7 +9190,11 @@ while (0)
             stacktop[-argc] = ValCopy(receiver);
             stacktop++;
             argc++;
-            calleeval = ValCopy(s->fieldvals[found]);
+            if (found >= 0) {
+              calleeval = ValCopy(s->fieldvals[found]);
+            } else {
+              calleeval = ValFn(global_fnid);
+            }
             ValFree(&receiver);
             free(methodname);
           } else {
