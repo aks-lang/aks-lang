@@ -28,6 +28,7 @@
 #include "staticcodegen.h"
 #include "wasmcodegen.h"
 #include "nostdcodegen.h"
+#include "mlircodegen.inc.c"
 
 #include <time.h>
 static int ExecuteRunBinary(const char *binarypath);
@@ -401,6 +402,10 @@ static void PrintUsage(const char *programname) {
     printf("\nInterop & Bindings:\n");
     printf("  %s bind <header.h> <output.aks>                 Generate AKS FFI bindings from C/C++ header\n", programname);
     printf("  %s wasm-bind <component.wit> <out.js> <out.ts>  Generate WebAssembly component glue code\n", programname);
+    printf("\nArchitecture & Multi-Target Codegen:\n");
+    printf("  %s compile-llvm <file.aks> [-o <out.ll>]        Compile source to target-optimized LLVM IR\n", programname);
+    printf("  %s compile-mlir <file.aks> [-o <out.mlir>]      Compile source to multi-dialect MLIR\n", programname);
+    printf("  %s cc [args...]                                 Embedded C/C++ cross-compiler driver\n", programname);
 }
 
 static const char *RegOpName(int op) {
@@ -1858,6 +1863,9 @@ static void ParseSafetyFlags(int *argcptr, char ***argvptr) {
             gTypeCheckingEnabled = 0;
         } else if (strcmp(argv[i], "--no-borrow-check") == 0) {
             gBorrowCheckerEnabled = 0;
+        } else if (strcmp(argv[i], "--strict-borrow-check") == 0) {
+            gBorrowCheckerEnabled = 1;
+            gStaticMode = 1;
         } else if (strcmp(argv[i], "--immutable-by-default") == 0) {
             gImmutableByDefault = 1;
         } else if (strcmp(argv[i], "--sandbox") == 0) {
@@ -2308,6 +2316,166 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "Error: Freestanding codegen failed for '%s'\n", srcfile);
                 return 1;
             }
+        } else if (strcmp(command, "compile-llvm") == 0) {
+            if (argc < 3) {
+                fprintf(stderr, "Usage: %s compile-llvm <file.aks> [-o <out.ll>] [--target <triple>] [--lto] [--pgo-gen <file>] [--pgo-use <file>]\n", argv[0]);
+                return 1;
+            }
+            const char *srcfile = argv[2];
+            char default_out[512];
+            strncpy(default_out, srcfile, sizeof(default_out) - 1);
+            default_out[sizeof(default_out) - 1] = '\0';
+            char *dot = strrchr(default_out, '.');
+            if (dot) *dot = '\0';
+            strncat(default_out, ".ll", sizeof(default_out) - strlen(default_out) - 1);
+            const char *outfile = default_out;
+            const char *target = gCrossTarget ? gCrossTarget : "x86_64-unknown-linux-gnu";
+            int lto = gLto;
+            const char *pgo_profile = gPgoProfile;
+            const char *pgo_use = gPgoUse;
+            for (int i = 3; i < argc; i++) {
+                if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+                    outfile = argv[i+1];
+                    i++;
+                } else if (strcmp(argv[i], "--target") == 0 && i + 1 < argc) {
+                    target = argv[i+1];
+                    i++;
+                } else if (strncmp(argv[i], "--target=", 9) == 0) {
+                    target = argv[i] + 9;
+                } else if (strcmp(argv[i], "--lto") == 0) {
+                    lto = 1;
+                } else if (strcmp(argv[i], "--pgo-gen") == 0 && i + 1 < argc) {
+                    pgo_profile = argv[i+1];
+                    i++;
+                } else if (strcmp(argv[i], "--pgo-use") == 0 && i + 1 < argc) {
+                    pgo_use = argv[i+1];
+                    i++;
+                }
+            }
+            char *rawsource = ReadFileToStr(srcfile);
+            if (!rawsource) {
+                fprintf(stderr, "Error: Could not read '%s'\n", srcfile);
+                return 1;
+            }
+            int parseError = 0;
+            Node *ast = Parse(rawsource, &parseError);
+            free(rawsource);
+            if (parseError || !ast) {
+                if (ast) NodeFree(ast);
+                fprintf(stderr, "Error: Parse failed for '%s'\n", srcfile);
+                return 1;
+            }
+            gStaticMode = 1;
+            Compiler *sc = CompNew();
+            sc->is_static_mode = 1;
+            if (!TyperRun(sc, ast)) {
+                fprintf(stderr, "Error: Type inference failed for '%s'\n", srcfile);
+                NodeFree(ast);
+                CompFree(sc);
+                return 1;
+            }
+            for (int i = 0; i < ast->block.count; i++) {
+                if (ast->block.stmts[i]->type == NFNDECL) {
+                    StaticBorrowCheck(sc, ast->block.stmts[i]);
+                    StaticLifetimeInfer(sc, ast->block.stmts[i]);
+                }
+            }
+            if (sc->haderror) {
+                NodeFree(ast);
+                CompFree(sc);
+                return 1;
+            }
+            int ok = StaticCodeGenEmitTarget(sc, ast, outfile, target, lto, pgo_profile, pgo_use);
+            NodeFree(ast);
+            CompFree(sc);
+            if (ok) {
+                printf("[llvm] Multi-architecture LLVM IR emitted to: %s (target: %s, lto: %d)\n", outfile, target, lto);
+                return 0;
+            } else {
+                fprintf(stderr, "Error: LLVM codegen failed for '%s'\n", srcfile);
+                return 1;
+            }
+        } else if (strcmp(command, "compile-mlir") == 0) {
+            if (argc < 3) {
+                fprintf(stderr, "Usage: %s compile-mlir <file.aks> [-o <out.mlir>] [--dialect <dialects>]\n", argv[0]);
+                return 1;
+            }
+            const char *srcfile = argv[2];
+            char default_out[512];
+            strncpy(default_out, srcfile, sizeof(default_out) - 1);
+            default_out[sizeof(default_out) - 1] = '\0';
+            char *dot = strrchr(default_out, '.');
+            if (dot) *dot = '\0';
+            strncat(default_out, ".mlir", sizeof(default_out) - strlen(default_out) - 1);
+            const char *outfile = default_out;
+            const char *dialect = "affine,vector,gpu,scf";
+            for (int i = 3; i < argc; i++) {
+                if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+                    outfile = argv[i+1];
+                    i++;
+                } else if (strcmp(argv[i], "--dialect") == 0 && i + 1 < argc) {
+                    dialect = argv[i+1];
+                    i++;
+                }
+            }
+            char *rawsource = ReadFileToStr(srcfile);
+            if (!rawsource) {
+                fprintf(stderr, "Error: Could not read '%s'\n", srcfile);
+                return 1;
+            }
+            int parseError = 0;
+            Node *ast = Parse(rawsource, &parseError);
+            free(rawsource);
+            if (parseError || !ast) {
+                if (ast) NodeFree(ast);
+                fprintf(stderr, "Error: Parse failed for '%s'\n", srcfile);
+                return 1;
+            }
+            Compiler *sc = CompNew();
+            int ok = EmitMlirModule(sc, ast, outfile, dialect);
+            NodeFree(ast);
+            CompFree(sc);
+            if (ok) {
+                printf("[mlir] Multi-Level IR module emitted to: %s (dialects: %s)\n", outfile, dialect);
+                return 0;
+            } else {
+                fprintf(stderr, "Error: MLIR codegen failed for '%s'\n", srcfile);
+                return 1;
+            }
+        } else if (strcmp(command, "cc") == 0) {
+            if (argc < 3 || (argc == 3 && (strcmp(argv[2], "--help") == 0 || strcmp(argv[2], "-h") == 0))) {
+                printf("AKS Embedded C/C++ Cross-Compiler Driver (aks cc)\n");
+                printf("Usage: %s cc [options] <source.c> [-o output] [--target <triple>]\n\n", argv[0]);
+                printf("Features:\n");
+                printf("  - Universal Drop-in C/C++ Frontend with target triple routing\n");
+                printf("  - Multi-architecture cross targets:\n");
+                printf("      x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc\n");
+                printf("      aarch64-unknown-linux-gnu, aarch64-apple-darwin\n");
+                printf("      riscv64-unknown-elf, wasm32-unknown-unknown\n");
+                printf("  - Cross-optimization passes: -O3, -flto, -march=native\n");
+                printf("  - Freestanding musl/sysroot routing\n");
+                return 0;
+            }
+            char cmd[4096] = "";
+            int has_clang = (system("clang --version >nul 2>nul") == 0);
+            int has_gcc   = (system("gcc --version >nul 2>nul") == 0);
+            if (has_clang) {
+                strcat(cmd, "clang");
+            } else if (has_gcc) {
+                strcat(cmd, "gcc");
+            } else {
+#ifdef _WIN32
+                strcat(cmd, "cl.exe");
+#else
+                strcat(cmd, "cc");
+#endif
+            }
+            for (int i = 2; i < argc; i++) {
+                strcat(cmd, " ");
+                strcat(cmd, argv[i]);
+            }
+            printf("[aks cc] Executing: %s\n", cmd);
+            return system(cmd);
         } else if (strcmp(command, "static") == 0) {
             /* aks static build <file.aks> [-o <outfile>] [--release]
                aks static run <file.aks> [--release]

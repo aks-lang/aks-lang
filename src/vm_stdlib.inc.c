@@ -26359,6 +26359,86 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
+
+  /* Comptime dynamic type synthesis and struct reflection */
+  if (strcmp(name, "SynthesizeStruct") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: SynthesizeStruct(name, fieldNames, [defaultVals]) requires at least 2 arguments\n");
+      return -1;
+    }
+    AKSValue defaultVals = (argc >= 3) ? POP() : ValNull();
+    AKSValue fieldNames = POP();
+    AKSValue typeNameVal = POP();
+
+    const char *tname = "SynthesizedType";
+    if (ValKind(typeNameVal) == VALSTR && ValToStrPtr(typeNameVal)) {
+      tname = ValToStrPtr(typeNameVal)->data;
+    }
+
+    AKSValue res = ValStruct(tname);
+    AKSStruct *st = ValToObj(res);
+
+    if (ValKind(fieldNames) == VALARR && ValToArr(fieldNames)) {
+      AKSArray *farr = ValToArr(fieldNames);
+      AKSArray *darr = (ValKind(defaultVals) == VALARR) ? ValToArr(defaultVals) : NULL;
+      for (int i = 0; i < farr->count; i++) {
+        const char *fname = "field";
+        if (ValKind(farr->items[i]) == VALSTR && ValToStrPtr(farr->items[i])) {
+          fname = ValToStrPtr(farr->items[i])->data;
+        }
+        AKSValue fval = ValNull();
+        if (darr && i < darr->count) {
+          fval = darr->items[i];
+        }
+        StructSetFieldNative(st, fname, fval);
+      }
+    }
+    ValFree(&defaultVals);
+    ValFree(&fieldNames);
+    ValFree(&typeNameVal);
+    PUSH(res);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "StructGetField") == 0) {
+    if (argc != 2) return -1;
+    AKSValue fval = POP();
+    AKSValue sval = POP();
+    AKSValue result = ValNull();
+    if (ValKind(sval) == VALSTRUCT && ValToObj(sval) && ValKind(fval) == VALSTR && ValToStrPtr(fval)) {
+      AKSStruct *st = ValToObj(sval);
+      const char *fn = ValToStrPtr(fval)->data;
+      for (int i = 0; i < st->fieldcount; i++) {
+        if (strcmp(st->fieldnames[i], fn) == 0) {
+          result = ValCopy(st->fieldvals[i]);
+          break;
+        }
+      }
+    }
+    ValFree(&fval);
+    ValFree(&sval);
+    PUSH(result);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "StructSetField") == 0) {
+    if (argc != 3) return -1;
+    AKSValue val = POP();
+    AKSValue fval = POP();
+    AKSValue sval = POP();
+    int ok = 0;
+    if (ValKind(sval) == VALSTRUCT && ValToObj(sval) && ValKind(fval) == VALSTR && ValToStrPtr(fval)) {
+      StructSetFieldNative(ValToObj(sval), ValToStrPtr(fval)->data, val);
+      ok = 1;
+    }
+    ValFree(&val);
+    ValFree(&fval);
+    ValFree(&sval);
+    PUSH(ValBool(ok));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
 #undef PUSH
 #undef POP
   return 0;

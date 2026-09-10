@@ -7959,6 +7959,11 @@ Compiler *CompNew(void) {
     NewFn(c, "sqrt");
     NewFn(c, "Sqrt");
 
+    /* Comptime dynamic type synthesis and struct reflection */
+    NewFn(c, "SynthesizeStruct");
+    NewFn(c, "StructGetField");
+    NewFn(c, "StructSetField");
+
     return c;
 }
 

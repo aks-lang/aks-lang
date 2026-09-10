@@ -1,0 +1,196 @@
+// High Performance Systems and Distributed Infrastructure Test Suite
+
+fn Assert(condition, message) {
+    if (condition != true) {
+        println("Assertion failed: " + message);
+        exit(1);
+    }
+}
+
+fn TestDynamicTypeSynthesis() {
+    println("Testing dynamic type synthesis and structural introspection...");
+    
+    // Synthesize a 3D Vector type schema dynamically
+    let pt = SynthesizeStruct("Point3D", ["x", "y", "z"], [10.0, 20.0, 30.0]);
+    Assert(pt != null, "Point3D instance should not be null");
+    
+    let xVal = StructGetField(pt, "x");
+    let yVal = StructGetField(pt, "y");
+    let zVal = StructGetField(pt, "z");
+    Assert(xVal == 10.0, "Field x should be 10.0");
+    Assert(yVal == 20.0, "Field y should be 20.0");
+    Assert(zVal == 30.0, "Field z should be 30.0");
+    
+    // Mutate field through structural reflection
+    StructSetField(pt, "z", 99.5);
+    Assert(StructGetField(pt, "z") == 99.5, "Field z should be updated to 99.5");
+    
+    // Verify structural TypeInfo inspection
+    let info = TypeInfo(pt);
+    Assert(info.kind == "struct", "TypeInfo kind should be struct");
+    Assert(info.size == 3, "TypeInfo size should be 3");
+    Assert(Length(info.fields) == 3, "TypeInfo fields count should be 3");
+    
+    // Generic specialized type synthesis
+    let genericSchema = SynthesizeGenericStruct("TensorBuffer", "Float64", ["handle", "capacity", "dims"], [null, 1024, 4]);
+    Assert(genericSchema.name == "TensorBuffer_Float64", "Mangled generic name match");
+    
+    let inst = genericSchema.Instantiate([null, 2048, 8]);
+    Assert(StructGetField(inst, "capacity") == 2048, "Generic instance capacity match");
+    Assert(StructGetField(inst, "dims") == 8, "Generic instance dims match");
+    
+    println("Dynamic type synthesis validated successfully.");
+}
+
+fn TestExplicitAllocatorPassing() {
+    println("Testing mandatory explicit allocator passing...");
+    
+    let arena = ArenaAllocatorNew(32768);
+    let alloc = AllocatorFromArena(arena);
+    
+    // Explicit allocator array creation
+    let arrHandle = AllocArray(alloc, 32);
+    Assert(arrHandle != null, "Array handle should be allocated");
+    
+    // Explicit allocator string creation
+    let strHandle = AllocString(alloc, "High integrity memory management");
+    Assert(strHandle != null, "String handle should be allocated");
+    
+    // Explicit allocator map creation
+    let mapHandle = AllocMap(alloc);
+    Assert(mapHandle != null, "Map handle should be allocated");
+    
+    // Explicit raw bytes allocation and release
+    let rawMem = AllocBytes(alloc, 512);
+    Assert(rawMem != null, "Raw memory chunk should be allocated");
+    Assert(AllocFree(alloc, rawMem) == true, "AllocFree should succeed");
+    Assert(AllocDeinit(alloc, arrHandle) == true, "AllocDeinit should succeed");
+    arena.Free();
+    
+    println("Mandatory explicit allocator passing validated successfully.");
+}
+
+fn TestDistributedClusterEngine() {
+    println("Testing distributed cluster execution and map-reduce...");
+    
+    let n1 = ClusterNodeNew(1, "compute-node-1.cluster", 9001, 32);
+    let n2 = ClusterNodeNew(2, "compute-node-2.cluster", 9002, 32);
+    let n3 = ClusterNodeNew(3, "compute-node-3.cluster", 9003, 64);
+    
+    Assert(n1.status == "online", "Node 1 should be online");
+    Assert(n3.cores == 64, "Node 3 should report 64 cores");
+    
+    let cluster = DistributedClusterNew([n1, n2, n3]);
+    Assert(cluster.node_count == 3, "Cluster should have 3 nodes");
+    
+    // Distributed worker task dispatch
+    let remoteRes = DistributedSpawn(cluster, 1, fn(ctx) { return ctx * 10; }, 42);
+    Assert(remoteRes == 420, "Remote task dispatch should return 420");
+    
+    // Distributed MapReduce
+    let dataset = [1, 2, 3, 4, 5, 6, 7, 8];
+    let sumSquares = DistributedMapReduce(cluster, dataset, fn(x) { return x * x; }, fn(acc, v) { return acc + v; }, 0);
+    // 1 + 4 + 9 + 16 + 25 + 36 + 49 + 64 = 204
+    Assert(sumSquares == 204, "Distributed MapReduce sum of squares should be 204");
+    
+    // Sharded distributed array across nodes
+    let darr = DistributedArrayNew(cluster, 12, fn(idx) { return idx * 5; });
+    let slice0 = darr.LocalSlice(0);
+    Assert(Length(slice0) > 0, "Local slice should contain sharded elements");
+    
+    let gathered = darr.Gather();
+    Assert(Length(gathered) == 12, "Gathered array length should match total size");
+    Assert(gathered[0] == 0, "First element match");
+    Assert(gathered[11] == 55, "Last element match: 11 * 5 = 55");
+    
+    let totalSum = darr.Reduce(fn(a, b) { return a + b; }, 0);
+    // sum(0..11) * 5 = (11 * 12 / 2) * 5 = 66 * 5 = 330
+    Assert(totalSum == 330, "DistributedArray total sum reduction match");
+    
+    println("Distributed cluster engine validated successfully.");
+}
+
+fn TestSimtGpuExecution() {
+    println("Testing SIMT accelerator kernel simulation...");
+    
+    let gpuDev = GpuDeviceNew("HardwareAccelerator-X1", 128, 32);
+    Assert(gpuDev.compute_units == 128, "GPU compute units match");
+    Assert(gpuDev.warp_size == 32, "GPU warp size match");
+    
+    let buf = GpuBufferNew(gpuDev, 256);
+    let hostData = [10.5, 20.5, 30.5, 40.5];
+    buf.CopyHtoD(hostData);
+    
+    let retrieved = buf.CopyDtoH();
+    Assert(Length(retrieved) == 4, "Retrieved data length match");
+    Assert(retrieved[2] == 30.5, "Retrieved data element match");
+    
+    // SIMT Grid-stride kernel execution
+    let accumulator = [0, 0, 0, 0];
+    let kernel = GpuKernelNew(gpuDev, "ParallelStrideKernel", fn(ctx, args) {
+        let acc = args[0];
+        let tid = ctx.tid;
+        if (tid < Length(acc)) {
+            acc[tid] = acc[tid] + (ctx.gid + 1);
+        }
+    });
+    
+    GpuKernelLaunch(kernel, 2, 4, [accumulator]);
+    Assert(accumulator[0] > 0, "SIMT kernel should update accumulator elements");
+    
+    println("SIMT accelerator kernel execution validated successfully.");
+}
+
+fn TestSimdVectorMath() {
+    println("Testing hardware SIMD vector math primitives...");
+    
+    // 4-lane vector operations
+    let a = SimdVec4(1.0, 2.0, 3.0, 4.0);
+    let b = SimdVec4(5.0, 6.0, 7.0, 8.0);
+    
+    let cAdd = SimdVec4Add(a, b);
+    Assert(cAdd.x == 6.0, "SimdVec4Add x match");
+    Assert(cAdd.y == 8.0, "SimdVec4Add y match");
+    Assert(cAdd.z == 10.0, "SimdVec4Add z match");
+    Assert(cAdd.w == 12.0, "SimdVec4Add w match");
+    
+    let cMul = SimdVec4Mul(a, b);
+    Assert(cMul.x == 5.0, "SimdVec4Mul x match");
+    Assert(cMul.w == 32.0, "SimdVec4Mul w match");
+    
+    let dot = SimdVec4Dot(a, b);
+    // 1*5 + 2*6 + 3*7 + 4*8 = 5 + 12 + 21 + 32 = 70.0
+    Assert(dot == 70.0, "SimdVec4Dot product match: 70.0");
+    
+    let fma = SimdVec4Fma(a, b, SimdVec4(2.0, 2.0, 2.0, 2.0));
+    // a * b + 2 = [7.0, 14.0, 23.0, 34.0]
+    Assert(fma.x == 7.0, "SimdVec4Fma x match");
+    Assert(fma.w == 34.0, "SimdVec4Fma w match");
+    
+    let hSum = SimdVec4HorizontalSum(a);
+    Assert(hSum == 10.0, "SimdVec4HorizontalSum match: 10.0");
+    
+    // 8-lane vector operations
+    let w1 = SimdVec8(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+    let w2 = SimdVec8(2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0);
+    let wAdd = SimdVec8Add(w1, w2);
+    Assert(wAdd.v0 == 3.0, "SimdVec8Add v0 match");
+    Assert(wAdd.v7 == 10.0, "SimdVec8Add v7 match");
+    
+    let wSum = SimdVec8HorizontalSum(w1);
+    Assert(wSum == 36.0, "SimdVec8HorizontalSum match: 36.0");
+    
+    println("Hardware SIMD vector math validated successfully.");
+}
+
+fn Main() {
+    println("Running Systems Infrastructure Validation Tests");
+    TestDynamicTypeSynthesis();
+    TestExplicitAllocatorPassing();
+    TestDistributedClusterEngine();
+    TestSimtGpuExecution();
+    TestSimdVectorMath();
+    println("All systems infrastructure tests passed successfully.");
+}
+
+Main();

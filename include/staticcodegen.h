@@ -44,6 +44,18 @@ typedef struct SCGCtx {
     /* Scalar parameter register promotion */
     int        is_direct[MAXLOCALS];      /* 1 if slot is a scalar argument kept purely in register */
     int        direct_argidx[MAXLOCALS];  /* Argument index %argN for direct slot loading */
+
+    /* Multi-architecture target configuration */
+    const char *target_triple;
+    int        lto;
+    const char *pgo_profile;
+    const char *pgo_use;
 } SCGCtx;
+
+/* Public API declarations */
+int StaticCodeGenEmit(Compiler *c, Node *program, const char *outpath);
+int StaticCodeGenEmitTarget(Compiler *c, Node *program, const char *outpath, const char *target_triple, int lto, const char *pgo_profile, const char *pgo_use);
+void StaticBorrowCheck(Compiler *c, Node *fn_node);
+void StaticLifetimeInfer(Compiler *c, Node *fn_node);
 
 #endif // Staticcodegenh

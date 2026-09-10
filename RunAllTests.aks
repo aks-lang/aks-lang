@@ -269,7 +269,8 @@ let tests = [
     { name: "TestNativeWin32Suite.aks", flags: "" },
     { name: "TestNativeCryptoSimdSuite.aks", flags: "" },
     { name: "TestNativeNetworkingConcurrencySuite.aks", flags: "" },
-    { name: "TestNativeStorageAudioUiSuite.aks", flags: "" }
+    { name: "TestNativeStorageAudioUiSuite.aks", flags: "" },
+    { name: "TestSystemsInfrastructure.aks", flags: "" }
 ];
 
 let integration_suites = [
