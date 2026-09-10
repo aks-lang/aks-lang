@@ -26297,6 +26297,68 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       return 1;
     }
   }
+
+  /* Memory block comparisons and operations */
+  if (strcmp(name, "MemCompare") == 0) {
+    if (argc < 3) return -1;
+    size_t count = (size_t)ValToInt(POP());
+    uintptr_t addr2 = (uintptr_t)ValToInt(POP());
+    uintptr_t addr1 = (uintptr_t)ValToInt(POP());
+    int res = 0;
+    if (count > 0 && addr1 && addr2) {
+      int r = memcmp((const void *)addr1, (const void *)addr2, count);
+      res = r < 0 ? -1 : (r > 0 ? 1 : 0);
+    }
+    PUSH(ValInt(res));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "MemCopy") == 0) {
+    if (argc < 3) return -1;
+    size_t count = (size_t)ValToInt(POP());
+    uintptr_t src_addr = (uintptr_t)ValToInt(POP());
+    uintptr_t dst_addr = (uintptr_t)ValToInt(POP());
+    if (count > 0 && dst_addr && src_addr) {
+      memcpy((void *)dst_addr, (const void *)src_addr, count);
+    }
+    PUSH(ValInt((int64_t)dst_addr));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "MemSet") == 0) {
+    if (argc < 3) return -1;
+    size_t count = (size_t)ValToInt(POP());
+    uint8_t byte_val = (uint8_t)ValToInt(POP());
+    uintptr_t dst_addr = (uintptr_t)ValToInt(POP());
+    if (count > 0 && dst_addr) {
+      memset((void *)dst_addr, byte_val, count);
+    }
+    PUSH(ValInt((int64_t)dst_addr));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  /* Standard normal Gaussian random generator (Box-Muller) */
+  if (strcmp(name, "RandomGaussian") == 0) {
+    static int has_spare = 0;
+    static double spare = 0.0;
+    double z = 0.0;
+    if (has_spare) {
+      z = spare;
+      has_spare = 0;
+    } else {
+      double u = ((double)rand() + 1.0) / ((double)RAND_MAX + 2.0);
+      double v = ((double)rand() + 1.0) / ((double)RAND_MAX + 2.0);
+      double r = sqrt(-2.0 * log(u));
+      double theta = 2.0 * 3.14159265358979323846 * v;
+      z = r * cos(theta);
+      spare = r * sin(theta);
+      has_spare = 1;
+    }
+    PUSH(ValFloat(z));
+    *stacktopptr = stacktop;
+    return 1;
+  }
 #undef PUSH
 #undef POP
   return 0;

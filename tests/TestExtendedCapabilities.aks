@@ -1,0 +1,162 @@
+// Testing Extended Systems, Concurrency, and Numerical Capabilities
+// Validates stiff differential solvers, stochastic SDEs, generic allocators,
+// concurrency coordination primitives, copy-on-write containers, and memory blocks.
+
+fn TestStiffOdeSolver() {
+    // Stiff differential equation: dy/dt = -100.0 * (y - 5.0), y(0) = 1.0
+    // Analytical solution: y(t) = 5.0 - 4.0 * exp(-100.0 * t)
+    // At t = 0.1, y(0.1) is approximately 5.0
+    let f = fn(t, y) {
+        return (0.0 - 100.0) * (y - 5.0);
+    };
+    let df_dy = fn(t, y) {
+        return 0.0 - 100.0;
+    };
+
+    let res = SolveOdeStiffImplicitEuler(f, df_dy, 1.0, 0.0, 0.1, 20, 0.00001);
+    let final_y = res.final;
+    let expected = 5.0;
+    let diff = final_y - expected;
+    if (diff < 0.0) { diff = 0.0 - diff; }
+
+    assert(diff < 0.01, "Stiff implicit Euler solver did not converge to expected value");
+    assert(Length(res.times) == 21, "Stiff solver time trajectory length mismatch");
+}
+
+fn TestStochasticSdeSolver() {
+    // Geometric Brownian Motion / Langevin drift:
+    // dy = -0.1 * y * dt + 0.05 * y * dW
+    let drift = fn(t, y) {
+        return (0.0 - 0.1) * y;
+    };
+    let diffusion = fn(t, y) {
+        return 0.05 * y;
+    };
+
+    let res = SolveSdeEulerMaruyama(drift, diffusion, 10.0, 0.0, 1.0, 50);
+    assert(Length(res.times) == 51, "SDE solver time steps mismatch");
+    assert(Length(res.paths) == 51, "SDE solver path steps mismatch");
+    assert(res.final > 0.0, "SDE solution went non-positive unexpectedly");
+}
+
+fn TestGenericAllocatorInterface() {
+    // 1. Generic Allocator wrapping ArenaAllocator
+    let arena = ArenaAllocatorNew(2048);
+    let alloc_arena = AllocatorFromArena(arena);
+    let p1 = alloc_arena.Alloc(64);
+    let p2 = alloc_arena.Alloc(128);
+    assert(p1 > 0, "Generic Allocator (Arena) p1 allocation failed");
+    assert(p2 > p1, "Generic Allocator (Arena) p2 should advance offset");
+
+    MmioWrite32(p1, 98765);
+    assert(MmioRead32(p1) == 98765, "Generic Allocator memory write read mismatch");
+    arena.Destroy();
+
+    // 2. Generic Allocator wrapping FixedBufferAllocator
+    let fba = FixedBufferAllocatorNew(1024);
+    let alloc_fba = AllocatorFromFixedBuffer(fba);
+    let b1 = alloc_fba.Alloc(256);
+    assert(b1 > 0, "Generic Allocator (FixedBuffer) b1 failed");
+    assert(fba.Available() <= 768, "Generic Allocator (FixedBuffer) available capacity mismatch");
+    fba.Destroy();
+
+    // 3. Generic Allocator wrapping Heap
+    let alloc_heap = AllocatorHeap();
+    let h1 = alloc_heap.Alloc(64);
+    assert(h1 > 0, "Generic Allocator (Heap) h1 failed");
+    alloc_heap.Free(h1);
+}
+
+fn TestConcurrencyCoordination() {
+    // 1. WaitGroup
+    let wg = WaitGroupNew();
+    wg.Add(2);
+    assert(wg._count == 2, "WaitGroup initial count mismatch");
+    wg.Done();
+    assert(wg._count == 1, "WaitGroup done decrement mismatch");
+    wg.Done();
+    assert(wg._count == 0, "WaitGroup fully done mismatch");
+    wg.Wait();
+
+    // 2. SyncOnce
+    let once = SyncOnceNew();
+    let compute = fn(ctx) {
+        return ctx * 2 + 1;
+    };
+
+    let r1 = once.Do(compute, 50);
+    let r2 = once.Do(compute, 999);
+    let r3 = once.Do(compute, 0);
+    assert(r1 == 101, "SyncOnce first call return mismatch");
+    assert(r2 == 101, "SyncOnce second call should return cached result");
+    assert(r3 == 101, "SyncOnce third call should return cached result");
+}
+
+fn TestCowAndLazyCell() {
+    // 1. Copy-On-Write Container (Cow)
+    let initial_arr = [10, 20, 30];
+    let cow = CowBorrowed(initial_arr);
+    assert(cow.IsOwned() == false, "Cow should initially be borrowed");
+    assert(Length(cow.Get()) == 3, "Cow get length mismatch");
+
+    let mut_arr = cow.ToMut();
+    assert(cow.IsOwned() == true, "Cow should become owned after mutation request");
+    append(mut_arr, 40);
+    assert(Length(cow.Get()) == 4, "Mutated cow should have 4 elements");
+    assert(Length(initial_arr) == 3, "Original array should remain unmodified by Cow");
+
+    // 2. LazyCell
+    let heavy_init = fn(ctx) {
+        return ctx * 3;
+    };
+    let cell = LazyCellNew(heavy_init, 18107);
+    assert(cell._is_init == false, "LazyCell should not be initialized on construction");
+
+    let val1 = cell.Get();
+    assert(val1 == 54321, "LazyCell first evaluation mismatch");
+    assert(cell._is_init == true, "LazyCell should be marked initialized");
+
+    let val2 = cell.Get();
+    assert(val2 == 54321, "LazyCell cached evaluation mismatch");
+}
+
+fn TestMemoryBlockPrimitives() {
+    let buf1 = FreestandingAlloc(32);
+    let buf2 = FreestandingAlloc(32);
+
+    // Test MemSet
+    MemSet(buf1, 65, 16); // Fill 16 bytes with 'A' (65)
+    MemSet(buf2, 65, 16);
+
+    // Test MemCompare
+    let cmp_eq = MemCompare(buf1, buf2, 16);
+    assert(cmp_eq == 0, "MemCompare on identical buffers should return 0");
+
+    // Modify buf2 byte
+    MmioWrite8(buf2 + 8, 66);
+    let cmp_diff = MemCompare(buf1, buf2, 16);
+    assert(cmp_diff != 0, "MemCompare on differing buffers should return non-zero");
+
+    // Test MemCopy
+    MemCopy(buf1, buf2, 16);
+    let cmp_after_copy = MemCompare(buf1, buf2, 16);
+    assert(cmp_after_copy == 0, "MemCompare after MemCopy should return 0");
+
+    FreestandingFree(buf1);
+    FreestandingFree(buf2);
+}
+
+fn Main() {
+    println("Testing Extended Capabilities...");
+
+    TestStiffOdeSolver();
+    TestStochasticSdeSolver();
+    TestGenericAllocatorInterface();
+    TestConcurrencyCoordination();
+    TestCowAndLazyCell();
+    TestMemoryBlockPrimitives();
+
+    println("Testing Extended Capabilities passed successfully!");
+}
+
+Main();

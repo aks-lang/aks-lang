@@ -7951,6 +7951,14 @@ Compiler *CompNew(void) {
     NewFn(c, "ByteSwap32");
     NewFn(c, "ByteSwap64");
 
+    /* Memory block operations and Gaussian random distribution */
+    NewFn(c, "MemCompare");
+    NewFn(c, "MemCopy");
+    NewFn(c, "MemSet");
+    NewFn(c, "RandomGaussian");
+    NewFn(c, "sqrt");
+    NewFn(c, "Sqrt");
+
     return c;
 }
 
