@@ -1,0 +1,246 @@
+// Testing Advanced Capabilities: Reflection, Allocators, Channels, Bitcasting, and Adaptive Solvers
+
+struct SampleData {
+    name: string;
+    id: int;
+    active: bool;
+}
+
+fn TestReflection() {
+    // 1. Primitive reflection
+    let ti_int = TypeInfo(42);
+    assert(ti_int.kind == "int", "TypeInfo int kind mismatch");
+    assert(ti_int.typeName == "int", "TypeInfo int typeName mismatch");
+    assert(ti_int.isPrimitive == true, "TypeInfo int isPrimitive mismatch");
+    assert(ti_int.size == 8, "TypeInfo int size mismatch");
+
+    let ti_float = TypeInfo(3.14159);
+    assert(ti_float.kind == "float", "TypeInfo float kind mismatch");
+    assert(ti_float.isPrimitive == true, "TypeInfo float isPrimitive mismatch");
+
+    let ti_str = TypeInfo("hello world");
+    assert(ti_str.kind == "string", "TypeInfo string kind mismatch");
+    assert(ti_str.size == 11, "TypeInfo string size mismatch");
+
+    // 2. Container reflection
+    let arr = [10, 20, 30, 40];
+    let ti_arr = TypeInfo(arr);
+    assert(ti_arr.kind == "array", "TypeInfo array kind mismatch");
+    assert(ti_arr.size == 4, "TypeInfo array size mismatch");
+    assert(ti_arr.isPrimitive == false, "TypeInfo array isPrimitive mismatch");
+
+    // 3. Struct reflection
+    let sample = new SampleData();
+    sample.name = "sensor_01";
+    sample.id = 1001;
+    sample.active = true;
+
+    let ti_struct = TypeInfo(sample);
+    assert(ti_struct.kind == "struct", "TypeInfo struct kind mismatch");
+    assert(ti_struct.typeName == "SampleData", "TypeInfo struct typeName mismatch");
+    assert(ti_struct.size == 3, "TypeInfo struct size mismatch");
+    assert(ti_struct.isPrimitive == false, "TypeInfo struct isPrimitive mismatch");
+
+    let f = ti_struct.fields;
+    assert(f[0] == "name", "TypeInfo struct field 0 mismatch");
+    assert(f[1] == "id", "TypeInfo struct field 1 mismatch");
+    assert(f[2] == "active", "TypeInfo struct field 2 mismatch");
+}
+
+fn TestBitcastingAndByteSwap() {
+    // 1. Float to bits and back
+    let orig = 12345.6789;
+    let bits = FloatToBits(orig);
+    let recovered = FloatFromBits(bits);
+    let diff = recovered - orig;
+    if (diff < 0.0) { diff = -diff; }
+    assert(diff < 0.0000001, "FloatToBits / FloatFromBits roundtrip mismatch");
+
+    // 2. ByteSwap16
+    let val16 = 4660; // 0x1234
+    let swapped16 = ByteSwap16(val16); // 0x3412 = 13330
+    assert(swapped16 == 13330, "ByteSwap16 mismatch");
+
+    // 3. ByteSwap32
+    let val32 = 305419896; // 0x12345678
+    let swapped32 = ByteSwap32(val32); // 0x78563412 = 2018915346
+    assert(swapped32 == 2018915346, "ByteSwap32 mismatch");
+
+    // 4. ByteSwap64
+    let val64 = [123456, 789012];
+    let swapped64 = ByteSwap64(val64);
+    let roundtrip64 = ByteSwap64(swapped64);
+    assert(roundtrip64[0] == val64[0], "ByteSwap64 hi roundtrip mismatch");
+    assert(roundtrip64[1] == val64[1], "ByteSwap64 lo roundtrip mismatch");
+}
+
+fn TestNonBlockingChannelsAndSelect() {
+    let ch = Channel(2);
+
+    // Try receive on empty channel
+    let empty_res = ChannelTryReceive(ch);
+    assert(empty_res[0] == false, "TryReceive on empty channel should return false");
+
+    // Try send into channel
+    let sent1 = ChannelTrySend(ch, 100);
+    let sent2 = ChannelTrySend(ch, 200);
+    assert(sent1 == true, "First TrySend should succeed");
+    assert(sent2 == true, "Second TrySend should succeed");
+
+    // Buffer full: third TrySend should return false
+    let sent3 = ChannelTrySend(ch, 300);
+    assert(sent3 == false, "TrySend on full buffer should return false");
+
+    // Try receive items
+    let recv1 = ChannelTryReceive(ch);
+    assert(recv1[0] == true, "First TryReceive should succeed");
+    assert(recv1[1] == 100, "First TryReceive value mismatch");
+
+    let recv2 = ChannelTryReceive(ch);
+    assert(recv2[0] == true, "Second TryReceive should succeed");
+    assert(recv2[1] == 200, "Second TryReceive value mismatch");
+
+    // Test ChannelSelect multiplexer
+    let ch_a = Channel(1);
+    let ch_b = Channel(1);
+    ChannelSend(ch_b, 999);
+
+    let cases = [
+        [ch_a, "recv"],
+        [ch_b, "recv"]
+    ];
+    let sel = ChannelSelect(cases, null);
+    assert(sel[0] == 1, "Select should match index 1 (ch_b)");
+    assert(sel[1] == 999, "Select value mismatch");
+
+    // Test ChannelSelect with default
+    let cases_empty = [
+        [ch_a, "recv"]
+    ];
+    let sel_def = ChannelSelect(cases_empty, "default_hit");
+    assert(sel_def[0] == -1, "Select on empty should return index -1");
+    assert(sel_def[1] == "default_hit", "Select default value mismatch");
+
+    ChannelClose(ch);
+    ChannelClose(ch_a);
+    ChannelClose(ch_b);
+}
+
+fn TestExplicitAllocators() {
+    // 1. ArenaAllocator
+    let arena = ArenaAllocatorNew(1024);
+    assert(arena != null, "ArenaAllocatorNew returned null");
+
+    let ptr1 = arena.Alloc(32);
+    let ptr2 = arena.Alloc(64);
+    assert(ptr1 > 0, "ArenaAlloc ptr1 failed");
+    assert(ptr2 > ptr1, "ArenaAlloc ptr2 should advance offset");
+    assert(arena.TotalAllocated() >= 96, "Arena total allocated tracking mismatch");
+
+    // Write to allocated memory using MMIO primitives
+    MmioWrite32(ptr1, 424242);
+    assert(MmioRead32(ptr1) == 424242, "Arena memory read mismatch");
+
+    arena.Reset();
+    let ptr3 = arena.Alloc(16);
+    assert(ptr3 == ptr1, "ArenaReset should rewind allocation pointer");
+    arena.Destroy();
+
+    // 2. FixedBufferAllocator
+    let fba = FixedBufferAllocatorNew(512);
+    assert(fba.Available() == 512, "FixedBuffer initial available mismatch");
+
+    let b1 = fba.Alloc(128);
+    assert(b1 > 0, "FixedBufferAlloc failed");
+    assert(fba.Available() <= 384, "FixedBuffer available capacity not reduced");
+
+    fba.Reset();
+    assert(fba.Available() == 512, "FixedBufferReset did not restore capacity");
+    fba.Destroy();
+}
+
+fn TestAdaptiveRk45Solver() {
+    // Exponential decay: dy/dt = -0.5 * y, y(0) = 10.0, analytical: y(2.0) = 10 * exp(-1.0) = 3.6787944
+    let decay_fn = fn(t, y) {
+        return (0.0 - 0.5) * y;
+    };
+
+    let res = SolveOdeAdaptiveRk45(decay_fn, 10.0, 0.0, 2.0, 0.0001, 0.1);
+    let final_y = res.final;
+    let expected = 3.6787944;
+    let diff = final_y - expected;
+    if (diff < 0.0) { diff = -diff; }
+
+    assert(diff < 0.0005, "Adaptive RK45 decay solution error exceeded tolerance");
+    assert(Length(res.times) > 2, "Adaptive RK45 should generate intermediate solution steps");
+}
+
+fn TestSymplecticLeapfrogMechanics() {
+    // Simple Harmonic Oscillator: d^2q/dt^2 = -q (a(t, q) = -q)
+    // Energy E = 0.5 * v^2 + 0.5 * q^2
+    // Initial: q0 = 1.0, v0 = 0.0 -> E0 = 0.5
+    let accel_fn = fn(t, q) {
+        return (0.0 - 1.0) * q;
+    };
+
+    // Integrate over 10 full oscillation periods (t = 20 * pi)
+    let total_time = 20.0 * 3.1415926535;
+    let res = SolveOdeSymplecticLeapfrog(accel_fn, 1.0, 0.0, 0.0, total_time, 2000);
+
+    let q_final = res.final_pos;
+    let v_final = res.final_vel;
+    let energy_final = 0.5 * v_final * v_final + 0.5 * q_final * q_final;
+    let energy_drift = energy_final - 0.5;
+    if (energy_drift < 0.0) { energy_drift = -energy_drift; }
+
+    // Symplectic integrators strictly conserve mechanical energy
+    assert(energy_drift < 0.001, "Symplectic leapfrog energy conservation drift exceeded tolerance");
+}
+
+fn TestMultipleDispatch() {
+    let add_mm = MultiMethodNew(fn(args) {
+        return "default";
+    });
+
+    add_mm.Add("int,int", fn(args) {
+        return args[0] + args[1];
+    });
+
+    add_mm.Add("string,string", fn(args) {
+        return args[0] + " " + args[1];
+    });
+
+    add_mm.Add("float,float", fn(args) {
+        return args[0] * args[1];
+    });
+
+    let res_ints = add_mm.Call([10, 20]);
+    assert(res_ints == 30, "MultiMethod int,int dispatch mismatch");
+
+    let res_strs = add_mm.Call(["hello", "world"]);
+    assert(res_strs == "hello world", "MultiMethod string,string dispatch mismatch");
+
+    let res_floats = add_mm.Call([2.5, 4.0]);
+    let fdiff = res_floats - 10.0;
+    if (fdiff < 0.0) { fdiff = -fdiff; }
+    assert(fdiff < 0.0001, "MultiMethod float,float dispatch mismatch");
+
+    let res_def = add_mm.Call([true, false]);
+    assert(res_def == "default", "MultiMethod default fallback mismatch");
+}
+
+fn Main() {
+    println("Testing Advanced Capabilities...");
+
+    TestReflection();
+    TestBitcastingAndByteSwap();
+    TestNonBlockingChannelsAndSelect();
+    TestExplicitAllocators();
+    TestAdaptiveRk45Solver();
+    TestSymplecticLeapfrogMechanics();
+    TestMultipleDispatch();
+
+    println("Testing Advanced Capabilities passed successfully!");
+}
+
+Main();

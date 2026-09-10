@@ -25945,6 +25945,358 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
+
+  /* Deep runtime and compile-time type reflection */
+  if (strcmp(name, "TypeInfo") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: TypeInfo() expects 1 argument, got %d\n", argc);
+      return -1;
+    }
+    AKSValue val = POP();
+    AKSValue res = ValStruct("TypeInfo");
+    AKSStruct *st = ValToObj(res);
+
+    const char *kind = "unknown";
+    const char *typename_str = "unknown";
+    int64_t size_val = 0;
+    int is_prim = 0;
+    AKSValue fields_arr = ValNull();
+
+    int k = ValKind(val);
+    switch (k) {
+      case VALINT:
+        kind = "int";
+        typename_str = "int";
+        size_val = 8;
+        is_prim = 1;
+        break;
+      case VALFLOAT:
+        kind = "float";
+        typename_str = "float";
+        size_val = 8;
+        is_prim = 1;
+        break;
+      case VALBOOL:
+        kind = "bool";
+        typename_str = "bool";
+        size_val = 1;
+        is_prim = 1;
+        break;
+      case VALNULL:
+        kind = "null";
+        typename_str = "null";
+        size_val = 0;
+        is_prim = 1;
+        break;
+      case VALSTR:
+        kind = "string";
+        typename_str = "string";
+        size_val = ValToStrPtr(val) ? (int64_t)ValToStrPtr(val)->len : 0;
+        is_prim = 1;
+        break;
+      case VALARR: {
+        kind = "array";
+        typename_str = "array";
+        AKSArray *arr = ValToArr(val);
+        size_val = arr ? arr->count : 0;
+        is_prim = 0;
+        break;
+      }
+      case VALSTRUCT: {
+        kind = "struct";
+        AKSStruct *src = ValToObj(val);
+        if (src) {
+          typename_str = (src->typename && src->typename[0]) ? src->typename : "struct";
+          size_val = src->fieldcount;
+          fields_arr = ValArr(src->fieldcount);
+          AKSArray *f_arr = ValToArr(fields_arr);
+          for (int fi = 0; fi < src->fieldcount; fi++) {
+            f_arr->items[f_arr->count++] = ValStr(src->fieldnames[fi]);
+          }
+        }
+        is_prim = 0;
+        break;
+      }
+      case VALFN:
+        kind = "function";
+        typename_str = "function";
+        size_val = 0;
+        is_prim = 0;
+        break;
+      case VALCHANNEL: {
+        kind = "channel";
+        typename_str = "channel";
+        VMChannel *ch = ValToChan(val);
+        size_val = ch ? ch->capacity : 0;
+        is_prim = 0;
+        break;
+      }
+      default:
+        kind = "object";
+        typename_str = "object";
+        size_val = 0;
+        is_prim = 0;
+        break;
+    }
+
+    if (ValKind(fields_arr) == VALNULL) {
+      fields_arr = ValArr(0);
+    }
+
+    st->fieldcount = 5;
+    st->fieldnames = (char **)malloc(5 * sizeof(char *));
+    st->fieldvals = (AKSValue *)malloc(5 * sizeof(AKSValue));
+
+    st->fieldnames[0] = strdup("kind");
+    st->fieldvals[0] = ValStr(kind);
+
+    st->fieldnames[1] = strdup("typeName");
+    st->fieldvals[1] = ValStr(typename_str);
+
+    st->fieldnames[2] = strdup("size");
+    st->fieldvals[2] = ValInt(size_val);
+
+    st->fieldnames[3] = strdup("isPrimitive");
+    st->fieldvals[3] = ValBool(is_prim);
+
+    st->fieldnames[4] = strdup("fields");
+    st->fieldvals[4] = fields_arr;
+
+    ValFree(&val);
+    PUSH(res);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  /* Non-blocking channel receive */
+  if (strcmp(name, "ChannelTryReceive") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: ChannelTryReceive() expects 1 argument\n");
+      return -1;
+    }
+    AKSValue chanval = POP();
+    if (ValKind(chanval) != VALCHANNEL) {
+      ValFree(&chanval);
+      return -1;
+    }
+    VMChannel *c = ValToChan(chanval);
+    MutexLockNative(c->lock);
+    int ok = 0;
+    AKSValue item = ValNull();
+    if (c->capacity == 0) {
+      if (c->writercount > 0) {
+        VMTask *writer = c->blockedwriters[0];
+        for (int i = 0; i < c->writercount - 1; i++) {
+          c->blockedwriters[i] = c->blockedwriters[i + 1];
+        }
+        c->writercount--;
+        item = ValCopy(writer->stack[writer->stacktop - 1]);
+        writer->rendezvous_done = 1;
+        WakeBlockedTaskOnChannel(vm, writer, c);
+        ok = 1;
+      }
+    } else {
+      if (c->count > 0) {
+        item = c->buffer[c->head];
+        c->head = (c->head + 1) % c->capacity;
+        c->count--;
+        if (c->writercount > 0) {
+          VMTask *writer = c->blockedwriters[0];
+          for (int i = 0; i < c->writercount - 1; i++) {
+            c->blockedwriters[i] = c->blockedwriters[i + 1];
+          }
+          c->writercount--;
+          c->buffer[c->tail] = ValCopy(writer->stack[writer->stacktop - 1]);
+          c->tail = (c->tail + 1) % c->capacity;
+          c->count++;
+          WakeBlockedTaskOnChannel(vm, writer, c);
+        }
+        ok = 1;
+      }
+    }
+    MutexUnlockNative(c->lock);
+    ValFree(&chanval);
+
+    AKSValue res_arr = ValArr(2);
+    AKSArray *arr = ValToArr(res_arr);
+    arr->items[0] = ValBool(ok);
+    arr->items[1] = item;
+    arr->count = 2;
+
+    PUSH(res_arr);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  /* Non-blocking channel send */
+  if (strcmp(name, "ChannelTrySend") == 0) {
+    if (argc != 2) {
+      fprintf(stderr, "Runtime error: ChannelTrySend() expects 2 arguments\n");
+      return -1;
+    }
+    AKSValue val = POP();
+    AKSValue chanval = POP();
+    if (ValKind(chanval) != VALCHANNEL) {
+      ValFree(&val);
+      ValFree(&chanval);
+      return -1;
+    }
+    VMChannel *c = ValToChan(chanval);
+    MutexLockNative(c->lock);
+    int ok = 0;
+    if (!c->isclosed) {
+      if (c->capacity == 0) {
+        if (c->readercount > 0) {
+          VMTask *reader = c->blockedreaders[0];
+          for (int i = 0; i < c->readercount - 1; i++) {
+            c->blockedreaders[i] = c->blockedreaders[i + 1];
+          }
+          c->readercount--;
+          reader->stack[reader->stacktop - 1] = ValCopy(val);
+          reader->rendezvous_done = 1;
+          WakeBlockedTaskOnChannel(vm, reader, c);
+          ok = 1;
+        }
+      } else {
+        if (c->count < c->capacity) {
+          c->buffer[c->tail] = ValCopy(val);
+          c->tail = (c->tail + 1) % c->capacity;
+          c->count++;
+          if (c->readercount > 0) {
+            VMTask *reader = c->blockedreaders[0];
+            for (int i = 0; i < c->readercount - 1; i++) {
+              c->blockedreaders[i] = c->blockedreaders[i + 1];
+            }
+            c->readercount--;
+            WakeBlockedTaskOnChannel(vm, reader, c);
+          }
+          ok = 1;
+        }
+      }
+    }
+    MutexUnlockNative(c->lock);
+    ValFree(&val);
+    ValFree(&chanval);
+    PUSH(ValBool(ok));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  /* IEEE-754 64-bit float and integer bitcasting */
+  if (strcmp(name, "FloatToBits") == 0) {
+    if (argc != 1) return -1;
+    AKSValue arg = POP();
+    double d = 0.0;
+    if (ValKind(arg) == VALFLOAT) {
+      d = ValToFloat(arg);
+    } else if (ValKind(arg) == VALINT) {
+      d = (double)ValToInt(arg);
+    }
+    ValFree(&arg);
+    uint64_t bits = 0;
+    memcpy(&bits, &d, sizeof(double));
+    uint32_t hi = (uint32_t)(bits >> 32);
+    uint32_t lo = (uint32_t)(bits & 0xFFFFFFFFULL);
+    AKSValue res = ValArr(2);
+    AKSArray *arr = ValToArr(res);
+    arr->items[0] = ValInt((int64_t)hi);
+    arr->items[1] = ValInt((int64_t)lo);
+    arr->count = 2;
+    PUSH(res);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FloatFromBits") == 0) {
+    if (argc == 1) {
+      AKSValue arg = POP();
+      uint32_t hi = 0;
+      uint32_t lo = 0;
+      if (ValKind(arg) == VALARR) {
+        AKSArray *arr = ValToArr(arg);
+        if (arr && arr->count >= 2) {
+          hi = (uint32_t)ValToInt(arr->items[0]);
+          lo = (uint32_t)ValToInt(arr->items[1]);
+        }
+      }
+      ValFree(&arg);
+      uint64_t bits = (((uint64_t)hi) << 32) | (uint64_t)lo;
+      double d = 0.0;
+      memcpy(&d, &bits, sizeof(double));
+      PUSH(ValFloat(d));
+      *stacktopptr = stacktop;
+      return 1;
+    } else if (argc == 2) {
+      AKSValue lo_val = POP();
+      AKSValue hi_val = POP();
+      uint32_t hi = (uint32_t)ValToInt(hi_val);
+      uint32_t lo = (uint32_t)ValToInt(lo_val);
+      ValFree(&hi_val);
+      ValFree(&lo_val);
+      uint64_t bits = (((uint64_t)hi) << 32) | (uint64_t)lo;
+      double d = 0.0;
+      memcpy(&d, &bits, sizeof(double));
+      PUSH(ValFloat(d));
+      *stacktopptr = stacktop;
+      return 1;
+    }
+    return -1;
+  }
+
+  /* Endianness byte swapping */
+  if (strcmp(name, "ByteSwap16") == 0) {
+    if (argc != 1) return -1;
+    AKSValue arg = POP();
+    uint16_t v = (uint16_t)(ValKind(arg) == VALINT ? ValToInt(arg) : 0);
+    ValFree(&arg);
+    uint16_t swapped = (uint16_t)((v >> 8) | (v << 8));
+    PUSH(ValInt((int64_t)swapped));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "ByteSwap32") == 0) {
+    if (argc != 1) return -1;
+    AKSValue arg = POP();
+    uint32_t v = (uint32_t)(ValKind(arg) == VALINT ? ValToInt(arg) : 0);
+    ValFree(&arg);
+    uint32_t swapped = ((v >> 24) & 0xFF) | ((v >> 8) & 0xFF00) |
+                       ((v << 8) & 0xFF0000) | ((v << 24) & 0xFF000000);
+    PUSH(ValInt((int64_t)swapped));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "ByteSwap64") == 0) {
+    if (argc != 1) return -1;
+    AKSValue arg = POP();
+    if (ValKind(arg) == VALARR) {
+      AKSArray *arr = ValToArr(arg);
+      uint32_t hi = arr && arr->count > 0 ? (uint32_t)ValToInt(arr->items[0]) : 0;
+      uint32_t lo = arr && arr->count > 1 ? (uint32_t)ValToInt(arr->items[1]) : 0;
+      ValFree(&arg);
+      uint32_t s_hi = ((lo >> 24) & 0xFF) | ((lo >> 8) & 0xFF00) |
+                      ((lo << 8) & 0xFF0000) | ((lo << 24) & 0xFF000000);
+      uint32_t s_lo = ((hi >> 24) & 0xFF) | ((hi >> 8) & 0xFF00) |
+                      ((hi << 8) & 0xFF0000) | ((hi << 24) & 0xFF000000);
+      AKSValue res = ValArr(2);
+      AKSArray *res_arr = ValToArr(res);
+      res_arr->items[0] = ValInt((int64_t)s_hi);
+      res_arr->items[1] = ValInt((int64_t)s_lo);
+      res_arr->count = 2;
+      PUSH(res);
+      *stacktopptr = stacktop;
+      return 1;
+    } else {
+      uint64_t v = (uint64_t)(ValKind(arg) == VALINT ? ValToInt(arg) : 0);
+      ValFree(&arg);
+      uint64_t swapped = 0;
+      for (int i = 0; i < 8; i++) {
+        swapped = (swapped << 8) | (v & 0xFF);
+        v >>= 8;
+      }
+      PUSH(ValInt((int64_t)(swapped & 0x0000FFFFFFFFFFFFULL)));
+      *stacktopptr = stacktop;
+      return 1;
+    }
+  }
 #undef PUSH
 #undef POP
   return 0;

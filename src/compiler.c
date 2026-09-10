@@ -7941,6 +7941,16 @@ Compiler *CompNew(void) {
     NewFn(c, "CpuHalt");
     NewFn(c, "CImportParseHeaderC");
 
+    /* Type reflection, non-blocking channels, bitcasting, and byte swapping */
+    NewFn(c, "TypeInfo");
+    NewFn(c, "ChannelTryReceive");
+    NewFn(c, "ChannelTrySend");
+    NewFn(c, "FloatToBits");
+    NewFn(c, "FloatFromBits");
+    NewFn(c, "ByteSwap16");
+    NewFn(c, "ByteSwap32");
+    NewFn(c, "ByteSwap64");
+
     return c;
 }
 
