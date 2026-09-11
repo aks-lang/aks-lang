@@ -1,0 +1,104 @@
+{
+  "Function": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:name}(${2:params}) {",
+      "\t${0:// body}",
+      "}"
+    ],
+    "description": "Define a function"
+  },
+  "Function with Contracts": {
+    "prefix": "fncontract",
+    "body": [
+      "fn ${1:name}(${2:x})",
+      "requires ${3:x > 0}",
+      "ensures ${4:result > 0}",
+      "{",
+      "\t${0:return x;}",
+      "}"
+    ],
+    "description": "Define a function with verified pre- and post-conditions"
+  },
+  "Struct": {
+    "prefix": "struct",
+    "body": [
+      "struct ${1:Name} {",
+      "\t${2:field}: ${3:int};",
+      "}"
+    ],
+    "description": "Define a struct type"
+  },
+  "Enum": {
+    "prefix": "enum",
+    "body": [
+      "enum ${1:Name} {",
+      "\t${2:Variant1},",
+      "\t${3:Variant2}",
+      "}"
+    ],
+    "description": "Define an enum or algebraic data type"
+  },
+  "Async Task": {
+    "prefix": "async",
+    "body": [
+      "let ${1:task} = spawn {",
+      "\t${0:// async background workload}",
+      "};",
+      "let ${2:res} = await ${1:task};"
+    ],
+    "description": "Spawn and await an asynchronous task"
+  },
+  "Region Scope": {
+    "prefix": "region",
+    "body": [
+      "region (${1:r}) {",
+      "\tlet ${2:arr} = ${1:r}.AllocArray(${3:64});",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Lexical region scope with zero-overhead arena allocation"
+  },
+  "Algebraic Effect": {
+    "prefix": "effect",
+    "body": [
+      "effect ${1:IO} {",
+      "\t${2:Read}() -> string;",
+      "}",
+      "",
+      "handle {",
+      "\t${0}",
+      "} with ${1:IO} {",
+      "\t${2:Read}() => {",
+      "\t\tresume(\"test\");",
+      "\t}",
+      "}"
+    ],
+    "description": "Declare and handle an algebraic effect"
+  },
+  "Main Function": {
+    "prefix": "main",
+    "body": [
+      "fn main() {",
+      "\t${0:println(\"Hello, AKS!\");}",
+      "}",
+      "",
+      "main();"
+    ],
+    "description": "Standard main function entrypoint"
+  },
+  "Unit Test": {
+    "prefix": "test",
+    "body": [
+      "fn test_${1:feature}() {",
+      "\tlet expected = ${2:42};",
+      "\tlet actual = ${3:42};",
+      "\tassert_eq(actual, expected);",
+      "\t${0}",
+      "}",
+      "",
+      "test_${1:feature}();"
+    ],
+    "description": "AKS unit test case"
+  }
+}

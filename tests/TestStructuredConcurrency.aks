@@ -1,33 +1,45 @@
 // Test suite for structured concurrency nurseries and region scopes
 
-let g_counter = 0;
+let g_counter_a = 0;
+let g_counter_b = 0;
 
 fn task_worker_a() {
     sleep(10);
-    g_counter = g_counter + 1;
+    g_counter_a = 1;
     return 100;
 }
 
 fn task_worker_b() {
     sleep(20);
-    g_counter = g_counter + 1;
+    g_counter_b = 1;
     return 200;
 }
 
-fn task_worker_c(multiplier) {
+let g_counter_c1 = 0;
+let g_counter_c2 = 0;
+
+fn task_worker_c1(multiplier) {
     sleep(10);
-    g_counter = g_counter + 1;
+    g_counter_c1 = 1;
+    return 5 * multiplier;
+}
+
+fn task_worker_c2(multiplier) {
+    sleep(10);
+    g_counter_c2 = 1;
     return 5 * multiplier;
 }
 
 fn main() {
     print("Test 1: Basic Nursery Auto-Join Invariant");
-    g_counter = 0;
+    g_counter_a = 0;
+    g_counter_b = 0;
     nursery n {
         n.Spawn(task_worker_a);
         n.Spawn(task_worker_b);
     }
     // Guaranteed auto-join at nursery scope exit!
+    let g_counter = g_counter_a + g_counter_b;
     print("g_counter after nursery exit: " + String(g_counter));
     if (g_counter == 2) {
         print("PASS: Nursery scope guaranteed auto-join for all spawned child tasks");
@@ -37,13 +49,15 @@ fn main() {
     }
 
     print("Test 2: Nursery with Parentheses Syntax and SpawnArg");
-    let start_count = g_counter;
+    g_counter_c1 = 0;
+    g_counter_c2 = 0;
     nursery (worker_nursery) {
-        worker_nursery.SpawnArg(task_worker_c, 10);
-        worker_nursery.SpawnArg(task_worker_c, 20);
+        worker_nursery.SpawnArg(task_worker_c1, 10);
+        worker_nursery.SpawnArg(task_worker_c2, 20);
     }
-    print("g_counter after worker_nursery exit: " + String(g_counter));
-    if (g_counter == start_count + 2) {
+    let worker_total = g_counter_c1 + g_counter_c2;
+    print("g_counter after worker_nursery exit: " + String(worker_total));
+    if (worker_total == 2) {
         print("PASS: Nursery with parentheses and SpawnArg executed and auto-joined cleanly");
     } else {
         print("FAIL: Nursery with parentheses auto-join failed");

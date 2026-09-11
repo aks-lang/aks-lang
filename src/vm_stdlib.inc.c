@@ -461,6 +461,14 @@ static void PhysExtractUnit(AKSValue u, double *out_val, int *out_m, int *out_kg
   *out_s = s;
 }
 
+#if defined(_MSC_VER)
+#pragma optimize("", off)
+#elif defined(__clang__)
+#pragma clang optimize off
+#elif defined(__GNUC__)
+#pragma GCC optimize("O0")
+#endif
+
 static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
                          AKSValue **stacktopptr) {
   AKSValue *stacktop = *stacktopptr;
@@ -26366,3 +26374,12 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
 #undef POP
   return 0;
 }
+
+#if defined(_MSC_VER)
+#pragma optimize("", on)
+#elif defined(__clang__)
+#pragma clang optimize on
+#elif defined(__GNUC__)
+#pragma GCC optimize("O2")
+#endif
+

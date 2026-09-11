@@ -57,3 +57,6 @@ myapp/
 
 # VS Code & IDE configs
 .vscode/
+editors/vscode/node_modules/
+editors/vscode/out/
+*.vsix

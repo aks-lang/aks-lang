@@ -1,0 +1,228 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "AKS",
+  "scopeName": "source.aks",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#interpolated_strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#constants" },
+    { "include": "#contracts_effects" },
+    { "include": "#functions" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.aks",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.aks",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.aks",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.aks",
+              "match": "\\\\([nrtbf\\\\\"'0]|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.aks",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.aks",
+              "match": "\\\\([nrtbf\\\\\"'0]|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4})"
+            }
+          ]
+        }
+      ]
+    },
+    "interpolated_strings": {
+      "patterns": [
+        {
+          "name": "string.interpolated.aks",
+          "begin": "\\$\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.aks",
+              "match": "\\\\."
+            },
+            {
+              "name": "meta.interpolation.aks",
+              "begin": "\\{",
+              "end": "\\}",
+              "patterns": [
+                { "include": "$self" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.aks",
+          "match": "\\b0[xX][0-9a-fA-F_]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.aks",
+          "match": "\\b0[bB][01_]+\\b"
+        },
+        {
+          "name": "constant.numeric.octal.aks",
+          "match": "\\b0[oO][0-7_]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.aks",
+          "match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9_]+)?\\b|\\b[0-9][0-9_]*[eE][+-]?[0-9_]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.aks",
+          "match": "\\b[0-9][0-9_]*\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.aks",
+          "match": "\\b(if|else|while|for|in|return|break|continue|match|try|catch|throw|defer)\\b"
+        },
+        {
+          "name": "keyword.declaration.aks",
+          "match": "\\b(let|mut|fn|struct|enum|const|type|import|export|as)\\b"
+        },
+        {
+          "name": "keyword.control.concurrency.aks",
+          "match": "\\b(async|await|spawn|channel|region|task)\\b"
+        },
+        {
+          "name": "keyword.operator.new.aks",
+          "match": "\\b(new|typeof)\\b"
+        }
+      ]
+    },
+    "contracts_effects": {
+      "patterns": [
+        {
+          "name": "keyword.control.contract.aks",
+          "match": "\\b(requires|ensures)\\b"
+        },
+        {
+          "name": "keyword.control.effect.aks",
+          "match": "\\b(effect|perform|handle|resume)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.aks",
+          "match": "\\b(int|float|string|bool|any|array|arr|map|void|char|byte|usize|isize)\\b"
+        },
+        {
+          "name": "support.type.mathematical.aks",
+          "match": "\\b(Vector|Matrix|Tensor|Dual|AutoVar|PhysUnit|Quantity|UnitDim|SimdVec4|SimdVec8)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.aks",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.aks",
+          "match": "\\b(null|nil)\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.aks" }
+          }
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.comparison.aks",
+          "match": "(==|!=|<=|>=|<|>)"
+        },
+        {
+          "name": "keyword.operator.logical.aks",
+          "match": "(&&|\\|\\||!)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.aks",
+          "match": "(\\+|-|\\*|/|%|@)"
+        },
+        {
+          "name": "keyword.operator.bitwise.aks",
+          "match": "(&|\\||\\^|<<|>>|~)"
+        },
+        {
+          "name": "keyword.operator.assignment.aks",
+          "match": "(=|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=)"
+        },
+        {
+          "name": "keyword.operator.arrow.aks",
+          "match": "(->|=>)"
+        },
+        {
+          "name": "keyword.operator.ternary.aks",
+          "match": "(\\?|:)"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.aks",
+          "match": "(,|;)"
+        },
+        {
+          "name": "punctuation.accessor.aks",
+          "match": "(\\.)"
+        },
+        {
+          "name": "punctuation.bracket.round.aks",
+          "match": "(\\ spectator|\\(|\\))"
+        },
+        {
+          "name": "punctuation.bracket.curly.aks",
+          "match": "(\\{|\\})"
+        },
+        {
+          "name": "punctuation.bracket.square.aks",
+          "match": "(\\[|\\])"
+        }
+      ]
+    }
+  }
+}

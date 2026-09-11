@@ -1,0 +1,58 @@
+name: Package and Publish AKS VS Code Extension
+
+on:
+  push:
+    paths:
+      - 'editors/vscode/**'
+      - '.github/workflows/vscode-extension.yml'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-package:
+    name: Package VS Code Extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: editors/vscode/package.json
+
+      - name: Install dependencies
+        working-directory: editors/vscode
+        run: npm install
+
+      - name: Compile TypeScript
+        working-directory: editors/vscode
+        run: npm run compile
+
+      - name: Package VSIX
+        working-directory: editors/vscode
+        run: npx @vscode/vsce package --out aks-lang.vsix
+
+      - name: Upload VSIX Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aks-vscode-extension
+          path: editors/vscode/aks-lang.vsix
+
+      - name: Publish to VS Code Marketplace
+        if: env.VSCE_PAT != ''
+        working-directory: editors/vscode
+        run: npx @vscode/vsce publish -p ${{ secrets.VSCE_PAT }}
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX Registry
+        if: env.OVSX_PAT != ''
+        working-directory: editors/vscode
+        run: npx ovsx publish aks-lang.vsix -p ${{ secrets.OVSX_PAT }}
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}

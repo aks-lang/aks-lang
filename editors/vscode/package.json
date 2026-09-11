@@ -1,0 +1,182 @@
+{
+  "name": "aks-lang",
+  "displayName": "AKS Language Support",
+  "description": "Comprehensive language support, native Language Server (LSP), and debugging (DAP) for the AKS programming language.",
+  "version": "1.0.0",
+  "publisher": "aks-lang",
+  "author": {
+    "name": "AKS Language Contributors"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/aks-lang/aks-lang",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aks-lang/aks-lang.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aks-lang/aks-lang/issues"
+  },
+  "icon": "images/icon.jpg",
+  "categories": [
+    "Programming Languages",
+    "Debuggers",
+    "Linters",
+    "Snippets"
+  ],
+  "keywords": [
+    "aks",
+    "aks-lang",
+    "systems",
+    "compiler",
+    "language-server",
+    "debugger"
+  ],
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "activationEvents": [
+    "onLanguage:aks"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "aks",
+        "aliases": ["AKS", "aks"],
+        "extensions": [".aks", ".aksb"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "aks",
+        "scopeName": "source.aks",
+        "path": "./syntaxes/aks.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "aks",
+        "path": "./snippets/snippets.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "aks.runFile",
+        "title": "AKS: Run Current File",
+        "category": "AKS"
+      },
+      {
+        "command": "aks.formatDocument",
+        "title": "AKS: Format Document with aksfmt",
+        "category": "AKS"
+      },
+      {
+        "command": "aks.restartServer",
+        "title": "AKS: Restart Language Server",
+        "category": "AKS"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "aks.runFile",
+          "group": "navigation",
+          "when": "resourceExtname == .aks"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "aks.runFile",
+          "group": "aks",
+          "when": "resourceExtname == .aks"
+        },
+        {
+          "command": "aks.formatDocument",
+          "group": "aks",
+          "when": "resourceExtname == .aks"
+        }
+      ]
+    },
+    "breakpoints": [
+      {
+        "language": "aks"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "aks-dap",
+        "label": "AKS Debugger",
+        "languages": ["aks"],
+        "configurationAttributes": {
+          "launch": {
+            "required": ["program"],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Path to the AKS source file to debug.",
+                "default": "${file}"
+              },
+              "args": {
+                "type": "array",
+                "description": "Command line arguments passed to the program.",
+                "items": { "type": "string" },
+                "default": []
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Automatically stop at the beginning of the program.",
+                "default": false
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "aks-dap",
+            "name": "Debug Current AKS File",
+            "request": "launch",
+            "program": "${file}"
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "AKS",
+      "properties": {
+        "aks.executablePath": {
+          "type": "string",
+          "default": "aks",
+          "description": "Path to the 'aks' compiler executable."
+        },
+        "aks.languageServerPath": {
+          "type": "string",
+          "default": "aksls",
+          "description": "Path to the 'aksls' Language Server executable."
+        },
+        "aks.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Trace communication between VS Code and the AKS Language Server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^18.11.9",
+    "@types/vscode": "^1.75.0",
+    "@vscode/vsce": "^2.22.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.1.0"
+  }
+}

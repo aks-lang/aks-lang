@@ -6527,8 +6527,13 @@ static int ChkopOverload(VM *vm, VMTask *task, uint8_t **ipptr,
   return 0;
 }
 
-// optimize for speed
-#pragma optimize("t", on)
+#if defined(_MSC_VER)
+#pragma optimize("", off)
+#elif defined(__clang__)
+#pragma clang optimize off
+#elif defined(__GNUC__)
+#pragma GCC optimize("O0")
+#endif
 #pragma warning(push)
 #pragma warning(disable : 4065)
 int RunTaskSlice(VM *vm, VMTask *task, int maxinstructions) {
@@ -6950,7 +6955,8 @@ while (0)
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (RegCheckOverload(vm, task, "opadd", curr_inst->dst, curr_inst->src1,
+      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+          RegCheckOverload(vm, task, "opadd", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots)) {
         continue;
@@ -6993,7 +6999,8 @@ while (0)
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (RegCheckOverload(vm, task, "opsub", curr_inst->dst, curr_inst->src1,
+      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+          RegCheckOverload(vm, task, "opsub", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
@@ -7039,7 +7046,8 @@ while (0)
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (RegCheckOverload(vm, task, "opmul", curr_inst->dst, curr_inst->src1,
+      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+          RegCheckOverload(vm, task, "opmul", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
@@ -7085,7 +7093,8 @@ while (0)
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (RegCheckOverload(vm, task, "opdiv", curr_inst->dst, curr_inst->src1,
+      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+          RegCheckOverload(vm, task, "opdiv", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
@@ -7133,7 +7142,8 @@ while (0)
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (RegCheckOverload(vm, task, "opmod", curr_inst->dst, curr_inst->src1,
+      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+          RegCheckOverload(vm, task, "opmod", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
@@ -7206,7 +7216,8 @@ while (0)
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (RegCheckOverload(vm, task, "oplt", curr_inst->dst, curr_inst->src1,
+      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+          RegCheckOverload(vm, task, "oplt", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
@@ -7225,7 +7236,8 @@ while (0)
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (RegCheckOverload(vm, task, "opgt", curr_inst->dst, curr_inst->src1,
+      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+          RegCheckOverload(vm, task, "opgt", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
@@ -7244,7 +7256,8 @@ while (0)
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (RegCheckOverload(vm, task, "oplte", curr_inst->dst, curr_inst->src1,
+      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+          RegCheckOverload(vm, task, "oplte", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
@@ -7263,7 +7276,8 @@ while (0)
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (RegCheckOverload(vm, task, "opgte", curr_inst->dst, curr_inst->src1,
+      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+          RegCheckOverload(vm, task, "opgte", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
@@ -7282,7 +7296,8 @@ while (0)
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (RegCheckOverload(vm, task, "opeq", curr_inst->dst, curr_inst->src1,
+      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+          RegCheckOverload(vm, task, "opeq", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
@@ -7301,7 +7316,8 @@ while (0)
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (RegCheckOverload(vm, task, "opneq", curr_inst->dst, curr_inst->src1,
+      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+          RegCheckOverload(vm, task, "opneq", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
@@ -9947,7 +9963,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPADD: {
-    if (ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opadd"))
+    if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
+        ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opadd"))
       continue;
     AKSValue b = POP();
     AKSValue a = POP();
@@ -9981,7 +9998,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPSUB: {
-    if (ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opsub"))
+    if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
+        ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opsub"))
       continue;
     AKSValue b = POP();
     AKSValue a = POP();
@@ -10015,7 +10033,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPMUL: {
-    if (ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opmul"))
+    if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
+        ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opmul"))
       continue;
     AKSValue b = POP();
     AKSValue a = POP();
@@ -10049,7 +10068,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPDIV: {
-    if (ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opdiv"))
+    if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
+        ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opdiv"))
       continue;
     AKSValue b = POP();
     AKSValue a = POP();
@@ -10091,7 +10111,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPMOD: {
-    if (ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opmod"))
+    if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
+        ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opmod"))
       continue;
     AKSValue b = POP();
     AKSValue a = POP();
@@ -10127,7 +10148,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPEQ: {
-    if (ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opeq"))
+    if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
+        ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opeq"))
       continue;
     AKSValue b = POP();
     AKSValue a = POP();
@@ -10138,7 +10160,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPNEQ: {
-    if (ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opneq"))
+    if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
+        ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opneq"))
       continue;
     AKSValue b = POP();
     AKSValue a = POP();
@@ -10149,7 +10172,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPLT: {
-    if (ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "oplt"))
+    if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
+        ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "oplt"))
       continue;
     AKSValue b = POP();
     AKSValue a = POP();
@@ -10170,7 +10194,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPGT: {
-    if (ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opgt"))
+    if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
+        ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opgt"))
       continue;
     AKSValue b = POP();
     AKSValue a = POP();
@@ -10191,7 +10216,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPLTE: {
-    if (ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "oplte"))
+    if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
+        ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "oplte"))
       continue;
     AKSValue b = POP();
     AKSValue a = POP();
@@ -10212,7 +10238,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPGTE: {
-    if (ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opgte"))
+    if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
+        ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opgte"))
       continue;
     AKSValue b = POP();
     AKSValue a = POP();
@@ -12461,7 +12488,13 @@ enter_stack_interpreter: for (;;) {
 return 0;
 }
 #pragma warning(pop)
+#if defined(_MSC_VER)
 #pragma optimize("", on)
+#elif defined(__clang__)
+#pragma clang optimize on
+#elif defined(__GNUC__)
+#pragma GCC optimize("O2")
+#endif
 #undef RaiseX
 #undef ExecuteStdlib
 #undef FRAME_GROW
