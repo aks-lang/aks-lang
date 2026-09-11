@@ -103,6 +103,26 @@ AKS_INLINE ValType ValKind(AKSValue v) {
     return (ValType)tag;
 }
 
+AKS_INLINE int ValIsFloat(AKSValue v) {
+    return v < VALFLOATLIMIT;
+}
+
+AKS_INLINE int ValIsInt(AKSValue v) {
+    return (v >> 48) == 0xFFF1ULL;
+}
+
+AKS_INLINE int ValIsBool(AKSValue v) {
+    return (v >> 48) == 0xFFF2ULL;
+}
+
+AKS_INLINE int ValIsNull(AKSValue v) {
+    return (v >> 48) == 0xFFF3ULL;
+}
+
+AKS_INLINE int ValIsPrimitive(AKSValue v) {
+    return v < VALFLOATLIMIT || (v >> 48) <= 0xFFF3ULL;
+}
+
 AKS_INLINE int64_t ValToInt(AKSValue v) {
     uint64_t payload = v & 0x0000FFFFFFFFFFFFULL;
     if (payload & 0x0000800000000000ULL) {
@@ -363,12 +383,12 @@ AKSValue ValCastBool(AKSValue val, int *ok);
 AKSValue ValCastStr(AKSValue val);
 
 void ValFreeFunc(AKSValue *v);
-#define ValFree(v) do { if ((v) && ValKind(*(v)) >= VALSTR) ValFreeFunc(v); } while(0)
+#define ValFree(v) do { if ((v) && !ValIsPrimitive(*(v))) ValFreeFunc(v); } while(0)
 AKSValue ValCopySlow(AKSValue v);
 static inline AKSValue ValCopy(AKSValue v) {
-    if (v < VALFLOATLIMIT) return v;
+    if (ValIsPrimitive(v)) return v;
     uint64_t tag = (v >> 48) - 0xFFF0ULL;
-    if (tag < (uint64_t)VALSTR || tag > 14) return v;
+    if (tag > 14) return v;
     return ValCopySlow(v);
 }
 int ValIsTruthy(AKSValue v);

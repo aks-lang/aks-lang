@@ -9963,6 +9963,20 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPADD: {
+    if (stacktop - task->stack >= 2) {
+      if (ValIsInt(stacktop[-2]) && ValIsInt(stacktop[-1])) {
+        int64_t res;
+        if (!ChkAddOvf(ValToIntUnchecked(stacktop[-2]), ValToIntUnchecked(stacktop[-1]), &res)) {
+          stacktop[-2] = ValInt(res);
+          stacktop--;
+          break;
+        }
+      } else if (ValIsFloat(stacktop[-2]) && ValIsFloat(stacktop[-1])) {
+        stacktop[-2] = ValFloat(ValToFloat(stacktop[-2]) + ValToFloat(stacktop[-1]));
+        stacktop--;
+        break;
+      }
+    }
     if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
         ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opadd"))
       continue;
@@ -9998,6 +10012,20 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPSUB: {
+    if (stacktop - task->stack >= 2) {
+      if (ValIsInt(stacktop[-2]) && ValIsInt(stacktop[-1])) {
+        int64_t res;
+        if (!ChkSubOvf(ValToIntUnchecked(stacktop[-2]), ValToIntUnchecked(stacktop[-1]), &res)) {
+          stacktop[-2] = ValInt(res);
+          stacktop--;
+          break;
+        }
+      } else if (ValIsFloat(stacktop[-2]) && ValIsFloat(stacktop[-1])) {
+        stacktop[-2] = ValFloat(ValToFloat(stacktop[-2]) - ValToFloat(stacktop[-1]));
+        stacktop--;
+        break;
+      }
+    }
     if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
         ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opsub"))
       continue;
@@ -10033,6 +10061,20 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPMUL: {
+    if (stacktop - task->stack >= 2) {
+      if (ValIsInt(stacktop[-2]) && ValIsInt(stacktop[-1])) {
+        int64_t res;
+        if (!ChkMulOvf(ValToIntUnchecked(stacktop[-2]), ValToIntUnchecked(stacktop[-1]), &res)) {
+          stacktop[-2] = ValInt(res);
+          stacktop--;
+          break;
+        }
+      } else if (ValIsFloat(stacktop[-2]) && ValIsFloat(stacktop[-1])) {
+        stacktop[-2] = ValFloat(ValToFloat(stacktop[-2]) * ValToFloat(stacktop[-1]));
+        stacktop--;
+        break;
+      }
+    }
     if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
         ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opmul"))
       continue;
@@ -10148,6 +10190,11 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPEQ: {
+    if (stacktop - task->stack >= 2 && ValIsPrimitive(stacktop[-2]) && ValIsPrimitive(stacktop[-1]) && (ValIsInt(stacktop[-2]) == ValIsInt(stacktop[-1]))) {
+      stacktop[-2] = ValBool(stacktop[-2] == stacktop[-1]);
+      stacktop--;
+      break;
+    }
     if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
         ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opeq"))
       continue;
@@ -10160,6 +10207,11 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPNEQ: {
+    if (stacktop - task->stack >= 2 && ValIsPrimitive(stacktop[-2]) && ValIsPrimitive(stacktop[-1]) && (ValIsInt(stacktop[-2]) == ValIsInt(stacktop[-1]))) {
+      stacktop[-2] = ValBool(stacktop[-2] != stacktop[-1]);
+      stacktop--;
+      break;
+    }
     if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
         ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opneq"))
       continue;
@@ -10172,6 +10224,17 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPLT: {
+    if (stacktop - task->stack >= 2) {
+      if (ValIsInt(stacktop[-2]) && ValIsInt(stacktop[-1])) {
+        stacktop[-2] = ValBool(ValToIntUnchecked(stacktop[-2]) < ValToIntUnchecked(stacktop[-1]));
+        stacktop--;
+        break;
+      } else if (ValIsFloat(stacktop[-2]) && ValIsFloat(stacktop[-1])) {
+        stacktop[-2] = ValBool(ValToFloat(stacktop[-2]) < ValToFloat(stacktop[-1]));
+        stacktop--;
+        break;
+      }
+    }
     if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
         ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "oplt"))
       continue;
@@ -10194,6 +10257,17 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPGT: {
+    if (stacktop - task->stack >= 2) {
+      if (ValIsInt(stacktop[-2]) && ValIsInt(stacktop[-1])) {
+        stacktop[-2] = ValBool(ValToIntUnchecked(stacktop[-2]) > ValToIntUnchecked(stacktop[-1]));
+        stacktop--;
+        break;
+      } else if (ValIsFloat(stacktop[-2]) && ValIsFloat(stacktop[-1])) {
+        stacktop[-2] = ValBool(ValToFloat(stacktop[-2]) > ValToFloat(stacktop[-1]));
+        stacktop--;
+        break;
+      }
+    }
     if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
         ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opgt"))
       continue;
@@ -10216,6 +10290,17 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPLTE: {
+    if (stacktop - task->stack >= 2) {
+      if (ValIsInt(stacktop[-2]) && ValIsInt(stacktop[-1])) {
+        stacktop[-2] = ValBool(ValToIntUnchecked(stacktop[-2]) <= ValToIntUnchecked(stacktop[-1]));
+        stacktop--;
+        break;
+      } else if (ValIsFloat(stacktop[-2]) && ValIsFloat(stacktop[-1])) {
+        stacktop[-2] = ValBool(ValToFloat(stacktop[-2]) <= ValToFloat(stacktop[-1]));
+        stacktop--;
+        break;
+      }
+    }
     if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
         ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "oplte"))
       continue;
@@ -10238,6 +10323,17 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPGTE: {
+    if (stacktop - task->stack >= 2) {
+      if (ValIsInt(stacktop[-2]) && ValIsInt(stacktop[-1])) {
+        stacktop[-2] = ValBool(ValToIntUnchecked(stacktop[-2]) >= ValToIntUnchecked(stacktop[-1]));
+        stacktop--;
+        break;
+      } else if (ValIsFloat(stacktop[-2]) && ValIsFloat(stacktop[-1])) {
+        stacktop[-2] = ValBool(ValToFloat(stacktop[-2]) >= ValToFloat(stacktop[-1]));
+        stacktop--;
+        break;
+      }
+    }
     if (stacktop - task->stack >= 2 && ValKind(stacktop[-2]) == VALSTRUCT &&
         ChkopOverload(vm, task, &ip, &stacktop, &frame, &frameslots, "opgte"))
       continue;
@@ -11736,13 +11832,13 @@ enter_stack_interpreter: for (;;) {
     if (frame->fn->chunk.fieldcache && ipoffset >= 0) {
       int cached = frame->fn->chunk.fieldcache[ipoffset];
       if (cached >= 0 && cached < s->fieldcount &&
-          strcmp(s->fieldnames[cached], fieldname) == 0) {
+          (s->fieldnames[cached] == fieldname || strcmp(s->fieldnames[cached], fieldname) == 0)) {
         found = cached;
       }
     }
     if (found < 0) {
       for (int i = 0; i < s->fieldcount; i++) {
-        if (strcmp(s->fieldnames[i], fieldname) == 0) {
+        if (s->fieldnames[i] == fieldname || strcmp(s->fieldnames[i], fieldname) == 0) {
           found = i;
           break;
         }
@@ -11890,13 +11986,13 @@ enter_stack_interpreter: for (;;) {
     if (frame->fn->chunk.fieldcache && sfipoffset >= 0) {
       int cached = frame->fn->chunk.fieldcache[sfipoffset];
       if (cached >= 0 && cached < s->fieldcount &&
-          strcmp(s->fieldnames[cached], fieldname) == 0) {
+          (s->fieldnames[cached] == fieldname || strcmp(s->fieldnames[cached], fieldname) == 0)) {
         found = cached;
       }
     }
     if (found < 0) {
       for (int i = 0; i < s->fieldcount; i++) {
-        if (strcmp(s->fieldnames[i], fieldname) == 0) {
+        if (s->fieldnames[i] == fieldname || strcmp(s->fieldnames[i], fieldname) == 0) {
           found = i;
           break;
         }

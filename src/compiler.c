@@ -8565,6 +8565,32 @@ static void OptBytecode(Chunk *ch) {
 
     while (i < ch->count) {
         int size = GetInstructionSize(ch->code, ch->count, i);
+
+        // Fold OPPUSHINT a + OPPUSHINT b + OPADD/OPSUB/OPMUL
+        if (ch->code[i] == OPPUSHINT && i + 18 < ch->count && ch->code[i+9] == OPPUSHINT) {
+            uint8_t op = ch->code[i+18];
+            if (op == OPADD || op == OPSUB || op == OPMUL) {
+                int64_t v1 = 0, v2 = 0;
+                for (int k = 1; k <= 8; k++) {
+                    v1 = (v1 << 8) | ch->code[i+k];
+                    v2 = (v2 << 8) | ch->code[i+9+k];
+                }
+                int64_t res = 0;
+                int ok = 0;
+                if (op == OPADD) ok = !ChkAddOvf(v1, v2, &res);
+                else if (op == OPSUB) ok = !ChkSubOvf(v1, v2, &res);
+                else if (op == OPMUL) ok = !ChkMulOvf(v1, v2, &res);
+                if (ok) {
+                    uint64_t ures = (uint64_t)res;
+                    for (int k = 8; k >= 1; k--) {
+                        ch->code[i+k] = (uint8_t)(ures & 0xFF);
+                        ures >>= 8;
+                    }
+                    CompActChunk(ch, i + 9, 10);
+                    continue;
+                }
+            }
+        }
         
         if (ch->code[i] == OPPUSHINT && i + 9 < ch->count && ch->code[i+9] == OPADD) {
             int64_t val = 0;
