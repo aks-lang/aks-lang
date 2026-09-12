@@ -3778,8 +3778,9 @@ static char *ReConstructTypeName(Node *n) {
   if (n->type == NMEMBER) {
     char *obj_name = ReConstructTypeName(n->member.obj);
     if (!obj_name) return NULL;
-    char *buf = malloc(strlen(obj_name) + 1 + strlen(n->member.field) + 1);
-    sprintf(buf, "%s.%s", obj_name, n->member.field);
+    size_t sz = strlen(obj_name) + 1 + strlen(n->member.field) + 1;
+    char *buf = malloc(sz);
+    snprintf(buf, sz, "%s.%s", obj_name, n->member.field);
     free(obj_name);
     return buf;
   }
@@ -4399,7 +4400,7 @@ static Node *ParsePrimary(Parser *p) {
         TokFree(&rb);
         static int listcompcounter = 0;
         char listname[64];
-        sprintf(listname, "__comp_%d", listcompcounter++);
+        snprintf(listname, sizeof(listname), "__comp_%d", listcompcounter++);
         Node *vardecl = NodeNew(NVARDECL, line);
         vardecl->decl.name = strdup(listname);
         vardecl->decl.tname = NULL;

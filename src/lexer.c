@@ -223,7 +223,7 @@ Token LexNext(Lexer *l) {
             unsigned long long val = strtoull(buf, NULL, 16);
             free(buf);
             char dec[64];
-            sprintf(dec, "%llu", val);
+            snprintf(dec, sizeof(dec), "%llu", val);
             return MkTok(TINTLIT, dec, line, col);
         }
         if (c == '0' && (Ln(l) == 'b' || Ln(l) == 'B')) {
@@ -241,7 +241,7 @@ Token LexNext(Lexer *l) {
             unsigned long long val = strtoull(buf, NULL, 2);
             free(buf);
             char dec[64];
-            sprintf(dec, "%llu", val);
+            snprintf(dec, sizeof(dec), "%llu", val);
             return MkTok(TINTLIT, dec, line, col);
         }
         

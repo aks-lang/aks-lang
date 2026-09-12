@@ -13895,11 +13895,11 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
         if (connect(sm_sock,sm_ai->ai_addr,(int)sm_ai->ai_addrlen)==0) {
           char sm_buf[4096]={0}; char sm_cmd[1024];
           recv(sm_sock,sm_buf,sizeof(sm_buf)-1,0);
-          sprintf(sm_cmd,"EHLO localhost\r\n"); send(sm_sock,sm_cmd,(int)strlen(sm_cmd),0);
+          snprintf(sm_cmd,sizeof(sm_cmd),"EHLO localhost\r\n"); send(sm_sock,sm_cmd,(int)strlen(sm_cmd),0);
           recv(sm_sock,sm_buf,sizeof(sm_buf)-1,0);
-          sprintf(sm_cmd,"MAIL FROM:<%s>\r\n",sm_from); send(sm_sock,sm_cmd,(int)strlen(sm_cmd),0);
+          snprintf(sm_cmd,sizeof(sm_cmd),"MAIL FROM:<%s>\r\n",sm_from); send(sm_sock,sm_cmd,(int)strlen(sm_cmd),0);
           recv(sm_sock,sm_buf,sizeof(sm_buf)-1,0);
-          sprintf(sm_cmd,"RCPT TO:<%s>\r\n",sm_tostr); send(sm_sock,sm_cmd,(int)strlen(sm_cmd),0);
+          snprintf(sm_cmd,sizeof(sm_cmd),"RCPT TO:<%s>\r\n",sm_tostr); send(sm_sock,sm_cmd,(int)strlen(sm_cmd),0);
           recv(sm_sock,sm_buf,sizeof(sm_buf)-1,0);
           send(sm_sock,"DATA\r\n",6,0);
           recv(sm_sock,sm_buf,sizeof(sm_buf)-1,0);

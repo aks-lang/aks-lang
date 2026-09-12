@@ -1818,6 +1818,9 @@ static void VMRegisterStruct(VM *vm, const char *name, int fc, char **fnames,
     vm->globals[vm->globalcount].name = strdup(name);
     vm->globals[vm->globalcount].val = metaval;
     vm->globalcount++;
+  } else {
+    fprintf(stderr, "VM warning: Cannot register metadata global '%s', global limit reached (%d)\n", name, MAXGLOBALS);
+    ValFree(&metaval);
   }
 }
 
@@ -6942,6 +6945,10 @@ while (0)
           vm->globals[vm->globalcount].name = strdup(name);
           vm->globals[vm->globalcount].val = val;
           vm->globalcount++;
+        } else {
+          fprintf(stderr, "Runtime error: global variable capacity exceeded (%d)\n", MAXGLOBALS);
+          ValFree(&val);
+          return 0;
         }
       }
       REG_DISPATCH_OR_BREAK();
@@ -8665,6 +8672,10 @@ while (0)
       uint8_t *catch_bytecode =
           frame->fn->chunk.code +
           GetBytecodeOffset(frame->fn, curr_inst->targetip);
+      if (task->tryhandlercount >= 256) {
+        fprintf(stderr, "Runtime error: too many nested try-catch blocks\n");
+        return 0;
+      }
       task->tryhandlers[task->tryhandlercount].frameindex = task->framecount;
       task->tryhandlers[task->tryhandlercount].stacktopbase =
           (int)(stacktop - task->stack);
@@ -12331,6 +12342,10 @@ enter_stack_interpreter: for (;;) {
   case OPSELECT: {
     uint16_t count = READU16();
     uint8_t has_default = READBYTE();
+    if (count > 32) {
+      fprintf(stderr, "Runtime error: select statement exceeds maximum operations (32)\n");
+      return 0;
+    }
     uint8_t *jumps_base = ip;
     if (task->select_woken_index >= 0) {
       int chosen = task->select_woken_index;
