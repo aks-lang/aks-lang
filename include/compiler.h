@@ -313,6 +313,17 @@ typedef struct {
     int mono_cache_count;
     /* Current function's return SType for static codegen */
     SType *current_ret_stype;
+
+    /* Instance-level compilation flags (for safe multi-threaded reentrancy) */
+    int no_bounds_check;
+    int strict_ovf;
+    int type_checking_enabled;
+    int borrow_checker_enabled;
+    int immutable_by_default;
+    int strict_types;
+    int incremental_typing;
+    int parallel_compilation;
+    int debug_build;
 } Compiler;
 
 struct Node; // forward declare Node from ast.h

@@ -1234,8 +1234,29 @@ typedef unsigned long long u64;
 typedef long long i64;
 typedef i64 gf[16];
 
+int CryptoTimingSafeEqual(const uint8_t *a, const uint8_t *b, size_t len) {
+  if (!a || !b) return 0;
+  volatile uint8_t res = 0;
+  for (size_t i = 0; i < len; i++) {
+    res |= a[i] ^ b[i];
+  }
+  return res == 0;
+}
+
 static void RandomBytes(uint8_t *x, uint64_t len) {
-  BCryptGenRandom(NULL, x, (ULONG)len, 2);
+#ifdef _WIN32
+  BCryptGenRandom(NULL, x, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+#else
+  FILE *f = fopen("/dev/urandom", "rb");
+  if (f) {
+    size_t n = fread(x, 1, len, f);
+    fclose(f);
+    if (n == len) return;
+  }
+  for (uint64_t i = 0; i < len; i++) {
+    x[i] = (uint8_t)(rand() & 0xFF);
+  }
+#endif
 }
 
 static const u8 _0[16];

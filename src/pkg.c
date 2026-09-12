@@ -1245,10 +1245,10 @@ int PkgSign(const char *bundle_path, const char *privkey_path) {
     }
     
     char sig_hex[256];
-    for (size_t i = 0; i < sig_len; i++) {
-        sprintf(sig_hex + i * 2, "%02x", sig[i]);
+    for (size_t i = 0; i < sig_len && (i * 2 + 2) < sizeof(sig_hex); i++) {
+        snprintf(sig_hex + i * 2, sizeof(sig_hex) - i * 2, "%02x", sig[i]);
     }
-    sig_hex[sig_len * 2] = '\0';
+    sig_hex[sig_len * 2 < sizeof(sig_hex) ? sig_len * 2 : sizeof(sig_hex) - 1] = '\0';
     
     FILE *out = fopen(bundle_path, "wb");
     if (!out) {

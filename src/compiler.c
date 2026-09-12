@@ -6860,6 +6860,16 @@ Compiler *CompNew(void) {
     c->strpool=malloc(c->strcap*sizeof(char*));
     c->isrepl=0;
     c->iseval=0;
+    c->no_bounds_check = gNoBoundsCheck;
+    c->strict_ovf = gStrictOvf;
+    c->type_checking_enabled = gTypeCheckingEnabled;
+    c->borrow_checker_enabled = gBorrowCheckerEnabled;
+    c->immutable_by_default = gImmutableByDefault;
+    c->strict_types = gStrictTypes;
+    c->incremental_typing = gIncrementalTyping;
+    c->parallel_compilation = gParallelCompilation;
+    c->is_static_mode = gStaticMode;
+    c->debug_build = gDebugBuild;
     // always create the top-level "main" function
     FnProto *mainfn=NewFn(c,"__main__");
     c->current=mainfn;

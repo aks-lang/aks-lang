@@ -44,7 +44,22 @@ typedef struct { int dummy; } WSADATA;
 
 #define CONDITIONVAR pthread_cond_t
 #define InitializeConditionVariable(cond) pthread_cond_init(cond, NULL)
-#define SleepConditionVariableCS(cond, lock, timeout) pthread_cond_wait(cond, lock)
+
+static inline int LnxSleepConditionVariableCS(pthread_cond_t *cond, pthread_mutex_t *lock, unsigned long timeout_ms) {
+    if (timeout_ms == 0xFFFFFFFFUL || timeout_ms == 0) {
+        return pthread_cond_wait(cond, lock) == 0;
+    }
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += timeout_ms / 1000;
+    ts.tv_nsec += (timeout_ms % 1000) * 1000000;
+    if (ts.tv_nsec >= 1000000000) {
+        ts.tv_sec += 1;
+        ts.tv_nsec -= 1000000000;
+    }
+    return pthread_cond_timedwait(cond, lock, &ts) == 0;
+}
+#define SleepConditionVariableCS(cond, lock, timeout) LnxSleepConditionVariableCS(cond, lock, timeout)
 #define WakeAllConditionVariable(cond) pthread_cond_broadcast(cond)
 
 #define InterlockedDecrement(ptr) __sync_sub_and_fetch(ptr, 1)
@@ -55,11 +70,13 @@ typedef struct { int dummy; } WSADATA;
 #define LPVOID void*
 #define HANDLE void*
 #define CloseHandle(h) LnxCloseHandle(h)
-#define INFINITE 0
+#define INFINITE 0xFFFFFFFFUL
+#define WAIT_OBJECT_0 0
+#define WAIT_TIMEOUT 258
+#define WAIT_FAILED ((DWORD)0xFFFFFFFFUL)
 #define CreateEvent(attr, manual, initial, name) LnxCreateEvent()
 #define SetEvent(h) LnxSetEvent(h)
-#define WaitForSingleObject(h, timeout) (LnxWaitHandle(h), 0)
-#define WAIT_TIMEOUT 258
+#define WaitForSingleObject(h, timeout) LnxWaitHandle(h, timeout)
 
 typedef struct {
     pthread_t thread;
@@ -99,18 +116,47 @@ static inline void LnxCloseHandle(void *handle) {
     free(h);
 }
 
-static inline void LnxWaitHandle(void *handle) {
-    if (!handle) return;
+static inline DWORD LnxWaitHandle(void *handle, DWORD timeout_ms) {
+    if (!handle) return WAIT_FAILED;
     LinuxHandle *h = (LinuxHandle*)handle;
     if (h->is_thread) {
         pthread_join(h->thread, NULL);
+        return WAIT_OBJECT_0;
     } else {
         pthread_mutex_lock(&h->mutex);
-        while (!h->signaled) {
-            pthread_cond_wait(&h->cond, &h->mutex);
+        if (h->signaled) {
+            h->signaled = 0;
+            pthread_mutex_unlock(&h->mutex);
+            return WAIT_OBJECT_0;
         }
-        h->signaled = 0;
-        pthread_mutex_unlock(&h->mutex);
+        if (timeout_ms == INFINITE) {
+            while (!h->signaled) {
+                pthread_cond_wait(&h->cond, &h->mutex);
+            }
+            h->signaled = 0;
+            pthread_mutex_unlock(&h->mutex);
+            return WAIT_OBJECT_0;
+        } else {
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += timeout_ms / 1000;
+            ts.tv_nsec += (timeout_ms % 1000) * 1000000;
+            if (ts.tv_nsec >= 1000000000) {
+                ts.tv_sec += 1;
+                ts.tv_nsec -= 1000000000;
+            }
+            int rc = 0;
+            while (!h->signaled && rc == 0) {
+                rc = pthread_cond_timedwait(&h->cond, &h->mutex, &ts);
+            }
+            if (h->signaled) {
+                h->signaled = 0;
+                pthread_mutex_unlock(&h->mutex);
+                return WAIT_OBJECT_0;
+            }
+            pthread_mutex_unlock(&h->mutex);
+            return WAIT_TIMEOUT;
+        }
     }
 }
 

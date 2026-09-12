@@ -162,6 +162,8 @@ void AKSRegisterNative(AksVmT *vm, const char *name, AksNativeFn func) {
             aksVM->registered_natives[aksVM->registered_natives_count].func = (void*)func;
             aksVM->registered_natives_count++;
         }
+    } else {
+        fprintf(stderr, "AKSRegisterNative warning: maximum registered natives capacity reached (128). Symbol '%s' not registered.\n", name ? name : "");
     }
 }
 

@@ -1,0 +1,19 @@
+fn fib(n) {
+    if (n <= 1) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+fn compute() {
+    let s = 0;
+    let i = 0;
+    while (i < 8) {
+        s = s + fib(i);
+        i++;
+    }
+    return s;
+}
+
+print("Differential Computed Result:");
+print(compute());

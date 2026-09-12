@@ -58,6 +58,9 @@ aks.exe run tests\TestLockFreeQueue.aks || exit /b 1
 aks.exe run tests\TestSoftwareTransactionalMemory.aks || exit /b 1
 aks.exe run tests\TestScientificOdeSuite.aks || exit /b 1
 
+echo Running Cross-Backend Differential Verification
+call tests\TestDifferential.bat || exit /b 1
+
 echo Running strict type tests
 aks.exe run --strict-types tests\TestStrict.aks || exit /b 1
 aks.exe run --strict-types tests\TestStrictFail.aks 2>nul
