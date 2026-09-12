@@ -51,6 +51,12 @@ aks.exe run tests\TestRegionSafety.aks || exit /b 1
 aks.exe run tests\TestComptimeExecution.aks || exit /b 1
 aks.exe run --jit tests\TestJitOsrRegAlloc.aks || exit /b 1
 aks.exe run tests\TestModuleTopologicalSort.aks || exit /b 1
+aks.exe run tests\TestSimdVec8i.aks || exit /b 1
+aks.exe run tests\TestFileLock.aks || exit /b 1
+aks.exe run tests\TestSystemDisplay.aks || exit /b 1
+aks.exe run tests\TestLockFreeQueue.aks || exit /b 1
+aks.exe run tests\TestSoftwareTransactionalMemory.aks || exit /b 1
+aks.exe run tests\TestScientificOdeSuite.aks || exit /b 1
 
 echo Running strict type tests
 aks.exe run --strict-types tests\TestStrict.aks || exit /b 1

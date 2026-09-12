@@ -406,20 +406,24 @@ static void EnvSet(TypeEnv *e, const char *name, SType *t) {
 }
 
 static SType *EnvGet(TypeEnv *e, const char *name) {
+    if (!name) return NULL;
+    unsigned int idx = EnvHash(name);
+    char first = name[0];
     for (; e; e = e->parent) {
-        unsigned int idx = EnvHash(name);
         for (TypeEnvEntry *en = e->buckets[idx]; en; en = en->next) {
-            if (strcmp(en->name, name) == 0) return en->stype;
+            if (en->name[0] == first && strcmp(en->name, name) == 0) return en->stype;
         }
     }
     return NULL;
 }
 
 static TypeEnvEntry *EnvGetEntry(TypeEnv *e, const char *name) {
+    if (!name) return NULL;
+    unsigned int idx = EnvHash(name);
+    char first = name[0];
     for (; e; e = e->parent) {
-        unsigned int idx = EnvHash(name);
         for (TypeEnvEntry *en = e->buckets[idx]; en; en = en->next) {
-            if (strcmp(en->name, name) == 0) return en;
+            if (en->name[0] == first && strcmp(en->name, name) == 0) return en;
         }
     }
     return NULL;
