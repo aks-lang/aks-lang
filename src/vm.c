@@ -6883,13 +6883,13 @@ while (0)
       if (frame->fn->chunk.globalcache) {
         int cachedidx = frame->fn->chunk.globalcache[ipoffset];
         if (cachedidx >= 0 && cachedidx < vm->globalcount &&
-            strcmp(vm->globals[cachedidx].name, name) == 0) {
+            (vm->globals[cachedidx].name == name || strcmp(vm->globals[cachedidx].name, name) == 0)) {
           found = cachedidx;
         }
       }
       if (found < 0) {
         for (int i = 0; i < vm->globalcount; i++) {
-          if (strcmp(vm->globals[i].name, name) == 0) {
+          if (vm->globals[i].name == name || strcmp(vm->globals[i].name, name) == 0) {
             found = i;
             break;
           }
@@ -6919,13 +6919,13 @@ while (0)
       if (frame->fn->chunk.globalcache) {
         int cachedidx = frame->fn->chunk.globalcache[ipoffset];
         if (cachedidx >= 0 && cachedidx < vm->globalcount &&
-            strcmp(vm->globals[cachedidx].name, name) == 0) {
+            (vm->globals[cachedidx].name == name || strcmp(vm->globals[cachedidx].name, name) == 0)) {
           found = cachedidx;
         }
       }
       if (found < 0) {
         for (int i = 0; i < vm->globalcount; i++) {
-          if (strcmp(vm->globals[i].name, name) == 0) {
+          if (vm->globals[i].name == name || strcmp(vm->globals[i].name, name) == 0) {
             found = i;
             break;
           }
@@ -6964,29 +6964,33 @@ while (0)
       AKSValue a = frameslots[curr_inst->src1];
       AKSValue b = frameslots[curr_inst->src2];
       AKSValue res;
-      if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
+      if (ValIsInt(a) && ValIsInt(b)) {
         int64_t r;
-        if (ChkAddOvf(ValToInt(a), ValToInt(b), &r)) {
+        if (ChkAddOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &r)) {
           if (gStrictOvf) {
             RaiseX(vm, "IntegerOverflowException: addition overflow", &ip,
                    &stacktop, &frame, &frameslots);
             continue;
           } else {
-            res = ValFloat((double)ValToInt(a) + (double)ValToInt(b));
+            res = ValFloat((double)ValToIntUnchecked(a) + (double)ValToIntUnchecked(b));
           }
         } else {
           res = ValInt(r);
         }
-      } else if (ValKind(a) == VALFLOAT && ValKind(b) == VALFLOAT) {
+      } else if (ValIsFloat(a) && ValIsFloat(b)) {
         res = ValFloat(ValToFloat(a) + ValToFloat(b));
-      } else if (ValKind(a) == VALFLOAT && ValKind(b) == VALINT) {
-        res = ValFloat(ValToFloat(a) + (double)ValToInt(b));
-      } else if (ValKind(a) == VALINT && ValKind(b) == VALFLOAT) {
-        res = ValFloat((double)ValToInt(a) + ValToFloat(b));
+      } else if (ValIsFloat(a) && ValIsInt(b)) {
+        res = ValFloat(ValToFloat(a) + (double)ValToIntUnchecked(b));
+      } else if (ValIsInt(a) && ValIsFloat(b)) {
+        res = ValFloat((double)ValToIntUnchecked(a) + ValToFloat(b));
       } else {
         res = ValAdd(a, b);
       }
-      ValFree(&frameslots[curr_inst->dst]);
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      } else {
+        vm->static_rc_eliminated++;
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -7007,29 +7011,29 @@ while (0)
       AKSValue a = frameslots[curr_inst->src1];
       AKSValue b = frameslots[curr_inst->src2];
       AKSValue res;
-      if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
+      if (ValIsInt(a) && ValIsInt(b)) {
         int64_t r;
-        if (ChkSubOvf(ValToInt(a), ValToInt(b), &r)) {
+        if (ChkSubOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &r)) {
           if (gStrictOvf) {
             RaiseX(vm, "IntegerOverflowException: subtraction overflow", &ip,
                    &stacktop, &frame, &frameslots);
             continue;
           } else {
-            res = ValFloat((double)ValToInt(a) - (double)ValToInt(b));
+            res = ValFloat((double)ValToIntUnchecked(a) - (double)ValToIntUnchecked(b));
           }
         } else {
           res = ValInt(r);
         }
-      } else if (ValKind(a) == VALFLOAT && ValKind(b) == VALFLOAT) {
+      } else if (ValIsFloat(a) && ValIsFloat(b)) {
         res = ValFloat(ValToFloat(a) - ValToFloat(b));
-      } else if (ValKind(a) == VALFLOAT && ValKind(b) == VALINT) {
-        res = ValFloat(ValToFloat(a) - (double)ValToInt(b));
-      } else if (ValKind(a) == VALINT && ValKind(b) == VALFLOAT) {
-        res = ValFloat((double)ValToInt(a) - ValToFloat(b));
+      } else if (ValIsFloat(a) && ValIsInt(b)) {
+        res = ValFloat(ValToFloat(a) - (double)ValToIntUnchecked(b));
+      } else if (ValIsInt(a) && ValIsFloat(b)) {
+        res = ValFloat((double)ValToIntUnchecked(a) - ValToFloat(b));
       } else {
         res = ValSub(a, b);
       }
-      if (ValKind(frameslots[curr_inst->dst]) >= VALSTR) {
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
         ValFreeFunc(&frameslots[curr_inst->dst]);
       } else {
         vm->static_rc_eliminated++;
@@ -7054,29 +7058,29 @@ while (0)
       AKSValue a = frameslots[curr_inst->src1];
       AKSValue b = frameslots[curr_inst->src2];
       AKSValue res;
-      if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
+      if (ValIsInt(a) && ValIsInt(b)) {
         int64_t r;
-        if (ChkMulOvf(ValToInt(a), ValToInt(b), &r)) {
+        if (ChkMulOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &r)) {
           if (gStrictOvf) {
             RaiseX(vm, "IntegerOverflowException: multiplication overflow", &ip,
                    &stacktop, &frame, &frameslots);
             continue;
           } else {
-            res = ValFloat((double)ValToInt(a) * (double)ValToInt(b));
+            res = ValFloat((double)ValToIntUnchecked(a) * (double)ValToIntUnchecked(b));
           }
         } else {
           res = ValInt(r);
         }
-      } else if (ValKind(a) == VALFLOAT && ValKind(b) == VALFLOAT) {
+      } else if (ValIsFloat(a) && ValIsFloat(b)) {
         res = ValFloat(ValToFloat(a) * ValToFloat(b));
-      } else if (ValKind(a) == VALFLOAT && ValKind(b) == VALINT) {
-        res = ValFloat(ValToFloat(a) * (double)ValToInt(b));
-      } else if (ValKind(a) == VALINT && ValKind(b) == VALFLOAT) {
-        res = ValFloat((double)ValToInt(a) * ValToFloat(b));
+      } else if (ValIsFloat(a) && ValIsInt(b)) {
+        res = ValFloat(ValToFloat(a) * (double)ValToIntUnchecked(b));
+      } else if (ValIsInt(a) && ValIsFloat(b)) {
+        res = ValFloat((double)ValToIntUnchecked(a) * ValToFloat(b));
       } else {
         res = ValMul(a, b);
       }
-      if (ValKind(frameslots[curr_inst->dst]) >= VALSTR) {
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
         ValFreeFunc(&frameslots[curr_inst->dst]);
       } else {
         vm->static_rc_eliminated++;
@@ -7221,9 +7225,19 @@ while (0)
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue res =
-          ValLt(frameslots[curr_inst->src1], frameslots[curr_inst->src2]);
-      ValFree(&frameslots[curr_inst->dst]);
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      AKSValue res;
+      if (ValIsInt(a) && ValIsInt(b)) {
+        res = ValBool(ValToIntUnchecked(a) < ValToIntUnchecked(b));
+      } else if (ValIsFloat(a) && ValIsFloat(b)) {
+        res = ValBool(ValToFloat(a) < ValToFloat(b));
+      } else {
+        res = ValLt(a, b);
+      }
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -7241,9 +7255,19 @@ while (0)
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue res =
-          ValGt(frameslots[curr_inst->src1], frameslots[curr_inst->src2]);
-      ValFree(&frameslots[curr_inst->dst]);
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      AKSValue res;
+      if (ValIsInt(a) && ValIsInt(b)) {
+        res = ValBool(ValToIntUnchecked(a) > ValToIntUnchecked(b));
+      } else if (ValIsFloat(a) && ValIsFloat(b)) {
+        res = ValBool(ValToFloat(a) > ValToFloat(b));
+      } else {
+        res = ValGt(a, b);
+      }
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -7261,9 +7285,19 @@ while (0)
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue res =
-          ValLte(frameslots[curr_inst->src1], frameslots[curr_inst->src2]);
-      ValFree(&frameslots[curr_inst->dst]);
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      AKSValue res;
+      if (ValIsInt(a) && ValIsInt(b)) {
+        res = ValBool(ValToIntUnchecked(a) <= ValToIntUnchecked(b));
+      } else if (ValIsFloat(a) && ValIsFloat(b)) {
+        res = ValBool(ValToFloat(a) <= ValToFloat(b));
+      } else {
+        res = ValLte(a, b);
+      }
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -7281,9 +7315,19 @@ while (0)
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue res =
-          ValGte(frameslots[curr_inst->src1], frameslots[curr_inst->src2]);
-      ValFree(&frameslots[curr_inst->dst]);
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      AKSValue res;
+      if (ValIsInt(a) && ValIsInt(b)) {
+        res = ValBool(ValToIntUnchecked(a) >= ValToIntUnchecked(b));
+      } else if (ValIsFloat(a) && ValIsFloat(b)) {
+        res = ValBool(ValToFloat(a) >= ValToFloat(b));
+      } else {
+        res = ValGte(a, b);
+      }
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -7301,9 +7345,17 @@ while (0)
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue res =
-          ValEq(frameslots[curr_inst->src1], frameslots[curr_inst->src2]);
-      ValFree(&frameslots[curr_inst->dst]);
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      AKSValue res;
+      if (ValIsPrimitive(a) && ValIsPrimitive(b) && (ValIsInt(a) == ValIsInt(b))) {
+        res = ValBool(a == b);
+      } else {
+        res = ValEq(a, b);
+      }
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -7321,9 +7373,17 @@ while (0)
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue res =
-          ValNeq(frameslots[curr_inst->src1], frameslots[curr_inst->src2]);
-      ValFree(&frameslots[curr_inst->dst]);
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      AKSValue res;
+      if (ValIsPrimitive(a) && ValIsPrimitive(b) && (ValIsInt(a) == ValIsInt(b))) {
+        res = ValBool(a != b);
+      } else {
+        res = ValNeq(a, b);
+      }
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -8362,13 +8422,13 @@ while (0)
                              (regip - 1 - (RegInst *)frame->fn->regcode);
       if (actual_inst->cachedindex >= 0 &&
           actual_inst->cachedindex < s->fieldcount &&
-          strcmp(s->fieldnames[actual_inst->cachedindex],
-                 curr_inst->fieldname) == 0) {
+          (s->fieldnames[actual_inst->cachedindex] == curr_inst->fieldname ||
+           strcmp(s->fieldnames[actual_inst->cachedindex], curr_inst->fieldname) == 0)) {
         found = actual_inst->cachedindex;
       }
       if (found < 0) {
         for (int i = 0; i < s->fieldcount; i++) {
-          if (strcmp(s->fieldnames[i], curr_inst->fieldname) == 0) {
+          if (s->fieldnames[i] == curr_inst->fieldname || strcmp(s->fieldnames[i], curr_inst->fieldname) == 0) {
             found = i;
             break;
           }
@@ -8474,13 +8534,13 @@ while (0)
                              (regip - 1 - (RegInst *)frame->fn->regcode);
       if (actual_inst->cachedindex >= 0 &&
           actual_inst->cachedindex < s->fieldcount &&
-          strcmp(s->fieldnames[actual_inst->cachedindex],
-                 curr_inst->fieldname) == 0) {
+          (s->fieldnames[actual_inst->cachedindex] == curr_inst->fieldname ||
+           strcmp(s->fieldnames[actual_inst->cachedindex], curr_inst->fieldname) == 0)) {
         found = actual_inst->cachedindex;
       }
       if (found < 0) {
         for (int i = 0; i < s->fieldcount; i++) {
-          if (strcmp(s->fieldnames[i], curr_inst->fieldname) == 0) {
+          if (s->fieldnames[i] == curr_inst->fieldname || strcmp(s->fieldnames[i], curr_inst->fieldname) == 0) {
             found = i;
             break;
           }
@@ -11526,6 +11586,21 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPARRGET: {
+    if (stacktop - task->stack >= 2) {
+      AKSValue arrval = stacktop[-2];
+      AKSValue idxval = stacktop[-1];
+      if ((ValKind(arrval) == VALARR || ValKind(arrval) == VALTUPLE) && ValIsInt(idxval) && !ValIsInvalidated(arrval)) {
+        int64_t idx = ValToIntUnchecked(idxval);
+        AKSArray *a = ValToArr(arrval);
+        if (idx >= 0 && idx < a->count) {
+          AKSValue item = ValCopy(a->items[idx]);
+          ValFree(&arrval);
+          stacktop[-2] = item;
+          stacktop--;
+          break;
+        }
+      }
+    }
     AKSValue idxval = POP();
     AKSValue arrval = POP();
     if (ValKind(arrval) == VALNULL) {
@@ -11704,6 +11779,22 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPARRSET: {
+    if (stacktop - task->stack >= 3) {
+      AKSValue val = stacktop[-3];
+      AKSValue arrval = stacktop[-2];
+      AKSValue idxval = stacktop[-1];
+      if (ValKind(arrval) == VALARR && ValIsInt(idxval) && !ValIsInvalidated(arrval)) {
+        int64_t idx = ValToIntUnchecked(idxval);
+        AKSArray *a = ValToArr(arrval);
+        if (idx >= 0 && idx < a->count) {
+          ValFree(&a->items[idx]);
+          a->items[idx] = val;
+          stacktop -= 2;
+          stacktop[-1] = ValCopy(val);
+          break;
+        }
+      }
+    }
     AKSValue idxval = POP();
     AKSValue arrval = POP();
     AKSValue val = POP();
