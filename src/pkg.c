@@ -26,16 +26,13 @@
 #define DWORD unsigned long
 #endif
 
-#ifndef BCRYPT_ECDSA_ALGORITHM
-#define BCRYPT_ECDSA_ALGORITHM L"ECDSA"
-#endif
-#ifndef BCRYPT_ECC_CURVE_25519
-#define BCRYPT_ECC_CURVE_25519 L"ntl-curve25519"
+#ifndef BCRYPT_ECDSA_P256_ALGORITHM
+#define BCRYPT_ECDSA_P256_ALGORITHM L"ECDSA_P256"
 #endif
 
 static char *ReadFileContent(const char *path);
 
-int ECCGenerateKeys(LPCWSTR alg_id, LPCWSTR curve_name, int key_bits, int flags, DWORD key_size, char **pub_pem, char **priv_pem);
+int ECCGenerateKeys(LPCWSTR alg_id, LPCWSTR curve_name, DWORD magic_priv, DWORD magic_pub, size_t key_bits, char **pub_pem, char **priv_pem);
 int ECCSignData(LPCWSTR alg_id, LPCWSTR curve_name, const char *priv_pem, const uint8_t *hash, size_t hash_len, uint8_t *sig, size_t *sig_len);
 int ECCVerifyData(LPCWSTR alg_id, LPCWSTR curve_name, const char *pub_pem, const uint8_t *hash, size_t hash_len, const uint8_t *sig, size_t sig_len);
 
@@ -1162,7 +1159,7 @@ int AKSJSONGetVal(const char *json, const char *key, char *outval, int maxlen) {
 int PkgKeygen(const char *prefix) {
     char *priv_pem = NULL;
     char *pub_pem = NULL;
-    int res = ECCGenerateKeys(BCRYPT_ECDSA_ALGORITHM, BCRYPT_ECC_CURVE_25519, 0, 0, 255, &pub_pem, &priv_pem);
+    int res = ECCGenerateKeys(BCRYPT_ECDSA_P256_ALGORITHM, NULL, 0, 0, 256, &pub_pem, &priv_pem);
     if (!res || !priv_pem || !pub_pem) {
         fprintf(stderr, "Error: Keypair generation failed\n");
         return 1;
@@ -1175,6 +1172,8 @@ int PkgKeygen(const char *prefix) {
     FILE *privf = fopen(privpath, "w");
     if (!privf) {
         fprintf(stderr, "Error: Could not write private key to '%s'\n", privpath);
+        free(priv_pem);
+        free(pub_pem);
         return 1;
     }
     fputs(priv_pem, privf);
@@ -1183,6 +1182,8 @@ int PkgKeygen(const char *prefix) {
     FILE *pubf = fopen(pubpath, "w");
     if (!pubf) {
         fprintf(stderr, "Error: Could not write public key to '%s'\n", pubpath);
+        free(priv_pem);
+        free(pub_pem);
         return 1;
     }
     fputs(pub_pem, pubf);
@@ -1190,7 +1191,7 @@ int PkgKeygen(const char *prefix) {
     
     free(priv_pem);
     free(pub_pem);
-    printf("Generated Ed25519 keypair successfully:\n  Private key: %s\n  Public key:  %s\n", privpath, pubpath);
+    printf("Generated ECDSA P-256 keypair successfully:\n  Private key: %s\n  Public key:  %s\n", privpath, pubpath);
     return 0;
 }
 
@@ -1236,15 +1237,15 @@ int PkgSign(const char *bundle_path, const char *privkey_path) {
     
     uint8_t sig[1024];
     size_t sig_len = sizeof(sig);
-    int res = ECCSignData(BCRYPT_ECDSA_ALGORITHM, BCRYPT_ECC_CURVE_25519, priv_pem, digest, 32, sig, &sig_len);
+    int res = ECCSignData(BCRYPT_ECDSA_P256_ALGORITHM, NULL, priv_pem, digest, 32, sig, &sig_len);
     free(priv_pem);
     if (!res) {
-        fprintf(stderr, "Error: Ed25519 signature generation failed\n");
+        fprintf(stderr, "Error: ECDSA P-256 signature generation failed\n");
         free(data);
         return 1;
     }
     
-    char sig_hex[256];
+    char sig_hex[512];
     for (size_t i = 0; i < sig_len && (i * 2 + 2) < sizeof(sig_hex); i++) {
         snprintf(sig_hex + i * 2, sizeof(sig_hex) - i * 2, "%02x", sig[i]);
     }
@@ -1299,22 +1300,24 @@ int PkgVerify(const char *bundle_path, const char *pubkey_path) {
         return 1;
     }
     
-    char sig_hex[256] = "";
+    char sig_hex[512] = "";
     int sig_idx = 0;
     long start_sig = payload_size + 13;
-    while (start_sig < size && data[start_sig] != '\n' && data[start_sig] != '\r' && sig_idx < 255) {
+    while (start_sig < size && data[start_sig] != '\n' && data[start_sig] != '\r' && sig_idx < 511) {
         sig_hex[sig_idx++] = data[start_sig++];
     }
     sig_hex[sig_idx] = '\0';
     
-    if (strlen(sig_hex) != 128) {
+    size_t hex_len = strlen(sig_hex);
+    if (hex_len % 2 != 0 || hex_len == 0 || hex_len > 512) {
         fprintf(stderr, "Verification Error: Invalid signature length in bundle '%s'!\n", bundle_path);
         free(data);
         return 1;
     }
     
-    uint8_t sig[64];
-    for (int i = 0; i < 64; i++) {
+    size_t sig_len = hex_len / 2;
+    uint8_t sig[256];
+    for (size_t i = 0; i < sig_len; i++) {
         unsigned int b;
         sscanf(sig_hex + i * 2, "%02x", &b);
         sig[i] = (uint8_t)b;
@@ -1333,7 +1336,7 @@ int PkgVerify(const char *bundle_path, const char *pubkey_path) {
         return 1;
     }
     
-    int res = ECCVerifyData(BCRYPT_ECDSA_ALGORITHM, BCRYPT_ECC_CURVE_25519, pub_pem, digest, 32, sig, 64);
+    int res = ECCVerifyData(BCRYPT_ECDSA_P256_ALGORITHM, NULL, pub_pem, digest, 32, sig, sig_len);
     free(pub_pem);
     free(data);
     

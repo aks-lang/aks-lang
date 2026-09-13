@@ -2685,7 +2685,7 @@ static void EmitExpr(Compiler *c, Node *n) {
         case NIDENT: {
             int slot=ResolveLocal(c,n->sval);
             if(slot>=0){
-                if (gBorrowCheckerEnabled && c->current->locals[slot].ismoved) {
+                if (c->borrow_checker_enabled && c->current->locals[slot].ismoved) {
                     char buf[256];
                     snprintf(buf, sizeof(buf), "UseOfMovedValueError: use of moved value '%s'", n->sval);
                     Error(c, n->line, buf);
@@ -2887,7 +2887,7 @@ static void EmitExpr(Compiler *c, Node *n) {
                         strncpy(c->current->locals[slot].typename, actualtype, 63);
                         expectedtype = c->current->locals[slot].typename;
                     }
-                    if (gTypeCheckingEnabled) {
+                    if (c->type_checking_enabled) {
                         if (!TypesCompatible(c, expectedtype, actualtype)) {
                             char buf[256];
                             snprintf(buf, sizeof(buf), "TypeError: cannot assign type '%s' to variable of type '%s'", actualtype, expectedtype);
@@ -2976,7 +2976,7 @@ static void EmitExpr(Compiler *c, Node *n) {
                 int fnid = ResolveGlobal(c, n->call.callee->sval, n->line);
                 if (fnid >= 0) {
                     FnProto *fn = c->fns[fnid];
-                    if (gTypeCheckingEnabled) {
+                    if (c->type_checking_enabled) {
                         for (int i = 0; i < n->call.argc && i < fn->paramcount; i++) {
                             const char *expected = fn->paramtypes[i];
                             const char *actual = InferExprType(c, n->call.args[i]);
@@ -4028,7 +4028,7 @@ static void EmitExpr(Compiler *c, Node *n) {
                 if (n->fn.ptypes[i]) strncpy(fn->paramtypes[i], n->fn.ptypes[i], 63);
                 else strcpy(fn->paramtypes[i], "any");
             }
-            if (gTypeCheckingEnabled) {
+            if (c->type_checking_enabled) {
                 ChkStaticRecUrsion(c, n->fn.body, n->fn.name, 0);
             }
             c->current = fn;
@@ -5031,7 +5031,7 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             if (strcmp(expectedtype, "any") == 0 && strcmp(actualtype, "any") != 0 && strcmp(actualtype, "null") != 0) {
                 expectedtype = actualtype;
             }
-            if (gTypeCheckingEnabled && !TypesCompatible(c, expectedtype, actualtype)) {
+            if (c->type_checking_enabled && !TypesCompatible(c, expectedtype, actualtype)) {
                 char buf[256];
                 snprintf(buf, sizeof(buf), "TypeError: declared type '%s' does not match initializer type '%s'", expectedtype, actualtype);
                 AppendUnionDetails(buf, sizeof(buf), expectedtype);
@@ -5362,7 +5362,7 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             }
 
 
-            if (gTypeCheckingEnabled && strcmp(c->current->name, "__main__") != 0) {
+            if (c->type_checking_enabled && strcmp(c->current->name, "__main__") != 0) {
                 const char *expected = c->current->rettype;
                 const char *actual = "void";
                 if (n->single.expr) {
@@ -5635,7 +5635,7 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                 }
                 else strcpy(fn->paramtypes[i], "any");
             }
-            if (gTypeCheckingEnabled) {
+            if (c->type_checking_enabled) {
                 ChkStaticRecUrsion(c, n->fn.body, n->fn.name, 0);
                 ChkEffects(c, n->fn.body, n->fn.effect);
             }
@@ -6871,6 +6871,7 @@ Compiler *CompNew(void) {
     c->strict_types = gStrictTypes;
     c->incremental_typing = gIncrementalTyping;
     c->parallel_compilation = gParallelCompilation;
+    c->contract_check = gContractCheck;
     c->is_static_mode = gStaticMode;
     c->debug_build = gDebugBuild;
     // always create the top-level "main" function
@@ -10086,6 +10087,14 @@ static void MarkStaticSafeNodes(Node *n) {
 }
 
 int CompCompile(Compiler *c, Node *program) {
+    c->type_checking_enabled = gTypeCheckingEnabled;
+    c->borrow_checker_enabled = gBorrowCheckerEnabled;
+    c->immutable_by_default = gImmutableByDefault;
+    c->strict_types = gStrictTypes;
+    c->incremental_typing = gIncrementalTyping;
+    c->contract_check = gContractCheck;
+    c->is_static_mode = gStaticMode;
+    c->debug_build = gDebugBuild;
     if (gParallelCompilation <= 0) {
         const char *env_par = getenv("AKSPARALLEL");
         if (!env_par) env_par = getenv("AKS_JOBS");
@@ -10137,7 +10146,7 @@ int CompCompile(Compiler *c, Node *program) {
     ASTSpecialize(c, program, program);
     PreregisterTypes(c, program);
     PreregisterFns(c, program);
-    if (gTypeCheckingEnabled) {
+    if (c->type_checking_enabled) {
         NodeFlowTypeCheck(c, program);
         RunStaticChecks(c, program);
         if (gIncrementalTyping || gStrictTypes || c->is_static_mode) {

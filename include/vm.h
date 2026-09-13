@@ -252,6 +252,8 @@ typedef struct {
     int is_ctfe;
     int no_bounds_check;
     int strict_ovf;
+    int test_mode;
+    int coverage_enabled;
 } VM;
 
 typedef enum {

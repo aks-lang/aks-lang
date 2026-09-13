@@ -84,11 +84,37 @@ typedef struct {
     pthread_cond_t cond;
     int signaled;
     int is_thread;
+    int joined;
 } LinuxHandle;
+
+typedef struct {
+    void* (*func)(void*);
+    void* arg;
+    LinuxHandle *h;
+} LnxThreadArg;
+
+static inline void* LnxThreadProc(void *p) {
+    LnxThreadArg *ta = (LnxThreadArg*)p;
+    void* (*func)(void*) = ta->func;
+    void *arg = ta->arg;
+    LinuxHandle *h = ta->h;
+    free(ta);
+
+    void *res = func(arg);
+
+    pthread_mutex_lock(&h->mutex);
+    h->signaled = 1;
+    pthread_cond_broadcast(&h->cond);
+    pthread_mutex_unlock(&h->mutex);
+
+    return res;
+}
 
 static inline void* LnxCreateEvent(void) {
     LinuxHandle *h = calloc(1, sizeof(LinuxHandle));
+    if (!h) return NULL;
     h->is_thread = 0;
+    h->joined = 0;
     pthread_mutex_init(&h->mutex, NULL);
     pthread_cond_init(&h->cond, NULL);
     h->signaled = 0;
@@ -108,7 +134,14 @@ static inline void LnxCloseHandle(void *handle) {
     if (!handle) return;
     LinuxHandle *h = (LinuxHandle*)handle;
     if (h->is_thread) {
-        pthread_detach(h->thread);
+        pthread_mutex_lock(&h->mutex);
+        if (!h->joined) {
+            h->joined = 1;
+            pthread_detach(h->thread);
+        }
+        pthread_mutex_unlock(&h->mutex);
+        pthread_mutex_destroy(&h->mutex);
+        pthread_cond_destroy(&h->cond);
     } else {
         pthread_mutex_destroy(&h->mutex);
         pthread_cond_destroy(&h->cond);
@@ -119,59 +152,94 @@ static inline void LnxCloseHandle(void *handle) {
 static inline DWORD LnxWaitHandle(void *handle, DWORD timeout_ms) {
     if (!handle) return WAIT_FAILED;
     LinuxHandle *h = (LinuxHandle*)handle;
-    if (h->is_thread) {
-        pthread_join(h->thread, NULL);
+
+    pthread_mutex_lock(&h->mutex);
+    if (h->signaled) {
+        if (!h->is_thread) {
+            h->signaled = 0;
+        } else if (!h->joined) {
+            h->joined = 1;
+            pthread_join(h->thread, NULL);
+        }
+        pthread_mutex_unlock(&h->mutex);
+        return WAIT_OBJECT_0;
+    }
+
+    if (timeout_ms == INFINITE) {
+        while (!h->signaled) {
+            pthread_cond_wait(&h->cond, &h->mutex);
+        }
+        if (!h->is_thread) {
+            h->signaled = 0;
+        } else if (!h->joined) {
+            h->joined = 1;
+            pthread_join(h->thread, NULL);
+        }
+        pthread_mutex_unlock(&h->mutex);
         return WAIT_OBJECT_0;
     } else {
-        pthread_mutex_lock(&h->mutex);
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += timeout_ms / 1000;
+        ts.tv_nsec += (timeout_ms % 1000) * 1000000;
+        if (ts.tv_nsec >= 1000000000) {
+            ts.tv_sec += 1;
+            ts.tv_nsec -= 1000000000;
+        }
+        int rc = 0;
+        while (!h->signaled && rc == 0) {
+            rc = pthread_cond_timedwait(&h->cond, &h->mutex, &ts);
+        }
         if (h->signaled) {
-            h->signaled = 0;
-            pthread_mutex_unlock(&h->mutex);
-            return WAIT_OBJECT_0;
-        }
-        if (timeout_ms == INFINITE) {
-            while (!h->signaled) {
-                pthread_cond_wait(&h->cond, &h->mutex);
-            }
-            h->signaled = 0;
-            pthread_mutex_unlock(&h->mutex);
-            return WAIT_OBJECT_0;
-        } else {
-            struct timespec ts;
-            clock_gettime(CLOCK_REALTIME, &ts);
-            ts.tv_sec += timeout_ms / 1000;
-            ts.tv_nsec += (timeout_ms % 1000) * 1000000;
-            if (ts.tv_nsec >= 1000000000) {
-                ts.tv_sec += 1;
-                ts.tv_nsec -= 1000000000;
-            }
-            int rc = 0;
-            while (!h->signaled && rc == 0) {
-                rc = pthread_cond_timedwait(&h->cond, &h->mutex, &ts);
-            }
-            if (h->signaled) {
+            if (!h->is_thread) {
                 h->signaled = 0;
-                pthread_mutex_unlock(&h->mutex);
-                return WAIT_OBJECT_0;
+            } else if (!h->joined) {
+                h->joined = 1;
+                pthread_join(h->thread, NULL);
             }
             pthread_mutex_unlock(&h->mutex);
-            return WAIT_TIMEOUT;
+            return WAIT_OBJECT_0;
         }
+        pthread_mutex_unlock(&h->mutex);
+        return WAIT_TIMEOUT;
     }
 }
 
 static inline void* LnxCreateThread(void* unused, size_t stack_size, void* func, void* arg, DWORD flags, void* unused2) {
+    (void)unused; (void)flags; (void)unused2;
     LinuxHandle *h = calloc(1, sizeof(LinuxHandle));
+    if (!h) return NULL;
     h->is_thread = 1;
-    
+    h->signaled = 0;
+    h->joined = 0;
+    pthread_mutex_init(&h->mutex, NULL);
+    pthread_cond_init(&h->cond, NULL);
+
+    LnxThreadArg *ta = malloc(sizeof(LnxThreadArg));
+    if (!ta) {
+        pthread_mutex_destroy(&h->mutex);
+        pthread_cond_destroy(&h->cond);
+        free(h);
+        return NULL;
+    }
+    ta->func = (void* (*)(void*))func;
+    ta->arg = arg;
+    ta->h = h;
+
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     if (stack_size > 0) {
         pthread_attr_setstacksize(&attr, stack_size);
     }
-    pthread_create(&h->thread, &attr, (void* (*)(void*))func, arg);
+    int rc = pthread_create(&h->thread, &attr, LnxThreadProc, ta);
     pthread_attr_destroy(&attr);
-    
+    if (rc != 0) {
+        free(ta);
+        pthread_mutex_destroy(&h->mutex);
+        pthread_cond_destroy(&h->cond);
+        free(h);
+        return NULL;
+    }
     return h;
 }
 

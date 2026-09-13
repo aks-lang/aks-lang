@@ -323,6 +323,7 @@ typedef struct {
     int strict_types;
     int incremental_typing;
     int parallel_compilation;
+    int contract_check;
     int debug_build;
 } Compiler;
 
