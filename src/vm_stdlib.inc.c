@@ -25353,6 +25353,10 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
 
     /* Extract dense contiguous buffers for cache locality */
     double *denseA = (double *)malloc(rowsA * colsA * sizeof(double));
+    if (!denseA) {
+      ValFree(&a_val); ValFree(&b_val);
+      return -1;
+    }
     for (int r = 0; r < rowsA; r++) {
       AKSArray *row = ValToArr(A->items[r]);
       for (int c = 0; c < colsA; c++) {
@@ -25363,6 +25367,11 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
 
     /* Transpose matrix B into denseBT (colsB x rowsB) to ensure streaming contiguous reads */
     double *denseBT = (double *)malloc(colsB * rowsB * sizeof(double));
+    if (!denseBT) {
+      free(denseA);
+      ValFree(&a_val); ValFree(&b_val);
+      return -1;
+    }
     for (int r = 0; r < rowsB; r++) {
       AKSArray *row = ValToArr(B->items[r]);
       for (int c = 0; c < colsB; c++) {
@@ -25435,6 +25444,11 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     }
 
     double *dense = (double *)malloc(count * sizeof(double));
+    if (!dense) {
+      PUSH(arr_val);
+      *stacktopptr = stacktop;
+      return 1;
+    }
     for (int i = 0; i < count; i++) {
       AKSValue v = arr->items[i];
       dense[i] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
