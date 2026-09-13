@@ -9,6 +9,31 @@
 
 size_t gaslrshift = 0;
 
+/* ---------------------------------------------------------------------------
+ * AKS_RELEASE_BUILD: production builds bypass all debug-allocator overhead.
+ * Enable with /DAKS_RELEASE_BUILD (MSVC) or -DAKS_RELEASE_BUILD (GCC/Clang).
+ * ---------------------------------------------------------------------------*/
+#if defined(AKS_RELEASE_BUILD)
+
+void *AslrmAlloc(size_t size) { return (malloc)(size); }
+void *AslrReAlloc(void *ptr, size_t size) { return (realloc)(ptr, size); }
+void  AslrFree(void *ptr) { (free)(ptr); }
+char *AslrStrDup(const char *s) {
+    if (!s) return NULL;
+    size_t len = strlen(s);
+    char *r = (malloc)(len + 1);
+    if (r) memcpy(r, s, len + 1);
+    return r;
+}
+void *AslrcAlloc(size_t num, size_t size) {
+    size_t total = num * size;
+    void *p = (malloc)(total);
+    if (p) memset(p, 0, total);
+    return p;
+}
+
+#else /* AKS_DEBUG_BUILD --- full safety allocator below */
+
 #define ALLOC_MAGIC 0x1A2B3C4D5E6F7A8BULL
 #define FREED_MAGIC 0xDEADBEEFDEADBEEFULL
 
@@ -47,10 +72,28 @@ static inline void QuarantineUnlock(void) {
 }
 #endif
 
+/* Lockless per-thread xorshift64 PRNG --- avoids the global rand() mutex. */
+#ifdef _WIN32
+static __declspec(thread) uint64_t t_xrand_state = 0;
+#elif defined(__GNUC__) || defined(__clang__)
+static __thread uint64_t t_xrand_state = 0;
+#else
+static uint64_t t_xrand_state = 0;
+#endif
+static inline uint64_t xrand(void) {
+    if (!t_xrand_state) {
+        t_xrand_state = (uint64_t)(uintptr_t)&t_xrand_state ^ (uint64_t)time(NULL);
+        if (!t_xrand_state) t_xrand_state = 0xdeadbeefcafeull;
+    }
+    uint64_t x = t_xrand_state;
+    x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+    return (t_xrand_state = x);
+}
+
 void *AslrmAlloc(size_t size) {
     size_t header_size = sizeof(size_t) + sizeof(size_t) + sizeof(uint64_t);
     if (size > (size_t)-1 - (header_size + 256)) return NULL;
-    size_t shift = (rand() % 16 + 1) * 8;
+    size_t shift = ((xrand() & 15) + 1) * 8;
     char *raw = (char*)(malloc)(size + shift + header_size);
     if (!raw) return NULL;
     
@@ -144,6 +187,8 @@ void AslrFree(void *ptr) {
     }
     QuarantineUnlock();
 }
+
+#endif /* AKS_RELEASE_BUILD / AKS_DEBUG_BUILD */
 
 
 volatile int gActiveStrs = 0;
@@ -893,6 +938,7 @@ AKSValue ValCastStr(AKSValue val) {
     return ValToStr(val);
 }
 
+#ifndef AKS_RELEASE_BUILD
 char *AslrStrDup(const char *s) {
     if (!s) return NULL;
     size_t len = strlen(s);
@@ -911,6 +957,7 @@ void *AslrcAlloc(size_t num, size_t size) {
     }
     return ptr;
 }
+#endif /* !AKS_RELEASE_BUILD */
 
 static inline void *StackAlloc(VMTask *task, size_t size) {
     size = (size + 7) & ~7;

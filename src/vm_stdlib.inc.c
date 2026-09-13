@@ -2402,21 +2402,24 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       fprintf(stderr, "Runtime error: ArenaFree() expects 1 argument (arena)\n");
       return -1;
     }
-    AKSValue a_val = POP();
-    typedef struct { uint8_t *base; size_t capacity; size_t offset; } AKSArena;
-    AKSArena *a = (AKSArena *)(uintptr_t)ValToInt(a_val);
-    if (a) {
+    AKSValue peek_val = *(stacktop - 1);
+    if (ValKind(peek_val) != VALARENA) {
+      AKSValue a_val = POP();
+      typedef struct { uint8_t *base; size_t capacity; size_t offset; } AKSRawArena;
+      AKSRawArena *a = (AKSRawArena *)(uintptr_t)ValToInt(a_val);
+      if (a) {
 #ifdef _WIN32
-      if (a->base) VirtualFree(a->base, 0, MEM_RELEASE);
+        if (a->base) VirtualFree(a->base, 0, MEM_RELEASE);
 #else
-      if (a->base) munmap(a->base, a->capacity);
+        if (a->base) munmap(a->base, a->capacity);
 #endif
-      free(a);
+        free(a);
+      }
+      ValFree(&a_val);
+      PUSH(ValNull());
+      *stacktopptr = stacktop;
+      return 1;
     }
-    ValFree(&a_val);
-    PUSH(ValNull());
-    *stacktopptr = stacktop;
-    return 1;
   }
 
   // Spsc Lock-Free Circular Queue (MemoryBarrier)

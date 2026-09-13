@@ -119,6 +119,14 @@ AKS_INLINE int ValIsNull(AKSValue v) {
     return (v >> 48) == 0xFFF3ULL;
 }
 
+AKS_INLINE int ValIsArr(AKSValue v) {
+    return (v >> 48) == 0xFFF5ULL;
+}
+
+AKS_INLINE int ValIsStruct(AKSValue v) {
+    return (v >> 48) == 0xFFF6ULL;
+}
+
 AKS_INLINE int ValIsPrimitive(AKSValue v) {
     return v < VALFLOATLIMIT || (v >> 48) <= 0xFFF3ULL;
 }

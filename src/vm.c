@@ -6549,6 +6549,11 @@ int RunTaskSlice(VM *vm, VMTask *task, int maxinstructions) {
   AKSValue *stacklimit = task->stack + task->stackcap; /* tracks actual capacity, not MAXSTACK */
   int instructionsrun = 0;
   int lastframecount = task->framecount;
+  /* Cache frequently-read VM flags as locals so the compiler can keep them
+   * in registers throughout the dispatch loop rather than reloading from
+   * the VM struct pointer on every instruction. */
+  const int strict_ovf = vm->strict_ovf;
+  const int no_bounds_check = vm->no_bounds_check;
 
   /* Growable frame-array: save/restore frame ptr around FrameEnsure. */
 #define FRAME_GROW() do { \
@@ -6690,6 +6695,28 @@ while (0)
 #define REG_DISPATCH_OR_BREAK() REG_DISPATCH()
 #else
 #define REG_DISPATCH_OR_BREAK() break
+#endif
+
+/* Fast dispatch: bypass the outer for(;;) preamble for pure computation ops
+ * that cannot raise exceptions, modify task state, or change frame count.
+ * This skips ~8 conditional checks per instruction for the common case.
+ * Note: instructionsrun/vm->instructioncount are still incremented so that
+ * time-slice yielding and profiling remain accurate. */
+#if defined(__GNUC__) || defined(__clang__)
+#define REG_DISPATCH_FAST() do { \
+    instructionsrun++; \
+    vm->instructioncount++; \
+    gVMProfiling.total_instructions++; \
+    curr_inst = regip++; \
+    goto *reg_dispatch_table[curr_inst->op]; \
+} while(0)
+#else
+#define REG_DISPATCH_FAST() do { \
+    instructionsrun++; \
+    vm->instructioncount++; \
+    gVMProfiling.total_instructions++; \
+    goto reg_dispatch_switch; \
+} while(0)
 #endif
 
   enter_register_interpreter_loop: for (;;) {
@@ -6852,9 +6879,17 @@ while (0)
 #else
   case regoppushconst: {
 #endif
-      ValFree(&frameslots[curr_inst->dst]);
-      frameslots[curr_inst->dst] = ValCopy(curr_inst->constval);
-      REG_DISPATCH_OR_BREAK();
+      AKSValue cval = curr_inst->constval;
+      if (ValIsPrimitive(cval)) {
+        if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+          ValFreeFunc(&frameslots[curr_inst->dst]);
+        }
+        frameslots[curr_inst->dst] = cval;
+      } else {
+        ValFree(&frameslots[curr_inst->dst]);
+        frameslots[curr_inst->dst] = ValCopy(cval);
+      }
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -6862,9 +6897,14 @@ while (0)
 #else
   case regopload: {
 #endif
-      ValFree(&frameslots[curr_inst->dst]);
-      frameslots[curr_inst->dst] = ValCopy(frameslots[curr_inst->src1]);
-      REG_DISPATCH_OR_BREAK();
+      AKSValue src = frameslots[curr_inst->src1];
+      if (ValIsPrimitive(frameslots[curr_inst->dst]) & ValIsPrimitive(src)) {
+        frameslots[curr_inst->dst] = src;
+      } else {
+        ValFree(&frameslots[curr_inst->dst]);
+        frameslots[curr_inst->dst] = ValCopy(src);
+      }
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -6872,9 +6912,14 @@ while (0)
 #else
   case regopstore: {
 #endif
-      ValFree(&frameslots[curr_inst->dst]);
-      frameslots[curr_inst->dst] = ValCopy(frameslots[curr_inst->src1]);
-      REG_DISPATCH_OR_BREAK();
+      AKSValue src = frameslots[curr_inst->src1];
+      if (ValIsPrimitive(frameslots[curr_inst->dst]) & ValIsPrimitive(src)) {
+        frameslots[curr_inst->dst] = src;
+      } else {
+        ValFree(&frameslots[curr_inst->dst]);
+        frameslots[curr_inst->dst] = ValCopy(src);
+      }
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -6909,7 +6954,7 @@ while (0)
       } else {
         frameslots[curr_inst->dst] = ValNull();
       }
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -6953,7 +6998,7 @@ while (0)
           return 0;
         }
       }
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -6961,31 +7006,40 @@ while (0)
 #else
   case regopadd: {
 #endif
+      /* Fast path: int+int without overflow — no ip saves, no preamble */
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      if (ValIsInt(a) & ValIsInt(b)) {
+        int64_t r;
+        if (!ChkAddOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &r)) {
+          AKSValue res = ValInt(r);
+          if (!ValIsPrimitive(frameslots[curr_inst->dst]))
+            ValFreeFunc(&frameslots[curr_inst->dst]);
+          else
+            vm->static_rc_eliminated++;
+          frameslots[curr_inst->dst] = res;
+          REG_DISPATCH_FAST();
+        }
+      }
+      /* Slow path: struct overloads, float ops, string concat, or overflow */
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+      if (ValKind(a) == VALSTRUCT &&
           RegCheckOverload(vm, task, "opadd", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots)) {
         continue;
       }
-      AKSValue a = frameslots[curr_inst->src1];
-      AKSValue b = frameslots[curr_inst->src2];
       AKSValue res;
       if (ValIsInt(a) && ValIsInt(b)) {
-        int64_t r;
-        if (ChkAddOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &r)) {
-          if (gStrictOvf) {
-            RaiseX(vm, "IntegerOverflowException: addition overflow", &ip,
-                   &stacktop, &frame, &frameslots);
-            continue;
-          } else {
-            res = ValFloat((double)ValToIntUnchecked(a) + (double)ValToIntUnchecked(b));
-          }
-        } else {
-          res = ValInt(r);
+        /* Overflow confirmed by fast-path check */
+        if (strict_ovf) {
+          RaiseX(vm, "IntegerOverflowException: addition overflow", &ip,
+                 &stacktop, &frame, &frameslots);
+          continue;
         }
+        res = ValFloat((double)ValToIntUnchecked(a) + (double)ValToIntUnchecked(b));
       } else if (ValIsFloat(a) && ValIsFloat(b)) {
         res = ValFloat(ValToFloat(a) + ValToFloat(b));
       } else if (ValIsFloat(a) && ValIsInt(b)) {
@@ -7009,30 +7063,38 @@ while (0)
 #else
   case regopsub: {
 #endif
+      /* Fast path: int-int without overflow */
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      if (ValIsInt(a) & ValIsInt(b)) {
+        int64_t r;
+        if (!ChkSubOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &r)) {
+          AKSValue res = ValInt(r);
+          if (!ValIsPrimitive(frameslots[curr_inst->dst]))
+            ValFreeFunc(&frameslots[curr_inst->dst]);
+          else
+            vm->static_rc_eliminated++;
+          frameslots[curr_inst->dst] = res;
+          REG_DISPATCH_FAST();
+        }
+      }
+      /* Slow path */
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+      if (ValKind(a) == VALSTRUCT &&
           RegCheckOverload(vm, task, "opsub", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue a = frameslots[curr_inst->src1];
-      AKSValue b = frameslots[curr_inst->src2];
       AKSValue res;
       if (ValIsInt(a) && ValIsInt(b)) {
-        int64_t r;
-        if (ChkSubOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &r)) {
-          if (gStrictOvf) {
-            RaiseX(vm, "IntegerOverflowException: subtraction overflow", &ip,
-                   &stacktop, &frame, &frameslots);
-            continue;
-          } else {
-            res = ValFloat((double)ValToIntUnchecked(a) - (double)ValToIntUnchecked(b));
-          }
-        } else {
-          res = ValInt(r);
+        if (strict_ovf) {
+          RaiseX(vm, "IntegerOverflowException: subtraction overflow", &ip,
+                 &stacktop, &frame, &frameslots);
+          continue;
         }
+        res = ValFloat((double)ValToIntUnchecked(a) - (double)ValToIntUnchecked(b));
       } else if (ValIsFloat(a) && ValIsFloat(b)) {
         res = ValFloat(ValToFloat(a) - ValToFloat(b));
       } else if (ValIsFloat(a) && ValIsInt(b)) {
@@ -7056,30 +7118,38 @@ while (0)
 #else
   case regopmul: {
 #endif
+      /* Fast path: int*int without overflow */
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      if (ValIsInt(a) & ValIsInt(b)) {
+        int64_t r;
+        if (!ChkMulOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &r)) {
+          AKSValue res = ValInt(r);
+          if (!ValIsPrimitive(frameslots[curr_inst->dst]))
+            ValFreeFunc(&frameslots[curr_inst->dst]);
+          else
+            vm->static_rc_eliminated++;
+          frameslots[curr_inst->dst] = res;
+          REG_DISPATCH_FAST();
+        }
+      }
+      /* Slow path */
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+      if (ValKind(a) == VALSTRUCT &&
           RegCheckOverload(vm, task, "opmul", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue a = frameslots[curr_inst->src1];
-      AKSValue b = frameslots[curr_inst->src2];
       AKSValue res;
       if (ValIsInt(a) && ValIsInt(b)) {
-        int64_t r;
-        if (ChkMulOvf(ValToIntUnchecked(a), ValToIntUnchecked(b), &r)) {
-          if (gStrictOvf) {
-            RaiseX(vm, "IntegerOverflowException: multiplication overflow", &ip,
-                   &stacktop, &frame, &frameslots);
-            continue;
-          } else {
-            res = ValFloat((double)ValToIntUnchecked(a) * (double)ValToIntUnchecked(b));
-          }
-        } else {
-          res = ValInt(r);
+        if (strict_ovf) {
+          RaiseX(vm, "IntegerOverflowException: multiplication overflow", &ip,
+                 &stacktop, &frame, &frameslots);
+          continue;
         }
+        res = ValFloat((double)ValToIntUnchecked(a) * (double)ValToIntUnchecked(b));
       } else if (ValIsFloat(a) && ValIsFloat(b)) {
         res = ValFloat(ValToFloat(a) * ValToFloat(b));
       } else if (ValIsFloat(a) && ValIsInt(b)) {
@@ -7103,6 +7173,24 @@ while (0)
 #else
   case regopdiv: {
 #endif
+      /* Fast path: int / int without div-by-zero or overflow */
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      if (ValIsInt(a) & ValIsInt(b)) {
+        int64_t va = ValToIntUnchecked(a);
+        int64_t vb = ValToIntUnchecked(b);
+        if (vb != 0 && !(va == -140737488355328LL && vb == -1)) {
+          AKSValue res = ValInt(va / vb);
+          if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+            ValFreeFunc(&frameslots[curr_inst->dst]);
+          } else {
+            vm->static_rc_eliminated++;
+          }
+          frameslots[curr_inst->dst] = res;
+          REG_DISPATCH_FAST();
+        }
+      }
+      /* Slow path */
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
@@ -7111,8 +7199,6 @@ while (0)
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue a = frameslots[curr_inst->src1];
-      AKSValue b = frameslots[curr_inst->src2];
       if ((ValKind(b) == VALINT && ValToInt(b) == 0) ||
           (ValKind(b) == VALFLOAT && ValToFloat(b) == 0.0)) {
         RaiseX(vm, "division by zero", &ip, &stacktop, &frame, &frameslots);
@@ -7123,7 +7209,7 @@ while (0)
         int64_t va = ValToInt(a);
         int64_t vb = ValToInt(b);
         if (va == -140737488355328LL && vb == -1) {
-          if (gStrictOvf) {
+          if (strict_ovf) {
             RaiseX(vm, "IntegerOverflowException: division overflow", &ip,
                    &stacktop, &frame, &frameslots);
             continue;
@@ -7142,7 +7228,11 @@ while (0)
       } else {
         res = ValDiv(a, b);
       }
-      ValFree(&frameslots[curr_inst->dst]);
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      } else {
+        vm->static_rc_eliminated++;
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -7152,6 +7242,24 @@ while (0)
 #else
   case regopmod: {
 #endif
+      /* Fast path: int % int without mod-by-zero or overflow */
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      if (ValIsInt(a) & ValIsInt(b)) {
+        int64_t va = ValToIntUnchecked(a);
+        int64_t vb = ValToIntUnchecked(b);
+        if (vb != 0 && !(va == -140737488355328LL && vb == -1)) {
+          AKSValue res = ValInt(va % vb);
+          if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+            ValFreeFunc(&frameslots[curr_inst->dst]);
+          } else {
+            vm->static_rc_eliminated++;
+          }
+          frameslots[curr_inst->dst] = res;
+          REG_DISPATCH_FAST();
+        }
+      }
+      /* Slow path */
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
@@ -7160,8 +7268,6 @@ while (0)
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue a = frameslots[curr_inst->src1];
-      AKSValue b = frameslots[curr_inst->src2];
       if ((ValKind(b) == VALINT && ValToInt(b) == 0) ||
           (ValKind(b) == VALFLOAT && ValToFloat(b) == 0.0)) {
         RaiseX(vm, "modulo by zero", &ip, &stacktop, &frame, &frameslots);
@@ -7172,7 +7278,7 @@ while (0)
         int64_t va = ValToInt(a);
         int64_t vb = ValToInt(b);
         if (va == -140737488355328LL && vb == -1) {
-          if (gStrictOvf) {
+          if (strict_ovf) {
             RaiseX(vm, "IntegerOverflowException: modulo overflow", &ip,
                    &stacktop, &frame, &frameslots);
             continue;
@@ -7185,7 +7291,11 @@ while (0)
       } else {
         res = ValMod(a, b);
       }
-      ValFree(&frameslots[curr_inst->dst]);
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      } else {
+        vm->static_rc_eliminated++;
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -7200,7 +7310,7 @@ while (0)
       if (ValKind(a) == VALINT) {
         int64_t val = ValToInt(a);
         if (val == -140737488355328LL) {
-          if (gStrictOvf) {
+          if (strict_ovf) {
             ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
             frame->ip = ip;
             task->stacktop = (int)(stacktop - task->stack);
@@ -7218,7 +7328,7 @@ while (0)
       }
       ValFree(&frameslots[curr_inst->dst]);
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -7226,29 +7336,36 @@ while (0)
 #else
   case regoplt: {
 #endif
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      if (ValIsInt(a) & ValIsInt(b)) {
+        if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+          ValFreeFunc(&frameslots[curr_inst->dst]);
+        }
+        frameslots[curr_inst->dst] = ValBool(ValToIntUnchecked(a) < ValToIntUnchecked(b));
+        REG_DISPATCH_FAST();
+      }
+      if (ValIsFloat(a) & ValIsFloat(b)) {
+        if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+          ValFreeFunc(&frameslots[curr_inst->dst]);
+        }
+        frameslots[curr_inst->dst] = ValBool(ValToFloat(a) < ValToFloat(b));
+        REG_DISPATCH_FAST();
+      }
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+      if (ValKind(a) == VALSTRUCT &&
           RegCheckOverload(vm, task, "oplt", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue a = frameslots[curr_inst->src1];
-      AKSValue b = frameslots[curr_inst->src2];
-      AKSValue res;
-      if (ValIsInt(a) && ValIsInt(b)) {
-        res = ValBool(ValToIntUnchecked(a) < ValToIntUnchecked(b));
-      } else if (ValIsFloat(a) && ValIsFloat(b)) {
-        res = ValBool(ValToFloat(a) < ValToFloat(b));
-      } else {
-        res = ValLt(a, b);
-      }
+      AKSValue res = ValLt(a, b);
       if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
         ValFreeFunc(&frameslots[curr_inst->dst]);
       }
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -7256,29 +7373,36 @@ while (0)
 #else
   case regopgt: {
 #endif
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      if (ValIsInt(a) & ValIsInt(b)) {
+        if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+          ValFreeFunc(&frameslots[curr_inst->dst]);
+        }
+        frameslots[curr_inst->dst] = ValBool(ValToIntUnchecked(a) > ValToIntUnchecked(b));
+        REG_DISPATCH_FAST();
+      }
+      if (ValIsFloat(a) & ValIsFloat(b)) {
+        if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+          ValFreeFunc(&frameslots[curr_inst->dst]);
+        }
+        frameslots[curr_inst->dst] = ValBool(ValToFloat(a) > ValToFloat(b));
+        REG_DISPATCH_FAST();
+      }
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+      if (ValKind(a) == VALSTRUCT &&
           RegCheckOverload(vm, task, "opgt", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue a = frameslots[curr_inst->src1];
-      AKSValue b = frameslots[curr_inst->src2];
-      AKSValue res;
-      if (ValIsInt(a) && ValIsInt(b)) {
-        res = ValBool(ValToIntUnchecked(a) > ValToIntUnchecked(b));
-      } else if (ValIsFloat(a) && ValIsFloat(b)) {
-        res = ValBool(ValToFloat(a) > ValToFloat(b));
-      } else {
-        res = ValGt(a, b);
-      }
+      AKSValue res = ValGt(a, b);
       if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
         ValFreeFunc(&frameslots[curr_inst->dst]);
       }
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -7286,29 +7410,36 @@ while (0)
 #else
   case regoplte: {
 #endif
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      if (ValIsInt(a) & ValIsInt(b)) {
+        if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+          ValFreeFunc(&frameslots[curr_inst->dst]);
+        }
+        frameslots[curr_inst->dst] = ValBool(ValToIntUnchecked(a) <= ValToIntUnchecked(b));
+        REG_DISPATCH_FAST();
+      }
+      if (ValIsFloat(a) & ValIsFloat(b)) {
+        if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+          ValFreeFunc(&frameslots[curr_inst->dst]);
+        }
+        frameslots[curr_inst->dst] = ValBool(ValToFloat(a) <= ValToFloat(b));
+        REG_DISPATCH_FAST();
+      }
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+      if (ValKind(a) == VALSTRUCT &&
           RegCheckOverload(vm, task, "oplte", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue a = frameslots[curr_inst->src1];
-      AKSValue b = frameslots[curr_inst->src2];
-      AKSValue res;
-      if (ValIsInt(a) && ValIsInt(b)) {
-        res = ValBool(ValToIntUnchecked(a) <= ValToIntUnchecked(b));
-      } else if (ValIsFloat(a) && ValIsFloat(b)) {
-        res = ValBool(ValToFloat(a) <= ValToFloat(b));
-      } else {
-        res = ValLte(a, b);
-      }
+      AKSValue res = ValLte(a, b);
       if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
         ValFreeFunc(&frameslots[curr_inst->dst]);
       }
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -7316,29 +7447,36 @@ while (0)
 #else
   case regopgte: {
 #endif
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      if (ValIsInt(a) & ValIsInt(b)) {
+        if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+          ValFreeFunc(&frameslots[curr_inst->dst]);
+        }
+        frameslots[curr_inst->dst] = ValBool(ValToIntUnchecked(a) >= ValToIntUnchecked(b));
+        REG_DISPATCH_FAST();
+      }
+      if (ValIsFloat(a) & ValIsFloat(b)) {
+        if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+          ValFreeFunc(&frameslots[curr_inst->dst]);
+        }
+        frameslots[curr_inst->dst] = ValBool(ValToFloat(a) >= ValToFloat(b));
+        REG_DISPATCH_FAST();
+      }
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+      if (ValKind(a) == VALSTRUCT &&
           RegCheckOverload(vm, task, "opgte", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue a = frameslots[curr_inst->src1];
-      AKSValue b = frameslots[curr_inst->src2];
-      AKSValue res;
-      if (ValIsInt(a) && ValIsInt(b)) {
-        res = ValBool(ValToIntUnchecked(a) >= ValToIntUnchecked(b));
-      } else if (ValIsFloat(a) && ValIsFloat(b)) {
-        res = ValBool(ValToFloat(a) >= ValToFloat(b));
-      } else {
-        res = ValGte(a, b);
-      }
+      AKSValue res = ValGte(a, b);
       if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
         ValFreeFunc(&frameslots[curr_inst->dst]);
       }
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -7346,27 +7484,29 @@ while (0)
 #else
   case regopeq: {
 #endif
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      if (ValIsPrimitive(a) && ValIsPrimitive(b) && (ValIsInt(a) == ValIsInt(b))) {
+        if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+          ValFreeFunc(&frameslots[curr_inst->dst]);
+        }
+        frameslots[curr_inst->dst] = ValBool(a == b);
+        REG_DISPATCH_FAST();
+      }
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+      if (ValKind(a) == VALSTRUCT &&
           RegCheckOverload(vm, task, "opeq", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue a = frameslots[curr_inst->src1];
-      AKSValue b = frameslots[curr_inst->src2];
-      AKSValue res;
-      if (ValIsPrimitive(a) && ValIsPrimitive(b) && (ValIsInt(a) == ValIsInt(b))) {
-        res = ValBool(a == b);
-      } else {
-        res = ValEq(a, b);
-      }
+      AKSValue res = ValEq(a, b);
       if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
         ValFreeFunc(&frameslots[curr_inst->dst]);
       }
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -7374,27 +7514,29 @@ while (0)
 #else
   case regopneq: {
 #endif
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      if (ValIsPrimitive(a) && ValIsPrimitive(b) && (ValIsInt(a) == ValIsInt(b))) {
+        if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+          ValFreeFunc(&frameslots[curr_inst->dst]);
+        }
+        frameslots[curr_inst->dst] = ValBool(a != b);
+        REG_DISPATCH_FAST();
+      }
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
-      if (ValKind(frameslots[curr_inst->src1]) == VALSTRUCT &&
+      if (ValKind(a) == VALSTRUCT &&
           RegCheckOverload(vm, task, "opneq", curr_inst->dst, curr_inst->src1,
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue a = frameslots[curr_inst->src1];
-      AKSValue b = frameslots[curr_inst->src2];
-      AKSValue res;
-      if (ValIsPrimitive(a) && ValIsPrimitive(b) && (ValIsInt(a) == ValIsInt(b))) {
-        res = ValBool(a != b);
-      } else {
-        res = ValNeq(a, b);
-      }
+      AKSValue res = ValNeq(a, b);
       if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
         ValFreeFunc(&frameslots[curr_inst->dst]);
       }
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -7404,9 +7546,11 @@ while (0)
 #endif
       AKSValue res =
           ValAnd(frameslots[curr_inst->src1], frameslots[curr_inst->src2]);
-      ValFree(&frameslots[curr_inst->dst]);
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      }
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -7416,9 +7560,11 @@ while (0)
 #endif
       AKSValue res =
           ValOr(frameslots[curr_inst->src1], frameslots[curr_inst->src2]);
-      ValFree(&frameslots[curr_inst->dst]);
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      }
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -7426,9 +7572,12 @@ while (0)
 #else
   case regopnot: {
 #endif
-      ValFree(&frameslots[curr_inst->dst]);
-      frameslots[curr_inst->dst] = ValNot(frameslots[curr_inst->src1]);
-      REG_DISPATCH_OR_BREAK();
+      AKSValue res = ValNot(frameslots[curr_inst->src1]);
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      }
+      frameslots[curr_inst->dst] = res;
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -7440,7 +7589,7 @@ while (0)
       AKSValue res = ValTypeof(val);
       ValFree(&frameslots[curr_inst->dst]);
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -7533,7 +7682,7 @@ while (0)
       AKSValue res = ValCastStr(val);
       ValFree(&frameslots[curr_inst->dst]);
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -7565,7 +7714,7 @@ while (0)
         ValFree(&frameslots[dst]);
         frameslots[dst] = cloneval;
       }
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -8209,6 +8358,32 @@ while (0)
 #endif
       AKSValue arrval = frameslots[curr_inst->src1];
       AKSValue idxval = frameslots[curr_inst->src2];
+      /* Fast path: array[int] read */
+      if (ValIsArr(arrval) & ValIsInt(idxval)) {
+        AKSArray *arr = ValToArr(arrval);
+        int64_t idx = ValToIntUnchecked(idxval);
+        if ((uint64_t)idx < (uint64_t)arr->count) {
+          AKSValue item = arr->items[idx];
+          if (ValIsPrimitive(item)) {
+            if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+              ValFreeFunc(&frameslots[curr_inst->dst]);
+            } else {
+              vm->static_rc_eliminated++;
+            }
+            frameslots[curr_inst->dst] = item;
+            REG_DISPATCH_FAST();
+          } else {
+            AKSValue res = ValCopy(item);
+            if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+              ValFreeFunc(&frameslots[curr_inst->dst]);
+            } else {
+              vm->static_rc_eliminated++;
+            }
+            frameslots[curr_inst->dst] = res;
+            REG_DISPATCH_FAST();
+          }
+        }
+      }
       AKSValue res;
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
@@ -8283,9 +8458,13 @@ while (0)
                &ip, &stacktop, &frame, &frameslots);
         continue;
       }
-      ValFree(&frameslots[curr_inst->dst]);
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      } else {
+        vm->static_rc_eliminated++;
+      }
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -8295,7 +8474,22 @@ while (0)
 #endif
       AKSValue arrval = frameslots[curr_inst->dst];
       AKSValue idxval = frameslots[curr_inst->src1];
-      AKSValue val = ValCopy(frameslots[curr_inst->src2]);
+      AKSValue val_src = frameslots[curr_inst->src2];
+      /* Fast path: array[int] = primitive write */
+      if (ValIsArr(arrval) & ValIsInt(idxval) & ValIsPrimitive(val_src)) {
+        AKSArray *arr = ValToArr(arrval);
+        int64_t idx = ValToIntUnchecked(idxval);
+        if ((uint64_t)idx < (uint64_t)arr->count) {
+          if (!ValIsPrimitive(arr->items[idx])) {
+            ValFreeFunc(&arr->items[idx]);
+          } else {
+            vm->static_rc_eliminated++;
+          }
+          arr->items[idx] = val_src;
+          REG_DISPATCH_FAST();
+        }
+      }
+      AKSValue val = ValCopy(val_src);
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
@@ -8336,7 +8530,11 @@ while (0)
           }
         }
         if (idx >= 0 && idx < ValToArr(arrval)->count) {
-          ValFree(&ValToArr(arrval)->items[idx]);
+          if (!ValIsPrimitive(ValToArr(arrval)->items[idx])) {
+            ValFreeFunc(&ValToArr(arrval)->items[idx]);
+          } else {
+            vm->static_rc_eliminated++;
+          }
           ValToArr(arrval)->items[idx] = val;
         } else {
           ValFree(&val);
@@ -8578,11 +8776,24 @@ while (0)
   case regopinc: {
 #endif
       AKSValue val = frameslots[curr_inst->src1];
+      if (ValIsInt(val)) {
+        int64_t iv = ValToIntUnchecked(val);
+        int64_t r;
+        if (!ChkAddOvf(iv, 1, &r)) {
+          if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+            ValFreeFunc(&frameslots[curr_inst->dst]);
+          } else {
+            vm->static_rc_eliminated++;
+          }
+          frameslots[curr_inst->dst] = ValInt(r);
+          REG_DISPATCH_FAST();
+        }
+      }
       AKSValue res;
       if (ValKind(val) == VALINT) {
         int64_t r;
         if (ChkAddOvf(ValToInt(val), 1, &r)) {
-          if (gStrictOvf) {
+          if (strict_ovf) {
             ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
             frame->ip = ip;
             task->stacktop = (int)(stacktop - task->stack);
@@ -8605,13 +8816,13 @@ while (0)
                &frameslots);
         continue;
       }
-      if (ValKind(frameslots[curr_inst->dst]) >= VALSTR) {
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
         ValFreeFunc(&frameslots[curr_inst->dst]);
       } else {
         vm->static_rc_eliminated++;
       }
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -8620,11 +8831,24 @@ while (0)
   case regopdec: {
 #endif
       AKSValue val = frameslots[curr_inst->src1];
+      if (ValIsInt(val)) {
+        int64_t iv = ValToIntUnchecked(val);
+        int64_t r;
+        if (!ChkSubOvf(iv, 1, &r)) {
+          if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+            ValFreeFunc(&frameslots[curr_inst->dst]);
+          } else {
+            vm->static_rc_eliminated++;
+          }
+          frameslots[curr_inst->dst] = ValInt(r);
+          REG_DISPATCH_FAST();
+        }
+      }
       AKSValue res;
       if (ValKind(val) == VALINT) {
         int64_t r;
         if (ChkSubOvf(ValToInt(val), 1, &r)) {
-          if (gStrictOvf) {
+          if (strict_ovf) {
             ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
             frame->ip = ip;
             task->stacktop = (int)(stacktop - task->stack);
@@ -8647,9 +8871,13 @@ while (0)
                &frameslots);
         continue;
       }
-      ValFree(&frameslots[curr_inst->dst]);
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      } else {
+        vm->static_rc_eliminated++;
+      }
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -8659,7 +8887,7 @@ while (0)
 #endif
       ValFree(&frameslots[curr_inst->dst]);
       frameslots[curr_inst->dst] = ValFn(curr_inst->src1);
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -8694,7 +8922,7 @@ while (0)
       if (task->tryhandlercount > 0) {
         task->tryhandlercount--;
       }
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -8729,7 +8957,7 @@ while (0)
       if (ValKind(frameslots[curr_inst->src1]) != VALNULL) {
         regip = (RegInst *)frame->fn->regcode + curr_inst->targetip;
       }
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -9097,7 +9325,7 @@ while (0)
                &stacktop, &frame, &frameslots);
         continue;
       }
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -9118,7 +9346,7 @@ while (0)
                &stacktop, &frame, &frameslots);
         continue;
       }
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -9139,7 +9367,7 @@ while (0)
                &stacktop, &frame, &frameslots);
         continue;
       }
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -9160,7 +9388,7 @@ while (0)
                &stacktop, &frame, &frameslots);
         continue;
       }
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -9181,7 +9409,7 @@ while (0)
                &stacktop, &frame, &frameslots);
         continue;
       }
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -9201,7 +9429,7 @@ while (0)
                &stacktop, &frame, &frameslots);
         continue;
       }
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -9438,6 +9666,18 @@ while (0)
 #else
   case regopaddreg: {
 #endif
+      /* Fast path: int+int without overflow (no struct overloads possible here) */
+      AKSValue a = frameslots[curr_inst->src1];
+      AKSValue b = frameslots[curr_inst->src2];
+      if (ValIsInt(a) & ValIsInt(b)) {
+        int64_t r;
+        if (!ChkAddOvf(ValToInt(a), ValToInt(b), &r)) {
+          ValFree(&frameslots[curr_inst->dst]);
+          frameslots[curr_inst->dst] = ValInt(r);
+          REG_DISPATCH_FAST();
+        }
+      }
+      /* Slow path */
       ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
       frame->ip = ip;
       task->stacktop = (int)(stacktop - task->stack);
@@ -9445,22 +9685,14 @@ while (0)
                            curr_inst->src2, &regip, &stacktop, &frame,
                            &frameslots))
         continue;
-      AKSValue a = frameslots[curr_inst->src1];
-      AKSValue b = frameslots[curr_inst->src2];
       AKSValue res;
-      if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
-        int64_t r;
-        if (ChkAddOvf(ValToInt(a), ValToInt(b), &r)) {
-          if (gStrictOvf) {
-            RaiseX(vm, "IntegerOverflowException: addition overflow", &ip,
-                   &stacktop, &frame, &frameslots);
-            continue;
-          } else {
-            res = ValFloat((double)ValToInt(a) + (double)ValToInt(b));
-          }
-        } else {
-          res = ValInt(r);
+      if (ValIsInt(a) && ValIsInt(b)) {
+        if (strict_ovf) {
+          RaiseX(vm, "IntegerOverflowException: addition overflow", &ip,
+                 &stacktop, &frame, &frameslots);
+          continue;
         }
+        res = ValFloat((double)ValToInt(a) + (double)ValToInt(b));
       } else if (ValKind(a) == VALFLOAT && ValKind(b) == VALFLOAT) {
         res = ValFloat(ValToFloat(a) + ValToFloat(b));
       } else if (ValKind(a) == VALFLOAT && ValKind(b) == VALINT) {
@@ -9486,7 +9718,7 @@ while (0)
       if (ValKind(a) == VALINT) {
         int64_t r;
         if (ChkAddOvf(ValToInt(a), ValToInt(b), &r)) {
-          if (gStrictOvf) {
+          if (strict_ovf) {
             ip = frame->fn->chunk.code + curr_inst->bytecodeoffset;
             frame->ip = ip;
             task->stacktop = (int)(stacktop - task->stack);
@@ -9508,7 +9740,7 @@ while (0)
         vm->static_rc_eliminated++;
       }
       frameslots[curr_inst->dst] = res;
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -9518,7 +9750,7 @@ while (0)
 #endif
       ValFree(&frameslots[curr_inst->dst]);
       frameslots[curr_inst->dst] = ValCopy(frameslots[curr_inst->src1]);
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -9527,7 +9759,7 @@ while (0)
   case regopwriteln: {
 #endif
       ValPrintln(frameslots[curr_inst->src1]);
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -9553,7 +9785,7 @@ while (0)
         ValFree(&frameslots[curr_inst->dst]);
         frameslots[curr_inst->dst] = ValStr("");
       }
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -9583,7 +9815,7 @@ while (0)
           ValPrintln(val);
         }
       }
-      REG_DISPATCH_OR_BREAK();
+      REG_DISPATCH_FAST();
     }
 
 #if !defined(__GNUC__) && !defined(__clang__)
