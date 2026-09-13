@@ -5860,7 +5860,7 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                     break;
                 }
             }
-            CompilerStruct *s;
+            CompilerStruct *s = NULL;
             if (structidx < 0) {
                 if (c->structcount < 512) {
                     s = &c->structs[c->structcount++];
@@ -5874,6 +5874,9 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                     }
                     s->ic = 0;
                     s->interfaces = NULL;
+                } else {
+                    Error(c, n->line, "Too many structs registered (limit 512)");
+                    break;
                 }
             }
             for (int i = 0; i < n->actordecl.mc; i++) {
@@ -5999,8 +6002,8 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                 }
             }
             if (!found) {
-                if (c->interfacecount >= 128) {
-                    Error(c, n->line, "Too many interfaces registered");
+                if (c->interfacecount >= 512) {
+                    Error(c, n->line, "Too many interfaces registered (limit 512)");
                     break;
                 }
                 CompilerInterface *inf = &c->interfaces[c->interfacecount++];
@@ -6054,8 +6057,8 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             }
             CompilerEnum *en;
             if (enumidx < 0) {
-                if (c->enumcount >= 128) {
-                    Error(c, n->line, "Too many enums registered");
+                if (c->enumcount >= 512) {
+                    Error(c, n->line, "Too many enums registered (limit 512)");
                     break;
                 }
                 en = &c->enums[c->enumcount++];
@@ -9833,7 +9836,11 @@ static void PreregisterTypes(Compiler *c, Node *n) {
                         break;
                     }
                 }
-                if (!found && c->structcount < 512) {
+                if (!found) {
+                    if (c->structcount >= 512) {
+                        Error(c, n->line, "Too many structs registered (limit 512)");
+                        break;
+                    }
                     CompilerStruct *s = &c->structs[c->structcount++];
                     strncpy(s->name, struct_reg_name, 127);
                     s->fc = n->strct.fc;
@@ -9865,7 +9872,11 @@ static void PreregisterTypes(Compiler *c, Node *n) {
                     break;
                 }
             }
-            if (!found && c->enumcount < 128) {
+            if (!found) {
+                if (c->enumcount >= 512) {
+                    Error(c, n->line, "Too many enums registered (limit 512)");
+                    break;
+                }
                 CompilerEnum *en = &c->enums[c->enumcount++];
                 strncpy(en->name, n->enumdecl.name, 127);
                 en->count = n->enumdecl.count;
@@ -9887,7 +9898,11 @@ static void PreregisterTypes(Compiler *c, Node *n) {
                     break;
                 }
             }
-            if (!found && c->interfacecount < 128) {
+            if (!found) {
+                if (c->interfacecount >= 512) {
+                    Error(c, n->line, "Too many interfaces registered (limit 512)");
+                    break;
+                }
                 CompilerInterface *inf = &c->interfaces[c->interfacecount++];
                 strncpy(inf->name, n->interfacedecl.name, 127);
                 inf->count = n->interfacedecl.count;

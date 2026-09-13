@@ -43,11 +43,11 @@ cl.exe %CFLAGS% /DAKS_BUILD_DLL /Fosrc\ /Fe:aks.dll /LD src\aks.c %COMMON_OBJS% 
 if errorlevel 1 exit /b 1
 
 echo Building test helpers...
-cl.exe %CFLAGS% /Fe:tests\TestEmbed.exe tests\TestEmbed.c aks.lib /link /STACK:16777216
+cl.exe %CFLAGS% /Fosrc\ /Fe:tests\TestEmbed.exe tests\TestEmbed.c aks.lib /link /STACK:16777216
 if errorlevel 1 exit /b 1
-cl.exe %CFLAGS% /Fe:tests\TestPythonDllTest.exe tests\TestPythonDllTest.c /link /STACK:16777216
+cl.exe %CFLAGS% /Fosrc\ /Fe:tests\TestPythonDllTest.exe tests\TestPythonDllTest.c /link /STACK:16777216
 if errorlevel 1 exit /b 1
-cl.exe %CFLAGS% /Fe:tests\TestProtocols.exe tests\TestProtocols.c ws2_32.lib /link /STACK:16777216
+cl.exe %CFLAGS% /Fosrc\ /Fe:tests\TestProtocols.exe tests\TestProtocols.c ws2_32.lib /link /STACK:16777216
 if errorlevel 1 exit /b 1
 
 echo Linking test suites...

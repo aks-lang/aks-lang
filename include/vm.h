@@ -244,12 +244,14 @@ typedef struct {
     struct {
         char *name;
         void *func;
-    } registered_natives[128];
+    } registered_natives[512];
     int registered_natives_count;
     AKSValue panic_hook;
     CompilerStruct structs[512];
     int structcount;
     int is_ctfe;
+    int no_bounds_check;
+    int strict_ovf;
 } VM;
 
 typedef enum {

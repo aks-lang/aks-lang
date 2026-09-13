@@ -837,6 +837,8 @@ VM *VMNew(void) {
     vm->sandboxenabled = gSandboxEnabled;
     vm->capmode = gCapMode;
     vm->inrestrictedeval = 0;
+    vm->no_bounds_check = gNoBoundsCheck;
+    vm->strict_ovf = gStrictOvf;
     vm->stackcanary =
         (((uint64_t)rand() << 16) | (uint64_t)rand()) & 0x00007FFFFFFFFFFFULL;
     vm->instructionlimit = 10000000;
@@ -8229,7 +8231,7 @@ while (0)
       if ((ValKind(arrval) == VALARR || ValKind(arrval) == VALTUPLE) &&
           ValKind(idxval) == VALINT) {
         int64_t idx = ValToInt(idxval);
-        if (!gNoBoundsCheck) {
+        if (!vm->no_bounds_check) {
           if (idx < 0 || idx >= ValToArr(arrval)->count) {
             char buf[128];
             snprintf(buf, sizeof(buf),
@@ -8322,7 +8324,7 @@ while (0)
 
       if (ValKind(arrval) == VALARR && ValKind(idxval) == VALINT) {
         int64_t idx = ValToInt(idxval);
-        if (!gNoBoundsCheck) {
+        if (!vm->no_bounds_check) {
           if (idx < 0 || idx >= ValToArr(arrval)->count) {
             char buf[128];
             snprintf(buf, sizeof(buf),
@@ -11634,7 +11636,7 @@ enter_stack_interpreter: for (;;) {
     if ((ValKind(arrval) == VALARR || ValKind(arrval) == VALTUPLE) &&
         ValKind(idxval) == VALINT) {
       int64_t idx = ValToInt(idxval);
-      if (!gNoBoundsCheck) {
+      if (!vm->no_bounds_check) {
         if (idx < 0 || idx >= ValToArr(arrval)->count) {
           char buf[128];
           snprintf(buf, sizeof(buf),
@@ -11748,7 +11750,7 @@ enter_stack_interpreter: for (;;) {
       }
       int64_t i = ValToInt(idxval);
       int64_t count = end - start;
-      if (!gNoBoundsCheck) {
+      if (!vm->no_bounds_check) {
         if (i < 0 || i >= count) {
           char buf[128];
           snprintf(buf, sizeof(buf),
@@ -11838,7 +11840,7 @@ enter_stack_interpreter: for (;;) {
     }
     if (ValKind(arrval) == VALARR && ValKind(idxval) == VALINT) {
       int64_t idx = ValToInt(idxval);
-      if (!gNoBoundsCheck) {
+      if (!vm->no_bounds_check) {
         if (idx < 0 || idx >= ValToArr(arrval)->count) {
           char buf[128];
           snprintf(buf, sizeof(buf),

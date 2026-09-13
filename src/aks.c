@@ -154,7 +154,7 @@ int AKSRunSourceOneshot(const char *source) {
 
 void AKSRegisterNative(AksVmT *vm, const char *name, AksNativeFn func) {
     VM *aksVM = (VM*)vm;
-    if (aksVM->registered_natives_count < 128) {
+    if (aksVM->registered_natives_count < 512) {
         char *name_copy = malloc(strlen(name) + 1);
         if (name_copy) {
             strcpy(name_copy, name);
@@ -163,7 +163,7 @@ void AKSRegisterNative(AksVmT *vm, const char *name, AksNativeFn func) {
             aksVM->registered_natives_count++;
         }
     } else {
-        fprintf(stderr, "AKSRegisterNative warning: maximum registered natives capacity reached (128). Symbol '%s' not registered.\n", name ? name : "");
+        fprintf(stderr, "AKSRegisterNative warning: maximum registered natives capacity reached (512). Symbol '%s' not registered.\n", name ? name : "");
     }
 }
 
