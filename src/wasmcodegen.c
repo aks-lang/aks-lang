@@ -42,7 +42,7 @@ static void EmitWasmNode(WasmCtx *ctx, Node *node) {
         fprintf(ctx->out, "    i32.const %d\n", node->ival ? 1 : 0);
         break;
     case NIDENT:
-        fprintf(ctx->out, "    local.get $%s\n", node->decl.name ? node->decl.name : "v");
+        fprintf(ctx->out, "    local.get $%s\n", node->sval ? node->sval : "v");
         break;
     case NVARDECL:
     case NCONSTDECL:
@@ -55,7 +55,7 @@ static void EmitWasmNode(WasmCtx *ctx, Node *node) {
         if (node->assign.value) {
             EmitWasmNode(ctx, node->assign.value);
             if (node->assign.target && node->assign.target->type == NIDENT) {
-                fprintf(ctx->out, "    local.set $%s\n", node->assign.target->decl.name);
+                fprintf(ctx->out, "    local.set $%s\n", node->assign.target->sval ? node->assign.target->sval : "v");
             }
         }
         break;

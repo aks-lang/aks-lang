@@ -42,6 +42,7 @@ static inline void FrameEnsure(VMTask *t, int needed) {
 // vMTask lifecycle
 VMTask *TaskNew(VM *vm, FnProto *fn, int startipoffset) {
   VMTask *t = calloc(1, sizeof(VMTask));
+  if (!t) return NULL;
   t->refcount = 1;
   t->select_woken_index = -1;
   t->state = 0; // Ready
@@ -63,7 +64,13 @@ VMTask *TaskNew(VM *vm, FnProto *fn, int startipoffset) {
   t->stack = calloc(t->stackcap, sizeof(AKSValue));
   t->framecap = MINFRAMES;
   t->frames = calloc(t->framecap, sizeof(CallFrame));
-
+  if (!t->stack || !t->frames) {
+    if (t->stack) free(t->stack);
+    if (t->frames) free(t->frames);
+    if (t->stackarena) FreeStackArenaWithGuard(t->stackarena, t->stackarena_size ? t->stackarena_size : 32768);
+    free(t);
+    return NULL;
+  }
 
   t->stacktop = fn->maxregisters > 0 ? fn->maxregisters : fn->localcount;
   for (int i = 0; i < t->stacktop; i++)

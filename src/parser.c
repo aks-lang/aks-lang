@@ -3312,19 +3312,8 @@ static Node *ParseAssign(Parser *p) {
     TokFree(&eq);
     Node *right = ParseAssign(p);
     if (opchar) {
-      // desugar compound assign: make a copy of left as rhs operand
-      Node *leftcopy = NodeNew(left->type, left->line);
-      if (left->type == NIDENT)
-        leftcopy->sval = strdup(left->sval);
-      else if (left->type == NINDEX) {
-        // shallow copy index node
-        leftcopy->index.arr = left->index.arr;
-        leftcopy->index.idx = left->index.idx;
-      } else if (left->type == NMEMBER) {
-        leftcopy->member.obj = left->member.obj;
-        leftcopy->member.field =
-            left->member.field ? strdup(left->member.field) : NULL;
-      }
+      // desugar compound assign: make a deep copy of left as rhs operand
+      Node *leftcopy = NodeCopy(left);
       Node *binop = NodeNew(NBINOP, line);
       char ops[2] = {opchar, 0};
       binop->binop.op = strdup(ops);

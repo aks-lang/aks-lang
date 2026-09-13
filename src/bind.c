@@ -5,9 +5,10 @@
 #include "bind.h"
 
 static char GetSigChar(const char *type_str) {
+    if (!type_str) return 'i';
     char clean[256] = "";
     int c_idx = 0;
-    for (int i = 0; type_str[i]; i++) {
+    for (int i = 0; type_str[i] && c_idx < 255; i++) {
         if (!isspace((unsigned char)type_str[i])) {
             clean[c_idx++] = type_str[i];
         }
@@ -131,6 +132,10 @@ int AKSBindHeaders(const char *header_path, const char *output_path, int is_cpp,
 
     // Comment stripping (single-line // and block /* ... */)
     char *clean = malloc(fsize + 1);
+    if (!clean) {
+        free(buf);
+        return -1;
+    }
     int c_idx = 0;
     int in_scomment = 0, in_bcomment = 0;
     for (int i = 0; i < fsize; i++) {
@@ -170,6 +175,10 @@ int AKSBindHeaders(const char *header_path, const char *output_path, int is_cpp,
 
         size_t decl_len = semi - p;
         char *decl = malloc(decl_len + 1);
+        if (!decl) {
+            p = semi + 1;
+            continue;
+        }
         memcpy(decl, p, decl_len);
         decl[decl_len] = '\0';
         p = semi + 1;

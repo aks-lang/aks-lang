@@ -50,10 +50,12 @@ static const char *LLVMType(SType *t) {
         case STYPE_STRUCT: return "i8*";
         case STYPE_TUPLE:  return "i8*";
         case STYPE_SIMD: {
-            static char buf[32];
-            if (strncmp(t->name, "f32x", 4) == 0) { snprintf(buf, sizeof(buf), "<%s x float>",  t->name + 4); return buf; }
-            if (strncmp(t->name, "i32x", 4) == 0) { snprintf(buf, sizeof(buf), "<%s x i32>",    t->name + 4); return buf; }
-            if (strncmp(t->name, "f64x", 4) == 0) { snprintf(buf, sizeof(buf), "<%s x double>", t->name + 4); return buf; }
+            static char bufs[4][32];
+            static int buf_idx = 0;
+            char *buf = bufs[buf_idx++ & 3];
+            if (strncmp(t->name, "f32x", 4) == 0) { snprintf(buf, 32, "<%s x float>",  t->name + 4); return buf; }
+            if (strncmp(t->name, "i32x", 4) == 0) { snprintf(buf, 32, "<%s x i32>",    t->name + 4); return buf; }
+            if (strncmp(t->name, "f64x", 4) == 0) { snprintf(buf, 32, "<%s x double>", t->name + 4); return buf; }
             return "i64";
         }
         default: return "i64";

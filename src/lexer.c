@@ -14,6 +14,7 @@ Lexer LexNew(const char *src) {
 static char Lc(Lexer *l)  { return l->src[l->pos]; }
 static char Ln(Lexer *l)  { return l->src[l->pos] ? l->src[l->pos+1] : 0; }
 static char Adv(Lexer *l) {
+    if (!l->src[l->pos]) return 0;
     char c=l->src[l->pos++];
     if(c=='\n'){l->line++;l->col=1;} else l->col++;
     return c;
@@ -189,7 +190,7 @@ Token LexNext(Lexer *l) {
         }
         size_t len=l->pos-start;
         char *buf=malloc(len+1); memcpy(buf,l->src+start,len); buf[len]=0;
-        Adv(l); Adv(l); Adv(l);
+        if(Lc(l)=='"') { Adv(l); Adv(l); Adv(l); }
         Token t=MkTok(TSTRLIT,buf,line,col); free(buf);
         return t;
     }
@@ -198,10 +199,13 @@ Token LexNext(Lexer *l) {
     if(c=='"') {
         Adv(l);
         size_t start=l->pos;
-        while(Lc(l) && Lc(l)!='"') { if(Lc(l)=='\\') Adv(l); Adv(l); }
+        while(Lc(l) && Lc(l)!='"') {
+            if(Lc(l)=='\\') { Adv(l); if (!Lc(l)) break; }
+            Adv(l);
+        }
         size_t len=l->pos-start;
         char *buf=malloc(len+1); memcpy(buf,l->src+start,len); buf[len]=0;
-        Adv(l);
+        if(Lc(l)=='"') Adv(l);
         Token t=MkTok(TSTRLIT,buf,line,col); free(buf);
         return t;
     }
@@ -288,7 +292,7 @@ Token LexNext(Lexer *l) {
         memcpy(buf, l->src + start, len);
         buf[len] = '\0';
         if (is_triple) {
-            Adv(l); Adv(l); Adv(l);
+            if (Lc(l) == '"') { Adv(l); Adv(l); Adv(l); }
         } else {
             if (Lc(l) == '"') Adv(l);
         }
@@ -314,7 +318,10 @@ Token LexNext(Lexer *l) {
             } else {
                 if (Lc(l) == '"') break;
             }
-            if (Lc(l) == '\\') Adv(l);
+            if (Lc(l) == '\\') {
+                Adv(l);
+                if (!Lc(l)) break;
+            }
             Adv(l);
         }
         size_t len = l->pos - start;
@@ -323,9 +330,9 @@ Token LexNext(Lexer *l) {
         str_body[len] = '\0';
         
         if (is_triple) {
-            Adv(l); Adv(l); Adv(l);
+            if (Lc(l) == '"') { Adv(l); Adv(l); Adv(l); }
         } else {
-            Adv(l);
+            if (Lc(l) == '"') Adv(l);
         }
         
         size_t i = 0;

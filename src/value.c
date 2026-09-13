@@ -304,10 +304,11 @@ void ValFreeFunc(AKSValue *v) {
         case VALSTR: {
             AKSString *str = ValToStrPtr(*v);
             if (str) {
-                if (AtomicDecrement(&str->refcount) <= 0) {
-                    if (str->len <= 64 && str->data) {
+                int should_free = 0;
+                if (str->len <= 64 && str->data) {
+                    InternLock();
+                    if (AtomicDecrement(&str->refcount) <= 0) {
                         uint32_t h = HashStr(str->data, str->len) % INTERN_BUCKETS;
-                        InternLock();
                         StringInternEntry **curr = &g_intern_buckets[h];
                         while (*curr) {
                             if ((*curr)->str == str) {
@@ -318,8 +319,15 @@ void ValFreeFunc(AKSValue *v) {
                             }
                             curr = &(*curr)->next;
                         }
-                        InternUnlock();
+                        should_free = 1;
                     }
+                    InternUnlock();
+                } else {
+                    if (AtomicDecrement(&str->refcount) <= 0) {
+                        should_free = 1;
+                    }
+                }
+                if (should_free) {
                     if (str->data) free(str->data);
                     free(str);
                     AtomicDecrement(&gActiveStrs);
@@ -522,6 +530,11 @@ AKSValue ValAdd(AKSValue a, AKSValue b) {
         AKSValue bs = ValToStr(b);
         int len = ValToStrPtr(as)->len + ValToStrPtr(bs)->len;
         char *buf = malloc(len + 1);
+        if (!buf) {
+            ValFree(&as);
+            ValFree(&bs);
+            return ValNull();
+        }
         memcpy(buf, ValToStrPtr(as)->data, ValToStrPtr(as)->len);
         memcpy(buf + ValToStrPtr(as)->len, ValToStrPtr(bs)->data, ValToStrPtr(bs)->len);
         buf[len] = 0;
@@ -644,7 +657,12 @@ AKSValue name(AKSValue a, AKSValue b) { \
         double fb = tb == VALFLOAT ? ValToFloat(b) : (double)ValToInt(b); \
         return ValBool(fa op fb); \
     } \
-    if (ta == VALSTR && tb == VALSTR) return ValBool(strcmp(ValToStrPtr(a)->data, ValToStrPtr(b)->data) op 0); \
+    if (ta == VALSTR && tb == VALSTR) { \
+        AKSString *sa = ValToStrPtr(a); \
+        AKSString *sb = ValToStrPtr(b); \
+        if (sa == sb) return ValBool(0 op 0); \
+        return ValBool(strcmp(sa->data ? sa->data : "", sb->data ? sb->data : "") op 0); \
+    } \
     return ValBool(0); \
 }
 
@@ -663,7 +681,13 @@ AKSValue ValEq(AKSValue a, AKSValue b) {
         case VALFLOAT:  return ValBool(ValToFloat(a) == ValToFloat(b));
         case VALBOOL:   return ValBool(ValToBool(a) == ValToBool(b));
         case VALNULL:   return ValBool(1);
-        case VALSTR:    return ValBool(strcmp(ValToStrPtr(a)->data, ValToStrPtr(b)->data) == 0);
+        case VALSTR: {
+            AKSString *sa = ValToStrPtr(a);
+            AKSString *sb = ValToStrPtr(b);
+            if (sa == sb) return ValBool(1);
+            if (sa->len != sb->len) return ValBool(0);
+            return ValBool(memcmp(sa->data, sb->data, sa->len) == 0);
+        }
         case VALSTRUCT: {
             AKSStruct *sa = ValToObj(a);
             AKSStruct *sb = ValToObj(b);
