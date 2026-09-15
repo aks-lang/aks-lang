@@ -4922,10 +4922,9 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             if (c->isrepl && c->current->scopedepth == 0) {
                 ChunkWrite(ch,OPPRINTREPL,n->line);
             } else {
-                if (n->is_static_safe || (n->single.expr && n->single.expr->is_static_safe) || c->is_static_mode ||
-                    (n->single.expr && (n->single.expr->type == NBINOP || n->single.expr->type == NUNOP ||
-                                        n->single.expr->type == NINT || n->single.expr->type == NFLOAT ||
-                                        n->single.expr->type == NBOOL || n->single.expr->type == NIDENT))) {
+                if (c->is_static_mode ||
+                    (n->single.expr && (n->single.expr->type == NINT || n->single.expr->type == NFLOAT ||
+                                        n->single.expr->type == NBOOL))) {
                     ChunkWrite(ch, OP_STATIC_RELEASE, n->line);
                 } else {
                     ChunkWrite(ch,OPPOP,n->line);

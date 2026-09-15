@@ -9,10 +9,8 @@
 
 size_t gaslrshift = 0;
 
-/* ---------------------------------------------------------------------------
- * AKS_RELEASE_BUILD: production builds bypass all debug-allocator overhead.
- * Enable with /DAKS_RELEASE_BUILD (MSVC) or -DAKS_RELEASE_BUILD (GCC/Clang).
- * ---------------------------------------------------------------------------*/
+/* AKS_RELEASE_BUILD: production builds bypass all debug-allocator overhead.
+ * Enable with /DAKS_RELEASE_BUILD (MSVC) or -DAKS_RELEASE_BUILD (GCC/Clang). */
 #if defined(AKS_RELEASE_BUILD)
 
 void *AslrmAlloc(size_t size) { return (malloc)(size); }
@@ -21,18 +19,13 @@ void  AslrFree(void *ptr) { (free)(ptr); }
 char *AslrStrDup(const char *s) {
     if (!s) return NULL;
     size_t len = strlen(s);
-    char *r = (malloc)(len + 1);
+    char *r = (char*)(malloc)(len + 1);
     if (r) memcpy(r, s, len + 1);
     return r;
 }
-void *AslrcAlloc(size_t num, size_t size) {
-    size_t total = num * size;
-    void *p = (malloc)(total);
-    if (p) memset(p, 0, total);
-    return p;
-}
+void *AslrcAlloc(size_t num, size_t size) { return (calloc)(num, size); }
 
-#else /* AKS_DEBUG_BUILD --- full safety allocator below */
+#else /* AKS_DEBUG_BUILD: full safety allocator below */
 
 #define ALLOC_MAGIC 0x1A2B3C4D5E6F7A8BULL
 #define FREED_MAGIC 0xDEADBEEFDEADBEEFULL
@@ -72,7 +65,7 @@ static inline void QuarantineUnlock(void) {
 }
 #endif
 
-/* Lockless per-thread xorshift64 PRNG --- avoids the global rand() mutex. */
+/* Lockless per-thread xorshift64 PRNG: avoids the global rand() mutex. */
 #ifdef _WIN32
 static __declspec(thread) uint64_t t_xrand_state = 0;
 #elif defined(__GNUC__) || defined(__clang__)
@@ -188,6 +181,22 @@ void AslrFree(void *ptr) {
     QuarantineUnlock();
 }
 
+char *AslrStrDup(const char *s) {
+    if (!s) return NULL;
+    size_t len = strlen(s);
+    char *r = (char*)AslrmAlloc(len + 1);
+    if (r) memcpy(r, s, len + 1);
+    return r;
+}
+
+void *AslrcAlloc(size_t num, size_t size) {
+    if (size != 0 && num > ((size_t)-1) / size) return NULL;
+    size_t total = num * size;
+    void *p = AslrmAlloc(total);
+    if (p) memset(p, 0, total);
+    return p;
+}
+
 #endif /* AKS_RELEASE_BUILD / AKS_DEBUG_BUILD */
 
 
@@ -244,7 +253,7 @@ static inline uint32_t HashStr(const char *s, int len) {
 AKSValue ValStrLen(const char *s, int len) {
     if (!s) s = "";
     if (len <= 64) {
-        uint32_t h = HashStr(s, len) % INTERN_BUCKETS;
+        uint32_t h = HashStr(s, len) & (INTERN_BUCKETS - 1);
         InternLock();
         for (StringInternEntry *e = g_intern_buckets[h]; e; e = e->next) {
             if (e->str && e->str->len == len && memcmp(e->str->data, s, len) == 0) {
@@ -267,7 +276,7 @@ AKSValue ValStrLen(const char *s, int len) {
     AtomicIncrement(&gActiveStrs);
 
     if (len <= 64) {
-        uint32_t h = HashStr(s, len) % INTERN_BUCKETS;
+        uint32_t h = HashStr(s, len) & (INTERN_BUCKETS - 1);
         InternLock();
         StringInternEntry *entry = malloc(sizeof(StringInternEntry));
         if (entry) {
@@ -279,6 +288,18 @@ AKSValue ValStrLen(const char *s, int len) {
     }
 
     return ((uint64_t)0xFFF4 << 48) | ((uintptr_t)str & 0x0000FFFFFFFFFFFFULL);
+}
+
+void ValDumpActiveStrings(void) {
+    InternLock();
+    for (int i = 0; i < INTERN_BUCKETS; i++) {
+        for (StringInternEntry *e = g_intern_buckets[i]; e; e = e->next) {
+            if (e->str && e->str->refcount > 0) {
+                fprintf(stderr, "[DEBUG LEAK] Leaked string: '%s' (refcount=%d)\n", e->str->data, e->str->refcount);
+            }
+        }
+    }
+    InternUnlock();
 }
 
 AKSValue ValStr(const char *s) {
@@ -353,7 +374,7 @@ void ValFreeFunc(AKSValue *v) {
                 if (str->len <= 64 && str->data) {
                     InternLock();
                     if (AtomicDecrement(&str->refcount) <= 0) {
-                        uint32_t h = HashStr(str->data, str->len) % INTERN_BUCKETS;
+                        uint32_t h = HashStr(str->data, str->len) & (INTERN_BUCKETS - 1);
                         StringInternEntry **curr = &g_intern_buckets[h];
                         while (*curr) {
                             if ((*curr)->str == str) {
@@ -574,7 +595,8 @@ AKSValue ValAdd(AKSValue a, AKSValue b) {
         AKSValue as = ValToStr(a);
         AKSValue bs = ValToStr(b);
         int len = ValToStrPtr(as)->len + ValToStrPtr(bs)->len;
-        char *buf = malloc(len + 1);
+        char stackbuf[512];
+        char *buf = (len < 512) ? stackbuf : malloc(len + 1);
         if (!buf) {
             ValFree(&as);
             ValFree(&bs);
@@ -584,7 +606,7 @@ AKSValue ValAdd(AKSValue a, AKSValue b) {
         memcpy(buf + ValToStrPtr(as)->len, ValToStrPtr(bs)->data, ValToStrPtr(bs)->len);
         buf[len] = 0;
         AKSValue r = ValStrLen(buf, len);
-        free(buf);
+        if (buf != stackbuf) free(buf);
         ValFree(&as);
         ValFree(&bs);
         return r;
@@ -722,10 +744,10 @@ AKSValue ValEq(AKSValue a, AKSValue b) {
     ValType tb = ValKind(b);
     if (ta != tb) return ValBool(0);
     switch (ta) {
-        case VALINT:    return ValBool(ValToInt(a) == ValToInt(b));
+        case VALINT:
+        case VALBOOL:
+        case VALNULL:   return ValBool(0);
         case VALFLOAT:  return ValBool(ValToFloat(a) == ValToFloat(b));
-        case VALBOOL:   return ValBool(ValToBool(a) == ValToBool(b));
-        case VALNULL:   return ValBool(1);
         case VALSTR: {
             AKSString *sa = ValToStrPtr(a);
             AKSString *sb = ValToStrPtr(b);

@@ -238,60 +238,86 @@ static int RegCheckOverload(VM *vm, VMTask *task, const char *opname, int dst,
                             int src1, int src2, RegInst **ipptr,
                             AKSValue **stacktopptr, CallFrame **frameptr,
                             AKSValue **frameslotsptr) {
-  int maxreg = (*frameptr)->fn->maxregisters;
-  AKSValue saveddst = (dst < maxreg) ? (*frameslotsptr)[dst] : ValNull();
-  AKSValue saveddst1 =
-      (dst + 1 < maxreg) ? (*frameslotsptr)[dst + 1] : ValNull();
+  AKSValue a = (*frameslotsptr)[src1];
+  if (ValKind(a) != VALSTRUCT || !ValToObj(a))
+    return 0;
+  AKSStruct *s = ValToObj(a);
+  int ovidx = -1;
+  for (int i = 0; i < s->fieldcount; i++) {
+    if (strcmp(s->fieldnames[i], opname) == 0) {
+      ovidx = i;
+      break;
+    }
+  }
+  if (ovidx < 0)
+    return 0;
+  AKSValue method = s->fieldvals[ovidx];
+  if (ValKind(method) != VALFN && ValKind(method) != VALBOUNDMETHOD)
+    return 0;
 
-  AKSValue a = ValCopy((*frameslotsptr)[src1]);
-  AKSValue b = (src2 >= 0) ? ValCopy((*frameslotsptr)[src2]) : ValNull();
+  int caller_maxreg = (*frameptr)->fn->maxregisters;
+  if (caller_maxreg == 0)
+    caller_maxreg = (*frameptr)->fn->localcount;
 
-  AKSValue *slots = *frameslotsptr;
-  AKSValue *tempstack = slots + dst + 2;
-  tempstack[-2] = a;
-  tempstack[-1] = b;
+  /* Ensure stack has space above the caller's register window */
+  int needed = (*frameptr)->slotsbase + caller_maxreg + 4;
+  if (needed >= task->stackcap) {
+    ptrdiff_t _so = *stacktopptr - task->stack;
+    ptrdiff_t _fo = *frameslotsptr - task->stack;
+    StackEnsure(task, needed + 16);
+    *stacktopptr = task->stack + _so;
+    *frameslotsptr = task->stack + _fo;
+  }
+
+  AKSValue *st = task->stack + (*frameptr)->slotsbase + caller_maxreg;
+  *st++ = ValCopy((*frameslotsptr)[src1]);
+  *st++ = (src2 >= 0) ? ValCopy((*frameslotsptr)[src2]) : ValNull();
 
   FnProto *fn = (*frameptr)->fn;
   int regidx = (int)(*ipptr - 1 - (RegInst *)fn->regcode);
   uint8_t *bytecodeip = fn->chunk.code + GetBytecodeOffset(fn, regidx);
+  (*frameptr)->ip = bytecodeip;
 
   int origframes = task->framecount;
-
-  AKSValue *st = tempstack;
   if (ChkopOverload(vm, task, &bytecodeip, &st, frameptr, frameslotsptr,
                     opname)) {
-    ValFree(&saveddst);
-    ValFree(&saveddst1);
-    if ((*frameptr)->fn->regcode) {
-      RegInst *targetip =
-          (RegInst *)(*frameptr)->fn->regcode +
-          (*frameptr)
-              ->fn->offsettomap[bytecodeip - (*frameptr)->fn->chunk.code];
-      *frameslotsptr = task->stack + (*frameptr)->slotsbase;
-
-      if (task->framecount <= origframes && task->state != 3) {
-        if (targetip->op == regopcopy) {
-          AKSValue exval = *--st;
-          ValFree(&((*frameslotsptr)[targetip->dst]));
-          (*frameslotsptr)[targetip->dst] = exval;
-          targetip++;
-        }
+    if (task->framecount > origframes) {
+      /* Overloaded function frame was pushed */
+      CallFrame *newframe = *frameptr;
+      int newmaxreg = newframe->fn->maxregisters;
+      if (newmaxreg == 0)
+        newmaxreg = newframe->fn->localcount;
+      int newneeded = newframe->slotsbase + newmaxreg + 1;
+      if (newneeded >= task->stackcap) {
+        ptrdiff_t _fo = *frameslotsptr - task->stack;
+        StackEnsure(task, newneeded + 16);
+        *frameptr = &task->frames[task->framecount - 1];
+        newframe = *frameptr;
+        *frameslotsptr = task->stack + _fo;
       }
-      *ipptr = targetip;
-      *stacktopptr = *frameslotsptr + (*frameptr)->fn->maxregisters;
+      for (int i = 2; i < newmaxreg; i++) {
+        task->stack[newframe->slotsbase + i] = ValNull();
+      }
+      *stacktopptr = task->stack + newframe->slotsbase + newmaxreg;
+      if (newframe->fn->regcode) {
+        *ipptr = (RegInst *)newframe->fn->regcode;
+      } else {
+        *ipptr = NULL;
+      }
     } else {
-      *ipptr = NULL;
+      /* Handled synchronously by ExecuteStdlib, return value left at st[-1] */
+      AKSValue exval = *--st;
+      ValFree(&((*frameslotsptr)[dst]));
+      (*frameslotsptr)[dst] = exval;
+      *stacktopptr = task->stack + (*frameptr)->slotsbase + caller_maxreg;
     }
     return 1;
   }
 
-  if (dst < maxreg)
-    (*frameslotsptr)[dst] = saveddst;
-  if (dst + 1 < maxreg)
-    (*frameslotsptr)[dst + 1] = saveddst1;
-  ValFree(&a);
-  if (src2 >= 0)
-    ValFree(&b);
+  /* Overload failed or not handled: clean up the 2 pushed arguments */
+  ValFree(&st[-1]);
+  ValFree(&st[-2]);
+  *stacktopptr = task->stack + (*frameptr)->slotsbase + caller_maxreg;
   return 0;
 }
 

@@ -10244,6 +10244,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
               L3 += Cache->CacheSize;
             }
           }
+          if (Info->Size == 0) break;
           Offset += Info->Size;
         }
       }

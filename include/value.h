@@ -132,19 +132,11 @@ AKS_INLINE int ValIsPrimitive(AKSValue v) {
 }
 
 AKS_INLINE int64_t ValToInt(AKSValue v) {
-    uint64_t payload = v & 0x0000FFFFFFFFFFFFULL;
-    if (payload & 0x0000800000000000ULL) {
-        return (int64_t)(payload | 0xFFFF000000000000ULL);
-    }
-    return (int64_t)payload;
+    return ((int64_t)(v << 16)) >> 16;
 }
 
 AKS_INLINE int64_t ValToIntUnchecked(AKSValue v) {
-    uint64_t payload = v & 0x0000FFFFFFFFFFFFULL;
-    if (payload & 0x0000800000000000ULL) {
-        return (int64_t)(payload | 0xFFFF000000000000ULL);
-    }
-    return (int64_t)payload;
+    return ((int64_t)(v << 16)) >> 16;
 }
 
 AKS_INLINE double ValToFloat(AKSValue v) {

@@ -1006,8 +1006,8 @@ void VMFree(VM *vm) {
   free(vm);
   if (gActiveStrs != 0 || gactivearrs != 0 || gactivestructs != 0) {
     fprintf(stderr,
-            "Memory leak warning: Active allocations remaining: Strings: %d, "
-            "Arrays: %d, Structs: %d\n",
+            "\n[AKS ALLOC TRACKER ERROR] Active allocations remaining:\n");
+    fprintf(stderr, "  Strings: %lld, Arrays: %lld, Structs: %lld\n",
             gActiveStrs, gactivearrs, gactivestructs);
   } else {
     printf("Memory diagnostics: all runtime references clean. 0 leaks.\n");
@@ -9672,7 +9672,11 @@ while (0)
       if (ValIsInt(a) & ValIsInt(b)) {
         int64_t r;
         if (!ChkAddOvf(ValToInt(a), ValToInt(b), &r)) {
-          ValFree(&frameslots[curr_inst->dst]);
+          if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+            ValFreeFunc(&frameslots[curr_inst->dst]);
+          } else {
+            vm->static_rc_eliminated++;
+          }
           frameslots[curr_inst->dst] = ValInt(r);
           REG_DISPATCH_FAST();
         }
@@ -9702,7 +9706,11 @@ while (0)
       } else {
         res = ValAdd(a, b);
       }
-      ValFree(&frameslots[curr_inst->dst]);
+      if (!ValIsPrimitive(frameslots[curr_inst->dst])) {
+        ValFreeFunc(&frameslots[curr_inst->dst]);
+      } else {
+        vm->static_rc_eliminated++;
+      }
       frameslots[curr_inst->dst] = res;
       REG_DISPATCH_OR_BREAK();
     }
@@ -9748,8 +9756,17 @@ while (0)
 #else
   case regopcopy: {
 #endif
+      if (curr_inst->dst == curr_inst->src1) {
+        REG_DISPATCH_FAST();
+      }
+      AKSValue srcval = frameslots[curr_inst->src1];
+      if (ValIsPrimitive(srcval) && ValIsPrimitive(frameslots[curr_inst->dst])) {
+        frameslots[curr_inst->dst] = srcval;
+        vm->static_rc_eliminated++;
+        REG_DISPATCH_FAST();
+      }
       ValFree(&frameslots[curr_inst->dst]);
-      frameslots[curr_inst->dst] = ValCopy(frameslots[curr_inst->src1]);
+      frameslots[curr_inst->dst] = ValCopy(srcval);
       REG_DISPATCH_FAST();
     }
 
@@ -12906,6 +12923,9 @@ enter_stack_interpreter: for (;;) {
   case OP_STATIC_RELEASE: {
     if (stacktop > frameslots) {
       stacktop--;
+      if (ValKind(*stacktop) >= VALSTR) {
+        ValFree(stacktop);
+      }
     }
     vm->static_rc_eliminated++;
     break;
