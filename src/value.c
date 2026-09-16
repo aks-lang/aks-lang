@@ -12,6 +12,11 @@ size_t gaslrshift = 0;
 /* AKS_RELEASE_BUILD: production builds bypass all debug-allocator overhead.
  * Enable with /DAKS_RELEASE_BUILD (MSVC) or -DAKS_RELEASE_BUILD (GCC/Clang). */
 #if defined(AKS_RELEASE_BUILD)
+#undef AslrmAlloc
+#undef AslrReAlloc
+#undef AslrFree
+#undef AslrStrDup
+#undef AslrcAlloc
 
 void *AslrmAlloc(size_t size) { return (malloc)(size); }
 void *AslrReAlloc(void *ptr, size_t size) { return (realloc)(ptr, size); }
@@ -549,42 +554,37 @@ void ValFreeFunc(AKSValue *v) {
 }
 
 AKSValue ValCopySlow(AKSValue v) {
-    ValType t = ValKind(v);
-    if (t == VALSTR) {
-        AtomicIncrement(&ValToStrPtr(v)->refcount);
-        return v;
-    }
-    if (t == VALARR || t == VALTUPLE) {
-        AtomicIncrement(&ValToArr(v)->refcount);
-        return v;
-    }
-    if (t == VALSTRUCT) {
-        AtomicIncrement(&ValToObj(v)->refcount);
-        return v;
-    }
-    if (t == VALTASK) {
-        AtomicIncrement(&ValToTask(v)->refcount);
-        return v;
-    }
-    if (t == VALCHANNEL) { AtomicIncrement(&ValToChan(v)->refcount); return v; }
-    if (t == VALMUTEX) { AtomicIncrement(&ValToMutex(v)->refcount); return v; }
-    if (t == VALSEM) { AtomicIncrement(&ValToSem(v)->refcount); return v; }
-    if (t == VALARENA) { AtomicIncrement(&ValToArena(v)->refcount); return v; }
-    if (t == VALBOUNDMETHOD) {
-        AtomicIncrement(&ValToBoundMethod(v)->refcount);
-        return v;
-    }
-    return v;
-}
-
-int ValIsTruthy(AKSValue v) {
     switch (ValKind(v)) {
-        case VALBOOL:   return ValToBool(v);
-        case VALINT:    return ValToInt(v) != 0;
-        case VALFLOAT:  return ValToFloat(v) != 0.0;
-        case VALSTR:    return ValToStrPtr(v)->len > 0;
-        case VALNULL:   return 0;
-        default:        return 1;
+        case VALSTR:
+            AtomicIncrement(&ValToStrPtr(v)->refcount);
+            return v;
+        case VALARR:
+        case VALTUPLE:
+            AtomicIncrement(&ValToArr(v)->refcount);
+            return v;
+        case VALSTRUCT:
+            AtomicIncrement(&ValToObj(v)->refcount);
+            return v;
+        case VALTASK:
+            AtomicIncrement(&ValToTask(v)->refcount);
+            return v;
+        case VALCHANNEL:
+            AtomicIncrement(&ValToChan(v)->refcount);
+            return v;
+        case VALMUTEX:
+            AtomicIncrement(&ValToMutex(v)->refcount);
+            return v;
+        case VALSEM:
+            AtomicIncrement(&ValToSem(v)->refcount);
+            return v;
+        case VALARENA:
+            AtomicIncrement(&ValToArena(v)->refcount);
+            return v;
+        case VALBOUNDMETHOD:
+            AtomicIncrement(&ValToBoundMethod(v)->refcount);
+            return v;
+        default:
+            return v;
     }
 }
 
@@ -716,9 +716,9 @@ AKSValue ValNeg(AKSValue a) {
 
 #define CMP(name,op) \
 AKSValue name(AKSValue a, AKSValue b) { \
+    if (ValIsInt(a) & ValIsInt(b)) return ValBool(ValToInt(a) op ValToInt(b)); \
     ValType ta = ValKind(a); \
     ValType tb = ValKind(b); \
-    if (ta == VALINT && tb == VALINT) return ValBool(ValToInt(a) op ValToInt(b)); \
     if ((ta == VALINT || ta == VALFLOAT) && (tb == VALINT || tb == VALFLOAT)) { \
         double fa = ta == VALFLOAT ? ValToFloat(a) : (double)ValToInt(a); \
         double fb = tb == VALFLOAT ? ValToFloat(b) : (double)ValToInt(b); \
@@ -740,6 +740,9 @@ CMP(ValGte, >=)
 
 AKSValue ValEq(AKSValue a, AKSValue b) {
     if (a == b) return ValBool(1);
+    if ((ValIsInt(a) | ValIsBool(a) | ValIsNull(a)) && (ValIsInt(b) | ValIsBool(b) | ValIsNull(b))) {
+        return ValBool(0);
+    }
     ValType ta = ValKind(a);
     ValType tb = ValKind(b);
     if (ta != tb) return ValBool(0);

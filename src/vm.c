@@ -6699,22 +6699,16 @@ while (0)
 
 /* Fast dispatch: bypass the outer for(;;) preamble for pure computation ops
  * that cannot raise exceptions, modify task state, or change frame count.
- * This skips ~8 conditional checks per instruction for the common case.
- * Note: instructionsrun/vm->instructioncount are still incremented so that
- * time-slice yielding and profiling remain accurate. */
+ * Skips all loop preamble checks for maximum throughput. */
 #if defined(__GNUC__) || defined(__clang__)
 #define REG_DISPATCH_FAST() do { \
     instructionsrun++; \
-    vm->instructioncount++; \
-    gVMProfiling.total_instructions++; \
     curr_inst = regip++; \
     goto *reg_dispatch_table[curr_inst->op]; \
 } while(0)
 #else
 #define REG_DISPATCH_FAST() do { \
     instructionsrun++; \
-    vm->instructioncount++; \
-    gVMProfiling.total_instructions++; \
     goto reg_dispatch_switch; \
 } while(0)
 #endif
@@ -6897,6 +6891,9 @@ while (0)
 #else
   case regopload: {
 #endif
+      if (curr_inst->dst == curr_inst->src1) {
+        REG_DISPATCH_FAST();
+      }
       AKSValue src = frameslots[curr_inst->src1];
       if (ValIsPrimitive(frameslots[curr_inst->dst]) & ValIsPrimitive(src)) {
         frameslots[curr_inst->dst] = src;
@@ -6912,6 +6909,9 @@ while (0)
 #else
   case regopstore: {
 #endif
+      if (curr_inst->dst == curr_inst->src1) {
+        REG_DISPATCH_FAST();
+      }
       AKSValue src = frameslots[curr_inst->src1];
       if (ValIsPrimitive(frameslots[curr_inst->dst]) & ValIsPrimitive(src)) {
         frameslots[curr_inst->dst] = src;

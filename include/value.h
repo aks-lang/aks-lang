@@ -95,6 +95,7 @@ AKS_INLINE AKSValue ValArena(AKSArena *a) {
 }
 
 #define VALFLOATLIMIT 0xFFF1000000000000ULL
+#define VAL_PRIMITIVE_LIMIT 0xFFF4000000000000ULL
 
 AKS_INLINE ValType ValKind(AKSValue v) {
     if (v < VALFLOATLIMIT) return VALFLOAT;
@@ -128,7 +129,7 @@ AKS_INLINE int ValIsStruct(AKSValue v) {
 }
 
 AKS_INLINE int ValIsPrimitive(AKSValue v) {
-    return v < VALFLOATLIMIT || (v >> 48) <= 0xFFF3ULL;
+    return v < VAL_PRIMITIVE_LIMIT;
 }
 
 AKS_INLINE int64_t ValToInt(AKSValue v) {
@@ -391,7 +392,22 @@ static inline AKSValue ValCopy(AKSValue v) {
     if (tag > 14) return v;
     return ValCopySlow(v);
 }
-int ValIsTruthy(AKSValue v);
+AKS_INLINE int ValIsTruthy(AKSValue v) {
+    uint64_t hi = v >> 48;
+    if (hi == 0xFFF2ULL) return (int)(v & 1);
+    if (hi == 0xFFF1ULL) return (((int64_t)(v << 16)) >> 16) != 0;
+    if (hi == 0xFFF3ULL) return 0;
+    if (v < VALFLOATLIMIT) {
+        union { uint64_t u; double d; } u;
+        u.u = v;
+        return u.d != 0.0;
+    }
+    if (hi == 0xFFF4ULL) {
+        AKSString *s = ValToStrPtr(v);
+        return s && s->len > 0;
+    }
+    return 1;
+}
 
 AKSValue ValAdd(AKSValue a, AKSValue b);
 AKSValue ValSub(AKSValue a, AKSValue b);
@@ -416,6 +432,25 @@ void ValPrintln(AKSValue v);
 const char *ValTypeName(ValType t);
 AKSValue ValArrArena(int cap, void *arena);
 AKSValue ValStructArena(const char *typename, void *arena);
+
+#if defined(AKS_RELEASE_BUILD)
+static inline void *AslrmAllocFast(size_t size) { return (malloc)(size); }
+static inline void *AslrReAllocFast(void *ptr, size_t size) { return (realloc)(ptr, size); }
+static inline void AslrFreeFast(void *ptr) { (free)(ptr); }
+static inline void *AslrcAllocFast(size_t num, size_t size) { return (calloc)(num, size); }
+static inline char *AslrStrDupFast(const char *s) {
+    if (!s) return NULL;
+    size_t len = strlen(s);
+    char *r = (char*)(malloc)(len + 1);
+    if (r) memcpy(r, s, len + 1);
+    return r;
+}
+#define AslrmAlloc(sz) AslrmAllocFast(sz)
+#define AslrReAlloc(ptr, sz) AslrReAllocFast(ptr, sz)
+#define AslrFree(ptr) AslrFreeFast(ptr)
+#define AslrcAlloc(num, sz) AslrcAllocFast(num, sz)
+#define AslrStrDup(s) AslrStrDupFast(s)
+#else
 void *AslrmAlloc(size_t size);
 void *AslrReAlloc(void *ptr, size_t size);
 void AslrFree(void *ptr);
@@ -427,5 +462,6 @@ void *AslrcAlloc(size_t num, size_t size);
 #define free(ptr) AslrFree(ptr)
 #define strdup(s) AslrStrDup(s)
 #define calloc(n, sz) AslrcAlloc(n, sz)
+#endif
 
 #endif // Valh
