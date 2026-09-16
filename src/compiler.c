@@ -5711,20 +5711,23 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             break;
         }
         case NTYPEALIAS: {
+            char *mangled = MangleName(c, n->typealias.name);
+            const char *alias_reg_name = mangled ? mangled : n->typealias.name;
             int found = 0;
             for (int i = 0; i < c->aliascount; i++) {
-                if (strcmp(c->aliases[i].name, n->typealias.name) == 0) {
+                if (strcmp(c->aliases[i].name, alias_reg_name) == 0) {
                     found = 1;
                     break;
                 }
             }
             if (!found) {
-                if (c->aliascount >= 128) {
+                if (c->aliascount >= 512) {
                     Error(c, n->line, "Too many type aliases registered");
+                    if (mangled) free(mangled);
                     break;
                 }
                 CompilerTypeAlias *a = &c->aliases[c->aliascount++];
-                strncpy(a->name, n->typealias.name, 127);
+                strncpy(a->name, alias_reg_name, 127);
                 strncpy(a->target, n->typealias.target, 255);
                 a->isopaque = n->typealias.isopaque;
                 a->tpc = n->typealias.tpc;
@@ -5737,25 +5740,92 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                     a->tparams = NULL;
                 }
             }
+            if (mangled) {
+                int unfound = 0;
+                for (int i = 0; i < c->aliascount; i++) {
+                    if (strcmp(c->aliases[i].name, n->typealias.name) == 0) {
+                        unfound = 1;
+                        break;
+                    }
+                }
+                if (!unfound && c->aliascount < 512) {
+                    CompilerTypeAlias *a = &c->aliases[c->aliascount++];
+                    strncpy(a->name, n->typealias.name, 127);
+                    strncpy(a->target, n->typealias.target, 255);
+                    a->isopaque = n->typealias.isopaque;
+                    a->tpc = n->typealias.tpc;
+                    if (n->typealias.tpc > 0) {
+                        a->tparams = malloc(n->typealias.tpc * sizeof(char *));
+                        for (int i = 0; i < n->typealias.tpc; i++) {
+                            a->tparams[i] = strdup(n->typealias.tparams[i]);
+                        }
+                    } else {
+                        a->tparams = NULL;
+                    }
+                }
+                free(mangled);
+            }
             break;
         }
         case NSTRUCTDECL: {
+            char *mangled = MangleName(c, n->strct.name);
+            const char *struct_reg_name = mangled ? mangled : n->strct.name;
             if (n->strct.tpc > 0) {
                 int found = 0;
                 for (int i = 0; i < c->templatecount; i++) {
-                    if (strcmp(c->templates[i].name, n->strct.name) == 0) {
+                    if (strcmp(c->templates[i].name, struct_reg_name) == 0) {
                         found = 1;
                         break;
                     }
                 }
                 if (!found) {
-                    if (c->templatecount >= 128) {
+                    if (c->templatecount >= 512) {
                         Error(c, n->line, "Too many struct templates registered");
+                        if (mangled) free(mangled);
                         break;
                     }
                     TemplateDecl *t = &c->templates[c->templatecount++];
-                    strncpy(t->name, n->strct.name, 127);
+                    strncpy(t->name, struct_reg_name, 127);
                     t->ast = NodeCopy(n);
+                    t->constraintcount = n->strct.constraintcount;
+                    if (t->constraintcount > 0 && n->strct.constraintparams && n->strct.constrainttypes) {
+                        t->constraintparams = malloc(t->constraintcount * sizeof(char *));
+                        t->constrainttypes = malloc(t->constraintcount * sizeof(char *));
+                        for (int j = 0; j < t->constraintcount; j++) {
+                            t->constraintparams[j] = strdup(n->strct.constraintparams[j]);
+                            t->constrainttypes[j] = strdup(n->strct.constrainttypes[j]);
+                        }
+                    } else {
+                        t->constraintparams = NULL;
+                        t->constrainttypes = NULL;
+                    }
+                }
+                if (mangled) {
+                    int unfound = 0;
+                    for (int i = 0; i < c->templatecount; i++) {
+                        if (strcmp(c->templates[i].name, n->strct.name) == 0) {
+                            unfound = 1;
+                            break;
+                        }
+                    }
+                    if (!unfound && c->templatecount < 512) {
+                        TemplateDecl *t = &c->templates[c->templatecount++];
+                        strncpy(t->name, n->strct.name, 127);
+                        t->ast = NodeCopy(n);
+                        t->constraintcount = n->strct.constraintcount;
+                        if (t->constraintcount > 0 && n->strct.constraintparams && n->strct.constrainttypes) {
+                            t->constraintparams = malloc(t->constraintcount * sizeof(char *));
+                            t->constrainttypes = malloc(t->constraintcount * sizeof(char *));
+                            for (int j = 0; j < t->constraintcount; j++) {
+                                t->constraintparams[j] = strdup(n->strct.constraintparams[j]);
+                                t->constrainttypes[j] = strdup(n->strct.constrainttypes[j]);
+                            }
+                        } else {
+                            t->constraintparams = NULL;
+                            t->constrainttypes = NULL;
+                        }
+                    }
+                    free(mangled);
                 }
             } else {
                 int structidx = -1;
@@ -8041,6 +8111,14 @@ void CompFree(Compiler *c) {
     // free templates
     for (int i = 0; i < c->templatecount; i++) {
         NodeFree(c->templates[i].ast);
+        if (c->templates[i].constraintcount > 0) {
+            for (int j = 0; j < c->templates[i].constraintcount; j++) {
+                if (c->templates[i].constraintparams && c->templates[i].constraintparams[j]) free(c->templates[i].constraintparams[j]);
+                if (c->templates[i].constrainttypes && c->templates[i].constrainttypes[j]) free(c->templates[i].constrainttypes[j]);
+            }
+            if (c->templates[i].constraintparams) free(c->templates[i].constraintparams);
+            if (c->templates[i].constrainttypes) free(c->templates[i].constrainttypes);
+        }
     }
     
     // free structs
@@ -9806,16 +9884,18 @@ static void PreregisterTypes(Compiler *c, Node *n) {
             break;
         }
         case NTYPEALIAS: {
+            char *mangled = MangleName(c, n->typealias.name);
+            const char *alias_reg_name = mangled ? mangled : n->typealias.name;
             int found = 0;
             for (int i = 0; i < c->aliascount; i++) {
-                if (strcmp(c->aliases[i].name, n->typealias.name) == 0) {
+                if (strcmp(c->aliases[i].name, alias_reg_name) == 0) {
                     found = 1;
                     break;
                 }
             }
-            if (!found && c->aliascount < 128) {
+            if (!found && c->aliascount < 512) {
                 CompilerTypeAlias *a = &c->aliases[c->aliascount++];
-                strncpy(a->name, n->typealias.name, 127);
+                strncpy(a->name, alias_reg_name, 127);
                 strncpy(a->target, n->typealias.target, 255);
                 a->isopaque = n->typealias.isopaque;
                 a->tpc = n->typealias.tpc;
@@ -9827,6 +9907,31 @@ static void PreregisterTypes(Compiler *c, Node *n) {
                 } else {
                     a->tparams = NULL;
                 }
+            }
+            if (mangled) {
+                int unfound = 0;
+                for (int i = 0; i < c->aliascount; i++) {
+                    if (strcmp(c->aliases[i].name, n->typealias.name) == 0) {
+                        unfound = 1;
+                        break;
+                    }
+                }
+                if (!unfound && c->aliascount < 512) {
+                    CompilerTypeAlias *a = &c->aliases[c->aliascount++];
+                    strncpy(a->name, n->typealias.name, 127);
+                    strncpy(a->target, n->typealias.target, 255);
+                    a->isopaque = n->typealias.isopaque;
+                    a->tpc = n->typealias.tpc;
+                    if (n->typealias.tpc > 0) {
+                        a->tparams = malloc(n->typealias.tpc * sizeof(char *));
+                        for (int i = 0; i < n->typealias.tpc; i++) {
+                            a->tparams[i] = strdup(n->typealias.tparams[i]);
+                        }
+                    } else {
+                        a->tparams = NULL;
+                    }
+                }
+                free(mangled);
             }
             break;
         }
@@ -9841,10 +9946,48 @@ static void PreregisterTypes(Compiler *c, Node *n) {
                         break;
                     }
                 }
-                if (!found && c->templatecount < 128) {
+                if (!found && c->templatecount < 512) {
                     TemplateDecl *t = &c->templates[c->templatecount++];
                     strncpy(t->name, struct_reg_name, 127);
                     t->ast = NodeCopy(n);
+                    t->constraintcount = n->strct.constraintcount;
+                    if (t->constraintcount > 0 && n->strct.constraintparams && n->strct.constrainttypes) {
+                        t->constraintparams = malloc(t->constraintcount * sizeof(char *));
+                        t->constrainttypes = malloc(t->constraintcount * sizeof(char *));
+                        for (int j = 0; j < t->constraintcount; j++) {
+                            t->constraintparams[j] = strdup(n->strct.constraintparams[j]);
+                            t->constrainttypes[j] = strdup(n->strct.constrainttypes[j]);
+                        }
+                    } else {
+                        t->constraintparams = NULL;
+                        t->constrainttypes = NULL;
+                    }
+                }
+                if (mangled) {
+                    int unfound = 0;
+                    for (int i = 0; i < c->templatecount; i++) {
+                        if (strcmp(c->templates[i].name, n->strct.name) == 0) {
+                            unfound = 1;
+                            break;
+                        }
+                    }
+                    if (!unfound && c->templatecount < 512) {
+                        TemplateDecl *t = &c->templates[c->templatecount++];
+                        strncpy(t->name, n->strct.name, 127);
+                        t->ast = NodeCopy(n);
+                        t->constraintcount = n->strct.constraintcount;
+                        if (t->constraintcount > 0 && n->strct.constraintparams && n->strct.constrainttypes) {
+                            t->constraintparams = malloc(t->constraintcount * sizeof(char *));
+                            t->constrainttypes = malloc(t->constraintcount * sizeof(char *));
+                            for (int j = 0; j < t->constraintcount; j++) {
+                                t->constraintparams[j] = strdup(n->strct.constraintparams[j]);
+                                t->constrainttypes[j] = strdup(n->strct.constrainttypes[j]);
+                            }
+                        } else {
+                            t->constraintparams = NULL;
+                            t->constrainttypes = NULL;
+                        }
+                    }
                 }
             } else {
                 int found = 0;
@@ -9857,6 +10000,7 @@ static void PreregisterTypes(Compiler *c, Node *n) {
                 if (!found) {
                     if (c->structcount >= 512) {
                         Error(c, n->line, "Too many structs registered (limit 512)");
+                        if (mangled) free(mangled);
                         break;
                     }
                     CompilerStruct *s = &c->structs[c->structcount++];
@@ -9876,6 +10020,35 @@ static void PreregisterTypes(Compiler *c, Node *n) {
                         }
                     } else {
                         s->interfaces = NULL;
+                    }
+                }
+                if (mangled) {
+                    int unfound = 0;
+                    for (int i = 0; i < c->structcount; i++) {
+                        if (strcmp(c->structs[i].name, n->strct.name) == 0) {
+                            unfound = 1;
+                            break;
+                        }
+                    }
+                    if (!unfound && c->structcount < 512) {
+                        CompilerStruct *s = &c->structs[c->structcount++];
+                        strncpy(s->name, n->strct.name, 127);
+                        s->fc = n->strct.fc;
+                        s->fnames = malloc(s->fc * sizeof(char*));
+                        s->ftypes = malloc(s->fc * sizeof(char*));
+                        for (int i = 0; i < s->fc; i++) {
+                            s->fnames[i] = strdup(n->strct.fnames[i]);
+                            s->ftypes[i] = strdup(n->strct.ftypes[i]);
+                        }
+                        s->ic = n->strct.ic;
+                        if (s->ic > 0) {
+                            s->interfaces = malloc(s->ic * sizeof(char*));
+                            for (int i = 0; i < s->ic; i++) {
+                                s->interfaces[i] = strdup(n->strct.interfaces[i]);
+                            }
+                        } else {
+                            s->interfaces = NULL;
+                        }
                     }
                 }
             }
