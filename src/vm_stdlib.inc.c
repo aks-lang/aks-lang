@@ -25730,6 +25730,52 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
+  if (strcmp(name, "InPort8") == 0 || strcmp(name, "InPort16") == 0 || strcmp(name, "InPort32") == 0) {
+    if (argc < 1) return -1;
+    (void)POP();
+    PUSH(ValInt(0));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "OutPort8") == 0 || strcmp(name, "OutPort16") == 0 || strcmp(name, "OutPort32") == 0) {
+    if (argc < 2) return -1;
+    (void)POP();
+    (void)POP();
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "CpuCli") == 0 || strcmp(name, "CpuSti") == 0) {
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "CpuLidt") == 0 || strcmp(name, "CpuLgdt") == 0 || strcmp(name, "CpuWriteCr3") == 0) {
+    if (argc < 1) return -1;
+    (void)POP();
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "CpuReadCr3") == 0) {
+    PUSH(ValInt(0x1000));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "VgaPrintChar") == 0) {
+    if (argc < 4) return -1;
+    (void)POP(); (void)POP(); (void)POP(); (void)POP();
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "SerialWrite") == 0) {
+    if (argc < 2) return -1;
+    (void)POP(); (void)POP();
+    PUSH(ValNull());
+    *stacktopptr = stacktop;
+    return 1;
+  }
   if (strcmp(name, "CImportParseHeaderC") == 0) {
     if (argc < 1) return -1;
     AKSValue path_or_src = POP();

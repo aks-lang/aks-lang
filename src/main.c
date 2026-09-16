@@ -90,8 +90,18 @@ static int CountUnbalancedBrackets(const char *str) {
 }
 
 static void RunRepl(void) {
-    printf("AKS Interactive REPL (2026)\n");
-    printf("Type 'exit()' or press Ctrl+C to exit.\n\n");
+#ifdef _WIN32
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD dwMode = 0;
+    if (hOut != INVALID_HANDLE_VALUE && GetConsoleMode(hOut, &dwMode)) {
+        SetConsoleMode(hOut, dwMode | 0x0004 /* ENABLE_VIRTUAL_TERMINAL_PROCESSING */);
+    }
+#endif
+
+    printf("\033[1;36m       _  ______ \033[0m\n");
+    printf("\033[1;36m      / |/ / __/ \033[0m  \033[1;32mAKS Programming Language v3.0\033[0m\n");
+    printf("\033[1;36m     /    /\\ \\   \033[0m  High-Performance Systems & AI Engine\n");
+    printf("\033[1;36m    /_/|_/___/   \033[0m  Type \033[1;33m:help\033[0m or \033[1;33m:quit\033[0m to exit\n\n");
 
     Compiler *c = CompNew();
     c->isrepl = 1;
@@ -140,9 +150,9 @@ static void RunRepl(void) {
 
     for (;;) {
         if (inmultiline) {
-            printf("... ");
+            printf("\033[1;30m... \033[0m");
         } else {
-            printf("aks> ");
+            printf("\033[1;36maks>\033[0m ");
         }
         fflush(stdout);
 
@@ -160,10 +170,44 @@ static void RunRepl(void) {
             }
         }
         trimmed[tj] = '\0';
-        if (strcmp(trimmed, "exit()") == 0 || strcmp(trimmed, "exit();") == 0 || strcmp(trimmed, "exit") == 0 || strcmp(trimmed, "quit") == 0 || strcmp(trimmed, "quit()") == 0) {
+        if (strcmp(trimmed, "exit()") == 0 || strcmp(trimmed, "exit();") == 0 || strcmp(trimmed, "exit") == 0 ||
+            strcmp(trimmed, "quit") == 0 || strcmp(trimmed, "quit()") == 0 || strcmp(trimmed, ":quit") == 0 ||
+            strcmp(trimmed, ":q") == 0) {
             break;
         }
-        if (strcmp(trimmed, "help") == 0 || strcmp(trimmed, "help()") == 0) {
+        if (strcmp(trimmed, ":clear") == 0 || strcmp(trimmed, ":cls") == 0) {
+            printf("\033[2J\033[H");
+            fflush(stdout);
+            continue;
+        }
+        if (strcmp(trimmed, ":vars") == 0) {
+            printf("\033[1;33mDefined Global Variables (%d total):\033[0m\n", vm->globalcount);
+            for (int gi = 0; gi < vm->globalcount; gi++) {
+                if (vm->globals[gi].name) {
+                    printf("  \033[1;32m%s\033[0m = ", vm->globals[gi].name);
+                    ValPrint(vm->globals[gi].val);
+                    printf("\n");
+                }
+            }
+            continue;
+        }
+        if (strcmp(trimmed, ":fns") == 0) {
+            printf("\033[1;33mCompiled Functions (%d total):\033[0m\n", vm->fncount);
+            for (int fi = 0; fi < vm->fncount; fi++) {
+                FnProto *fn = vm->fns[fi];
+                if (fn && fn->name && fn->name[0]) {
+                    printf("  \033[1;36mfn %s\033[0m(params: %d, locals: %d)\n", fn->name, fn->paramcount, fn->localcount);
+                }
+            }
+            continue;
+        }
+        if (strcmp(trimmed, ":help") == 0 || strcmp(trimmed, "help") == 0 || strcmp(trimmed, "help()") == 0) {
+            printf("\033[1;33mAKS Interactive REPL Commands:\033[0m\n");
+            printf("  \033[1;36m:help\033[0m          Show this help message\n");
+            printf("  \033[1;36m:clear, :cls\033[0m   Clear the terminal screen\n");
+            printf("  \033[1;36m:vars\033[0m          List all defined global variables and values\n");
+            printf("  \033[1;36m:fns\033[0m           List all compiled functions\n");
+            printf("  \033[1;36m:quit, :q\033[0m      Exit the REPL session (or type exit())\n\n");
             LearnHelp("");
             continue;
         }

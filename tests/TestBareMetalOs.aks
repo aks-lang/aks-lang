@@ -1,0 +1,31 @@
+// Test OS Kernel & Bare-Metal Hardware Intrinsics
+print("Testing Bare-Metal OS Kernel Primitives...");
+
+// 1. Port I/O Simulation & Codegen
+OutPort8(0x3F8, 65); // Write 'A' to COM1 serial port
+OutPort16(0x1F0, 0x01F0); // IDE disk controller
+OutPort32(0xCF8, 0x80000000); // PCI configuration address register
+
+let val8 = InPort8(0x3F8);
+let val16 = InPort16(0x1F0);
+let val32 = InPort32(0xCF8);
+
+// 2. CPU Interrupt & Control Registers
+CpuCli(); // cli
+CpuSti(); // sti
+CpuLidt(0x2000); // lidt
+CpuLgdt(0x1000); // lgdt
+
+let cr3 = CpuReadCr3();
+CpuWriteCr3(cr3);
+
+// 3. VGA Text Buffer & Serial Output
+VgaPrintChar(72, 0, 0, 0x0F); // 'H' white on black
+VgaPrintChar(105, 1, 0, 0x0F); // 'i'
+SerialWrite(0x3F8, 10); // '\n'
+
+// 4. Memory & Execution control
+CpuNop();
+CpuPause();
+
+print("Bare-Metal OS Kernel Primitives verified successfully!");

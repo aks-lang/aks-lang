@@ -5514,6 +5514,10 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                         ChunkWriteU16(ch, (uint16_t)fnid, n->line);
                         ChunkWrite(ch, 1, n->line);
                         ChunkWrite(ch, OPPOP, n->line);
+                    } else if (c->is_static_mode) {
+                        ChunkWrite(ch, OPLOAD, n->line);
+                        ChunkWriteU16(ch, (uint16_t)l->slot, n->line);
+                        ChunkWrite(ch, OP_STATIC_RELEASE, n->line);
                     }
                 }
             }
@@ -7952,6 +7956,20 @@ Compiler *CompNew(void) {
     NewFn(c, "CpuNop");
     NewFn(c, "CpuPause");
     NewFn(c, "CpuHalt");
+    NewFn(c, "InPort8");
+    NewFn(c, "InPort16");
+    NewFn(c, "InPort32");
+    NewFn(c, "OutPort8");
+    NewFn(c, "OutPort16");
+    NewFn(c, "OutPort32");
+    NewFn(c, "CpuCli");
+    NewFn(c, "CpuSti");
+    NewFn(c, "CpuLidt");
+    NewFn(c, "CpuLgdt");
+    NewFn(c, "CpuReadCr3");
+    NewFn(c, "CpuWriteCr3");
+    NewFn(c, "VgaPrintChar");
+    NewFn(c, "SerialWrite");
     NewFn(c, "CImportParseHeaderC");
 
     /* Type reflection, non-blocking channels, bitcasting, and byte swapping */

@@ -115,6 +115,70 @@ static void EmitNoStdExpr(NoStdCtx *ctx, Node *node) {
             fprintf(ctx->out, "cpu_pause()");
         } else if (strcmp(fnname, "CpuHalt") == 0) {
             fprintf(ctx->out, "cpu_halt()");
+        } else if (strcmp(fnname, "InPort8") == 0 && node->call.argc >= 1) {
+            fprintf(ctx->out, "in_port8((uint16_t)(");
+            EmitNoStdExpr(ctx, node->call.args[0]);
+            fprintf(ctx->out, "))");
+        } else if (strcmp(fnname, "InPort16") == 0 && node->call.argc >= 1) {
+            fprintf(ctx->out, "in_port16((uint16_t)(");
+            EmitNoStdExpr(ctx, node->call.args[0]);
+            fprintf(ctx->out, "))");
+        } else if (strcmp(fnname, "InPort32") == 0 && node->call.argc >= 1) {
+            fprintf(ctx->out, "in_port32((uint16_t)(");
+            EmitNoStdExpr(ctx, node->call.args[0]);
+            fprintf(ctx->out, "))");
+        } else if (strcmp(fnname, "OutPort8") == 0 && node->call.argc >= 2) {
+            fprintf(ctx->out, "out_port8((uint16_t)(");
+            EmitNoStdExpr(ctx, node->call.args[0]);
+            fprintf(ctx->out, "), (uint8_t)(");
+            EmitNoStdExpr(ctx, node->call.args[1]);
+            fprintf(ctx->out, "))");
+        } else if (strcmp(fnname, "OutPort16") == 0 && node->call.argc >= 2) {
+            fprintf(ctx->out, "out_port16((uint16_t)(");
+            EmitNoStdExpr(ctx, node->call.args[0]);
+            fprintf(ctx->out, "), (uint16_t)(");
+            EmitNoStdExpr(ctx, node->call.args[1]);
+            fprintf(ctx->out, "))");
+        } else if (strcmp(fnname, "OutPort32") == 0 && node->call.argc >= 2) {
+            fprintf(ctx->out, "out_port32((uint16_t)(");
+            EmitNoStdExpr(ctx, node->call.args[0]);
+            fprintf(ctx->out, "), (uint32_t)(");
+            EmitNoStdExpr(ctx, node->call.args[1]);
+            fprintf(ctx->out, "))");
+        } else if (strcmp(fnname, "CpuCli") == 0) {
+            fprintf(ctx->out, "cpu_cli()");
+        } else if (strcmp(fnname, "CpuSti") == 0) {
+            fprintf(ctx->out, "cpu_sti()");
+        } else if (strcmp(fnname, "CpuLidt") == 0 && node->call.argc >= 1) {
+            fprintf(ctx->out, "cpu_lidt((uintptr_t)(");
+            EmitNoStdExpr(ctx, node->call.args[0]);
+            fprintf(ctx->out, "))");
+        } else if (strcmp(fnname, "CpuLgdt") == 0 && node->call.argc >= 1) {
+            fprintf(ctx->out, "cpu_lgdt((uintptr_t)(");
+            EmitNoStdExpr(ctx, node->call.args[0]);
+            fprintf(ctx->out, "))");
+        } else if (strcmp(fnname, "CpuReadCr3") == 0) {
+            fprintf(ctx->out, "cpu_read_cr3()");
+        } else if (strcmp(fnname, "CpuWriteCr3") == 0 && node->call.argc >= 1) {
+            fprintf(ctx->out, "cpu_write_cr3((uintptr_t)(");
+            EmitNoStdExpr(ctx, node->call.args[0]);
+            fprintf(ctx->out, "))");
+        } else if (strcmp(fnname, "VgaPrintChar") == 0 && node->call.argc >= 4) {
+            fprintf(ctx->out, "vga_print_char((char)(");
+            EmitNoStdExpr(ctx, node->call.args[0]);
+            fprintf(ctx->out, "), (int)(");
+            EmitNoStdExpr(ctx, node->call.args[1]);
+            fprintf(ctx->out, "), (int)(");
+            EmitNoStdExpr(ctx, node->call.args[2]);
+            fprintf(ctx->out, "), (uint8_t)(");
+            EmitNoStdExpr(ctx, node->call.args[3]);
+            fprintf(ctx->out, "))");
+        } else if (strcmp(fnname, "SerialWrite") == 0 && node->call.argc >= 2) {
+            fprintf(ctx->out, "serial_write((uint16_t)(");
+            EmitNoStdExpr(ctx, node->call.args[0]);
+            fprintf(ctx->out, "), (char)(");
+            EmitNoStdExpr(ctx, node->call.args[1]);
+            fprintf(ctx->out, "))");
         } else {
             fprintf(ctx->out, "%s(", fnname);
             for (int i = 0; i < node->call.argc; i++) {
@@ -309,6 +373,93 @@ int EmitNoStdCModule(Compiler *comp, Node *ast_root, const char *out_filepath) {
     fprintf(f, "    __halt();\n");
     fprintf(f, "#endif\n");
     fprintf(f, "}\n\n");
+
+    fprintf(f, "static inline uint8_t in_port8(uint16_t port) {\n");
+    fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "    uint8_t ret;\n");
+    fprintf(f, "    __asm__ __volatile__(\"inb %%1, %%0\" : \"=a\"(ret) : \"Nd\"(port));\n");
+    fprintf(f, "    return ret;\n");
+    fprintf(f, "#else\n    (void)port; return 0;\n#endif\n}\n\n");
+
+    fprintf(f, "static inline uint16_t in_port16(uint16_t port) {\n");
+    fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "    uint16_t ret;\n");
+    fprintf(f, "    __asm__ __volatile__(\"inw %%1, %%0\" : \"=a\"(ret) : \"Nd\"(port));\n");
+    fprintf(f, "    return ret;\n");
+    fprintf(f, "#else\n    (void)port; return 0;\n#endif\n}\n\n");
+
+    fprintf(f, "static inline uint32_t in_port32(uint16_t port) {\n");
+    fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "    uint32_t ret;\n");
+    fprintf(f, "    __asm__ __volatile__(\"inl %%1, %%0\" : \"=a\"(ret) : \"Nd\"(port));\n");
+    fprintf(f, "    return ret;\n");
+    fprintf(f, "#else\n    (void)port; return 0;\n#endif\n}\n\n");
+
+    fprintf(f, "static inline void out_port8(uint16_t port, uint8_t val) {\n");
+    fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "    __asm__ __volatile__(\"outb %%0, %%1\" : : \"a\"(val), \"Nd\"(port));\n");
+    fprintf(f, "#else\n    (void)port; (void)val;\n#endif\n}\n\n");
+
+    fprintf(f, "static inline void out_port16(uint16_t port, uint16_t val) {\n");
+    fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "    __asm__ __volatile__(\"outw %%0, %%1\" : : \"a\"(val), \"Nd\"(port));\n");
+    fprintf(f, "#else\n    (void)port; (void)val;\n#endif\n}\n\n");
+
+    fprintf(f, "static inline void out_port32(uint16_t port, uint32_t val) {\n");
+    fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "    __asm__ __volatile__(\"outl %%0, %%1\" : : \"a\"(val), \"Nd\"(port));\n");
+    fprintf(f, "#else\n    (void)port; (void)val;\n#endif\n}\n\n");
+
+    fprintf(f, "static inline void cpu_cli(void) {\n");
+    fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "    __asm__ __volatile__(\"cli\" : : : \"memory\");\n");
+    fprintf(f, "#endif\n}\n\n");
+
+    fprintf(f, "static inline void cpu_sti(void) {\n");
+    fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "    __asm__ __volatile__(\"sti\" : : : \"memory\");\n");
+    fprintf(f, "#endif\n}\n\n");
+
+    fprintf(f, "static inline void cpu_lidt(uintptr_t addr) {\n");
+    fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "    __asm__ __volatile__(\"lidt (%%0)\" : : \"r\"(addr) : \"memory\");\n");
+    fprintf(f, "#else\n    (void)addr;\n#endif\n}\n\n");
+
+    fprintf(f, "static inline void cpu_lgdt(uintptr_t addr) {\n");
+    fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "    __asm__ __volatile__(\"lgdt (%%0)\" : : \"r\"(addr) : \"memory\");\n");
+    fprintf(f, "#else\n    (void)addr;\n#endif\n}\n\n");
+
+    fprintf(f, "static inline uintptr_t cpu_read_cr3(void) {\n");
+    fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "    uintptr_t val;\n");
+    fprintf(f, "    __asm__ __volatile__(\"mov %%%%cr3, %%0\" : \"=r\"(val));\n");
+    fprintf(f, "    return val;\n");
+    fprintf(f, "#else\n    return 0;\n#endif\n}\n\n");
+
+    fprintf(f, "static inline void cpu_write_cr3(uintptr_t val) {\n");
+    fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "    __asm__ __volatile__(\"mov %%0, %%%%cr3\" : : \"r\"(val) : \"memory\");\n");
+    fprintf(f, "#else\n    (void)val;\n#endif\n}\n\n");
+
+    fprintf(f, "static inline void vga_print_char(char c, int x, int y, uint8_t color) {\n");
+    fprintf(f, "    volatile uint16_t *vga = (volatile uint16_t*)0xB8000;\n");
+    fprintf(f, "    if (x >= 0 && x < 80 && y >= 0 && y < 25) {\n");
+    fprintf(f, "        vga[y * 80 + x] = (uint16_t)(uint8_t)c | ((uint16_t)color << 8);\n");
+    fprintf(f, "    }\n}\n\n");
+
+    fprintf(f, "static inline void serial_write(uint16_t port, char c) {\n");
+    fprintf(f, "    out_port8(port, (uint8_t)c);\n");
+    fprintf(f, "}\n\n");
+
+    fprintf(f, "/* Multiboot2 Header for GRUB & QEMU direct kernel boot */\n");
+    fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "__attribute__((section(\".multiboot2\"), aligned(8)))\n");
+    fprintf(f, "const struct {\n");
+    fprintf(f, "    uint32_t magic; uint32_t architecture; uint32_t header_length; uint32_t checksum;\n");
+    fprintf(f, "    uint16_t end_type; uint16_t end_flags; uint32_t end_size;\n");
+    fprintf(f, "} multiboot2_header = { 0xE85250D6, 0, 24, -(0xE85250D6 + 0 + 24), 0, 0, 8 };\n");
+    fprintf(f, "#endif\n\n");
 
     /* Forward declarations for functions */
     if (ast_root && (ast_root->type == NPROGRAM || ast_root->type == NBLOCK)) {

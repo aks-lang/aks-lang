@@ -185,6 +185,53 @@ static void EmitWasmNode(WasmCtx *ctx, Node *node) {
     }
 }
 
+static void CollectWasmCalls(Node *n, char **calls, int *count, int max) {
+    if (!n || *count >= max) return;
+    if (n->type == NCALL && n->call.callee) {
+        const char *name = NULL;
+        if (n->call.callee->type == NIDENT && n->call.callee->decl.name) {
+            name = n->call.callee->decl.name;
+        } else if (n->call.callee->type == NIDENT && n->call.callee->sval) {
+            name = n->call.callee->sval;
+        }
+        if (name) {
+            int exists = 0;
+            for (int i = 0; i < *count; i++) {
+                if (strcmp(calls[i], name) == 0) { exists = 1; break; }
+            }
+            if (!exists && *count < max) {
+                calls[(*count)++] = (char*)name;
+            }
+        }
+    }
+    if (n->type == NBLOCK || n->type == NPROGRAM) {
+        for (int i = 0; i < n->block.count; i++) CollectWasmCalls(n->block.stmts[i], calls, count, max);
+    } else if (n->type == NIF) {
+        CollectWasmCalls(n->ifn.cond, calls, count, max);
+        CollectWasmCalls(n->ifn.then, calls, count, max);
+        CollectWasmCalls(n->ifn.els, calls, count, max);
+    } else if (n->type == NFOR) {
+        CollectWasmCalls(n->forn.init, calls, count, max);
+        CollectWasmCalls(n->forn.cond, calls, count, max);
+        CollectWasmCalls(n->forn.post, calls, count, max);
+        CollectWasmCalls(n->forn.body, calls, count, max);
+    } else if (n->type == NWHILE) {
+        CollectWasmCalls(n->whilen.cond, calls, count, max);
+        CollectWasmCalls(n->whilen.body, calls, count, max);
+    } else if (n->type == NBINOP) {
+        CollectWasmCalls(n->binop.left, calls, count, max);
+        CollectWasmCalls(n->binop.right, calls, count, max);
+    } else if (n->type == NASSIGN) {
+        CollectWasmCalls(n->assign.value, calls, count, max);
+    } else if (n->type == NVARDECL || n->type == NCONSTDECL) {
+        CollectWasmCalls(n->decl.init, calls, count, max);
+    } else if (n->type == NCALL) {
+        for (int i = 0; i < n->call.argc; i++) CollectWasmCalls(n->call.args[i], calls, count, max);
+    } else if (n->type == NEXPRSTMT || n->type == NRETURN) {
+        CollectWasmCalls(n->single.expr, calls, count, max);
+    }
+}
+
 int EmitWasmModule(Compiler *comp, Node *ast_root, const char *out_filepath) {
     FILE *f = fopen(out_filepath, "w");
     if (!f) return 0;
@@ -201,10 +248,69 @@ int EmitWasmModule(Compiler *comp, Node *ast_root, const char *out_filepath) {
     int has_main_stmts = 0;
     if (ast_root && (ast_root->type == NPROGRAM || ast_root->type == NBLOCK)) {
         for (int i = 0; i < ast_root->block.count; i++) {
-            if (ast_root->block.stmts[i]->type == NFNDECL) {
-                EmitWasmNode(&ctx, ast_root->block.stmts[i]);
-            } else {
+            if (ast_root->block.stmts[i]->type != NFNDECL) {
                 has_main_stmts++;
+            }
+        }
+    }
+
+    char *reachable_fns[128];
+    int reachable_count = 0;
+
+    if (has_main_stmts > 0 && ast_root && (ast_root->type == NPROGRAM || ast_root->type == NBLOCK)) {
+        // Collect calls from top-level main statements
+        for (int i = 0; i < ast_root->block.count; i++) {
+            if (ast_root->block.stmts[i]->type != NFNDECL) {
+                CollectWasmCalls(ast_root->block.stmts[i], reachable_fns, &reachable_count, 128);
+            }
+        }
+
+        // Transitive closure: reach all functions called directly or indirectly
+        int changed = 1;
+        while (changed) {
+            changed = 0;
+            int prev_count = reachable_count;
+            for (int i = 0; i < ast_root->block.count; i++) {
+                Node *st = ast_root->block.stmts[i];
+                if (st->type == NFNDECL && st->fn.name) {
+                    int is_reach = 0;
+                    for (int r = 0; r < reachable_count; r++) {
+                        if (strcmp(reachable_fns[r], st->fn.name) == 0) {
+                            is_reach = 1;
+                            break;
+                        }
+                    }
+                    if (is_reach) {
+                        CollectWasmCalls(st->fn.body, reachable_fns, &reachable_count, 128);
+                        if (reachable_count > prev_count) {
+                            changed = 1;
+                            prev_count = reachable_count;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (ast_root && (ast_root->type == NPROGRAM || ast_root->type == NBLOCK)) {
+        for (int i = 0; i < ast_root->block.count; i++) {
+            if (ast_root->block.stmts[i]->type == NFNDECL) {
+                Node *fn = ast_root->block.stmts[i];
+                if (has_main_stmts > 0 && fn->fn.name) {
+                    int is_reach = 0;
+                    if (strcmp(fn->fn.name, "main") == 0) is_reach = 1;
+                    for (int r = 0; r < reachable_count; r++) {
+                        if (strcmp(reachable_fns[r], fn->fn.name) == 0) {
+                            is_reach = 1;
+                            break;
+                        }
+                    }
+                    if (!is_reach) {
+                        // Tree-shaken: dead function eliminated
+                        continue;
+                    }
+                }
+                EmitWasmNode(&ctx, fn);
             }
         }
     }

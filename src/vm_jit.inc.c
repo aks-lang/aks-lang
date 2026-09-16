@@ -1,5 +1,7 @@
 extern void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset,
                              TraceStep *trace, int stepcount, int startdepth);
+extern void *CompileArm64Trace(VM *vm, FnProto *fn, int startoffset,
+                               TraceStep *trace, int stepcount, int startdepth);
 extern void *CompileLLVMTrace(VM *vm, FnProto *fn, int startoffset,
                               TraceStep *trace, int stepcount, int startdepth);
 extern void *CompileQBETrace(VM *vm, FnProto *fn, int startoffset,
@@ -37,8 +39,10 @@ static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
     }
   }
 
-  /* In-memory native JIT compilation if JIT mode is active (x64, LLVM, or QBE) or auto-tiering on x86_64 */
+  /* In-memory native JIT compilation if JIT mode is active (x64, ARM64, LLVM, or QBE) or auto-tiering */
 #if defined(__x86_64__) || defined(_M_X64)
+  int effective_jitmode = (vm->jitmode > 0) ? vm->jitmode : 1;
+#elif defined(__aarch64__) || defined(_M_ARM64)
   int effective_jitmode = (vm->jitmode > 0) ? vm->jitmode : 1;
 #else
   int effective_jitmode = vm->jitmode;
@@ -113,7 +117,11 @@ static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
         void *func = NULL;
         int reldepth = fn->maxregisters > 0 ? fn->maxregisters : ((fn->localcount > fn->paramcount) ? fn->localcount : fn->paramcount);
         if (effective_jitmode == 1) {
+#if defined(__aarch64__) || defined(_M_ARM64)
+          func = CompileArm64Trace(vm, fn, startoffset, trace, stepcount, reldepth);
+#else
           func = CompileX64Trace(vm, fn, startoffset, trace, stepcount, reldepth);
+#endif
         } else if (effective_jitmode == 2) {
           func = CompileLLVMTrace(vm, fn, startoffset, trace, stepcount, reldepth);
         } else if (effective_jitmode == 3) {
@@ -656,6 +664,8 @@ static void TriggerTracingJIT(VM *vm, VMTask *task, FnProto *fn,
 
 #if defined(__x86_64__) || defined(_M_X64)
   int effective_mode = (vm->jitmode > 0) ? vm->jitmode : 1;
+#elif defined(__aarch64__) || defined(_M_ARM64)
+  int effective_mode = (vm->jitmode > 0) ? vm->jitmode : 1;
 #else
   int effective_mode = vm->jitmode;
 #endif
@@ -669,7 +679,11 @@ static void TriggerTracingJIT(VM *vm, VMTask *task, FnProto *fn,
                                : base_reg);
     if (reldepth < base_reg) reldepth = base_reg;
     if (effective_mode == 1) {
+#if defined(__aarch64__) || defined(_M_ARM64)
+      func = CompileArm64Trace(vm, fn, startoffset, trace, stepcount, reldepth);
+#else
       func = CompileX64Trace(vm, fn, startoffset, trace, stepcount, reldepth);
+#endif
     } else if (effective_mode == 2) {
       func = CompileLLVMTrace(vm, fn, startoffset, trace, stepcount, reldepth);
     } else if (effective_mode == 3) {

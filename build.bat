@@ -15,8 +15,8 @@ if %errorlevel% neq 0 (
 )
 set CFLAGS=/O2 /Oi /Ot /Ob3 /W3 /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_DEPRECATE /DAKS_RELEASE_BUILD /DNDEBUG /arch:AVX2 /fp:fast /GS- /Iinclude /MP
 set LIBS=user32.lib gdi32.lib shell32.lib ws2_32.lib bcrypt.lib crypt32.lib dbghelp.lib cabinet.lib psapi.lib rpcrt4.lib advapi32.lib iphlpapi.lib winmm.lib dnsapi.lib pdh.lib winhttp.lib
-set COMMON_SRCS=src\prelude.c src\bind.c src\dap.c src\aot.c src\ast.c src\compiler.c src\cross.c src\crypto_custom.c src\jitllvm.c src\jitqbe.c src\jitx64.c src\learning.c src\lexer.c src\parser.c src\pkg.c src\value.c src\vm.c src\typer.c src\staticcodegen.c src\wasmcodegen.c src\nostdcodegen.c src\bench.c
-set COMMON_OBJS=src\prelude.obj src\bind.obj src\dap.obj src\aot.obj src\ast.obj src\compiler.obj src\cross.obj src\crypto_custom.obj src\jitllvm.obj src\jitqbe.obj src\jitx64.obj src\learning.obj src\lexer.obj src\parser.obj src\pkg.obj src\value.obj src\vm.obj src\typer.obj src\staticcodegen.obj src\wasmcodegen.obj src\nostdcodegen.obj src\bench.obj
+set COMMON_SRCS=src\prelude.c src\bind.c src\dap.c src\aot.c src\ast.c src\compiler.c src\cross.c src\crypto_custom.c src\jitllvm.c src\jitqbe.c src\jitx64.c src\jitarm64.c src\learning.c src\lexer.c src\parser.c src\pkg.c src\value.c src\vm.c src\typer.c src\staticcodegen.c src\wasmcodegen.c src\nostdcodegen.c src\bench.c
+set COMMON_OBJS=src\prelude.obj src\bind.obj src\dap.obj src\aot.obj src\ast.obj src\compiler.obj src\cross.obj src\crypto_custom.obj src\jitllvm.obj src\jitqbe.obj src\jitx64.obj src\jitarm64.obj src\learning.obj src\lexer.obj src\parser.obj src\pkg.obj src\value.obj src\vm.obj src\typer.obj src\staticcodegen.obj src\wasmcodegen.obj src\nostdcodegen.obj src\bench.obj
 
 echo Compiling shared runtime objects...
 cl.exe %CFLAGS% /c /Fosrc\ %COMMON_SRCS%
