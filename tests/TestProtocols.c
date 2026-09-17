@@ -19,7 +19,11 @@ static void send_lsp_msg(HANDLE hWr, int id, const char *method, const char *par
             body_len = snprintf(body, sizeof(body), "{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"%s\"}", id, method);
         }
     } else {
-        body_len = snprintf(body, sizeof(body), "{\"jsonrpc\":\"2.0\",\"method\":\"%s\"}", method);
+        if (params) {
+            body_len = snprintf(body, sizeof(body), "{\"jsonrpc\":\"2.0\",\"method\":\"%s\",\"params\":%s}", method, params);
+        } else {
+            body_len = snprintf(body, sizeof(body), "{\"jsonrpc\":\"2.0\",\"method\":\"%s\"}", method);
+        }
     }
     char hdr[128];
     int hdr_len = snprintf(hdr, sizeof(hdr), "Content-Length: %d\r\n\r\n", body_len);
@@ -68,17 +72,24 @@ static int test_lsp(void) {
     send_lsp_msg(hChildStd_IN_Wr, 1, "initialize", "{}");
     send_lsp_msg(hChildStd_IN_Wr, 2, "textDocument/didOpen", "{\"textDocument\":{\"uri\":\"file:///test.aks\",\"languageId\":\"aks\",\"version\":1,\"text\":\"let a = 10;\"}}");
     send_lsp_msg(hChildStd_IN_Wr, 3, "textDocument/hover", "{\"textDocument\":{\"uri\":\"file:///test.aks\"},\"position\":{\"line\":0,\"character\":4}}");
-    send_lsp_msg(hChildStd_IN_Wr, 4, "shutdown", "{}");
+    // Test borrow checker multi-span diagnostic publication
+    send_lsp_msg(hChildStd_IN_Wr, 0, "textDocument/didOpen", "{\"textDocument\":{\"uri\":\"file:///borrow_err.aks\",\"languageId\":\"aks\",\"version\":1,\"text\":\"let x = \\\"str\\\";\\nlet y = x;\\nprint(x);\"}}");
+    // Test quick-fix code actions
+    send_lsp_msg(hChildStd_IN_Wr, 4, "textDocument/codeAction", "{\"textDocument\":{\"uri\":\"file:///borrow_err.aks\"},\"range\":{\"start\":{\"line\":2,\"character\":0},\"end\":{\"line\":2,\"character\":8}},\"context\":{\"diagnostics\":[{\"code\":\"E0382\",\"message\":\"use of moved value: `x`\"}]}}");
+    send_lsp_msg(hChildStd_IN_Wr, 5, "shutdown", "{}");
     send_lsp_msg(hChildStd_IN_Wr, 0, "exit", NULL);
     CloseHandle(hChildStd_IN_Wr);
 
+    char full_output[65536];
+    full_output[0] = '\0';
+    int total_bytes = 0;
     char buffer[4096];
     DWORD bytesRead;
-    int got_init_response = 0;
     while (ReadFile(hChildStd_OUT_Rd, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
         buffer[bytesRead] = '\0';
-        if (strstr(buffer, "capabilities") != NULL || strstr(buffer, "\"id\":1") != NULL) {
-            got_init_response = 1;
+        if (total_bytes + (int)bytesRead < (int)sizeof(full_output) - 1) {
+            strcat(full_output, buffer);
+            total_bytes += (int)bytesRead;
         }
     }
     CloseHandle(hChildStd_OUT_Rd);
@@ -87,12 +98,21 @@ static int test_lsp(void) {
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
-    if (got_init_response) {
+    int got_init_response = (strstr(full_output, "capabilities") != NULL || strstr(full_output, "\"id\":1") != NULL);
+    int got_diag = (strstr(full_output, "publishDiagnostics") != NULL && strstr(full_output, "E0382") != NULL);
+    int got_related = (strstr(full_output, "relatedInformation") != NULL);
+    int got_code_action = (strstr(full_output, "quickfix") != NULL && strstr(full_output, "Borrow value") != NULL);
+
+    if (got_init_response && got_diag && got_related && got_code_action) {
         printf("  LSP initialize capabilities & response: PASS\n");
+        printf("  LSP multi-span borrow diagnostics (E0382): PASS\n");
+        printf("  LSP DiagnosticRelatedInformation move spans: PASS\n");
+        printf("  LSP Quick-Fix Code Actions (Borrow / Clone): PASS\n");
         printf("All LSP TESTS PASSED SUCCESSFULLY!\n");
         return 0;
     } else {
-        printf("FAIL: No valid LSP response received.\n");
+        printf("FAIL: LSP response missing expected fields:\n");
+        printf("  init=%d, diag=%d, related=%d, codeAction=%d\n", got_init_response, got_diag, got_related, got_code_action);
         return 1;
     }
 }

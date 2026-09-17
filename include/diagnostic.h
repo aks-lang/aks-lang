@@ -31,6 +31,9 @@ typedef struct {
     char help[256];
 } Diagnostic;
 
+typedef void (*DiagnosticHandler)(const Diagnostic *d, void *userdata);
+void DiagnosticSetHandler(DiagnosticHandler handler, void *userdata);
+
 void DiagnosticInit(Diagnostic *d, DiagnosticLevel level, const char *code, const char *message);
 void DiagnosticAddSpan(Diagnostic *d, const char *file, int line, int col, int length, const char *label, int is_primary);
 void DiagnosticSetNote(Diagnostic *d, const char *note);

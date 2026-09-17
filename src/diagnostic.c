@@ -88,8 +88,20 @@ static char *GetLineFromFile(const char *path, int target_line) {
     return result;
 }
 
+static DiagnosticHandler g_diag_handler = NULL;
+static void *g_diag_userdata = NULL;
+
+void DiagnosticSetHandler(DiagnosticHandler handler, void *userdata) {
+    g_diag_handler = handler;
+    g_diag_userdata = userdata;
+}
+
 void DiagnosticEmit(const Diagnostic *d) {
     if (!d) return;
+    if (g_diag_handler) {
+        g_diag_handler(d, g_diag_userdata);
+        return;
+    }
     int color = SupportsAnsiColor();
 
     const char *c_reset   = color ? "\033[0m" : "";

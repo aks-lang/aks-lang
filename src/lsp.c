@@ -18,6 +18,8 @@
 #include "lexer.h"
 #include "ast.h"
 #include "parser.h"
+#include "compiler.h"
+#include "diagnostic.h"
 
 const char *gProgramName = "aksls.exe";
 int gJitMode = 0;
@@ -477,14 +479,48 @@ static int LSPReadExact(char *buf, int len) {
     return total;
 }
 
+static void EscapeJson(const char *in, char *out, size_t outsize) {
+    if (!out || outsize == 0) return;
+    out[0] = '\0';
+    if (!in) return;
+    size_t j = 0;
+    for (size_t i = 0; in[i] && j + 2 < outsize; i++) {
+        unsigned char ch = (unsigned char)in[i];
+        if (ch == '"') {
+            if (j + 2 >= outsize) break;
+            out[j++] = '\\'; out[j++] = '"';
+        } else if (ch == '\\') {
+            if (j + 2 >= outsize) break;
+            out[j++] = '\\'; out[j++] = '\\';
+        } else if (ch == '\n') {
+            if (j + 2 >= outsize) break;
+            out[j++] = '\\'; out[j++] = 'n';
+        } else if (ch == '\r') {
+            if (j + 2 >= outsize) break;
+            out[j++] = '\\'; out[j++] = 'r';
+        } else if (ch == '\t') {
+            if (j + 2 >= outsize) break;
+            out[j++] = '\\'; out[j++] = 't';
+        } else if (ch < 32) {
+            // skip unprintable control chars
+        } else {
+            out[j++] = ch;
+        }
+    }
+    out[j] = '\0';
+}
+
 // Json-rpc messaging output
 static void SendNotification(const char *method, const char *params_json) {
-    char body[4096];
-    int body_len = snprintf(body, sizeof(body), "{\"jsonrpc\":\"2.0\",\"method\":\"%s\",\"params\":%s}", method, params_json);
+    size_t needed = strlen(method) + (params_json ? strlen(params_json) : 4) + 128;
+    char *body = malloc(needed);
+    if (!body) return;
+    int body_len = snprintf(body, needed, "{\"jsonrpc\":\"2.0\",\"method\":\"%s\",\"params\":%s}", method, params_json ? params_json : "null");
     char hdr[64];
     int hdr_len = snprintf(hdr, sizeof(hdr), "Content-Length: %d\r\n\r\n", body_len);
     LSPWrite(hdr, hdr_len);
     LSPWrite(body, body_len);
+    free(body);
 }
 
 static void SendResponse(JsonValue *id, const char *result_json) {
@@ -493,52 +529,113 @@ static void SendResponse(JsonValue *id, const char *result_json) {
         if (id->type == JSON_NUMBER) snprintf(id_str, sizeof(id_str), "%.0f", id->number);
         else if (id->type == JSON_STRING) snprintf(id_str, sizeof(id_str), "\"%s\"", id->string);
     }
-    char body[8192];
-    int body_len = snprintf(body, sizeof(body), "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":%s}", id_str, result_json);
+    size_t needed = strlen(id_str) + (result_json ? strlen(result_json) : 4) + 128;
+    char *body = malloc(needed);
+    if (!body) return;
+    int body_len = snprintf(body, needed, "{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":%s}", id_str, result_json ? result_json : "null");
     char hdr[64];
     int hdr_len = snprintf(hdr, sizeof(hdr), "Content-Length: %d\r\n\r\n", body_len);
     LSPWrite(hdr, hdr_len);
     LSPWrite(body, body_len);
+    free(body);
 }
 
-// Capture & report syntax diagnostics
+typedef struct {
+    DiagnosticLevel level;
+    char code[32];
+    char message[512];
+    int line;
+    int col;
+    int length;
+    char source[32];
+    DiagnosticSpan related_spans[8];
+    int related_span_count;
+} LspCollectedDiag;
+
+typedef struct {
+    LspCollectedDiag items[64];
+    int count;
+    const char *uri;
+} LspDiagContext;
+
+static void LspDiagHandler(const Diagnostic *d, void *userdata) {
+    LspDiagContext *ctx = (LspDiagContext *)userdata;
+    if (!ctx || ctx->count >= 64 || !d) return;
+
+    LspCollectedDiag *item = &ctx->items[ctx->count++];
+    memset(item, 0, sizeof(LspCollectedDiag));
+    item->level = d->level;
+    strncpy(item->code, d->code[0] ? d->code : "E0000", sizeof(item->code) - 1);
+    strncpy(item->message, d->message, sizeof(item->message) - 1);
+    if (d->note[0]) {
+        size_t cur_len = strlen(item->message);
+        snprintf(item->message + cur_len, sizeof(item->message) - cur_len, "\nNote: %s", d->note);
+    }
+    if (d->help[0]) {
+        size_t cur_len = strlen(item->message);
+        snprintf(item->message + cur_len, sizeof(item->message) - cur_len, "\nHelp: %s", d->help);
+    }
+    item->line = 1;
+    item->col = 1;
+    item->length = 1;
+    strncpy(item->source, "aks", sizeof(item->source) - 1);
+    item->related_span_count = 0;
+
+    int found_primary = 0;
+    for (int i = 0; i < d->span_count; i++) {
+        if (d->spans[i].is_primary) {
+            item->line = d->spans[i].line > 0 ? d->spans[i].line : 1;
+            item->col = d->spans[i].col > 0 ? d->spans[i].col : 1;
+            item->length = d->spans[i].length > 0 ? d->spans[i].length : 1;
+            found_primary = 1;
+        } else {
+            if (item->related_span_count < 8) {
+                item->related_spans[item->related_span_count++] = d->spans[i];
+            }
+        }
+    }
+    if (!found_primary && d->span_count > 0) {
+        item->line = d->spans[0].line > 0 ? d->spans[0].line : 1;
+        item->col = d->spans[0].col > 0 ? d->spans[0].col : 1;
+        item->length = d->spans[0].length > 0 ? d->spans[0].length : 1;
+    }
+}
+
+// Capture & report syntax and semantic diagnostics
 static void CheckDiagnostics(const char *uri, const char *text) {
     SymsClear();
-    
-    // Redirect stderr to a capture file
+
     char cap_path[MAX_PATH];
 #ifdef _WIN32
     GetTempPathA(sizeof(cap_path), cap_path);
-    strcat(cap_path, "aksls_stderr.txt");
+    snprintf(cap_path + strlen(cap_path), sizeof(cap_path) - strlen(cap_path), "aksls_stderr_%lu.txt", GetCurrentProcessId());
 #else
-    strcpy(cap_path, "/tmp/aksls_stderr.txt");
+    snprintf(cap_path, sizeof(cap_path), "/tmp/aksls_stderr_%lu.txt", (unsigned long)getpid());
 #endif
-    
+
     int orig_stderr = _dup(2);
     FILE *cap_file = fopen(cap_path, "w");
     if (cap_file) {
         _dup2(_fileno(cap_file), 2);
         fclose(cap_file);
     }
-    
+
+    LspDiagContext diag_ctx;
+    memset(&diag_ctx, 0, sizeof(diag_ctx));
+    diag_ctx.uri = uri;
+    DiagnosticSetHandler(LspDiagHandler, &diag_ctx);
+
     int had_error = 0;
     Node *prog = Parse(text, &had_error);
-    
-    // Restore stderr
-    fflush(stderr);
-    _dup2(orig_stderr, 2);
-    _close(orig_stderr);
-    
-    char diag_json[4096] = "[]";
+
     if (had_error) {
-        // Read capture file to extract error
+        fflush(stderr);
         FILE *err_in = fopen(cap_path, "r");
         if (err_in) {
             char line_buf[512];
             int line_num = 1;
             char msg[512] = "Syntax error";
             while (fgets(line_buf, sizeof(line_buf), err_in)) {
-                // Syntax error on line %d: %s
                 int parsed_line = -1;
                 char parsed_msg[512];
                 if (sscanf(line_buf, "Syntax error on line %d: %[^\r\n]", &parsed_line, parsed_msg) == 2) {
@@ -548,22 +645,154 @@ static void CheckDiagnostics(const char *uri, const char *text) {
                 }
             }
             fclose(err_in);
-            
-            // Format single diagnostic
-            snprintf(diag_json, sizeof(diag_json),
-                     "[{\"range\":{\"start\":{\"line\":%d,\"character\":0},\"end\":{\"line\":%d,\"character\":80}},"
-                     "\"severity\":1,\"message\":\"%s\"}]",
-                     line_num - 1, line_num - 1, msg);
+
+            if (diag_ctx.count < 64) {
+                LspCollectedDiag *item = &diag_ctx.items[diag_ctx.count++];
+                memset(item, 0, sizeof(LspCollectedDiag));
+                item->level = DIAG_ERROR;
+                strncpy(item->code, "E0001", sizeof(item->code) - 1);
+                strncpy(item->message, msg, sizeof(item->message) - 1);
+                item->line = line_num > 0 ? line_num : 1;
+                item->col = 1;
+                item->length = 80;
+                strncpy(item->source, "aks", sizeof(item->source) - 1);
+            }
         }
     } else if (prog) {
         WalkAST(prog, text);
+
+        int prev_borrow = gBorrowCheckerEnabled;
+        int prev_type = gTypeCheckingEnabled;
+        gBorrowCheckerEnabled = 1;
+        gTypeCheckingEnabled = 1;
+
+        Compiler *c = CompNew();
+        if (c) {
+            if (uri) strncpy(c->currentfilepath, uri, sizeof(c->currentfilepath) - 1);
+            c->borrow_checker_enabled = 1;
+            c->type_checking_enabled = 1;
+            CompCompile(c, prog);
+            CompFree(c);
+        }
+
+        gBorrowCheckerEnabled = prev_borrow;
+        gTypeCheckingEnabled = prev_type;
+
+        fflush(stderr);
+        FILE *err_in = fopen(cap_path, "r");
+        if (err_in) {
+            char line_buf[512];
+            while (fgets(line_buf, sizeof(line_buf), err_in)) {
+                int parsed_line = -1;
+                char parsed_msg[512];
+                if (sscanf(line_buf, "Compiler error in '%*[^']' on line %d: %[^\r\n]", &parsed_line, parsed_msg) == 2 ||
+                    sscanf(line_buf, "Compiler error on line %d: %[^\r\n]", &parsed_line, parsed_msg) == 2) {
+                    int already = 0;
+                    for (int d = 0; d < diag_ctx.count; d++) {
+                        if (diag_ctx.items[d].line == parsed_line) {
+                            already = 1;
+                            break;
+                        }
+                    }
+                    if (!already && diag_ctx.count < 64) {
+                        LspCollectedDiag *item = &diag_ctx.items[diag_ctx.count++];
+                        memset(item, 0, sizeof(LspCollectedDiag));
+                        item->level = DIAG_ERROR;
+                        strncpy(item->code, "E0002", sizeof(item->code) - 1);
+                        strncpy(item->message, parsed_msg, sizeof(item->message) - 1);
+                        item->line = parsed_line > 0 ? parsed_line : 1;
+                        item->col = 1;
+                        item->length = 1;
+                        strncpy(item->source, "aks", sizeof(item->source) - 1);
+                    }
+                }
+            }
+            fclose(err_in);
+        }
     }
+
     if (prog) NodeFree(prog);
+
+    DiagnosticSetHandler(NULL, NULL);
+    fflush(stderr);
+    _dup2(orig_stderr, 2);
+    _close(orig_stderr);
     remove(cap_path);
-    
-    char notification_buf[8192];
-    snprintf(notification_buf, sizeof(notification_buf), "{\"uri\":\"%s\",\"diagnostics\":%s}", uri, diag_json);
-    SendNotification("textDocument/publishDiagnostics", notification_buf);
+
+    size_t diag_cap = 16384;
+    char *diag_json = malloc(diag_cap);
+    if (!diag_json) return;
+    strcpy(diag_json, "[");
+    size_t diag_len = 1;
+
+    for (int i = 0; i < diag_ctx.count; i++) {
+        LspCollectedDiag *item = &diag_ctx.items[i];
+        char esc_msg[2048];
+        EscapeJson(item->message, esc_msg, sizeof(esc_msg));
+        char esc_code[64];
+        EscapeJson(item->code, esc_code, sizeof(esc_code));
+
+        int start_line = item->line > 0 ? item->line - 1 : 0;
+        int start_char = item->col > 0 ? item->col - 1 : 0;
+        int end_line = start_line;
+        int end_char = start_char + (item->length > 0 ? item->length : 1);
+
+        int severity = 1;
+        if (item->level == DIAG_WARNING) severity = 2;
+        else if (item->level == DIAG_NOTE) severity = 3;
+        else if (item->level == DIAG_HELP) severity = 4;
+
+        char rel_json[4096] = "";
+        if (item->related_span_count > 0) {
+            strcat(rel_json, ",\"relatedInformation\":[");
+            for (int r = 0; r < item->related_span_count; r++) {
+                DiagnosticSpan *span = &item->related_spans[r];
+                int r_start_line = span->line > 0 ? span->line - 1 : 0;
+                int r_start_char = span->col > 0 ? span->col - 1 : 0;
+                int r_end_line = r_start_line;
+                int r_end_char = r_start_char + (span->length > 0 ? span->length : 1);
+                const char *r_uri = (span->file[0] != '\0') ? span->file : uri;
+                char esc_label[512];
+                EscapeJson(span->label, esc_label, sizeof(esc_label));
+
+                char rel_entry[1024];
+                snprintf(rel_entry, sizeof(rel_entry),
+                         "%s{\"location\":{\"uri\":\"%s\",\"range\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}}},\"message\":\"%s\"}",
+                         r > 0 ? "," : "",
+                         r_uri, r_start_line, r_start_char, r_end_line, r_end_char, esc_label);
+                strcat(rel_json, rel_entry);
+            }
+            strcat(rel_json, "]");
+        }
+
+        char item_json[8192];
+        snprintf(item_json, sizeof(item_json),
+                 "%s{\"range\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}},"
+                 "\"severity\":%d,\"code\":\"%s\",\"source\":\"aks\",\"message\":\"%s\"%s}",
+                 i > 0 ? "," : "",
+                 start_line, start_char, end_line, end_char,
+                 severity, esc_code, esc_msg, rel_json);
+
+        size_t item_len = strlen(item_json);
+        if (diag_len + item_len + 16 > diag_cap) {
+            diag_cap = (diag_len + item_len + 16) * 2;
+            char *new_buf = realloc(diag_json, diag_cap);
+            if (!new_buf) break;
+            diag_json = new_buf;
+        }
+        strcat(diag_json, item_json);
+        diag_len += item_len;
+    }
+    strcat(diag_json, "]");
+
+    size_t notif_len = strlen(uri) + strlen(diag_json) + 64;
+    char *notification_buf = malloc(notif_len);
+    if (notification_buf) {
+        snprintf(notification_buf, notif_len, "{\"uri\":\"%s\",\"diagnostics\":%s}", uri, diag_json);
+        SendNotification("textDocument/publishDiagnostics", notification_buf);
+        free(notification_buf);
+    }
+    free(diag_json);
 }
 
 // LSP handlers
@@ -761,20 +990,89 @@ static void HandleRename(JsonValue *id, const char *uri, int line, int character
     SendResponse(id, edits);
 }
 
-static void HandleCodeAction(JsonValue *id, const char *uri, int line, const char *msg) {
-    // Quick Fix: if missing semicolon, suggest adding one
-    if (msg && strstr(msg, "expected ';'") != NULL) {
-        char action[2048];
-        snprintf(action, sizeof(action),
-                 "[{\"title\":\"Add missing semicolon ';'\","
-                 "\"kind\":\"quickfix\","
-                 "\"edit\":{\"changes\":{\"%s\":["
-                 "{\"range\":{\"start\":{\"line\":%d,\"character\":80},\"end\":{\"line\":%d,\"character\":80}},\"newText\":\";\"}"
-                 "]}}}]", uri, line, line);
-        SendResponse(id, action);
-    } else {
-        SendResponse(id, "[]");
+static void HandleCodeAction(JsonValue *id, const char *uri, int line, JsonValue *diags_arr) {
+    char actions[4096] = "[";
+    int action_count = 0;
+
+    int num_diags = (diags_arr && diags_arr->type == JSON_ARRAY) ? diags_arr->array.count : 0;
+    for (int d = 0; d < num_diags; d++) {
+        JsonValue *diag_item = diags_arr->array.items[d];
+        const char *msg = JSONGetStr(diag_item, "message");
+        const char *code = JSONGetStr(diag_item, "code");
+
+        // 1. Missing semicolon
+        if ((code && strcmp(code, "E0001") == 0 && msg && strstr(msg, "expected ';'") != NULL) ||
+            (msg && strstr(msg, "expected ';'") != NULL)) {
+            if (action_count++ > 0) strcat(actions, ",");
+            char act[512];
+            snprintf(act, sizeof(act),
+                     "{\"title\":\"Add missing semicolon ';'\","
+                     "\"kind\":\"quickfix\","
+                     "\"isPreferred\":true,"
+                     "\"edit\":{\"changes\":{\"%s\":["
+                     "{\"range\":{\"start\":{\"line\":%d,\"character\":80},\"end\":{\"line\":%d,\"character\":80}},\"newText\":\";\"}"
+                     "]}}}", uri ? uri : "", line, line);
+            strcat(actions, act);
+        }
+
+        // 2. Use of moved value (E0382)
+        if ((code && strcmp(code, "E0382") == 0) || (msg && strstr(msg, "use of moved value") != NULL)) {
+            if (action_count++ > 0) strcat(actions, ",");
+            char act1[512];
+            snprintf(act1, sizeof(act1),
+                     "{\"title\":\"Borrow value with '&' to prevent transfer of ownership\","
+                     "\"kind\":\"quickfix\","
+                     "\"isPreferred\":true,"
+                     "\"edit\":{\"changes\":{\"%s\":["
+                     "{\"range\":{\"start\":{\"line\":%d,\"character\":0},\"end\":{\"line\":%d,\"character\":0}},\"newText\":\"// suggestion: borrow with '&'\\n\"}"
+                     "]}}}", uri ? uri : "", line, line);
+            strcat(actions, act1);
+
+            if (action_count++ > 0) strcat(actions, ",");
+            char act2[512];
+            snprintf(act2, sizeof(act2),
+                     "{\"title\":\"Clone value with '.clone()'\","
+                     "\"kind\":\"quickfix\","
+                     "\"isPreferred\":false}");
+            strcat(actions, act2);
+        }
+
+        // 3. Mutable borrow / immutable assignment error (E0596)
+        if ((code && strcmp(code, "E0596") == 0) || (msg && strstr(msg, "cannot borrow") && strstr(msg, "mutable"))) {
+            if (action_count++ > 0) strcat(actions, ",");
+            char act[512];
+            snprintf(act, sizeof(act),
+                     "{\"title\":\"Make variable mutable: 'let mut'\","
+                     "\"kind\":\"quickfix\","
+                     "\"isPreferred\":true}");
+            strcat(actions, act);
+        }
+
+        // 4. Mismatched types (E0308)
+        if ((code && strcmp(code, "E0308") == 0) || (msg && strstr(msg, "mismatched types") != NULL)) {
+            if (action_count++ > 0) strcat(actions, ",");
+            char act[512];
+            snprintf(act, sizeof(act),
+                     "{\"title\":\"Add explicit type cast or conversion\","
+                     "\"kind\":\"quickfix\","
+                     "\"isPreferred\":true}");
+            strcat(actions, act);
+        }
+
+        // 5. Non-exhaustive match patterns (E0004)
+        if ((code && strcmp(code, "E0004") == 0) || (msg && strstr(msg, "non-exhaustive") != NULL)) {
+            if (action_count++ > 0) strcat(actions, ",");
+            char act[512];
+            snprintf(act, sizeof(act),
+                     "{\"title\":\"Add wildcard pattern arm: '_ => { ... }'\","
+                     "\"kind\":\"quickfix\","
+                     "\"isPreferred\":true}");
+            strcat(actions, act);
+        }
     }
+
+    strcat(actions, "]");
+    SendResponse(id, actions);
 }
 
 static void HandleSemanticTokens(JsonValue *id, const char *uri) {
@@ -911,14 +1209,14 @@ int main() {
                     const char *uri = JSONGetStr(doc_obj, "uri");
                     JsonValue *range_obj = JSONGet(params, "range");
                     JsonValue *start_obj = JSONGet(range_obj, "start");
-                    int line = (int)JSONGet(start_obj, "line")->number;
+                    int line = 0;
+                    if (start_obj) {
+                        JsonValue *line_v = JSONGet(start_obj, "line");
+                        if (line_v && line_v->type == JSON_NUMBER) line = (int)line_v->number;
+                    }
                     JsonValue *context_obj = JSONGet(params, "context");
                     JsonValue *diags_arr = JSONGet(context_obj, "diagnostics");
-                    const char *msg = NULL;
-                    if (diags_arr && diags_arr->type == JSON_ARRAY && diags_arr->array.count > 0) {
-                        msg = JSONGetStr(diags_arr->array.items[0], "message");
-                    }
-                    HandleCodeAction(id, uri, line, msg);
+                    HandleCodeAction(id, uri, line, diags_arr);
                 } else if (strcmp(method, "textDocument/semanticTokens/full") == 0) {
                     JsonValue *doc_obj = JSONGet(params, "textDocument");
                     const char *uri = JSONGetStr(doc_obj, "uri");
