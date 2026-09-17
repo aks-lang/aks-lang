@@ -6,6 +6,7 @@
 #include "parser.h"
 #include "vm.h"
 #include "pkg.h"
+#include "diagnostic.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -2686,6 +2687,18 @@ static void EmitExpr(Compiler *c, Node *n) {
             int slot=ResolveLocal(c,n->sval);
             if(slot>=0){
                 if (c->borrow_checker_enabled && c->current->locals[slot].ismoved) {
+                    Diagnostic diag;
+                    char dmsg[256];
+                    snprintf(dmsg, sizeof(dmsg), "use of moved value: `%s`", n->sval);
+                    DiagnosticInit(&diag, DIAG_ERROR, "E0382", dmsg);
+                    const char *srcfile = (c && c->currentfilepath[0]) ? c->currentfilepath : "";
+                    if (srcfile[0] != '\0' && n->line > 0) {
+                        DiagnosticAddSpan(&diag, srcfile, n->line, 1, (int)strlen(n->sval), "value used here after move", 1);
+                    }
+                    DiagnosticSetNote(&diag, "value was moved because it does not implement the `Copy` trait");
+                    DiagnosticSetHelp(&diag, "consider cloning the value or borrowing it with `&` instead of transferring ownership");
+                    DiagnosticEmit(&diag);
+
                     char buf[256];
                     snprintf(buf, sizeof(buf), "UseOfMovedValueError: use of moved value '%s'", n->sval);
                     Error(c, n->line, buf);
@@ -9310,6 +9323,27 @@ void ExitScopeBorrows(Compiler *c, int depth) {
     g_borrow_count = write;
 }
 
+static int GetDeclaredLine(Node *n, const char *varname) {
+    if (!n || !varname) return 0;
+    if ((n->type == NVARDECL || n->type == NCONSTDECL) && strcmp(n->decl.name, varname) == 0) {
+        return n->line;
+    }
+    if (n->type == NFNDECL) {
+        for (int i = 0; i < n->fn.pc; i++) {
+            if (n->fn.pnames[i] && strcmp(n->fn.pnames[i], varname) == 0) {
+                return n->line;
+            }
+        }
+    }
+    if (n->type == NBLOCK || n->type == NPROGRAM) {
+        for (int i = 0; i < n->block.count; i++) {
+            int line = GetDeclaredLine(n->block.stmts[i], varname);
+            if (line > 0) return line;
+        }
+    }
+    return 0;
+}
+
 static void CheckConflicts(Compiler *c, Node *n, const char *borrowedvar, int startline, int endline, int ismutborrow, const char *borrowvar) {
     if (!n) return;
     if (n->line >= startline && n->line <= endline) {
@@ -9318,6 +9352,20 @@ static void CheckConflicts(Compiler *c, Node *n, const char *borrowedvar, int st
             while (target->type == NMEMBER) target = target->member.obj;
             while (target->type == NINDEX) target = target->index.arr;
             if (target->type == NIDENT && strcmp(target->sval, borrowedvar) == 0) {
+                Diagnostic diag;
+                char dmsg[256];
+                snprintf(dmsg, sizeof(dmsg), "cannot mutate `%s` while it is immutably borrowed", borrowedvar);
+                DiagnosticInit(&diag, DIAG_ERROR, "E0596", dmsg);
+                const char *srcfile = (c && c->currentfilepath[0]) ? c->currentfilepath : "";
+                if (startline > 0 && startline != n->line) {
+                    DiagnosticAddSpan(&diag, srcfile, startline, 1, (int)strlen(borrowvar), "immutable borrow occurs here", 0);
+                }
+                DiagnosticAddSpan(&diag, srcfile, n->line, 1, (int)strlen(borrowedvar), "assignment to borrowed variable occurs here", 1);
+                char dnote[256];
+                snprintf(dnote, sizeof(dnote), "consider releasing borrow of `%s` before mutating it", borrowedvar);
+                DiagnosticSetNote(&diag, dnote);
+                DiagnosticEmit(&diag);
+
                 char buf[512];
                 snprintf(buf, sizeof(buf),
                     "error[E0596]: Cannot mutate `%s` while it is immutably borrowed\n"
@@ -9342,8 +9390,28 @@ static void CheckConflicts(Compiler *c, Node *n, const char *borrowedvar, int st
                 if (operand && operand->type == NIDENT && strcmp(operand->sval, borrowedvar) == 0) {
                     int otherismut = (init->type == NMUTREF) || (init->type == NUNOP && !strcmp(init->binop.op, "&mut"));
                     if ((ismutborrow || otherismut) && strcmp(n->decl.name, borrowvar) != 0) {
-                        char buf[1024];
                         const char *code_code = otherismut ? "E0499" : "E0502";
+                        Diagnostic diag;
+                        char dmsg[256];
+                        if (ismutborrow && otherismut) {
+                            snprintf(dmsg, sizeof(dmsg), "cannot borrow `%s` as mutable more than once at a time", borrowedvar);
+                        } else {
+                            snprintf(dmsg, sizeof(dmsg), "cannot borrow `%s` mutably while it's immutably borrowed", borrowedvar);
+                        }
+                        DiagnosticInit(&diag, DIAG_ERROR, code_code, dmsg);
+                        const char *srcfile = (c && c->currentfilepath[0]) ? c->currentfilepath : "";
+                        if (startline > 0 && startline != n->line) {
+                            char lbuf[128];
+                            snprintf(lbuf, sizeof(lbuf), "%s borrow occurs here", ismutborrow ? "mutable" : "immutable");
+                            DiagnosticAddSpan(&diag, srcfile, startline, 1, (int)strlen(borrowvar), lbuf, 0);
+                        }
+                        char lbuf2[128];
+                        snprintf(lbuf2, sizeof(lbuf2), "%s borrow occurs here", otherismut ? "mutable" : "immutable");
+                        DiagnosticAddSpan(&diag, srcfile, n->line, 1, (int)strlen(n->decl.name), lbuf2, 1);
+                        DiagnosticSetHelp(&diag, "restructure code to use borrows in separate scopes");
+                        DiagnosticEmit(&diag);
+
+                        char buf[1024];
                         snprintf(buf, sizeof(buf),
                             "error[%s]: Cannot borrow `%s` mutably while it's immutably borrowed\n"
                             "  --> line %d\n"
@@ -9540,26 +9608,45 @@ static int IsDeclaredLocal(Node *n, const char *varname) {
     return 0;
 }
 
-static char g_moved_vars[128][128];
+typedef struct {
+    char name[128];
+    int move_line;
+    char target[128];
+} MovedVarEntry;
+
+static MovedVarEntry g_moved_vars[128];
 static int g_moved_count = 0;
 
-static void RecordMove(const char *varname) {
+static void RecordMove(const char *varname, int line, const char *target) {
     if (!varname) return;
     for (int i = 0; i < g_moved_count; i++) {
-        if (!strcmp(g_moved_vars[i], varname)) return;
+        if (!strcmp(g_moved_vars[i].name, varname)) return;
     }
     if (g_moved_count < 128) {
-        strncpy(g_moved_vars[g_moved_count++], varname, 127);
+        strncpy(g_moved_vars[g_moved_count].name, varname, 127);
+        g_moved_vars[g_moved_count].name[127] = '\0';
+        g_moved_vars[g_moved_count].move_line = line;
+        strncpy(g_moved_vars[g_moved_count].target, target ? target : "", 127);
+        g_moved_vars[g_moved_count].target[127] = '\0';
+        g_moved_count++;
     }
+}
+
+static MovedVarEntry *GetMovedEntry(const char *varname) {
+    if (!varname) return NULL;
+    for (int i = 0; i < g_moved_count; i++) {
+        if (!strcmp(g_moved_vars[i].name, varname)) return &g_moved_vars[i];
+    }
+    return NULL;
 }
 
 static void RemoveMove(const char *varname) {
     if (!varname) return;
     int write_idx = 0;
     for (int i = 0; i < g_moved_count; i++) {
-        if (strcmp(g_moved_vars[i], varname) != 0) {
+        if (strcmp(g_moved_vars[i].name, varname) != 0) {
             if (write_idx != i) {
-                strncpy(g_moved_vars[write_idx], g_moved_vars[i], 127);
+                g_moved_vars[write_idx] = g_moved_vars[i];
             }
             write_idx++;
         }
@@ -9568,29 +9655,50 @@ static void RemoveMove(const char *varname) {
 }
 
 static int IsMoved(const char *varname) {
-    if (!varname) return 0;
-    for (int i = 0; i < g_moved_count; i++) {
-        if (!strcmp(g_moved_vars[i], varname)) return 1;
-    }
-    return 0;
+    return GetMovedEntry(varname) != NULL;
 }
 
 static void CheckBorrows(Compiler *c, Node *n, Node *root) {
     if (!n) return;
     if (n->type == NIDENT) {
         if (IsMoved(n->sval)) {
+            MovedVarEntry *entry = GetMovedEntry(n->sval);
+            int decl_line = GetDeclaredLine(root, n->sval);
+            int move_line = (entry && entry->move_line > 0) ? entry->move_line : (n->line > 1 ? n->line - 1 : 1);
+            const char *target = (entry && entry->target[0]) ? entry->target : "y";
+
+            Diagnostic diag;
+            char dmsg[256];
+            snprintf(dmsg, sizeof(dmsg), "use of moved value: `%s`", n->sval);
+            DiagnosticInit(&diag, DIAG_ERROR, "E0382", dmsg);
+
+            const char *srcfile = (c && c->currentfilepath[0]) ? c->currentfilepath : "";
+            if (decl_line > 0 && decl_line != move_line && decl_line != n->line) {
+                DiagnosticAddSpan(&diag, srcfile, decl_line, 1, (int)strlen(n->sval), "move occurs because variable does not implement `Copy`", 0);
+            }
+            if (move_line > 0 && move_line != n->line) {
+                DiagnosticAddSpan(&diag, srcfile, move_line, 1, 4, "value moved here", 0);
+            }
+            DiagnosticAddSpan(&diag, srcfile, n->line, 1, (int)strlen(n->sval), "value used here after move", 1);
+
+            char dnote[256];
+            snprintf(dnote, sizeof(dnote), "`%s` was moved because it does not implement the `Copy` trait", n->sval);
+            DiagnosticSetNote(&diag, dnote);
+            DiagnosticSetHelp(&diag, "consider cloning the value or borrowing it with `&` instead of transferring ownership");
+            DiagnosticEmit(&diag);
+
             char buf[512];
             snprintf(buf, sizeof(buf),
                 "error[E0382]: Use of moved value `%s`\n"
                 "  --> line %d\n"
                 "   |\n"
-                " %d | let y = %s;\n"
+                " %d | let %s = %s;\n"
                 "   | - value moved here\n"
-                " %d | print(%s);\n"
+                " %d | %s;\n"
                 "   | ^^^^^^ value used here after move\n"
                 "   |\n"
                 "note: `%s` was moved because it does not implement the `Copy` trait.",
-                n->sval, n->line, n->line - 1, n->sval, n->line, n->sval, n->sval);
+                n->sval, n->line, move_line, target, n->sval, n->line, n->sval, n->sval);
             Error(c, n->line, buf);
         }
     }
@@ -9668,6 +9776,19 @@ static void CheckBorrows(Compiler *c, Node *n, Node *root) {
                 if (slot >= 0) {
                     const char *typename = c->current->locals[slot].typename;
                     if (strchr(typename, '&') != NULL) {
+                        int decl_line = GetDeclaredLine(root, expr->sval);
+                        Diagnostic diag;
+                        char dmsg[256];
+                        snprintf(dmsg, sizeof(dmsg), "cannot return reference to local variable `%s`", expr->sval);
+                        DiagnosticInit(&diag, DIAG_ERROR, "E0515", dmsg);
+                        const char *srcfile = (c && c->currentfilepath[0]) ? c->currentfilepath : "";
+                        if (decl_line > 0 && decl_line != n->line) {
+                            DiagnosticAddSpan(&diag, srcfile, decl_line, 1, (int)strlen(expr->sval), "local variable declared here", 0);
+                        }
+                        DiagnosticAddSpan(&diag, srcfile, n->line, 1, 6, "returns a reference to data owned by the current function", 1);
+                        DiagnosticSetHelp(&diag, "functions cannot return references to data created within them; return an owned value instead");
+                        DiagnosticEmit(&diag);
+
                         char buf[256];
                         snprintf(buf, sizeof(buf), "LifetimeError: cannot return reference to local variable '%s'", expr->sval);
                         Error(c, n->line, buf);
@@ -9677,6 +9798,19 @@ static void CheckBorrows(Compiler *c, Node *n, Node *root) {
                 Node *operand = (expr->type == NREF || expr->type == NMUTREF) ? expr->refnode.expr : expr->binop.left;
                 if (operand && operand->type == NIDENT) {
                     if (IsDeclaredLocal(root, operand->sval) || ResolveLocal(c, operand->sval) >= 0) {
+                        int decl_line = GetDeclaredLine(root, operand->sval);
+                        Diagnostic diag;
+                        char dmsg[256];
+                        snprintf(dmsg, sizeof(dmsg), "cannot return reference to local variable `%s`", operand->sval);
+                        DiagnosticInit(&diag, DIAG_ERROR, "E0515", dmsg);
+                        const char *srcfile = (c && c->currentfilepath[0]) ? c->currentfilepath : "";
+                        if (decl_line > 0 && decl_line != n->line) {
+                            DiagnosticAddSpan(&diag, srcfile, decl_line, 1, (int)strlen(operand->sval), "local variable declared here", 0);
+                        }
+                        DiagnosticAddSpan(&diag, srcfile, n->line, 1, 6, "returns a reference to data owned by the current function", 1);
+                        DiagnosticSetHelp(&diag, "functions cannot return references to data created within them; return an owned value instead");
+                        DiagnosticEmit(&diag);
+
                         char buf[256];
                         snprintf(buf, sizeof(buf), "LifetimeError: cannot return reference to local variable '%s'", operand->sval);
                         Error(c, n->line, buf);
@@ -9721,7 +9855,7 @@ static void CheckBorrows(Compiler *c, Node *n, Node *root) {
                         !strcmp(srctype, "string")
                     );
                     if (is_movable) {
-                        RecordMove(n->decl.init->sval);
+                        RecordMove(n->decl.init->sval, n->line, n->decl.name);
                     }
                 }
             }
@@ -9760,30 +9894,30 @@ static void CheckBorrows(Compiler *c, Node *n, Node *root) {
             {
                 CheckBorrows(c, n->ifn.cond, root);
                 int count_before = g_moved_count;
-                char moved_then[128][128];
+                MovedVarEntry moved_then[128];
                 int count_then = 0;
-                char moved_els[128][128];
+                MovedVarEntry moved_els[128];
                 int count_els = 0;
 
                 CheckBorrows(c, n->ifn.then, root);
                 count_then = g_moved_count - count_before;
-                for (int i = 0; i < count_then; i++) {
-                    strncpy(moved_then[i], g_moved_vars[count_before + i], 127);
+                for (int i = 0; i < count_then && i < 128; i++) {
+                    moved_then[i] = g_moved_vars[count_before + i];
                 }
 
                 if (n->ifn.els) {
                     g_moved_count = count_before;
                     CheckBorrows(c, n->ifn.els, root);
                     count_els = g_moved_count - count_before;
-                    for (int i = 0; i < count_els; i++) {
-                        strncpy(moved_els[i], g_moved_vars[count_before + i], 127);
+                    for (int i = 0; i < count_els && i < 128; i++) {
+                        moved_els[i] = g_moved_vars[count_before + i];
                     }
                     g_moved_count = count_before;
-                    for (int i = 0; i < count_then; i++) RecordMove(moved_then[i]);
-                    for (int i = 0; i < count_els; i++) RecordMove(moved_els[i]);
+                    for (int i = 0; i < count_then; i++) RecordMove(moved_then[i].name, moved_then[i].move_line, moved_then[i].target);
+                    for (int i = 0; i < count_els; i++) RecordMove(moved_els[i].name, moved_els[i].move_line, moved_els[i].target);
                 } else {
                     g_moved_count = count_before;
-                    for (int i = 0; i < count_then; i++) RecordMove(moved_then[i]);
+                    for (int i = 0; i < count_then; i++) RecordMove(moved_then[i].name, moved_then[i].move_line, moved_then[i].target);
                 }
             }
             break;
@@ -10870,6 +11004,18 @@ static void TypeCheckStmt(Compiler *c, TypeContext *ctx, Node *n, SymbolEnv *env
             if (n->decl.init) {
                 if (gBorrowCheckerEnabled && n->decl.init->type == NIDENT) {
                     if (GetEnvMoved(env, n->decl.init->sval)) {
+                        Diagnostic diag;
+                        char dmsg[256];
+                        snprintf(dmsg, sizeof(dmsg), "use of moved value: `%s`", n->decl.init->sval);
+                        DiagnosticInit(&diag, DIAG_ERROR, "E0382", dmsg);
+                        const char *srcfile = (c && c->currentfilepath[0]) ? c->currentfilepath : "";
+                        if (srcfile[0] != '\0' && n->line > 0) {
+                            DiagnosticAddSpan(&diag, srcfile, n->line, 1, (int)strlen(n->decl.init->sval), "value used here after move", 1);
+                        }
+                        DiagnosticSetNote(&diag, "value was moved because it does not implement the `Copy` trait");
+                        DiagnosticSetHelp(&diag, "consider cloning the value or borrowing it with `&` instead of transferring ownership");
+                        DiagnosticEmit(&diag);
+
                         char buf[256];
                         snprintf(buf, sizeof(buf), "UseOfMovedValueError: use of moved value '%s'", n->decl.init->sval);
                         Error(c, n->line, buf);
@@ -11039,6 +11185,18 @@ static void TypeCheckStmt(Compiler *c, TypeContext *ctx, Node *n, SymbolEnv *env
             char ValKind[128] = "any";
             if (gBorrowCheckerEnabled && n->assign.value->type == NIDENT) {
                 if (GetEnvMoved(env, n->assign.value->sval)) {
+                    Diagnostic diag;
+                    char dmsg[256];
+                    snprintf(dmsg, sizeof(dmsg), "use of moved value: `%s`", n->assign.value->sval);
+                    DiagnosticInit(&diag, DIAG_ERROR, "E0382", dmsg);
+                    const char *srcfile = (c && c->currentfilepath[0]) ? c->currentfilepath : "";
+                    if (srcfile[0] != '\0' && n->line > 0) {
+                        DiagnosticAddSpan(&diag, srcfile, n->line, 1, (int)strlen(n->assign.value->sval), "value used here after move", 1);
+                    }
+                    DiagnosticSetNote(&diag, "value was moved because it does not implement the `Copy` trait");
+                    DiagnosticSetHelp(&diag, "consider cloning the value or borrowing it with `&` instead of transferring ownership");
+                    DiagnosticEmit(&diag);
+
                     char buf[256];
                     snprintf(buf, sizeof(buf), "UseOfMovedValueError: use of moved value '%s'", n->assign.value->sval);
                     Error(c, n->line, buf);
@@ -11175,6 +11333,18 @@ static void NodeCheck(Compiler *c, TypeContext *ctx, Node *n, SymbolEnv *env, ch
             }
             if (gBorrowCheckerEnabled) {
                 if (GetEnvMoved(env, n->sval)) {
+                    Diagnostic diag;
+                    char dmsg[256];
+                    snprintf(dmsg, sizeof(dmsg), "use of moved value: `%s`", n->sval);
+                    DiagnosticInit(&diag, DIAG_ERROR, "E0382", dmsg);
+                    const char *srcfile = (c && c->currentfilepath[0]) ? c->currentfilepath : "";
+                    if (srcfile[0] != '\0' && n->line > 0) {
+                        DiagnosticAddSpan(&diag, srcfile, n->line, 1, (int)strlen(n->sval), "value used here after move", 1);
+                    }
+                    DiagnosticSetNote(&diag, "value was moved because it does not implement the `Copy` trait");
+                    DiagnosticSetHelp(&diag, "consider cloning the value or borrowing it with `&` instead of transferring ownership");
+                    DiagnosticEmit(&diag);
+
                     char buf[256];
                     snprintf(buf, sizeof(buf), "UseOfMovedValueError: use of moved value '%s'", n->sval);
                     Error(c, n->line, buf);

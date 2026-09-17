@@ -1,0 +1,56 @@
+// Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
+// Test suite for Multi-Span Rust-Grade Diagnostics and Unboxed Static Arrays.
+
+fn assert(cond, msg) {
+    if (!cond) {
+        println("ASSERTION FAILED: " + msg);
+        exit(1);
+    }
+}
+
+fn str_contains(haystack, needle) {
+    if (haystack == null) {
+        return false;
+    }
+    let parts = split(haystack, needle);
+    return Length(parts) > 1;
+}
+
+fn TestBorrowDiagnostics() {
+    println("Testing Rust-grade multi-span borrow diagnostics (E0382)...");
+    let out = Execute(".\\aks.exe run tests\\testBorrowError.aks 2>&1");
+    assert(str_contains(out, "error[E0382]: use of moved value: `x`"), "Expected E0382 error code in diagnostic");
+    assert(str_contains(out, "--> tests\\testBorrowError.aks:4:1"), "Expected source code pointer with file and line");
+    assert(str_contains(out, "value used here after move"), "Expected multi-span primary label");
+    assert(str_contains(out, "= note:"), "Expected note block");
+    assert(str_contains(out, "= help:"), "Expected help suggestion");
+    println("  -> PASS: E0382 multi-span framing verified.");
+}
+
+fn TestTypeMismatchDiagnostics() {
+    println("Testing Rust-grade multi-span type diagnostics (E0308)...");
+    let out = Execute(".\\aks.exe run --strict-types tests\\TestFailOpaque.aks 2>&1");
+    assert(str_contains(out, "error[E0308]: mismatched types"), "Expected E0308 error code in diagnostic");
+    assert(str_contains(out, "expected `UserID`, found `int`"), "Expected expected vs found type names");
+    assert(str_contains(out, "= note: expected type `UserID`"), "Expected note block with expected type");
+    println("  -> PASS: E0308 multi-span framing verified.");
+}
+
+fn TestUnboxedStaticArrays() {
+    println("Testing unboxed contiguous collections in static mode...");
+    let out = Execute(".\\tests\\StaticModeTests.exe 2>&1");
+    assert(str_contains(out, "STYPE_ARRAY"), "Expected STYPE_ARRAY inference pass");
+    assert(str_contains(out, "make_array"), "Expected make_array pass");
+    assert(str_contains(out, "24 Passed, 0 Failed"), "Expected all static mode tests to pass");
+    println("  -> PASS: Unboxed contiguous collections in static mode verified.");
+}
+
+fn Main() {
+    println("=== Running Multi-Span Diagnostics & Unboxed Collections Suite ===");
+    TestBorrowDiagnostics();
+    TestTypeMismatchDiagnostics();
+    TestUnboxedStaticArrays();
+    println("=== All Multi-Span Diagnostic & Unboxed Static Array Tests Passed! ===");
+}
+
+Main();

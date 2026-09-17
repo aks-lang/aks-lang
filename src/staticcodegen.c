@@ -11,6 +11,7 @@
 #include "compiler.h"
 #include "ast.h"
 #include "typer.h"
+#include "diagnostic.h"
 
 /* Global static mode flags */
 int gStaticMode = 0;
@@ -274,6 +275,32 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
             else snprintf(out_reg, out_reg_len, "%%%d", id);
             return ret_lt;
         }
+        case NARRLIT: {
+            int count = n->arrlit.count;
+            SType *elem_stype = (t && t->inner) ? t->inner : NULL;
+            const char *elem_lt = elem_stype ? LLVMType(elem_stype) : "i64";
+            if (count == 0) {
+                strncpy(out_reg, "null", out_reg_len - 1);
+                return "i64*";
+            }
+            int arr_alloca = ScgTmp(ctx);
+            fprintf(ctx->out, "  %%%d = alloca [%d x %s], align 8\n", arr_alloca, count, elem_lt);
+            for (int i = 0; i < count; i++) {
+                char elem_reg[64];
+                EmitExprLLVM(ctx, n->arrlit.elems[i], elem_reg, sizeof(elem_reg));
+                int gep_id = ScgTmp(ctx);
+                fprintf(ctx->out, "  %%%d = getelementptr inbounds [%d x %s], [%d x %s]* %%%d, i64 0, i64 %d\n",
+                        gep_id, count, elem_lt, count, elem_lt, arr_alloca, i);
+                fprintf(ctx->out, "  store %s %s, %s* %%%d, align 8\n", elem_lt, elem_reg, elem_lt, gep_id);
+            }
+            int ptr_id = ScgTmp(ctx);
+            fprintf(ctx->out, "  %%%d = getelementptr inbounds [%d x %s], [%d x %s]* %%%d, i64 0, i64 0\n",
+                    ptr_id, count, elem_lt, count, elem_lt, arr_alloca);
+            snprintf(out_reg, out_reg_len, "%%%d", ptr_id);
+            static char ptr_type[32];
+            snprintf(ptr_type, sizeof(ptr_type), "%s*", elem_lt);
+            return ptr_type;
+        }
         case NINDEX: {
             char arr_reg[64], idx_reg[64];
             EmitExprLLVM(ctx, n->index.arr, arr_reg, sizeof(arr_reg));
@@ -381,6 +408,14 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
                         break;
                     }
                 }
+            } else if (n->assign.target->type == NINDEX) {
+                char arr_reg[64], idx_reg[64];
+                EmitExprLLVM(ctx, n->assign.target->index.arr, arr_reg, sizeof(arr_reg));
+                EmitExprLLVM(ctx, n->assign.target->index.idx, idx_reg, sizeof(idx_reg));
+                int gep_id = ScgTmp(ctx);
+                fprintf(ctx->out, "  %%%d = getelementptr inbounds %s, %s* %s, i64 %s\n",
+                        gep_id, lt, lt, arr_reg, idx_reg);
+                fprintf(ctx->out, "  store %s %s, %s* %%%d, align 8\n", lt, val_reg, lt, gep_id);
             }
             break;
         }
@@ -1144,12 +1179,28 @@ static void ValidateStaticNodeBorrows(Compiler *c, Node *n, const char **locals,
         }
     } else if (n->type == NRETURN) {
         if (n->single.expr && n->single.expr->type == NREF) {
+            if (c->currentfilepath[0] != '\0' && n->line > 0) {
+                Diagnostic diag;
+                DiagnosticInit(&diag, DIAG_ERROR, "E0515", "cannot return reference to local variable in static mode");
+                DiagnosticAddSpan(&diag, c->currentfilepath, n->line, 1, 6, "returns a reference to data owned by the current function", 1);
+                DiagnosticSetHelp(&diag, "functions cannot return references to local variables; return an owned value instead");
+                DiagnosticEmit(&diag);
+            }
             fprintf(stderr, "error[E0515]: cannot return reference to local variable in static mode\n");
             c->haderror = 1;
         }
     } else if (n->type == NIDENT) {
         for (int i = 0; i < *count; i++) {
             if (locals[i] && strcmp(locals[i], n->sval) == 0 && is_moved[i]) {
+                if (c->currentfilepath[0] != '\0' && n->line > 0) {
+                    Diagnostic diag;
+                    char dmsg[256];
+                    snprintf(dmsg, sizeof(dmsg), "use of moved value: `%s`", n->sval);
+                    DiagnosticInit(&diag, DIAG_ERROR, "E0382", dmsg);
+                    DiagnosticAddSpan(&diag, c->currentfilepath, n->line, 1, (int)strlen(n->sval), "value used here after move", 1);
+                    DiagnosticSetNote(&diag, "value was moved because it does not implement the `Copy` trait");
+                    DiagnosticEmit(&diag);
+                }
                 fprintf(stderr, "error[E0382]: use of moved value: '%s'\n", n->sval);
                 c->haderror = 1;
                 break;

@@ -13,6 +13,7 @@
 #include "compiler.h"
 #include "ast.h"
 #include "parser.h"
+#include "diagnostic.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -788,6 +789,20 @@ SType *TyperUnify(Compiler *c, SType *a, SType *b, int line) {
     const char *file = (c && c->currentfilepath[0]) ? c->currentfilepath : NULL;
     if (c) {
         if (c->error_count < 50) {
+            Diagnostic diag;
+            char dmsg[256];
+            snprintf(dmsg, sizeof(dmsg), "mismatched types: expected `%s`, found `%s`", na, nb);
+            DiagnosticInit(&diag, DIAG_ERROR, "E0308", dmsg);
+            if (file && line > 0) {
+                char lbl[128];
+                snprintf(lbl, sizeof(lbl), "expected `%s`, found `%s`", na, nb);
+                DiagnosticAddSpan(&diag, file, line, 1, 4, lbl, 1);
+            }
+            char dnote[256];
+            snprintf(dnote, sizeof(dnote), "expected type `%s`\n              found type `%s`", na, nb);
+            DiagnosticSetNote(&diag, dnote);
+            DiagnosticEmit(&diag);
+
             if (file)
                 fprintf(stderr, "Type error in '%s' on line %d: type mismatch: expected '%s', found '%s'\n",
                         file, line, na, nb);

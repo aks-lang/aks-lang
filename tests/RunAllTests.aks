@@ -263,11 +263,13 @@ let tests = [
     { name: "TestNativeStorageAudioUiSuite.aks", flags: "" },
     { name: "TestAdvancedCapabilities.aks", flags: "" },
     { name: "TestExtendedCapabilities.aks", flags: "" },
-    { name: "TestSystemsInfrastructure.aks", flags: "" }
+    { name: "TestSystemsInfrastructure.aks", flags: "" },
+    { name: "TestMultiSpanDiagnostics.aks", flags: "" }
 ];
 
 let integration_suites = [
     { name: "Borrow Checker Suite", cmd: ".\\tests\\BorrowCheckerTests.exe" },
+    { name: "Static Mode Suite", cmd: ".\\tests\\StaticModeTests.exe" },
     { name: "Packaging Suite", cmd: "cmd.exe /c tests\\PackagingTest.bat" },
     { name: "Developer Tools Suite", cmd: "python tests\\ToolsTest.py" },
     { name: "LSP Server Suite", cmd: "python tests\\TestLsp.py" },
