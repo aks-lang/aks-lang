@@ -3220,6 +3220,16 @@ Node *NodeDceOpt(Node *n) {
     return n;
 }
 
+static int IsPureReadFn(Node *callee) {
+    if (!callee || callee->type != NIDENT || !callee->sval) return 0;
+    const char *fnname = callee->sval;
+    return (strcmp(fnname, "len") == 0 || strcmp(fnname, "Length") == 0 ||
+            strcmp(fnname, "print") == 0 || strcmp(fnname, "println") == 0 ||
+            strcmp(fnname, "assert") == 0 || strcmp(fnname, "Assert") == 0 ||
+            strcmp(fnname, "type") == 0 || strcmp(fnname, "TypeName") == 0 ||
+            strcmp(fnname, "typeof") == 0 || strcmp(fnname, "sizeof") == 0);
+}
+
 static int ChecksEscape(Node *node, const char *name) {
     if (!node) return 0;
     if (node->type == NRETURN) {
@@ -3234,15 +3244,20 @@ static int ChecksEscape(Node *node, const char *name) {
     }
     if (node->type == NASSIGN) {
         if (CountReferences(node->assign.value, name) > 0) {
-            if (node->assign.target->type != NIDENT) {
-                return 1;
-            }
+            return 1;
+        }
+    }
+    if (node->type == NVARDECL || node->type == NCONSTDECL) {
+        if (node->decl.init && CountReferences(node->decl.init, name) > 0) {
+            return 1;
         }
     }
     if (node->type == NCALL || node->type == NMACROCALL || node->type == NTEMPLATECALL) {
-        for (int i = 0; i < node->call.argc; i++) {
-            if (CountReferences(node->call.args[i], name) > 0) {
-                return 1;
+        if (!IsPureReadFn(node->call.callee)) {
+            for (int i = 0; i < node->call.argc; i++) {
+                if (CountReferences(node->call.args[i], name) > 0) {
+                    return 1;
+                }
             }
         }
     }
@@ -3326,8 +3341,10 @@ static int ChecksEscape(Node *node, const char *name) {
         case NMACROCALL:
         case NTEMPLATECALL:
             if (ChecksEscape(node->call.callee, name)) return 1;
-            for (int i = 0; i < node->call.argc; i++) {
-                if (ChecksEscape(node->call.args[i], name)) return 1;
+            if (!IsPureReadFn(node->call.callee)) {
+                for (int i = 0; i < node->call.argc; i++) {
+                    if (ChecksEscape(node->call.args[i], name)) return 1;
+                }
             }
             break;
         case NINDEX:
@@ -3383,7 +3400,7 @@ static int ChecksEscape(Node *node, const char *name) {
     return 0;
 }
 
-void NodeEscapeAnalysis(Node *n) {
+static void NodeEscapeAnalysisHelper(Node *n, int in_loop) {
     if (!n) return;
     if (n->type == NBLOCK || n->type == NPROGRAM) {
         for (int i = 0; i < n->block.count; i++) {
@@ -3398,7 +3415,7 @@ void NodeEscapeAnalysis(Node *n) {
                             break;
                         }
                     }
-                    if (!escapes && n->type == NBLOCK) {
+                    if (!escapes && n->type == NBLOCK && !in_loop) {
                         init->isstack = 1;
                         stmt->is_static_safe = 1;
                         init->is_static_safe = 1;
@@ -3408,41 +3425,48 @@ void NodeEscapeAnalysis(Node *n) {
                 stmt->is_static_safe = 1;
                 if (stmt->single.expr) stmt->single.expr->is_static_safe = 1;
             }
-            NodeEscapeAnalysis(stmt);
+            NodeEscapeAnalysisHelper(stmt, in_loop);
         }
         return;
     }
     switch (n->type) {
         case NFNDECL:
-            NodeEscapeAnalysis(n->fn.body);
+            NodeEscapeAnalysisHelper(n->fn.body, 0);
             break;
         case NIF:
-            NodeEscapeAnalysis(n->ifn.then);
-            if (n->ifn.els) NodeEscapeAnalysis(n->ifn.els);
+            NodeEscapeAnalysisHelper(n->ifn.then, in_loop);
+            if (n->ifn.els) NodeEscapeAnalysisHelper(n->ifn.els, in_loop);
             break;
         case NWHILE:
-            NodeEscapeAnalysis(n->whilen.body);
+            NodeEscapeAnalysisHelper(n->whilen.body, 1);
             break;
         case NFOR:
-            NodeEscapeAnalysis(n->forn.body);
+            NodeEscapeAnalysisHelper(n->forn.body, 1);
+            break;
+        case NFORIN:
+            NodeEscapeAnalysisHelper(n->forin.body, 1);
             break;
         case NTRYCATCH:
-            NodeEscapeAnalysis(n->trycatch.tryblock);
-            NodeEscapeAnalysis(n->trycatch.catchblock);
-            if (n->trycatch.finallyblock) NodeEscapeAnalysis(n->trycatch.finallyblock);
+            NodeEscapeAnalysisHelper(n->trycatch.tryblock, in_loop);
+            NodeEscapeAnalysisHelper(n->trycatch.catchblock, in_loop);
+            if (n->trycatch.finallyblock) NodeEscapeAnalysisHelper(n->trycatch.finallyblock, in_loop);
             break;
         case NSWITCH:
             for (int i = 0; i < n->sw.casecount; i++) {
-                NodeEscapeAnalysis(n->sw.casebodies[i]);
+                NodeEscapeAnalysisHelper(n->sw.casebodies[i], in_loop);
             }
-            if (n->sw.defaultbody) NodeEscapeAnalysis(n->sw.defaultbody);
+            if (n->sw.defaultbody) NodeEscapeAnalysisHelper(n->sw.defaultbody, in_loop);
             break;
         case NMATCH:
             for (int i = 0; i < n->match.count; i++) {
-                NodeEscapeAnalysis(n->match.bodies[i]);
+                NodeEscapeAnalysisHelper(n->match.bodies[i], in_loop);
             }
             break;
         default:
             break;
     }
+}
+
+void NodeEscapeAnalysis(Node *n) {
+    NodeEscapeAnalysisHelper(n, 0);
 }

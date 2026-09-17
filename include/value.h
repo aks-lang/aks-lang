@@ -236,6 +236,25 @@ struct AKSStruct {
     void *arena;
 };
 
+static inline void AksArrayEnsureCapacity(AKSArray *a, int needed) {
+    if (a->capacity < needed) {
+        int new_cap = a->capacity == 0 ? 4 : a->capacity * 2;
+        if (new_cap < needed) new_cap = needed;
+        if (a->isstack == 1) {
+            AKSValue *new_items = (AKSValue*)malloc(new_cap * sizeof(AKSValue));
+            if (a->count > 0 && a->items) {
+                memcpy(new_items, a->items, a->count * sizeof(AKSValue));
+            }
+            a->items = new_items;
+            a->capacity = new_cap;
+            a->isstack = 2; // header on stack arena, items migrated to CRT heap
+        } else {
+            a->capacity = new_cap;
+            a->items = (AKSValue*)realloc(a->items, a->capacity * sizeof(AKSValue));
+        }
+    }
+}
+
 static inline int ChkAddOvf(int64_t a, int64_t b, int64_t *res) {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_add_overflow(a, b, res);

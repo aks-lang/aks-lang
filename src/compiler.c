@@ -4137,7 +4137,9 @@ static void EmitExpr(Compiler *c, Node *n) {
                 const char *tname = n->structinit.typename ? n->structinit.typename : "Object";
                 int tid = AddStr(c, tname);
                 ChunkWrite(ch, OPNEWSTRUCT, n->line);
-                ChunkWriteU16(ch, (uint16_t)tid, n->line);
+                uint16_t structval = (uint16_t)tid;
+                if (n->isstack) structval |= 0x8000;
+                ChunkWriteU16(ch, structval, n->line);
             }
             /* Store clone/new struct in temp slot */
             ChunkWrite(ch, OPSTORE, n->line);

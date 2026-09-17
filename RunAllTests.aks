@@ -23,6 +23,7 @@ let tests = [
     { name: "TestArrayDeepSuite.aks", flags: "" },
     { name: "TestArrayInputCasting.aks", flags: "", in_file: "tests\\TestArrayInputCasting.in" },
     { name: "TestArrayRepeatDeepSuite.aks", flags: "" },
+    { name: "TestArenaPromotion.aks", flags: "" },
     { name: "TestAssign.aks", flags: "" },
     { name: "TestAsyncGeneratorsDeepSuite.aks", flags: "" },
     { name: "TestAsyncScheduler.aks", flags: "" },

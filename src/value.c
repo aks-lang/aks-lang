@@ -421,7 +421,7 @@ void ValFreeFunc(AKSValue *v) {
                             ValFree(&arr->parent);
                         } else {
                             for (int i = 0; i < arr->count; i++) ValFree(&arr->items[i]);
-                            free(arr->items);
+                            if (arr->isstack != 1 && arr->items) free(arr->items);
                         }
                         if (!arr->isstack) free(arr);
                         AtomicDecrement(&gactivearrs);
@@ -451,12 +451,12 @@ void ValFreeFunc(AKSValue *v) {
                             }
                         }
                         for (int i = 0; i < obj->fieldcount; i++) {
-                            if (obj->fieldnames) free(obj->fieldnames[i]);
+                            if (obj->fieldnames && obj->isstack != 1) free(obj->fieldnames[i]);
                             ValFree(&obj->fieldvals[i]);
                         }
-                        free(obj->fieldnames);
-                        free(obj->fieldvals);
-                        free(obj->typename);
+                        if (obj->fieldnames) free(obj->fieldnames);
+                        if (obj->fieldvals) free(obj->fieldvals);
+                        if (!obj->isstack && obj->typename) free(obj->typename);
                         if (!obj->isstack) free(obj);
                         AtomicDecrement(&gactivestructs);
                     }
@@ -985,11 +985,11 @@ void *AslrcAlloc(size_t num, size_t size) {
 #endif /* !AKS_RELEASE_BUILD */
 
 static inline void *StackAlloc(VMTask *task, size_t size) {
+    if (!task || !task->stackarena) return NULL;
     size = (size + 7) & ~7;
-    int limit = task->stackarena_size > 0 ? (int)task->stackarena_size : 32768;
+    int limit = task->stackarena_size > 0 ? (int)task->stackarena_size : 65536;
     if (task->stackarenatop + (int)size > limit) {
-        fprintf(stderr, "Stack arena overflow\n");
-        exit(1);
+        return NULL;
     }
     void *ptr = task->stackarena + task->stackarenatop;
     task->stackarenatop += (int)size;
@@ -997,8 +997,16 @@ static inline void *StackAlloc(VMTask *task, size_t size) {
 }
 
 AKSValue ValArrStack(VMTask *task, int cap) {
+    if (!task || !task->stackarena) return ValArr(cap);
+    size_t hdr_sz = (sizeof(AKSArray) + 7) & ~7;
+    size_t items_sz = cap > 0 ? ((cap * sizeof(AKSValue) + 7) & ~7) : 0;
+    int limit = task->stackarena_size > 0 ? (int)task->stackarena_size : 65536;
+    if (task->stackarenatop + (int)(hdr_sz + items_sz) > limit) {
+        return ValArr(cap);
+    }
     AKSArray *arr = (AKSArray*)StackAlloc(task, sizeof(AKSArray));
-    arr->items = cap > 0 ? malloc(cap * sizeof(AKSValue)) : NULL;
+    if (!arr) return ValArr(cap);
+    arr->items = cap > 0 ? (AKSValue*)StackAlloc(task, cap * sizeof(AKSValue)) : NULL;
     arr->count = 0;
     arr->capacity = cap;
     arr->refcount = 1;
@@ -1007,7 +1015,7 @@ AKSValue ValArrStack(VMTask *task, int cap) {
     arr->isslice = 0;
     arr->parent = ValNull();
     arr->arena = NULL;
-    AtomicIncrement(&gactivearrs);  /* was non-atomic: gactivearrs++ */
+    AtomicIncrement(&gactivearrs);
     return ((uint64_t)0xFFF5 << 48) | ((uintptr_t)arr & 0x0000FFFFFFFFFFFFULL);
 }
 
@@ -1022,14 +1030,18 @@ AKSValue ValTupleStack(VMTask *task, int cap) {
 }
 
 AKSValue ValStructStack(VMTask *task, const char *typename) {
+    if (!task || !task->stackarena) return ValStruct(typename);
     AKSStruct *obj = (AKSStruct*)StackAlloc(task, sizeof(AKSStruct));
-    obj->typename = strdup(typename);
+    if (!obj) return ValStruct(typename);
+    obj->typename = (char*)typename;
     obj->fieldcount = 0;
     obj->fieldnames = NULL;
     obj->fieldvals = NULL;
     obj->refcount = 1;
     obj->invalidated = 0;
     obj->isstack = 1;
-    AtomicIncrement(&gactivestructs);  /* was non-atomic: gactivestructs++ */
+    obj->arena = NULL;
+    AtomicIncrement(&gactivestructs);
     return ((uint64_t)0xFFF6 << 48) | ((uintptr_t)obj & 0x0000FFFFFFFFFFFFULL);
 }
+

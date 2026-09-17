@@ -56,7 +56,7 @@ VMTask *TaskNew(VM *vm, FnProto *fn, int startipoffset) {
   // dramatically improving cache locality and memory efficiency for workloads
   // with many concurrent tasks.
   size_t allocated_size = 0;
-  t->stackarena = AllocStackArenaWithGuard(32768, &allocated_size);
+  t->stackarena = AllocStackArenaWithGuard(65536, &allocated_size);
   t->stackarena_size = allocated_size;
   t->stackarenatop = 0;
 
@@ -67,7 +67,7 @@ VMTask *TaskNew(VM *vm, FnProto *fn, int startipoffset) {
   if (!t->stack || !t->frames) {
     if (t->stack) free(t->stack);
     if (t->frames) free(t->frames);
-    if (t->stackarena) FreeStackArenaWithGuard(t->stackarena, t->stackarena_size ? t->stackarena_size : 32768);
+    if (t->stackarena) FreeStackArenaWithGuard(t->stackarena, t->stackarena_size ? t->stackarena_size : 65536);
     free(t);
     return NULL;
   }
@@ -104,7 +104,7 @@ void TaskFree(VMTask *t) {
   free(t->awaiters);
   if (t->recordedtrace)
     free(t->recordedtrace);
-  FreeStackArenaWithGuard(t->stackarena, t->stackarena_size ? t->stackarena_size : 32768);
+  FreeStackArenaWithGuard(t->stackarena, t->stackarena_size ? t->stackarena_size : 65536);
   if (t->stack)
     free(t->stack);
   if (t->frames)

@@ -6564,6 +6564,18 @@ int RunTaskSlice(VM *vm, VMTask *task, int maxinstructions) {
         frameslots = task->stack + frame->slotsbase; \
     } \
   } while(0)
+#define VM_ENTER_FRAME() do { \
+    if (task->framecount - 1 >= 0 && task->framecount - 1 < MAXFRAMES) { \
+        task->arenatops[task->framecount - 1] = task->stackarenatop; \
+    } \
+    lastframecount = task->framecount; \
+} while(0)
+#define VM_EXIT_FRAME() do { \
+    if (task->framecount >= 0 && task->framecount < MAXFRAMES) { \
+        task->stackarenatop = task->arenatops[task->framecount]; \
+    } \
+    lastframecount = task->framecount; \
+} while(0)
   /* Growable stack-array: save/restore stacktop+frameslots around StackEnsure. */
 #define STACK_GROW(needed) do { \
     if ((int)(needed) >= task->stackcap) { \
@@ -7902,6 +7914,7 @@ while (0)
 
         FRAME_GROW();
         CallFrame *newframe = &task->frames[task->framecount++];
+        VM_ENTER_FRAME();
         newframe->fn = callee;
         newframe->ip = callee->chunk.code;
         newframe->slotsbase = (int)(canarypos + 1 - task->stack);
@@ -8131,6 +8144,7 @@ while (0)
 
         FRAME_GROW();
         CallFrame *newframe = &task->frames[task->framecount++];
+        VM_ENTER_FRAME();
         newframe->fn = callee;
         newframe->ip = callee->chunk.code;
         newframe->slotsbase = (int)(canarypos + 1 - task->stack);
@@ -8177,6 +8191,7 @@ while (0)
         }
         ValFree(&task->stack[canaryidx]);
         task->framecount--;
+        VM_EXIT_FRAME();
         CallFrame *prevframe = &task->frames[task->framecount - 1];
         stacktop = task->stack + frame->slotsbase - 1;
         frame = prevframe;
@@ -8255,6 +8270,7 @@ while (0)
         }
         ValFree(&task->stack[canaryidx]);
         task->framecount--;
+        VM_EXIT_FRAME();
         CallFrame *prevframe = &task->frames[task->framecount - 1];
         stacktop = task->stack + frame->slotsbase - 1;
         frame = prevframe;
@@ -10924,6 +10940,7 @@ enter_stack_interpreter: for (;;) {
 
       FRAME_GROW();
       CallFrame *newframe = &task->frames[task->framecount++];
+      VM_ENTER_FRAME();
       newframe->fn = callee;
       newframe->ip = callee->chunk.code;
       newframe->slotsbase = (int)(stacktop - task->stack) - argc;
@@ -11642,6 +11659,7 @@ enter_stack_interpreter: for (;;) {
     }
     if (task->framecount > 1) {
       task->framecount--;
+      VM_EXIT_FRAME();
       frame = &task->frames[task->framecount - 1];
       ip = frame->ip;
       frameslots = task->stack + frame->slotsbase;
@@ -11730,6 +11748,7 @@ enter_stack_interpreter: for (;;) {
     }
     if (task->framecount > 1) {
       task->framecount--;
+      VM_EXIT_FRAME();
       frame = &task->frames[task->framecount - 1];
       ip = frame->ip;
       frameslots = task->stack + frame->slotsbase;
