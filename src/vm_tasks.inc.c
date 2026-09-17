@@ -1399,8 +1399,10 @@ DWORD WINAPI WorkerThreadFunc(LPVOID lpParam) {
         WorkerPushTail(myworker, task);
       }
     } else {
-      PollIoCompletions(vm, 1);
-      SleepMs(1);
+      int events = PollIoCompletions(vm, 1);
+      if (events == 0) {
+        SleepMs(0);
+      }
     }
   }
   return 0;

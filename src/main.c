@@ -28,6 +28,7 @@
 #include "staticcodegen.h"
 #include "wasmcodegen.h"
 #include "nostdcodegen.h"
+#include "direct_linker.h"
 #include "mlircodegen.inc.c"
 
 #include <time.h>
@@ -408,6 +409,7 @@ static void PrintUsage(const char *programname) {
     printf("  %s watch <file.aks>                             Watch file and live hot-reload on change\n", programname);
     printf("  %s compile <file.aks> -o <file.aksb>            Compile source to binary bytecode\n", programname);
     printf("  %s run-bin <file.aksb>                          Execute precompiled binary bytecode\n", programname);
+    printf("  %s compile-exe <file.aks> [-o <out.exe>]        Compile source to standalone executable directly\n", programname);
     printf("  %s compile-aot <file.aks> <out.exe|out.c>       Compile source to standalone native executable or C\n", programname);
     printf("  %s static <build|run> <file.aks> [-o <out>]     Compile directly to LLVM IR and native binary\n", programname);
     printf("  %s wasm <file.aks> [-o <output.wat>]            Compile source to WebAssembly text format (WAT)\n", programname);
@@ -1863,6 +1865,10 @@ static int ExecuteCompileAot(const char *sourcepath, const char *outputpath) {
         remove(targetcpath);
 
         if (res != 0) {
+            printf("Notice: External C toolchain unavailable. Falling back to built-in direct standalone linker...\n");
+            if (CreateDirectExecutable(sourcepath, outputpath)) {
+                return 0;
+            }
             fprintf(stderr, "Compiler error: Binary compilation failed. Ensure clang or gcc is in PATH.\n");
             return 1;
         }
@@ -2156,6 +2162,10 @@ static int LogCrash(EXCEPTION_POINTERS *ep) {
 int main(int argc, char **argv) {
     __try {
         SysEnableAnsi();
+        int embedded_res = CheckAndRunEmbeddedPayload(argc, argv);
+        if (embedded_res != -999) {
+            return embedded_res;
+        }
         gProgramName = argv[0];
         ApplyAKSJSONCapabilities(&argc, &argv);
         ParseSafetyFlags(&argc, &argv);
@@ -2278,6 +2288,28 @@ int main(int argc, char **argv) {
                 return 1;
             }
             return ExecuteCompile(argv[2], argv[4]);
+        } else if (strcmp(command, "compile-exe") == 0) {
+            if (argc < 3) {
+                fprintf(stderr, "Usage: %s compile-exe <file.aks> [-o output.exe]\n", argv[0]);
+                return 1;
+            }
+            const char *srcfile = argv[2];
+            char default_out[256];
+            snprintf(default_out, sizeof(default_out), "%s.exe", srcfile);
+            char *dot = strrchr(default_out, '.');
+            if (dot && dot != default_out && *(dot - 1) != '/' && *(dot - 1) != '\\') {
+                strcpy(dot, ".exe");
+            }
+            const char *outfile = default_out;
+            for (int i = 3; i < argc; i++) {
+                if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+                    outfile = argv[i+1];
+                    i++;
+                } else if (argv[i][0] != '-') {
+                    outfile = argv[i];
+                }
+            }
+            return CreateDirectExecutable(srcfile, outfile) ? 0 : 1;
         } else if (strcmp(command, "compile-aot") == 0) {
             if (argc < 4) {
                 PrintUsage(argv[0]);

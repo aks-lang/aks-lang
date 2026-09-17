@@ -59,6 +59,7 @@ let tests = [
     { name: "TestCseOnly.aks", flags: "" },
     { name: "TestDataframeDeepSuite.aks", flags: "" },
     { name: "TestDefaultParams.aks", flags: "" },
+    { name: "TestDirectLinker.aks", flags: "" },
     { name: "TestEval.aks", flags: "" },
     { name: "TestEvalSimple.aks", flags: "" },
     { name: "TestExceptionContractsDeepSuite.aks", flags: "" },

@@ -505,16 +505,23 @@ static void UnlockSelectChannels(VMTask *task) {
 }
 
 #ifdef _WIN32
-static void PollIoCompletions(VM *vm, DWORD timeout_ms) {
+static int PollIoCompletions(VM *vm, DWORD timeout_ms) {
   DWORD bytes_transferred = 0;
   ULONG_PTR completion_key = 0;
   LPOVERLAPPED overlapped = NULL;
+  DWORD current_timeout = timeout_ms;
+  int completed_count = 0;
 
-  BOOL res =
-      GetQueuedCompletionStatus((HANDLE)vm->iocp, &bytes_transferred,
-                                &completion_key, &overlapped, timeout_ms);
+  for (int batch = 0; batch < 64; batch++) {
+    BOOL res =
+        GetQueuedCompletionStatus((HANDLE)vm->iocp, &bytes_transferred,
+                                  &completion_key, &overlapped, current_timeout);
 
-  if (overlapped) {
+    if (!overlapped) {
+      break;
+    }
+    completed_count++;
+
     AsyncIOContext *ctx = (AsyncIOContext *)overlapped;
     VMTask *task = ctx->task;
     if (ctx->handle != INVALID_HANDLE_VALUE) {
@@ -573,17 +580,22 @@ static void PollIoCompletions(VM *vm, DWORD timeout_ms) {
       }
     }
     free(ctx);
+
+    current_timeout = 0; // drain remaining queued completions without waiting
   }
+  return completed_count;
 }
 #else
 #ifdef AKS_USE_IO_URING
-static void PollIoCompletions(VM *vm, int timeout_ms) {
+static int PollIoCompletions(VM *vm, int timeout_ms) {
   struct io_uring_cqe *cqe = NULL;
   struct __kernel_timespec ts = {.tv_sec = timeout_ms / 1000,
                                  .tv_nsec = (timeout_ms % 1000) * 1000000};
+  int completed_count = 0;
 
   int res = io_uring_wait_cqe_timeout(&vm->ring, &cqe, &ts);
   if (res >= 0 && cqe) {
+    completed_count++;
     AsyncIOContext *ctx = (AsyncIOContext *)io_uring_cqe_get_data(cqe);
     int bytes_transferred = cqe->res;
 
@@ -631,10 +643,13 @@ static void PollIoCompletions(VM *vm, int timeout_ms) {
     }
     io_uring_cqe_seen(&vm->ring, cqe);
   }
+  return completed_count;
 }
 #else
-static void PollIoCompletions(VM *vm, int timeout_ms) {
-  // No-op for non-io_uring POSIX platforms
+static int PollIoCompletions(VM *vm, int timeout_ms) {
+  (void)vm;
+  (void)timeout_ms;
+  return 0;
 }
 #endif
 #endif

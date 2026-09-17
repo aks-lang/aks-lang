@@ -1,0 +1,16 @@
+// Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
+// Test suite for Direct Standalone Executable Linker (aks compile-exe)
+
+print("Testing Standalone Direct Executable Linker...");
+
+let compile_out = Execute(".\\aks.exe compile-exe tests\\TestComptimeExecution.aks -o test_direct_embed.exe");
+print("Compile Output:");
+print(compile_out);
+
+let run_out = Execute(".\\test_direct_embed.exe");
+print("Run Output:");
+print(run_out);
+
+Execute("cmd.exe /c del /f /q test_direct_embed.exe 2>nul");
+
+print("Direct Standalone Linker test completed successfully.");
