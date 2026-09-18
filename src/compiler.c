@@ -8740,6 +8740,16 @@ static void OptBytecode(Chunk *ch) {
                 changed = 1;
                 continue;
             }
+            if (ch->code[i] == OPLOADGLOBAL && i + 3 < ch->count && ch->code[i+3] == OPPOP && !IsJumpTarget(ch, i + 3)) {
+                CompActChunk(ch, i, 4);
+                changed = 1;
+                continue;
+            }
+            if (ch->code[i] == OPPUSHSTR && i + 3 < ch->count && ch->code[i+3] == OPPOP && !IsJumpTarget(ch, i + 3)) {
+                CompActChunk(ch, i, 4);
+                changed = 1;
+                continue;
+            }
             if (ch->code[i] == OPPUSHINT && i + 9 < ch->count && ch->code[i+9] == OPPOP && !IsJumpTarget(ch, i + 9)) {
                 CompActChunk(ch, i, 10);
                 changed = 1;
@@ -8949,6 +8959,46 @@ static void OptBytecode(Chunk *ch) {
                         ch->code[i+4] = (uint8_t)(new_offset & 0xFF);
                         changed = 1;
                     }
+                }
+            }
+
+            // 9. Store-load forwarding
+            if (ch->code[i] == OPSTORE && i + 5 < ch->count && ch->code[i+3] == OPLOAD &&
+                ch->code[i+1] == ch->code[i+4] && ch->code[i+2] == ch->code[i+5] &&
+                !IsJumpTarget(ch, i) && !IsJumpTarget(ch, i + 3)) {
+                uint8_t shi = ch->code[i+1];
+                uint8_t slo = ch->code[i+2];
+                ch->code[i] = OPDUP;
+                ch->code[i+1] = OPSTORE;
+                ch->code[i+2] = shi;
+                ch->code[i+3] = slo;
+                CompActChunk(ch, i + 4, 2);
+                changed = 1;
+                continue;
+            }
+
+            if (ch->code[i] == OPSTOREGLOBAL && i + 5 < ch->count && ch->code[i+3] == OPLOADGLOBAL &&
+                ch->code[i+1] == ch->code[i+4] && ch->code[i+2] == ch->code[i+5] &&
+                !IsJumpTarget(ch, i) && !IsJumpTarget(ch, i + 3)) {
+                uint8_t ghi = ch->code[i+1];
+                uint8_t glo = ch->code[i+2];
+                ch->code[i] = OPDUP;
+                ch->code[i+1] = OPSTOREGLOBAL;
+                ch->code[i+2] = ghi;
+                ch->code[i+3] = glo;
+                CompActChunk(ch, i + 4, 2);
+                changed = 1;
+                continue;
+            }
+
+            // 10. Redundant statement store dup-pop elimination: OPDUP + OPSTORE/OPSTOREGLOBAL + OPPOP -> OPSTORE/OPSTOREGLOBAL
+            if (ch->code[i] == OPDUP && i + 4 < ch->count && !IsJumpTarget(ch, i) &&
+                !IsJumpTarget(ch, i + 1) && !IsJumpTarget(ch, i + 4)) {
+                if ((ch->code[i+1] == OPSTORE || ch->code[i+1] == OPSTOREGLOBAL) && ch->code[i+4] == OPPOP) {
+                    CompActChunk(ch, i + 4, 1);
+                    CompActChunk(ch, i, 1);
+                    changed = 1;
+                    continue;
                 }
             }
 

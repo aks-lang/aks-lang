@@ -53,6 +53,20 @@ fn test_bitwise_identities_dynamic(x) {
     return true;
 }
 
+fn test_store_load_forwarding(val) {
+    let a = val;
+    let b = a;
+    let c = b;
+    return a + b + c;
+}
+
+fn test_assignment_dup_pop() {
+    let x = 10;
+    x = 20;
+    x = x + 5;
+    return x;
+}
+
 fn main() {
     print("Running Bytecode Peephole Optimizer Tests...");
 
@@ -68,6 +82,9 @@ fn main() {
     if (test_branch_threading(25) != "high") { print("FAIL test_branch_threading 25"); return 1; }
 
     if (!test_bitwise_identities_dynamic(12345)) { return 1; }
+
+    if (test_store_load_forwarding(7) != 21) { print("FAIL test_store_load_forwarding"); return 1; }
+    if (test_assignment_dup_pop() != 25) { print("FAIL test_assignment_dup_pop"); return 1; }
 
     print("ALL BYTECODE PEEPHOLE TESTS PASSED!");
     return 0;

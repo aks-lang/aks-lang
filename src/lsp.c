@@ -291,28 +291,52 @@ typedef enum {
 typedef struct {
     char *name;
     SymbolKind kind;
-    int line; // based
-    int col;  // based
+    int line; // 1-based
+    int col;  // 1-based
     char *detail;
+    int param_count;
+    char **params;
+    char *ret_type;
 } SymbolDef;
 
 static SymbolDef *g_syms = NULL;
 static int g_syms_count = 0;
 
-static void SymAdd(const char *name, SymbolKind kind, int line, int col, const char *detail) {
+static void SymAddEx(const char *name, SymbolKind kind, int line, int col, const char *detail, int param_count, char **params, const char *ret_type) {
     g_syms = realloc(g_syms, (g_syms_count + 1) * sizeof(SymbolDef));
     g_syms[g_syms_count].name = strdup(name);
     g_syms[g_syms_count].kind = kind;
     g_syms[g_syms_count].line = line;
     g_syms[g_syms_count].col = col;
     g_syms[g_syms_count].detail = strdup(detail ? detail : "");
+    g_syms[g_syms_count].param_count = param_count;
+    if (param_count > 0 && params) {
+        g_syms[g_syms_count].params = malloc(param_count * sizeof(char *));
+        for (int i = 0; i < param_count; i++) {
+            g_syms[g_syms_count].params[i] = strdup(params[i] ? params[i] : "");
+        }
+    } else {
+        g_syms[g_syms_count].params = NULL;
+    }
+    g_syms[g_syms_count].ret_type = ret_type ? strdup(ret_type) : NULL;
     g_syms_count++;
+}
+
+static void SymAdd(const char *name, SymbolKind kind, int line, int col, const char *detail) {
+    SymAddEx(name, kind, line, col, detail, 0, NULL, NULL);
 }
 
 static void SymsClear() {
     for (int i = 0; i < g_syms_count; i++) {
         free(g_syms[i].name);
         free(g_syms[i].detail);
+        if (g_syms[i].ret_type) free(g_syms[i].ret_type);
+        if (g_syms[i].params) {
+            for (int p = 0; p < g_syms[i].param_count; p++) {
+                free(g_syms[i].params[p]);
+            }
+            free(g_syms[i].params);
+        }
     }
     free(g_syms);
     g_syms = NULL;
@@ -347,9 +371,35 @@ static void WalkAST(Node *n, const char *text) {
         case NFNDECL:
             if (n->fn.name) {
                 GetColumnForLine(text, n->line, n->fn.name, &col);
-                char detail[256];
-                snprintf(detail, sizeof(detail), "fn %s()", n->fn.name);
-                SymAdd(n->fn.name, SYM_FN, n->line, col, detail);
+                char detail[1024];
+                char param_buf[1024] = "";
+                char **param_strs = NULL;
+                if (n->fn.pc > 0) {
+                    param_strs = malloc(n->fn.pc * sizeof(char *));
+                    for (int i = 0; i < n->fn.pc; i++) {
+                        char single_p[256];
+                        const char *pname = (n->fn.pnames && n->fn.pnames[i]) ? n->fn.pnames[i] : "arg";
+                        const char *ptype = (n->fn.ptypes && n->fn.ptypes[i]) ? n->fn.ptypes[i] : NULL;
+                        if (ptype && strlen(ptype) > 0) {
+                            snprintf(single_p, sizeof(single_p), "%s: %s", pname, ptype);
+                        } else {
+                            snprintf(single_p, sizeof(single_p), "%s", pname);
+                        }
+                        param_strs[i] = strdup(single_p);
+                        if (i > 0) strncat(param_buf, ", ", sizeof(param_buf) - strlen(param_buf) - 1);
+                        strncat(param_buf, single_p, sizeof(param_buf) - strlen(param_buf) - 1);
+                    }
+                }
+                if (n->fn.ret && strlen(n->fn.ret) > 0) {
+                    snprintf(detail, sizeof(detail), "fn %s(%s) -> %s", n->fn.name, param_buf, n->fn.ret);
+                } else {
+                    snprintf(detail, sizeof(detail), "fn %s(%s)", n->fn.name, param_buf);
+                }
+                SymAddEx(n->fn.name, SYM_FN, n->line, col, detail, n->fn.pc, param_strs, n->fn.ret);
+                if (param_strs) {
+                    for (int i = 0; i < n->fn.pc; i++) free(param_strs[i]);
+                    free(param_strs);
+                }
             }
             WalkAST(n->fn.body, text);
             break;
@@ -805,6 +855,7 @@ static void HandleInitialize(JsonValue *id) {
                   "\"hoverProvider\":true,"
                   "\"definitionProvider\":true,"
                   "\"completionProvider\":{\"triggerCharacters\":[\".\"]},"
+                  "\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\",\",\"]},"
                   "\"referencesProvider\":true,"
                   "\"renameProvider\":true,"
                   "\"codeActionProvider\":true,"
@@ -1511,6 +1562,171 @@ static void HandleInlayHints(JsonValue *id, const char *uri) {
     free(res);
 }
 
+typedef struct {
+    const char *name;
+    const char *label;
+    const char *doc;
+    int param_count;
+    const char *params[4];
+} BuiltinSig;
+
+static const BuiltinSig g_builtin_sigs[] = {
+    {"println", "println(...values): void", "Prints values followed by a newline.", 1, {"...values"}},
+    {"print", "print(...values): void", "Prints values without a trailing newline.", 1, {"...values"}},
+    {"len", "len(collection): int", "Returns the number of elements in an array, string, or map.", 1, {"collection"}},
+    {"append", "append(arr: []any, elem: any): []any", "Appends an element to an array and returns it.", 2, {"arr: []any", "elem: any"}},
+    {"pop", "pop(arr: []any): any", "Removes and returns the last element of an array.", 1, {"arr: []any"}},
+    {"assert", "assert(condition: bool, message?: string): void", "Asserts that condition is true, otherwise panics.", 2, {"condition: bool", "message?: string"}},
+    {"typeof", "typeof(value: any): string", "Returns the type name of the given value.", 1, {"value: any"}},
+    {"panic", "panic(message: string): void", "Terminates execution with an error message.", 1, {"message: string"}},
+    {"Matrix", "Matrix(rows: int, cols: int, fill?: float): Matrix", "Creates a 2D dense float64 matrix.", 3, {"rows: int", "cols: int", "fill?: float"}},
+    {"DataFrame", "DataFrame(columns: []string): DataFrame", "Creates a columnar tabular DataFrame.", 1, {"columns: []string"}},
+    {"Dual", "Dual(real: float, eps: float): Dual", "Creates an automatic differentiation dual number.", 2, {"real: float", "eps: float"}},
+    {"SimdAdd", "SimdAdd(a: []float, b: []float): []float", "Vectorized SIMD addition.", 2, {"a: []float", "b: []float"}},
+    {"SimdMul", "SimdMul(a: []float, b: []float): []float", "Vectorized SIMD multiplication.", 2, {"a: []float", "b: []float"}},
+    {"FftForward", "FftForward(signal: []float): []complex", "Computes the Fast Fourier Transform of a signal.", 1, {"signal: []float"}},
+    {"FftInverse", "FftInverse(freq: []complex): []float", "Computes the Inverse Fast Fourier Transform.", 1, {"freq: []complex"}}
+};
+
+static void HandleSignatureHelp(JsonValue *id, const char *uri, int line, int character) {
+    Document *doc = DocGet(uri);
+    if (!doc || !doc->text) {
+        SendResponse(id, "null");
+        return;
+    }
+
+    const char *text = doc->text;
+    int cur_line = 0;
+    int cur_col = 0;
+    int offset = 0;
+    while (text[offset]) {
+        if (cur_line == line && cur_col == character) break;
+        if (text[offset] == '\n') {
+            cur_line++;
+            cur_col = 0;
+        } else {
+            cur_col++;
+        }
+        offset++;
+    }
+
+    int depth = 0;
+    int active_param = 0;
+    int open_paren_idx = -1;
+
+    for (int i = offset - 1; i >= 0; i--) {
+        char ch = text[i];
+        if (ch == ')' || ch == ']' || ch == '}') {
+            depth++;
+        } else if (ch == '(') {
+            if (depth > 0) {
+                depth--;
+            } else {
+                open_paren_idx = i;
+                break;
+            }
+        } else if (ch == '[' || ch == '{') {
+            if (depth > 0) depth--;
+        } else if (ch == ',' && depth == 0) {
+            active_param++;
+        }
+    }
+
+    if (open_paren_idx < 0) {
+        SendResponse(id, "null");
+        return;
+    }
+
+    int p = open_paren_idx - 1;
+    while (p >= 0 && (text[p] == ' ' || text[p] == '\t' || text[p] == '\r' || text[p] == '\n')) {
+        p--;
+    }
+    int name_end = p;
+    while (p >= 0 && (isalnum((unsigned char)text[p]) || text[p] == '_' || text[p] == '.')) {
+        p--;
+    }
+    int name_start = p + 1;
+    if (name_end < name_start) {
+        SendResponse(id, "null");
+        return;
+    }
+
+    char callee[128];
+    int callee_len = name_end - name_start + 1;
+    if (callee_len >= (int)sizeof(callee)) callee_len = (int)sizeof(callee) - 1;
+    memcpy(callee, text + name_start, callee_len);
+    callee[callee_len] = '\0';
+
+    const char *simple_name = strrchr(callee, '.');
+    if (simple_name) simple_name++; else simple_name = callee;
+
+    SymbolDef *user_fn = NULL;
+    for (int i = 0; i < g_syms_count; i++) {
+        if (g_syms[i].kind == SYM_FN) {
+            if (strcmp(g_syms[i].name, callee) == 0 || strcmp(g_syms[i].name, simple_name) == 0) {
+                user_fn = &g_syms[i];
+                break;
+            }
+        }
+    }
+
+    const BuiltinSig *builtin_fn = NULL;
+    if (!user_fn) {
+        int n_builtins = (int)(sizeof(g_builtin_sigs) / sizeof(g_builtin_sigs[0]));
+        for (int i = 0; i < n_builtins; i++) {
+            if (strcmp(g_builtin_sigs[i].name, callee) == 0 || strcmp(g_builtin_sigs[i].name, simple_name) == 0) {
+                builtin_fn = &g_builtin_sigs[i];
+                break;
+            }
+        }
+    }
+
+    if (!user_fn && !builtin_fn) {
+        SendResponse(id, "{\"signatures\":[],\"activeSignature\":0,\"activeParameter\":0}");
+        return;
+    }
+
+    char res[4096];
+    char *p_out = res;
+    int remaining = sizeof(res);
+
+    int param_count = user_fn ? user_fn->param_count : builtin_fn->param_count;
+    int clamped_param = active_param;
+    if (clamped_param >= param_count && param_count > 0) {
+        clamped_param = param_count - 1;
+    }
+
+    const char *sig_label = user_fn ? user_fn->detail : builtin_fn->label;
+    const char *doc_str = user_fn ? "User-defined function" : builtin_fn->doc;
+
+    int written = snprintf(p_out, remaining,
+                           "{\"signatures\":[{"
+                           "\"label\":\"%s\","
+                           "\"documentation\":{\"kind\":\"markdown\",\"value\":\"%s\"},"
+                           "\"parameters\":[",
+                           sig_label, doc_str);
+    p_out += written;
+    remaining -= written;
+
+    for (int i = 0; i < param_count; i++) {
+        const char *plabel = user_fn ? (user_fn->params ? user_fn->params[i] : "arg") : builtin_fn->params[i];
+        written = snprintf(p_out, remaining, "%s{\"label\":\"%s\"}", (i > 0 ? "," : ""), plabel);
+        p_out += written;
+        remaining -= written;
+    }
+
+    snprintf(p_out, remaining,
+             "],"
+             "\"activeParameter\":%d"
+             "}],"
+             "\"activeSignature\":0,"
+             "\"activeParameter\":%d"
+             "}",
+             clamped_param, clamped_param);
+
+    SendResponse(id, res);
+}
+
 // Main json-rpc dispatch loop
 int main() {
     char header[256];
@@ -1614,6 +1830,18 @@ int main() {
                     JsonValue *doc_obj = JSONGet(params, "textDocument");
                     const char *uri = JSONGetStr(doc_obj, "uri");
                     HandleDocumentSymbols(id, uri);
+                } else if (strcmp(method, "textDocument/signatureHelp") == 0) {
+                    JsonValue *doc_obj = JSONGet(params, "textDocument");
+                    const char *uri = JSONGetStr(doc_obj, "uri");
+                    JsonValue *pos_obj = JSONGet(params, "position");
+                    int line = 0, character = 0;
+                    if (pos_obj) {
+                        JsonValue *lv = JSONGet(pos_obj, "line");
+                        if (lv && lv->type == JSON_NUMBER) line = (int)lv->number;
+                        JsonValue *cv = JSONGet(pos_obj, "character");
+                        if (cv && cv->type == JSON_NUMBER) character = (int)cv->number;
+                    }
+                    HandleSignatureHelp(id, uri, line, character);
                 } else if (strcmp(method, "shutdown") == 0) {
                     SendResponse(id, "null");
                 } else if (strcmp(method, "exit") == 0) {
