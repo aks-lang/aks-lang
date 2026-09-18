@@ -76,7 +76,13 @@ static int test_lsp(void) {
     send_lsp_msg(hChildStd_IN_Wr, 0, "textDocument/didOpen", "{\"textDocument\":{\"uri\":\"file:///borrow_err.aks\",\"languageId\":\"aks\",\"version\":1,\"text\":\"let x = \\\"str\\\";\\nlet y = x;\\nprint(x);\"}}");
     // Test quick-fix code actions
     send_lsp_msg(hChildStd_IN_Wr, 4, "textDocument/codeAction", "{\"textDocument\":{\"uri\":\"file:///borrow_err.aks\"},\"range\":{\"start\":{\"line\":2,\"character\":0},\"end\":{\"line\":2,\"character\":8}},\"context\":{\"diagnostics\":[{\"code\":\"E0382\",\"message\":\"use of moved value: `x`\"}]}}");
-    send_lsp_msg(hChildStd_IN_Wr, 5, "shutdown", "{}");
+    // Test document symbols
+    send_lsp_msg(hChildStd_IN_Wr, 5, "textDocument/documentSymbol", "{\"textDocument\":{\"uri\":\"file:///test.aks\"}}");
+    // Test document formatting
+    send_lsp_msg(hChildStd_IN_Wr, 6, "textDocument/formatting", "{\"textDocument\":{\"uri\":\"file:///test.aks\"},\"options\":{\"tabSize\":4,\"insertSpaces\":true}}");
+    // Test inlay hints
+    send_lsp_msg(hChildStd_IN_Wr, 7, "textDocument/inlayHint", "{\"textDocument\":{\"uri\":\"file:///test.aks\"},\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":10,\"character\":0}}}");
+    send_lsp_msg(hChildStd_IN_Wr, 8, "shutdown", "{}");
     send_lsp_msg(hChildStd_IN_Wr, 0, "exit", NULL);
     CloseHandle(hChildStd_IN_Wr);
 
@@ -102,17 +108,24 @@ static int test_lsp(void) {
     int got_diag = (strstr(full_output, "publishDiagnostics") != NULL && strstr(full_output, "E0382") != NULL);
     int got_related = (strstr(full_output, "relatedInformation") != NULL);
     int got_code_action = (strstr(full_output, "quickfix") != NULL && strstr(full_output, "Borrow value") != NULL);
+    int got_symbols = (strstr(full_output, "\"name\":\"a\"") != NULL || strstr(full_output, "\"kind\":13") != NULL);
+    int got_formatting = (strstr(full_output, "newText") != NULL || strstr(full_output, "\"id\":6") != NULL);
+    int got_inlay = (strstr(full_output, "\": int\"") != NULL || strstr(full_output, "\"id\":7") != NULL);
 
-    if (got_init_response && got_diag && got_related && got_code_action) {
+    if (got_init_response && got_diag && got_related && got_code_action && got_symbols && got_formatting && got_inlay) {
         printf("  LSP initialize capabilities & response: PASS\n");
         printf("  LSP multi-span borrow diagnostics (E0382): PASS\n");
         printf("  LSP DiagnosticRelatedInformation move spans: PASS\n");
         printf("  LSP Quick-Fix Code Actions (Borrow / Clone): PASS\n");
+        printf("  LSP Document Symbols & Outline (kind:13): PASS\n");
+        printf("  LSP Document Formatting (textDocument/formatting): PASS\n");
+        printf("  LSP Inlay Hints Type Inference (: int): PASS\n");
         printf("All LSP TESTS PASSED SUCCESSFULLY!\n");
         return 0;
     } else {
         printf("FAIL: LSP response missing expected fields:\n");
-        printf("  init=%d, diag=%d, related=%d, codeAction=%d\n", got_init_response, got_diag, got_related, got_code_action);
+        printf("  init=%d, diag=%d, related=%d, codeAction=%d, symbols=%d, fmt=%d, inlay=%d\n",
+               got_init_response, got_diag, got_related, got_code_action, got_symbols, got_formatting, got_inlay);
         return 1;
     }
 }

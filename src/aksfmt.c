@@ -741,6 +741,20 @@ static void ScanDirectoryRec(const char *dir, int write_mode) {
 }
 #endif
 
+char *AksFormatSource(const char *src) {
+    if (!src) return NULL;
+    int count = 0;
+    FmtToken *tokens = FmtTokenize(src, &count);
+    if (!tokens) return _strdup(src);
+    char *formatted = FormatTokens(tokens, count);
+    for (int i = 0; i < count; i++) {
+        free(tokens[i].val);
+    }
+    free(tokens);
+    return formatted;
+}
+
+#ifndef AKS_NO_FMT_MAIN
 int main(int argc, char **argv) {
     int write_mode = 0;
     int file_args_start = 1;
@@ -770,3 +784,4 @@ int main(int argc, char **argv) {
     
     return 0;
 }
+#endif

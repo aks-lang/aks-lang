@@ -20,6 +20,8 @@
 #include "parser.h"
 #include "compiler.h"
 #include "diagnostic.h"
+#define AKS_NO_FMT_MAIN
+#include "aksfmt.c"
 
 const char *gProgramName = "aksls.exe";
 int gJitMode = 0;
@@ -806,6 +808,9 @@ static void HandleInitialize(JsonValue *id) {
                   "\"referencesProvider\":true,"
                   "\"renameProvider\":true,"
                   "\"codeActionProvider\":true,"
+                  "\"documentFormattingProvider\":true,"
+                  "\"inlayHintProvider\":true,"
+                  "\"documentSymbolProvider\":true,"
                   "\"semanticTokensProvider\":{"
                   "\"legend\":{\"tokenTypes\":[\"keyword\",\"type\",\"string\",\"variable\",\"function\"],\"tokenModifiers\":[]},"
                   "\"full\":true"
@@ -1130,6 +1135,382 @@ static void HandleSemanticTokens(JsonValue *id, const char *uri) {
     SendResponse(id, tokens_arr);
 }
 
+static void HandleFormatting(JsonValue *id, const char *uri) {
+    Document *doc = DocGet(uri);
+    if (!doc || !doc->text) {
+        SendResponse(id, "[]");
+        return;
+    }
+
+    char *formatted = AksFormatSource(doc->text);
+    if (!formatted) {
+        SendResponse(id, "[]");
+        return;
+    }
+
+    if (strcmp(doc->text, formatted) == 0) {
+        free(formatted);
+        SendResponse(id, "[]");
+        return;
+    }
+
+    int total_lines = 0;
+    int last_line_len = 0;
+    for (const char *p = doc->text; *p; p++) {
+        if (*p == '\n') {
+            total_lines++;
+            last_line_len = 0;
+        } else {
+            last_line_len++;
+        }
+    }
+
+    size_t esc_size = strlen(formatted) * 2 + 1024;
+    char *esc_text = malloc(esc_size);
+    if (!esc_text) {
+        free(formatted);
+        SendResponse(id, "[]");
+        return;
+    }
+    EscapeJson(formatted, esc_text, esc_size);
+    free(formatted);
+
+    size_t res_size = strlen(esc_text) + 256;
+    char *res = malloc(res_size);
+    if (!res) {
+        free(esc_text);
+        SendResponse(id, "[]");
+        return;
+    }
+
+    snprintf(res, res_size,
+             "[{\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":%d,\"character\":%d}},\"newText\":\"%s\"}]",
+             total_lines, last_line_len, esc_text);
+    free(esc_text);
+
+    SendResponse(id, res);
+    free(res);
+}
+
+static void HandleDocumentSymbols(JsonValue *id, const char *uri) {
+    (void)uri;
+    if (g_syms_count == 0) {
+        SendResponse(id, "[]");
+        return;
+    }
+
+    size_t cap = 16384;
+    char *res = malloc(cap);
+    if (!res) { SendResponse(id, "[]"); return; }
+    strcpy(res, "[");
+    size_t cur_len = 1;
+
+    for (int i = 0; i < g_syms_count; i++) {
+        SymbolDef *sym = &g_syms[i];
+        int lsp_kind = 13; // Variable
+        if (sym->kind == SYM_FN) lsp_kind = 12;
+        else if (sym->kind == SYM_STRUCT) lsp_kind = 23;
+        else if (sym->kind == SYM_ENUM) lsp_kind = 10;
+
+        int line_0 = sym->line > 0 ? sym->line - 1 : 0;
+        int col_0 = sym->col > 0 ? sym->col - 1 : 0;
+        int name_len = (int)strlen(sym->name);
+
+        char esc_name[256];
+        EscapeJson(sym->name, esc_name, sizeof(esc_name));
+        char esc_detail[256];
+        EscapeJson(sym->detail, esc_detail, sizeof(esc_detail));
+
+        char item[1024];
+        snprintf(item, sizeof(item),
+                 "%s{\"name\":\"%s\",\"detail\":\"%s\",\"kind\":%d,"
+                 "\"range\":{\"start\":{\"line\":%d,\"character\":0},\"end\":{\"line\":%d,\"character\":%d}},"
+                 "\"selectionRange\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}}}",
+                 i > 0 ? "," : "",
+                 esc_name, esc_detail, lsp_kind,
+                 line_0, line_0, col_0 + name_len > 80 ? col_0 + name_len : 80,
+                 line_0, col_0, line_0, col_0 + name_len);
+
+        size_t item_len = strlen(item);
+        if (cur_len + item_len + 16 > cap) {
+            cap = (cur_len + item_len + 16) * 2;
+            char *nb = realloc(res, cap);
+            if (!nb) break;
+            res = nb;
+        }
+        strcat(res, item);
+        cur_len += item_len;
+    }
+    strcat(res, "]");
+
+    SendResponse(id, res);
+    free(res);
+}
+
+typedef struct {
+    int line;
+    int col;
+    char label[64];
+    int kind;
+} LspInlayHint;
+
+typedef struct {
+    char name[128];
+    char pnames[16][64];
+    int param_count;
+    char ret[64];
+} InlayFuncSig;
+
+typedef struct {
+    LspInlayHint hints[512];
+    int count;
+    const char *text;
+    InlayFuncSig funcs[128];
+    int func_count;
+} InlayContext;
+
+static void CollectFuncSigs(Node *n, InlayContext *ctx) {
+    if (!n) return;
+    if (n->type == NFNDECL && n->fn.name && ctx->func_count < 128) {
+        InlayFuncSig *fs = &ctx->funcs[ctx->func_count++];
+        strncpy(fs->name, n->fn.name, sizeof(fs->name) - 1);
+        fs->name[sizeof(fs->name) - 1] = '\0';
+        fs->param_count = 0;
+        fs->ret[0] = '\0';
+        int p_limit = n->fn.pc < 16 ? n->fn.pc : 16;
+        for (int p = 0; p < p_limit; p++) {
+            if (n->fn.pnames && n->fn.pnames[p]) {
+                strncpy(fs->pnames[fs->param_count], n->fn.pnames[p], 63);
+                fs->pnames[fs->param_count][63] = '\0';
+                fs->param_count++;
+            }
+        }
+        if (n->fn.ret) {
+            strncpy(fs->ret, n->fn.ret, sizeof(fs->ret) - 1);
+            fs->ret[sizeof(fs->ret) - 1] = '\0';
+        }
+    }
+    switch (n->type) {
+        case NBLOCK:
+        case NPROGRAM:
+            for (int i = 0; i < n->block.count; i++) CollectFuncSigs(n->block.stmts[i], ctx);
+            break;
+        case NFNDECL:
+            CollectFuncSigs(n->fn.body, ctx);
+            break;
+        case NIF:
+            CollectFuncSigs(n->ifn.then, ctx);
+            CollectFuncSigs(n->ifn.els, ctx);
+            break;
+        case NWHILE:
+            CollectFuncSigs(n->whilen.body, ctx);
+            break;
+        case NFOR:
+            CollectFuncSigs(n->forn.body, ctx);
+            break;
+        default:
+            break;
+    }
+}
+
+static const char *InferExprType(Node *expr, InlayContext *ctx) {
+    if (!expr) return NULL;
+    switch (expr->type) {
+        case NINT: return ": int";
+        case NFLOAT: return ": float";
+        case NSTR: return ": string";
+        case NBOOL: return ": bool";
+        case NARRLIT: return ": Array";
+        case NMAPLIT: return ": Map";
+        case NCALL: {
+            if (expr->call.callee && expr->call.callee->type == NIDENT && expr->call.callee->sval) {
+                const char *cname = expr->call.callee->sval;
+                if (strcmp(cname, "Matrix") == 0) return ": Matrix";
+                if (strcmp(cname, "DataFrame") == 0) return ": DataFrame";
+                if (strcmp(cname, "Plot") == 0) return ": Plot";
+                if (strcmp(cname, "BigInt") == 0) return ": BigInt";
+                if (strcmp(cname, "Decimal") == 0) return ": Decimal";
+                for (int f = 0; f < ctx->func_count; f++) {
+                    if (strcmp(ctx->funcs[f].name, cname) == 0 && ctx->funcs[f].ret[0]) {
+                        static char ret_buf[128];
+                        snprintf(ret_buf, sizeof(ret_buf), ": %s", ctx->funcs[f].ret);
+                        return ret_buf;
+                    }
+                }
+            }
+            return NULL;
+        }
+        case NSTRUCTINIT:
+            if (expr->single.var) {
+                static char strct_buf[128];
+                snprintf(strct_buf, sizeof(strct_buf), ": %s", expr->single.var);
+                return strct_buf;
+            }
+            return NULL;
+        default:
+            return NULL;
+    }
+}
+
+static void CollectInlayHints(Node *n, InlayContext *ctx) {
+    if (!n) return;
+
+    if ((n->type == NVARDECL || n->type == NCONSTDECL) && n->decl.name && n->decl.init) {
+        if (!n->decl.tname) {
+            const char *inferred = InferExprType(n->decl.init, ctx);
+            if (inferred && ctx->count < 512) {
+                int col = 1;
+                GetColumnForLine(ctx->text, n->line, n->decl.name, &col);
+                LspInlayHint *h = &ctx->hints[ctx->count++];
+                h->line = n->line > 0 ? n->line - 1 : 0;
+                h->col = col > 0 ? (col - 1 + (int)strlen(n->decl.name)) : 0;
+                strncpy(h->label, inferred, sizeof(h->label) - 1);
+                h->label[sizeof(h->label) - 1] = '\0';
+                h->kind = 1; // Type
+            }
+        }
+    }
+
+    if (n->type == NCALL && n->call.callee && n->call.callee->type == NIDENT && n->call.callee->sval) {
+        const char *cname = n->call.callee->sval;
+        InlayFuncSig *found_fn = NULL;
+        for (int f = 0; f < ctx->func_count; f++) {
+            if (strcmp(ctx->funcs[f].name, cname) == 0) {
+                found_fn = &ctx->funcs[f];
+                break;
+            }
+        }
+        if (found_fn && found_fn->param_count > 0) {
+            int limit = n->call.argc < found_fn->param_count ? n->call.argc : found_fn->param_count;
+            for (int a = 0; a < limit; a++) {
+                Node *arg = n->call.args[a];
+                if (arg && arg->line > 0 && ctx->count < 512) {
+                    int col = 1;
+                    const char *arg_word = NULL;
+                    if (arg->type == NIDENT && arg->sval) arg_word = arg->sval;
+                    else if (arg->type == NSTR && arg->sval) arg_word = arg->sval;
+                    if (arg_word) {
+                        GetColumnForLine(ctx->text, arg->line, arg_word, &col);
+                    }
+                    LspInlayHint *h = &ctx->hints[ctx->count++];
+                    h->line = arg->line > 0 ? arg->line - 1 : 0;
+                    h->col = col > 0 ? col - 1 : 0;
+                    snprintf(h->label, sizeof(h->label), "%s:", found_fn->pnames[a]);
+                    h->kind = 2; // Parameter
+                }
+            }
+        }
+    }
+
+    switch (n->type) {
+        case NBLOCK:
+        case NPROGRAM:
+            for (int i = 0; i < n->block.count; i++) CollectInlayHints(n->block.stmts[i], ctx);
+            break;
+        case NFNDECL:
+            CollectInlayHints(n->fn.body, ctx);
+            break;
+        case NIF:
+            CollectInlayHints(n->ifn.cond, ctx);
+            CollectInlayHints(n->ifn.then, ctx);
+            CollectInlayHints(n->ifn.els, ctx);
+            break;
+        case NWHILE:
+            CollectInlayHints(n->whilen.cond, ctx);
+            CollectInlayHints(n->whilen.body, ctx);
+            break;
+        case NFOR:
+            CollectInlayHints(n->forn.init, ctx);
+            CollectInlayHints(n->forn.cond, ctx);
+            CollectInlayHints(n->forn.post, ctx);
+            CollectInlayHints(n->forn.body, ctx);
+            break;
+        case NRETURN:
+        case NPRINT:
+        case NEXPRSTMT:
+            CollectInlayHints(n->single.expr, ctx);
+            break;
+        case NBINOP:
+            CollectInlayHints(n->binop.left, ctx);
+            CollectInlayHints(n->binop.right, ctx);
+            break;
+        case NCALL:
+            for (int i = 0; i < n->call.argc; i++) CollectInlayHints(n->call.args[i], ctx);
+            break;
+        case NVARDECL:
+        case NCONSTDECL:
+            CollectInlayHints(n->decl.init, ctx);
+            break;
+        default:
+            break;
+    }
+}
+
+static void HandleInlayHints(JsonValue *id, const char *uri) {
+    Document *doc = DocGet(uri);
+    if (!doc || !doc->text) {
+        SendResponse(id, "[]");
+        return;
+    }
+
+    int had_error = 0;
+    Node *prog = Parse(doc->text, &had_error);
+    if (!prog || had_error) {
+        if (prog) NodeFree(prog);
+        SendResponse(id, "[]");
+        return;
+    }
+
+    InlayContext ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.text = doc->text;
+
+    CollectFuncSigs(prog, &ctx);
+    CollectInlayHints(prog, &ctx);
+    NodeFree(prog);
+
+    if (ctx.count == 0) {
+        SendResponse(id, "[]");
+        return;
+    }
+
+    size_t cap = 16384;
+    char *res = malloc(cap);
+    if (!res) { SendResponse(id, "[]"); return; }
+    strcpy(res, "[");
+    size_t cur_len = 1;
+
+    for (int i = 0; i < ctx.count; i++) {
+        LspInlayHint *h = &ctx.hints[i];
+        char esc_label[128];
+        EscapeJson(h->label, esc_label, sizeof(esc_label));
+
+        char item[512];
+        snprintf(item, sizeof(item),
+                 "%s{\"position\":{\"line\":%d,\"character\":%d},"
+                 "\"label\":\"%s\",\"kind\":%d,"
+                 "\"paddingLeft\":false,\"paddingRight\":%s}",
+                 i > 0 ? "," : "",
+                 h->line, h->col,
+                 esc_label, h->kind,
+                 h->kind == 2 ? "true" : "false");
+
+        size_t item_len = strlen(item);
+        if (cur_len + item_len + 16 > cap) {
+            cap = (cur_len + item_len + 16) * 2;
+            char *nb = realloc(res, cap);
+            if (!nb) break;
+            res = nb;
+        }
+        strcat(res, item);
+        cur_len += item_len;
+    }
+    strcat(res, "]");
+
+    SendResponse(id, res);
+    free(res);
+}
+
 // Main json-rpc dispatch loop
 int main() {
     char header[256];
@@ -1221,6 +1602,18 @@ int main() {
                     JsonValue *doc_obj = JSONGet(params, "textDocument");
                     const char *uri = JSONGetStr(doc_obj, "uri");
                     HandleSemanticTokens(id, uri);
+                } else if (strcmp(method, "textDocument/formatting") == 0) {
+                    JsonValue *doc_obj = JSONGet(params, "textDocument");
+                    const char *uri = JSONGetStr(doc_obj, "uri");
+                    HandleFormatting(id, uri);
+                } else if (strcmp(method, "textDocument/inlayHint") == 0) {
+                    JsonValue *doc_obj = JSONGet(params, "textDocument");
+                    const char *uri = JSONGetStr(doc_obj, "uri");
+                    HandleInlayHints(id, uri);
+                } else if (strcmp(method, "textDocument/documentSymbol") == 0) {
+                    JsonValue *doc_obj = JSONGet(params, "textDocument");
+                    const char *uri = JSONGetStr(doc_obj, "uri");
+                    HandleDocumentSymbols(id, uri);
                 } else if (strcmp(method, "shutdown") == 0) {
                     SendResponse(id, "null");
                 } else if (strcmp(method, "exit") == 0) {
