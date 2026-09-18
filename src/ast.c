@@ -79,6 +79,9 @@ void NodeFree(Node *n) {
         case NIF:
             NodeFree(n->ifn.cond); NodeFree(n->ifn.then); NodeFree(n->ifn.els);
             break;
+        case NTERNARY:
+            NodeFree(n->ternary.cond); NodeFree(n->ternary.tval); NodeFree(n->ternary.fval);
+            break;
         case NWHILE:
             NodeFree(n->whilen.cond); NodeFree(n->whilen.body);
             if (n->whilen.invariants) {
@@ -574,6 +577,11 @@ Node *NodeCopyInternal(Node *n) {
             copy->ifn.cond = NodeCopy(n->ifn.cond);
             copy->ifn.then = NodeCopy(n->ifn.then);
             copy->ifn.els = NodeCopy(n->ifn.els);
+            break;
+        case NTERNARY:
+            copy->ternary.cond = NodeCopy(n->ternary.cond);
+            copy->ternary.tval = NodeCopy(n->ternary.tval);
+            copy->ternary.fval = NodeCopy(n->ternary.fval);
             break;
         case NWHILE:
             copy->whilen.cond = NodeCopy(n->whilen.cond);
@@ -1092,16 +1100,58 @@ static int NodesEqual(Node *a, Node *b) {
     if (!a || !b) return a == b;
     if (a->type != b->type) return 0;
     switch (a->type) {
-        case NIDENT: return strcmp(a->sval, b->sval) == 0;
+        case NIDENT: return a->sval && b->sval && strcmp(a->sval, b->sval) == 0;
         case NINT: return a->ival == b->ival;
         case NFLOAT: return a->fval == b->fval;
-        case NBOOL: return strcmp(a->sval, b->sval) == 0;
+        case NBOOL: return a->sval && b->sval && strcmp(a->sval, b->sval) == 0;
         case NNULL: return 1;
+        case NSTR: return a->sval && b->sval && strcmp(a->sval, b->sval) == 0;
+        case NUNOP:
+            return a->binop.op && b->binop.op && strcmp(a->binop.op, b->binop.op) == 0 &&
+                   NodesEqual(a->binop.left, b->binop.left);
         case NBINOP:
-            return strcmp(a->binop.op, b->binop.op) == 0 &&
+            return a->binop.op && b->binop.op && strcmp(a->binop.op, b->binop.op) == 0 &&
                    NodesEqual(a->binop.left, b->binop.left) &&
                    NodesEqual(a->binop.right, b->binop.right);
         default: return 0;
+    }
+}
+
+static int IsPureNode(const Node *n) {
+    if (!n) return 1;
+    switch (n->type) {
+        case NINT:
+        case NFLOAT:
+        case NBOOL:
+        case NSTR:
+        case NNULL:
+        case NIDENT:
+            return 1;
+        case NBINOP:
+            if ((strcmp(n->binop.op, "/") == 0 || strcmp(n->binop.op, "%") == 0) &&
+                n->binop.right && n->binop.right->type == NINT && n->binop.right->ival == 0) {
+                return 0;
+            }
+            return IsPureNode(n->binop.left) && IsPureNode(n->binop.right);
+        case NUNOP:
+            return IsPureNode(n->binop.left);
+        case NTUPLE:
+            for (int i = 0; i < n->tuple.count; i++) {
+                if (!IsPureNode(n->tuple.elems[i])) return 0;
+            }
+            return 1;
+        case NARRLIT:
+            for (int i = 0; i < n->arrlit.count; i++) {
+                if (!IsPureNode(n->arrlit.elems[i])) return 0;
+            }
+            return 1;
+        case NCAST:
+            return IsPureNode(n->cast.expr);
+        case NREF:
+        case NMUTREF:
+            return IsPureNode(n->refnode.expr);
+        default:
+            return 0;
     }
 }
 
@@ -1168,6 +1218,11 @@ Node *NodeCseOpt(Node *n) {
         case NIF:
             n->ifn.then = NodeCseOpt(n->ifn.then);
             if (n->ifn.els) n->ifn.els = NodeCseOpt(n->ifn.els);
+            break;
+        case NTERNARY:
+            n->ternary.cond = NodeCseOpt(n->ternary.cond);
+            n->ternary.tval = NodeCseOpt(n->ternary.tval);
+            n->ternary.fval = NodeCseOpt(n->ternary.fval);
             break;
         case NWHILE:
             n->whilen.body = NodeCseOpt(n->whilen.body);
@@ -1332,6 +1387,11 @@ Node *NodeOpt(Node *n) {
                 else if (strcmp(op, "*") == 0) { val = l * r; folded = 1; }
                 else if (strcmp(op, "/") == 0) { if (r != 0 && !(l == INT48_MIN && r == -1)) { val = l / r; folded = 1; } }
                 else if (strcmp(op, "%") == 0) { if (r != 0 && !(l == INT48_MIN && r == -1)) { val = l % r; folded = 1; } }
+                else if (strcmp(op, "&") == 0) { val = l & r; folded = 1; }
+                else if (strcmp(op, "|") == 0) { val = l | r; folded = 1; }
+                else if (strcmp(op, "^") == 0) { val = l ^ r; folded = 1; }
+                else if (strcmp(op, "<<") == 0) { if (r >= 0 && r < 64) { val = l << r; folded = 1; } }
+                else if (strcmp(op, ">>") == 0) { if (r >= 0 && r < 64) { val = l >> r; folded = 1; } }
                 else if (strcmp(op, "<") == 0) {
                     Node *res = NodeNew(NBOOL, n->line);
                     res->sval = strdup(l < r ? "true" : "false");
@@ -1423,16 +1483,63 @@ Node *NodeOpt(Node *n) {
                     return res;
                 }
             }
-            if (strcmp(n->binop.op, "*") == 0) {
+
+            /* Algebraic identity & zero elimination */
+            if (strcmp(n->binop.op, "+") == 0) {
+                if (n->binop.right->type == NINT && n->binop.right->ival == 0 && n->binop.left->type != NSTR) {
+                    Node *res = n->binop.left;
+                    n->binop.left = NULL;
+                    NodeFree(n);
+                    return res;
+                } else if (n->binop.left->type == NINT && n->binop.left->ival == 0 && n->binop.right->type != NSTR) {
+                    Node *res = n->binop.right;
+                    n->binop.right = NULL;
+                    NodeFree(n);
+                    return res;
+                }
+            } else if (strcmp(n->binop.op, "-") == 0) {
+                if (n->binop.right->type == NINT && n->binop.right->ival == 0) {
+                    Node *res = n->binop.left;
+                    n->binop.left = NULL;
+                    NodeFree(n);
+                    return res;
+                } else if (NodesEqual(n->binop.left, n->binop.right) && IsPureNode(n->binop.left)) {
+                    Node *res = NodeNew(NINT, n->line);
+                    res->ival = 0;
+                    NodeFree(n);
+                    return res;
+                }
+            } else if (strcmp(n->binop.op, "*") == 0) {
+                if (n->binop.right->type == NINT && n->binop.right->ival == 1) {
+                    Node *res = n->binop.left;
+                    n->binop.left = NULL;
+                    NodeFree(n);
+                    return res;
+                } else if (n->binop.left->type == NINT && n->binop.left->ival == 1) {
+                    Node *res = n->binop.right;
+                    n->binop.right = NULL;
+                    NodeFree(n);
+                    return res;
+                } else if (n->binop.right->type == NINT && n->binop.right->ival == 0 && IsPureNode(n->binop.left)) {
+                    Node *res = NodeNew(NINT, n->line);
+                    res->ival = 0;
+                    NodeFree(n);
+                    return res;
+                } else if (n->binop.left->type == NINT && n->binop.left->ival == 0 && IsPureNode(n->binop.right)) {
+                    Node *res = NodeNew(NINT, n->line);
+                    res->ival = 0;
+                    NodeFree(n);
+                    return res;
+                }
                 int shift = 0;
-                if (n->binop.right->type == NINT && IsPowerOfTwo(n->binop.right->ival, &shift)) {
+                if (n->binop.right->type == NINT && n->binop.right->ival > 1 && IsPowerOfTwo(n->binop.right->ival, &shift)) {
                     NodeFree(n->binop.right);
                     Node *shiftnode = NodeNew(NINT, n->line);
                     shiftnode->ival = shift;
                     n->binop.right = shiftnode;
                     free(n->binop.op);
                     n->binop.op = strdup("<<");
-                } else if (n->binop.left->type == NINT && IsPowerOfTwo(n->binop.left->ival, &shift)) {
+                } else if (n->binop.left->type == NINT && n->binop.left->ival > 1 && IsPowerOfTwo(n->binop.left->ival, &shift)) {
                     Node *varnode = n->binop.right;
                     NodeFree(n->binop.left);
                     Node *shiftnode = NodeNew(NINT, n->line);
@@ -1443,8 +1550,14 @@ Node *NodeOpt(Node *n) {
                     n->binop.op = strdup("<<");
                 }
             } else if (strcmp(n->binop.op, "/") == 0) {
+                if (n->binop.right->type == NINT && n->binop.right->ival == 1) {
+                    Node *res = n->binop.left;
+                    n->binop.left = NULL;
+                    NodeFree(n);
+                    return res;
+                }
                 int shift = 0;
-                if (n->binop.right->type == NINT && IsPowerOfTwo(n->binop.right->ival, &shift)) {
+                if (n->binop.right->type == NINT && n->binop.right->ival > 1 && IsPowerOfTwo(n->binop.right->ival, &shift)) {
                     NodeFree(n->binop.right);
                     Node *shiftnode = NodeNew(NINT, n->line);
                     shiftnode->ival = shift;
@@ -1453,8 +1566,14 @@ Node *NodeOpt(Node *n) {
                     n->binop.op = strdup(">>");
                 }
             } else if (strcmp(n->binop.op, "%") == 0) {
+                if (n->binop.right->type == NINT && n->binop.right->ival == 1 && IsPureNode(n->binop.left)) {
+                    Node *res = NodeNew(NINT, n->line);
+                    res->ival = 0;
+                    NodeFree(n);
+                    return res;
+                }
                 int shift = 0;
-                if (n->binop.right->type == NINT && IsPowerOfTwo(n->binop.right->ival, &shift)) {
+                if (n->binop.right->type == NINT && n->binop.right->ival > 1 && IsPowerOfTwo(n->binop.right->ival, &shift)) {
                     int64_t mask = n->binop.right->ival - 1;
                     NodeFree(n->binop.right);
                     Node *masknode = NodeNew(NINT, n->line);
@@ -1462,6 +1581,97 @@ Node *NodeOpt(Node *n) {
                     n->binop.right = masknode;
                     free(n->binop.op);
                     n->binop.op = strdup("&");
+                }
+            } else if (strcmp(n->binop.op, "|") == 0) {
+                if (n->binop.right->type == NINT && n->binop.right->ival == 0) {
+                    Node *res = n->binop.left;
+                    n->binop.left = NULL;
+                    NodeFree(n);
+                    return res;
+                } else if (n->binop.left->type == NINT && n->binop.left->ival == 0) {
+                    Node *res = n->binop.right;
+                    n->binop.right = NULL;
+                    NodeFree(n);
+                    return res;
+                } else if (NodesEqual(n->binop.left, n->binop.right) && IsPureNode(n->binop.left)) {
+                    Node *res = n->binop.left;
+                    n->binop.left = NULL;
+                    NodeFree(n);
+                    return res;
+                }
+            } else if (strcmp(n->binop.op, "&") == 0) {
+                if (n->binop.right->type == NINT && n->binop.right->ival == 0 && IsPureNode(n->binop.left)) {
+                    Node *res = NodeNew(NINT, n->line);
+                    res->ival = 0;
+                    NodeFree(n);
+                    return res;
+                } else if (n->binop.left->type == NINT && n->binop.left->ival == 0 && IsPureNode(n->binop.right)) {
+                    Node *res = NodeNew(NINT, n->line);
+                    res->ival = 0;
+                    NodeFree(n);
+                    return res;
+                } else if (NodesEqual(n->binop.left, n->binop.right) && IsPureNode(n->binop.left)) {
+                    Node *res = n->binop.left;
+                    n->binop.left = NULL;
+                    NodeFree(n);
+                    return res;
+                }
+            } else if (strcmp(n->binop.op, "^") == 0) {
+                if (n->binop.right->type == NINT && n->binop.right->ival == 0) {
+                    Node *res = n->binop.left;
+                    n->binop.left = NULL;
+                    NodeFree(n);
+                    return res;
+                } else if (n->binop.left->type == NINT && n->binop.left->ival == 0) {
+                    Node *res = n->binop.right;
+                    n->binop.right = NULL;
+                    NodeFree(n);
+                    return res;
+                } else if (NodesEqual(n->binop.left, n->binop.right) && IsPureNode(n->binop.left)) {
+                    Node *res = NodeNew(NINT, n->line);
+                    res->ival = 0;
+                    NodeFree(n);
+                    return res;
+                }
+            } else if (strcmp(n->binop.op, "<<") == 0) {
+                if (n->binop.right->type == NINT && n->binop.right->ival == 0) {
+                    Node *res = n->binop.left;
+                    n->binop.left = NULL;
+                    NodeFree(n);
+                    return res;
+                } else if (n->binop.left->type == NINT && n->binop.left->ival == 0 && IsPureNode(n->binop.right)) {
+                    Node *res = NodeNew(NINT, n->line);
+                    res->ival = 0;
+                    NodeFree(n);
+                    return res;
+                }
+            } else if (strcmp(n->binop.op, ">>") == 0) {
+                if (n->binop.right->type == NINT && n->binop.right->ival == 0) {
+                    Node *res = n->binop.left;
+                    n->binop.left = NULL;
+                    NodeFree(n);
+                    return res;
+                } else if (n->binop.left->type == NINT && n->binop.left->ival == 0 && IsPureNode(n->binop.right)) {
+                    Node *res = NodeNew(NINT, n->line);
+                    res->ival = 0;
+                    NodeFree(n);
+                    return res;
+                }
+            } else if (strcmp(n->binop.op, "==") == 0) {
+                if (NodesEqual(n->binop.left, n->binop.right) && IsPureNode(n->binop.left) &&
+                    (n->binop.left->type == NINT || n->binop.left->type == NBOOL || n->binop.left->type == NSTR)) {
+                    Node *res = NodeNew(NBOOL, n->line);
+                    res->sval = strdup("true");
+                    NodeFree(n);
+                    return res;
+                }
+            } else if (strcmp(n->binop.op, "!=") == 0) {
+                if (NodesEqual(n->binop.left, n->binop.right) && IsPureNode(n->binop.left) &&
+                    (n->binop.left->type == NINT || n->binop.left->type == NBOOL || n->binop.left->type == NSTR)) {
+                    Node *res = NodeNew(NBOOL, n->line);
+                    res->sval = strdup("false");
+                    NodeFree(n);
+                    return res;
                 }
             }
             break;
@@ -1475,6 +1685,12 @@ Node *NodeOpt(Node *n) {
                 int val = strcmp(n->binop.left->sval, "true") == 0;
                 Node *res = NodeNew(NBOOL, n->line);
                 res->sval = strdup(val ? "false" : "true");
+                NodeFree(n);
+                return res;
+            }
+            if (strcmp(n->binop.op, "~") == 0 && n->binop.left->type == NINT) {
+                Node *res = NodeNew(NINT, n->line);
+                res->ival = ~n->binop.left->ival;
                 NodeFree(n);
                 return res;
             }
@@ -1862,6 +2078,54 @@ Node *NodeOpt(Node *n) {
             }
             if (n->selectn.defaultbody) n->selectn.defaultbody = NodeOpt(n->selectn.defaultbody);
             break;
+        case NCAST:
+            n->cast.expr = NodeOpt(n->cast.expr);
+            break;
+        case NSTRUCTINIT:
+            if (n->structinit.spread) n->structinit.spread = NodeOpt(n->structinit.spread);
+            for (int i = 0; i < n->structinit.fc; i++) {
+                n->structinit.fvals[i] = NodeOpt(n->structinit.fvals[i]);
+            }
+            break;
+        case NCHAINEDCMP:
+            for (int i = 0; i < n->chainedcmp.count; i++) {
+                n->chainedcmp.exprs[i] = NodeOpt(n->chainedcmp.exprs[i]);
+            }
+            break;
+        case NFORIN:
+            n->forin.iter = NodeOpt(n->forin.iter);
+            n->forin.body = NodeOpt(n->forin.body);
+            break;
+        case NTERNARY: {
+            n->ternary.cond = NodeOpt(n->ternary.cond);
+            n->ternary.tval = NodeOpt(n->ternary.tval);
+            n->ternary.fval = NodeOpt(n->ternary.fval);
+
+            if (n->ternary.cond) {
+                if (n->ternary.cond->type == NBOOL) {
+                    int istrue = strcmp(n->ternary.cond->sval, "true") == 0;
+                    Node *res = istrue ? n->ternary.tval : n->ternary.fval;
+                    if (istrue) {
+                        n->ternary.tval = NULL;
+                    } else {
+                        n->ternary.fval = NULL;
+                    }
+                    NodeFree(n);
+                    return res;
+                } else if (n->ternary.cond->type == NINT) {
+                    int istrue = n->ternary.cond->ival != 0;
+                    Node *res = istrue ? n->ternary.tval : n->ternary.fval;
+                    if (istrue) {
+                        n->ternary.tval = NULL;
+                    } else {
+                        n->ternary.fval = NULL;
+                    }
+                    NodeFree(n);
+                    return res;
+                }
+            }
+            break;
+        }
         default: break;
     }
 
@@ -2793,6 +3057,11 @@ Node *NodeInlineOpt(Node *n) {
             n->ifn.then = NodeInlineOpt(n->ifn.then);
             if (n->ifn.els) n->ifn.els = NodeInlineOpt(n->ifn.els);
             break;
+        case NTERNARY:
+            n->ternary.cond = NodeInlineOpt(n->ternary.cond);
+            n->ternary.tval = NodeInlineOpt(n->ternary.tval);
+            n->ternary.fval = NodeInlineOpt(n->ternary.fval);
+            break;
         case NWHILE:
             n->whilen.body = NodeInlineOpt(n->whilen.body);
             break;
@@ -3192,6 +3461,11 @@ Node *NodeDceOpt(Node *n) {
             n->ifn.then = NodeDceOpt(n->ifn.then);
             if (n->ifn.els) n->ifn.els = NodeDceOpt(n->ifn.els);
             break;
+        case NTERNARY:
+            n->ternary.cond = NodeDceOpt(n->ternary.cond);
+            n->ternary.tval = NodeDceOpt(n->ternary.tval);
+            n->ternary.fval = NodeDceOpt(n->ternary.fval);
+            break;
         case NWHILE:
             n->whilen.body = NodeDceOpt(n->whilen.body);
             break;
@@ -3436,6 +3710,11 @@ static void NodeEscapeAnalysisHelper(Node *n, int in_loop) {
         case NIF:
             NodeEscapeAnalysisHelper(n->ifn.then, in_loop);
             if (n->ifn.els) NodeEscapeAnalysisHelper(n->ifn.els, in_loop);
+            break;
+        case NTERNARY:
+            NodeEscapeAnalysisHelper(n->ternary.cond, in_loop);
+            NodeEscapeAnalysisHelper(n->ternary.tval, in_loop);
+            NodeEscapeAnalysisHelper(n->ternary.fval, in_loop);
             break;
         case NWHILE:
             NodeEscapeAnalysisHelper(n->whilen.body, 1);

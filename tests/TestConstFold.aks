@@ -1,0 +1,134 @@
+// Test suite for AST Constant Folding and Algebraic Optimization
+
+let g_counter = 0;
+fn side_effect_fn() {
+    g_counter = g_counter + 1;
+    return 10;
+}
+
+fn test_bitwise_const_folding() {
+    // Integer bitwise operations folded at compile-time
+    let a = 5 & 3;
+    if (a != 1) { print("FAIL bitwise AND"); return false; }
+
+    let b = 5 | 3;
+    if (b != 7) { print("FAIL bitwise OR"); return false; }
+
+    let c = 5 ^ 3;
+    if (c != 6) { print("FAIL bitwise XOR"); return false; }
+
+    let d = 1 << 4;
+    if (d != 16) { print("FAIL bitwise SHL"); return false; }
+
+    let e = 32 >> 2;
+    if (e != 8) { print("FAIL bitwise SHR"); return false; }
+
+    let f = ~0;
+    if (f != -1) { print("FAIL bitwise NOT 0"); return false; }
+
+    let g = ~(-1);
+    if (g != 0) { print("FAIL bitwise NOT -1"); return false; }
+
+    return true;
+}
+
+fn test_algebraic_identities() {
+    let x = 42;
+
+    // Addition identities
+    if ((x + 0) != 42) { print("FAIL x + 0"); return false; }
+    if ((0 + x) != 42) { print("FAIL 0 + x"); return false; }
+
+    // Subtraction identities
+    if ((x - 0) != 42) { print("FAIL x - 0"); return false; }
+    if ((x - x) != 0) { print("FAIL x - x"); return false; }
+
+    // Multiplication identities
+    if ((x * 1) != 42) { print("FAIL x * 1"); return false; }
+    if ((1 * x) != 42) { print("FAIL 1 * x"); return false; }
+    if ((x * 0) != 0) { print("FAIL x * 0"); return false; }
+    if ((0 * x) != 0) { print("FAIL 0 * x"); return false; }
+
+    // Division identities
+    if ((x / 1) != 42) { print("FAIL x / 1"); return false; }
+
+    // Bitwise OR identities
+    if ((x | 0) != 42) { print("FAIL x | 0"); return false; }
+    if ((0 | x) != 42) { print("FAIL 0 | x"); return false; }
+    if ((x | x) != 42) { print("FAIL x | x"); return false; }
+
+    // Bitwise AND identities
+    if ((x & 0) != 0) { print("FAIL x & 0"); return false; }
+    if ((0 & x) != 0) { print("FAIL 0 & x"); return false; }
+    if ((x & x) != 42) { print("FAIL x & x"); return false; }
+
+    // Bitwise XOR identities
+    if ((x ^ 0) != 42) { print("FAIL x ^ 0"); return false; }
+    if ((0 ^ x) != 42) { print("FAIL 0 ^ x"); return false; }
+    if ((x ^ x) != 0) { print("FAIL x ^ x"); return false; }
+
+    // Shift identities
+    if ((x << 0) != 42) { print("FAIL x << 0"); return false; }
+    if ((0 << x) != 0) { print("FAIL 0 << x"); return false; }
+    if ((x >> 0) != 42) { print("FAIL x >> 0"); return false; }
+    if ((0 >> x) != 0) { print("FAIL 0 >> x"); return false; }
+
+    // Reflexive comparisons
+    if (!(x == x)) { print("FAIL x == x"); return false; }
+    if (x != x) { print("FAIL x != x"); return false; }
+
+    // Combined simplification
+    let y = ((x * 1 + 0) | 0) ^ (x - 0);
+    if (y != 0) { print("FAIL combined simplification"); return false; }
+
+    return true;
+}
+
+fn test_ternary_folding() {
+    let t1 = true ? 100 : 200;
+    if (t1 != 100) { print("FAIL true ? 100 : 200"); return false; }
+
+    let t2 = false ? 100 : 200;
+    if (t2 != 200) { print("FAIL false ? 100 : 200"); return false; }
+
+    let t3 = 1 ? "yes" : "no";
+    if (t3 != "yes") { print("FAIL 1 ? yes : no"); return false; }
+
+    let t4 = 0 ? "yes" : "no";
+    if (t4 != "no") { print("FAIL 0 ? yes : no"); return false; }
+
+    // Nested ternary folding
+    let t5 = (5 > 2) ? (true ? 999 : 111) : 0;
+    if (t5 != 999) { print("FAIL nested ternary folding"); return false; }
+
+    return true;
+}
+
+fn test_side_effect_preservation() {
+    g_counter = 0;
+    let res = side_effect_fn() * 0;
+    if (res != 0) { print("FAIL side effect result"); return false; }
+    if (g_counter != 1) { print("FAIL side effect preserved"); return false; }
+
+    let res2 = 0 * side_effect_fn();
+    if (res2 != 0) { print("FAIL side effect result 2"); return false; }
+    if (g_counter != 2) { print("FAIL side effect preserved 2"); return false; }
+
+    let res3 = side_effect_fn() & 0;
+    if (res3 != 0) { print("FAIL side effect result 3"); return false; }
+    if (g_counter != 3) { print("FAIL side effect preserved 3"); return false; }
+
+    return true;
+}
+
+fn main() {
+    print("Running AST Constant Folding & Algebraic Optimization Tests...");
+    if (!test_bitwise_const_folding()) { print("Bitwise test failed"); return 1; }
+    if (!test_algebraic_identities()) { print("Algebraic test failed"); return 1; }
+    if (!test_ternary_folding()) { print("Ternary test failed"); return 1; }
+    if (!test_side_effect_preservation()) { print("Side effect test failed"); return 1; }
+    print("ALL AST OPTIMIZATION TESTS PASSED!");
+    return 0;
+}
+
+main();
