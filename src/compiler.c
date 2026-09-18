@@ -8684,16 +8684,145 @@ static void CompActChunk(Chunk *ch, int start, int deletecount) {
     AdjustJumps(ch, start, deletecount);
 }
 
-static void OptBytecode(Chunk *ch) {
+static int IsJumpTarget(const Chunk *ch, int target_ip) {
     int i = 0;
-
     while (i < ch->count) {
+        uint8_t op = ch->code[i];
         int size = GetInstructionSize(ch->code, ch->count, i);
+        if (op == OPJUMP || op == OPJUMPIFFALSE || op == OPJUMPIFNULL || 
+            op == OPTRYPUSH || op == OPCOALESCE) {
+            if (i + 4 < ch->count) {
+                int32_t offset = (int32_t)(((uint32_t)ch->code[i+1] << 24) |
+                                           ((uint32_t)ch->code[i+2] << 16) |
+                                           ((uint32_t)ch->code[i+3] << 8) |
+                                           (uint32_t)ch->code[i+4]);
+                int target = i + 5 + offset;
+                if (target == target_ip) return 1;
+            }
+        }
+        i += size;
+    }
+    return 0;
+}
 
-        // Fold OPPUSHINT a + OPPUSHINT b + OPADD/OPSUB/OPMUL
-        if (ch->code[i] == OPPUSHINT && i + 18 < ch->count && ch->code[i+9] == OPPUSHINT) {
-            uint8_t op = ch->code[i+18];
-            if (op == OPADD || op == OPSUB || op == OPMUL) {
+static void OptBytecode(Chunk *ch) {
+    if (!ch || ch->count <= 0) return;
+
+    int changed = 1;
+    int pass = 0;
+
+    while (changed && pass < 8) {
+        changed = 0;
+        pass++;
+        int i = 0;
+
+        while (i < ch->count) {
+            int size = GetInstructionSize(ch->code, ch->count, i);
+
+            // 1. Dead push / pop elimination
+            if (ch->code[i] == OPDUP && i + 1 < ch->count && ch->code[i+1] == OPPOP && !IsJumpTarget(ch, i + 1)) {
+                CompActChunk(ch, i, 2);
+                changed = 1;
+                continue;
+            }
+            if (ch->code[i] == OPPUSHNULL && i + 1 < ch->count && ch->code[i+1] == OPPOP && !IsJumpTarget(ch, i + 1)) {
+                CompActChunk(ch, i, 2);
+                changed = 1;
+                continue;
+            }
+            if (ch->code[i] == OPPUSHBOOL && i + 2 < ch->count && ch->code[i+2] == OPPOP && !IsJumpTarget(ch, i + 2)) {
+                CompActChunk(ch, i, 3);
+                changed = 1;
+                continue;
+            }
+            if (ch->code[i] == OPLOAD && i + 3 < ch->count && ch->code[i+3] == OPPOP && !IsJumpTarget(ch, i + 3)) {
+                CompActChunk(ch, i, 4);
+                changed = 1;
+                continue;
+            }
+            if (ch->code[i] == OPPUSHINT && i + 9 < ch->count && ch->code[i+9] == OPPOP && !IsJumpTarget(ch, i + 9)) {
+                CompActChunk(ch, i, 10);
+                changed = 1;
+                continue;
+            }
+            if (ch->code[i] == OPPUSHFLOAT && i + 9 < ch->count && ch->code[i+9] == OPPOP && !IsJumpTarget(ch, i + 9)) {
+                CompActChunk(ch, i, 10);
+                changed = 1;
+                continue;
+            }
+
+            // 2. Comparison inversion with OPNOT
+            if (i + 1 < ch->count && ch->code[i+1] == OPNOT && !IsJumpTarget(ch, i + 1)) {
+                uint8_t op = ch->code[i];
+                uint8_t inverted = 0;
+                if (op == OPEQ) inverted = OPNEQ;
+                else if (op == OPNEQ) inverted = OPEQ;
+                else if (op == OPLT) inverted = OPGTE;
+                else if (op == OPGT) inverted = OPLTE;
+                else if (op == OPLTE) inverted = OPGT;
+                else if (op == OPGTE) inverted = OPLT;
+
+                if (inverted != 0) {
+                    ch->code[i] = inverted;
+                    CompActChunk(ch, i + 1, 1);
+                    changed = 1;
+                    continue;
+                }
+            }
+
+            // 3. Double negation before OPJUMPIFFALSE
+            if (ch->code[i] == OPNOT && i + 1 < ch->count && ch->code[i+1] == OPNOT && !IsJumpTarget(ch, i + 1)) {
+                if (i + 2 < ch->count && ch->code[i+2] == OPJUMPIFFALSE && !IsJumpTarget(ch, i + 2)) {
+                    CompActChunk(ch, i, 2);
+                    changed = 1;
+                    continue;
+                }
+            }
+
+            // 4. Boolean constant inversion
+            if (ch->code[i] == OPPUSHBOOL && i + 2 < ch->count && ch->code[i+2] == OPNOT && !IsJumpTarget(ch, i + 2)) {
+                ch->code[i+1] = ch->code[i+1] ? 0 : 1;
+                CompActChunk(ch, i + 2, 1);
+                changed = 1;
+                continue;
+            }
+
+            // 5. Unary operations on integer constants
+            if (ch->code[i] == OPPUSHINT && i + 9 < ch->count && !IsJumpTarget(ch, i + 9)) {
+                uint8_t next_op = ch->code[i+9];
+                if (next_op == OPBITNOT) {
+                    int64_t val = 0;
+                    for (int k = 1; k <= 8; k++) val = (val << 8) | ch->code[i+k];
+                    val = ~val;
+                    uint64_t uval = (uint64_t)val;
+                    for (int k = 8; k >= 1; k--) {
+                        ch->code[i+k] = (uint8_t)(uval & 0xFF);
+                        uval >>= 8;
+                    }
+                    CompActChunk(ch, i + 9, 1);
+                    changed = 1;
+                    continue;
+                } else if (next_op == OPNEG) {
+                    int64_t val = 0;
+                    for (int k = 1; k <= 8; k++) val = (val << 8) | ch->code[i+k];
+                    if (val != INT64_MIN) {
+                        val = -val;
+                        uint64_t uval = (uint64_t)val;
+                        for (int k = 8; k >= 1; k--) {
+                            ch->code[i+k] = (uint8_t)(uval & 0xFF);
+                            uval >>= 8;
+                        }
+                        CompActChunk(ch, i + 9, 1);
+                        changed = 1;
+                        continue;
+                    }
+                }
+            }
+
+            // 6. Two-integer constant folding (arithmetic, bitwise, comparison)
+            if (ch->code[i] == OPPUSHINT && i + 18 < ch->count && ch->code[i+9] == OPPUSHINT &&
+                !IsJumpTarget(ch, i + 9) && !IsJumpTarget(ch, i + 18)) {
+                uint8_t op = ch->code[i+18];
                 int64_t v1 = 0, v2 = 0;
                 for (int k = 1; k <= 8; k++) {
                     v1 = (v1 << 8) | ch->code[i+k];
@@ -8704,6 +8833,14 @@ static void OptBytecode(Chunk *ch) {
                 if (op == OPADD) ok = !ChkAddOvf(v1, v2, &res);
                 else if (op == OPSUB) ok = !ChkSubOvf(v1, v2, &res);
                 else if (op == OPMUL) ok = !ChkMulOvf(v1, v2, &res);
+                else if (op == OPDIV) { if (v2 != 0 && !(v1 == INT64_MIN && v2 == -1)) { res = v1 / v2; ok = 1; } }
+                else if (op == OPMOD) { if (v2 != 0 && !(v1 == INT64_MIN && v2 == -1)) { res = v1 % v2; ok = 1; } }
+                else if (op == OPBITAND) { res = v1 & v2; ok = 1; }
+                else if (op == OPBITOR)  { res = v1 | v2; ok = 1; }
+                else if (op == OPBITXOR) { res = v1 ^ v2; ok = 1; }
+                else if (op == OPSHL) { if (v2 >= 0 && v2 < 64) { res = v1 << v2; ok = 1; } }
+                else if (op == OPSHR) { if (v2 >= 0 && v2 < 64) { res = v1 >> v2; ok = 1; } }
+
                 if (ok) {
                     uint64_t ures = (uint64_t)res;
                     for (int k = 8; k >= 1; k--) {
@@ -8711,36 +8848,112 @@ static void OptBytecode(Chunk *ch) {
                         ures >>= 8;
                     }
                     CompActChunk(ch, i + 9, 10);
+                    changed = 1;
+                    continue;
+                }
+
+                if (op == OPEQ || op == OPNEQ || op == OPLT || op == OPGT || op == OPLTE || op == OPGTE) {
+                    int res_bool = 0;
+                    if (op == OPEQ) res_bool = (v1 == v2);
+                    else if (op == OPNEQ) res_bool = (v1 != v2);
+                    else if (op == OPLT) res_bool = (v1 < v2);
+                    else if (op == OPGT) res_bool = (v1 > v2);
+                    else if (op == OPLTE) res_bool = (v1 <= v2);
+                    else if (op == OPGTE) res_bool = (v1 >= v2);
+
+                    ch->code[i] = OPPUSHBOOL;
+                    ch->code[i+1] = res_bool ? 1 : 0;
+                    CompActChunk(ch, i + 2, 17);
+                    changed = 1;
                     continue;
                 }
             }
-        }
-        
-        if (ch->code[i] == OPPUSHINT && i + 9 < ch->count && ch->code[i+9] == OPADD) {
-            int64_t val = 0;
-            for (int k = 1; k <= 8; k++) {
-                val = (val << 8) | ch->code[i+k];
-            }
-            if (val == 1) {
-                ch->code[i] = OPINC;
-                CompActChunk(ch, i + 1, 9);
-                continue;
-            }
-        }
-        
-        if (ch->code[i] == OPPUSHINT && i + 9 < ch->count && ch->code[i+9] == OPSUB) {
-            int64_t val = 0;
-            for (int k = 1; k <= 8; k++) {
-                val = (val << 8) | ch->code[i+k];
-            }
-            if (val == 1) {
-                ch->code[i] = OPDEC;
-                CompActChunk(ch, i + 1, 9);
-                continue;
-            }
-        }
 
-        i += size;
+            // 7. Identity operands and INC/DEC reduction
+            if (ch->code[i] == OPPUSHINT && i + 9 < ch->count && !IsJumpTarget(ch, i + 9)) {
+                int64_t val = 0;
+                for (int k = 1; k <= 8; k++) val = (val << 8) | ch->code[i+k];
+                uint8_t next_op = ch->code[i+9];
+
+                if (val == 0 && (next_op == OPADD || next_op == OPSUB || next_op == OPBITOR ||
+                                 next_op == OPBITXOR || next_op == OPSHL || next_op == OPSHR)) {
+                    CompActChunk(ch, i, 10);
+                    changed = 1;
+                    continue;
+                }
+                if (val == 1 && (next_op == OPMUL || next_op == OPDIV)) {
+                    CompActChunk(ch, i, 10);
+                    changed = 1;
+                    continue;
+                }
+                if (val == 1 && next_op == OPADD) {
+                    ch->code[i] = OPINC;
+                    CompActChunk(ch, i + 1, 9);
+                    changed = 1;
+                    continue;
+                }
+                if (val == 1 && next_op == OPSUB) {
+                    ch->code[i] = OPDEC;
+                    CompActChunk(ch, i + 1, 9);
+                    changed = 1;
+                    continue;
+                }
+            }
+
+            // 8. Jump to next instruction & jump threading
+            if (ch->code[i] == OPJUMP && i + 4 < ch->count) {
+                int32_t offset = (int32_t)(((uint32_t)ch->code[i+1] << 24) |
+                                           ((uint32_t)ch->code[i+2] << 16) |
+                                           ((uint32_t)ch->code[i+3] << 8) |
+                                           (uint32_t)ch->code[i+4]);
+                if (offset == 0) {
+                    CompActChunk(ch, i, 5);
+                    changed = 1;
+                    continue;
+                }
+                int target = i + 5 + offset;
+                if (target >= 0 && target + 4 < ch->count && ch->code[target] == OPJUMP) {
+                    int32_t target_offset = (int32_t)(((uint32_t)ch->code[target+1] << 24) |
+                                                      ((uint32_t)ch->code[target+2] << 16) |
+                                                      ((uint32_t)ch->code[target+3] << 8) |
+                                                      (uint32_t)ch->code[target+4]);
+                    int final_target = target + 5 + target_offset;
+                    if (final_target != target && final_target != i) {
+                        int32_t new_offset = final_target - (i + 5);
+                        ch->code[i+1] = (uint8_t)((new_offset >> 24) & 0xFF);
+                        ch->code[i+2] = (uint8_t)((new_offset >> 16) & 0xFF);
+                        ch->code[i+3] = (uint8_t)((new_offset >> 8) & 0xFF);
+                        ch->code[i+4] = (uint8_t)(new_offset & 0xFF);
+                        changed = 1;
+                    }
+                }
+            }
+
+            if (ch->code[i] == OPJUMPIFFALSE && i + 4 < ch->count) {
+                int32_t offset = (int32_t)(((uint32_t)ch->code[i+1] << 24) |
+                                           ((uint32_t)ch->code[i+2] << 16) |
+                                           ((uint32_t)ch->code[i+3] << 8) |
+                                           (uint32_t)ch->code[i+4]);
+                int target = i + 5 + offset;
+                if (target >= 0 && target + 4 < ch->count && ch->code[target] == OPJUMP) {
+                    int32_t target_offset = (int32_t)(((uint32_t)ch->code[target+1] << 24) |
+                                                      ((uint32_t)ch->code[target+2] << 16) |
+                                                      ((uint32_t)ch->code[target+3] << 8) |
+                                                      (uint32_t)ch->code[target+4]);
+                    int final_target = target + 5 + target_offset;
+                    if (final_target != target && final_target != i) {
+                        int32_t new_offset = final_target - (i + 5);
+                        ch->code[i+1] = (uint8_t)((new_offset >> 24) & 0xFF);
+                        ch->code[i+2] = (uint8_t)((new_offset >> 16) & 0xFF);
+                        ch->code[i+3] = (uint8_t)((new_offset >> 8) & 0xFF);
+                        ch->code[i+4] = (uint8_t)(new_offset & 0xFF);
+                        changed = 1;
+                    }
+                }
+            }
+
+            i += size;
+        }
     }
 }
 

@@ -1,0 +1,76 @@
+// Test suite for Bytecode Peephole Optimization & Instruction Reduction
+
+fn test_comparisons(a, b) {
+    let eq_inv = !(a == b);
+    let neq_inv = !(a != b);
+    let lt_inv = !(a < b);
+    let gt_inv = !(a > b);
+    let lte_inv = !(a <= b);
+    let gte_inv = !(a >= b);
+
+    if (eq_inv != (a != b)) { print("FAIL eq_inv"); return false; }
+    if (neq_inv != (a == b)) { print("FAIL neq_inv"); return false; }
+    if (lt_inv != (a >= b)) { print("FAIL lt_inv"); return false; }
+    if (gt_inv != (a <= b)) { print("FAIL gt_inv"); return false; }
+    if (lte_inv != (a > b)) { print("FAIL lte_inv"); return false; }
+    if (gte_inv != (a < b)) { print("FAIL gte_inv"); return false; }
+    return true;
+}
+
+fn test_loop_peephole(limit) {
+    let sum = 0;
+    for (let i = 0; i < limit; i = i + 1) {
+        let dummy = i; // dead load/store candidates
+        let temp = (i + 0) * 1;
+        sum = sum + temp;
+    }
+    return sum;
+}
+
+fn test_branch_threading(x) {
+    let res = "none";
+    if (x > 10) {
+        if (x > 20) {
+            res = "high";
+        } else {
+            res = "mid";
+        }
+    } else {
+        res = "low";
+    }
+    return res;
+}
+
+fn test_bitwise_identities_dynamic(x) {
+    let r1 = x | 0;
+    let r2 = x ^ 0;
+    let r3 = x << 0;
+    let r4 = x >> 0;
+    if (r1 != x || r2 != x || r3 != x || r4 != x) {
+        print("FAIL bitwise identities dynamic");
+        return false;
+    }
+    return true;
+}
+
+fn main() {
+    print("Running Bytecode Peephole Optimizer Tests...");
+
+    if (!test_comparisons(10, 20)) { print("FAIL test_comparisons (10, 20)"); return 1; }
+    if (!test_comparisons(15, 15)) { print("FAIL test_comparisons (15, 15)"); return 1; }
+    if (!test_comparisons(30, 10)) { print("FAIL test_comparisons (30, 10)"); return 1; }
+
+    let sum = test_loop_peephole(100);
+    if (sum != 4950) { print("FAIL test_loop_peephole expected 4950, got " + sum); return 1; }
+
+    if (test_branch_threading(5) != "low") { print("FAIL test_branch_threading 5"); return 1; }
+    if (test_branch_threading(15) != "mid") { print("FAIL test_branch_threading 15"); return 1; }
+    if (test_branch_threading(25) != "high") { print("FAIL test_branch_threading 25"); return 1; }
+
+    if (!test_bitwise_identities_dynamic(12345)) { return 1; }
+
+    print("ALL BYTECODE PEEPHOLE TESTS PASSED!");
+    return 0;
+}
+
+main();
