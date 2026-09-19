@@ -504,6 +504,318 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     }
   }
 
+  // Fast-Path Dispatch for High-Frequency Core Builtins
+  switch (name[0]) {
+    case 'L': {
+      if (strcmp(name, "Length") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: Length() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        if (ValKind(arg) == VALSTR) {
+          PUSH(ValInt(ValToStrPtr(arg)->len));
+        } else if (ValKind(arg) == VALARR || ValKind(arg) == VALTUPLE) {
+          PUSH(ValInt(ValToArr(arg)->count));
+        } else if (ValKind(arg) == VALSTRUCT && strcmp(ValToObj(arg)->typename, "Range") == 0) {
+          AKSStruct *s = ValToObj(arg);
+          int64_t start = 0, end = 0;
+          for (int i = 0; i < s->fieldcount; i++) {
+            if (strcmp(s->fieldnames[i], "start") == 0) start = ValToInt(s->fieldvals[i]);
+            else if (strcmp(s->fieldnames[i], "end") == 0) end = ValToInt(s->fieldvals[i]);
+          }
+          PUSH(ValInt(end - start));
+        } else {
+          PUSH(ValInt(0));
+        }
+        ValFree(&arg);
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+    case 'S': {
+      if (strcmp(name, "SquareRoot") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: SquareRoot() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        double vald = ValKind(arg) == VALFLOAT ? ValToFloat(arg) : (double)ValToInt(arg);
+        PUSH(ValFloat(sqrt(vald)));
+        ValFree(&arg);
+        *stacktopptr = stacktop;
+        return 1;
+      } else if (strcmp(name, "String") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: String() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        PUSH(ValToStr(arg));
+        ValFree(&arg);
+        *stacktopptr = stacktop;
+        return 1;
+      } else if (strcmp(name, "SetPanicHook") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: SetPanicHook() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue handler = POP();
+        AKSValue old = vm->panic_hook;
+        vm->panic_hook = ValCopy(handler);
+        PUSH(old);
+        ValFree(&handler);
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+    case 'A': {
+      if (strcmp(name, "Absolute") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: Absolute() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        if (ValKind(arg) == VALINT) {
+          PUSH(ValInt(ValToInt(arg) < 0 ? -ValToInt(arg) : ValToInt(arg)));
+        } else if (ValKind(arg) == VALFLOAT) {
+          PUSH(ValFloat(ValToFloat(arg) < 0 ? -ValToFloat(arg) : ValToFloat(arg)));
+        } else {
+          PUSH(ValCopy(arg));
+        }
+        ValFree(&arg);
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+    case 'T': {
+      if (strcmp(name, "TimerNowNanos") == 0) {
+        int64_t nanos = 0;
+#ifdef _WIN32
+        LARGE_INTEGER freq, cnt;
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&cnt);
+        if (freq.QuadPart > 0) {
+          nanos = (int64_t)(((double)cnt.QuadPart / (double)freq.QuadPart) * 1000000000.0);
+        }
+#else
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        nanos = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+#endif
+        PUSH(ValInt(nanos));
+        *stacktopptr = stacktop;
+        return 1;
+      } else if (strcmp(name, "TimerNowMicros") == 0) {
+        int64_t micros = 0;
+#ifdef _WIN32
+        LARGE_INTEGER freq, cnt;
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&cnt);
+        if (freq.QuadPart > 0) {
+          micros = (int64_t)(((double)cnt.QuadPart / (double)freq.QuadPart) * 1000000.0);
+        }
+#else
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        micros = (int64_t)ts.tv_sec * 1000000LL + (ts.tv_nsec / 1000);
+#endif
+        PUSH(ValInt(micros));
+        *stacktopptr = stacktop;
+        return 1;
+      } else if (strcmp(name, "TimerNowMillis") == 0) {
+        int64_t millis = 0;
+#ifdef _WIN32
+        LARGE_INTEGER freq, cnt;
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&cnt);
+        if (freq.QuadPart > 0) {
+          millis = (int64_t)(((double)cnt.QuadPart / (double)freq.QuadPart) * 1000.0);
+        }
+#else
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        millis = (int64_t)ts.tv_sec * 1000LL + (ts.tv_nsec / 1000000);
+#endif
+        PUSH(ValInt(millis));
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+    case 'c': {
+      if (strcmp(name, "clock") == 0) {
+        if (argc != 0) {
+          fprintf(stderr, "Runtime error: clock() expects 0 arguments, got %d\n", argc);
+          return -1;
+        }
+        double secs = (double)clock() / CLOCKS_PER_SEC;
+        PUSH(ValFloat(secs));
+        *stacktopptr = stacktop;
+        return 1;
+      } else if (strcmp(name, "cos") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: cos() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        double vald = ValKind(arg) == VALFLOAT ? ValToFloat(arg) : (double)ValToInt(arg);
+        PUSH(ValFloat(cos(vald)));
+        ValFree(&arg);
+        *stacktopptr = stacktop;
+        return 1;
+      } else if (strcmp(name, "cause") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: cause() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue err = POP();
+        AKSValue cause_val = ValNull();
+        if (ValKind(err) == VALSTRUCT && ValToObj(err)) {
+          AKSStruct *s = ValToObj(err);
+          for (int i = 0; i < s->fieldcount; i++) {
+            if (strcmp(s->fieldnames[i], "_cause") == 0) {
+              cause_val = ValCopy(s->fieldvals[i]);
+              break;
+            }
+          }
+        }
+        PUSH(cause_val);
+        ValFree(&err);
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+    case 'a': {
+      if (strcmp(name, "append") == 0) {
+        if (argc != 2) {
+          fprintf(stderr, "Runtime error: append() expects 2 arguments, got %d\n", argc);
+          return -1;
+        }
+        AKSValue val = POP();
+        AKSValue arr = POP();
+        if (ValKind(arr) != VALARR) {
+          fprintf(stderr, "Runtime error: append() first argument must be an array\n");
+          ValFree(&val);
+          ValFree(&arr);
+          return -1;
+        }
+        AKSArray *a = ValToArr(arr);
+        if (a->count >= a->capacity) {
+          a->capacity = a->capacity == 0 ? 4 : a->capacity * 2;
+          a->items = realloc(a->items, a->capacity * sizeof(AKSValue));
+        }
+        a->items[a->count++] = ValCopy(val);
+        PUSH(ValNull());
+        ValFree(&val);
+        ValFree(&arr);
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+    case 's': {
+      if (strcmp(name, "sin") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: sin() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        double vald = ValKind(arg) == VALFLOAT ? ValToFloat(arg) : (double)ValToInt(arg);
+        PUSH(ValFloat(sin(vald)));
+        ValFree(&arg);
+        *stacktopptr = stacktop;
+        return 1;
+      } else if (strcmp(name, "sqrt") == 0 || strcmp(name, "Sqrt") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: sqrt() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        double vald = ValKind(arg) == VALFLOAT ? ValToFloat(arg) : (double)ValToInt(arg);
+        PUSH(ValFloat(sqrt(vald)));
+        ValFree(&arg);
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+    case 'p': {
+      if (strcmp(name, "panic") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: panic() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        const char *msg = "panic occurred";
+        char temp_msg[512];
+        if (ValKind(arg) == VALSTR) {
+          msg = ValToStrPtr(arg)->data;
+        } else {
+          AKSValue str_val = ValToStr(arg);
+          if (ValKind(str_val) == VALSTR) {
+            strncpy(temp_msg, ValToStrPtr(str_val)->data, sizeof(temp_msg) - 1);
+            temp_msg[sizeof(temp_msg) - 1] = '\0';
+            msg = temp_msg;
+          }
+          ValFree(&str_val);
+        }
+        TriggerPanic(vm, task, msg, NULL);
+        ValFree(&arg);
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+    case 'P': {
+      if (strcmp(name, "Power") == 0) {
+        if (argc != 2) {
+          fprintf(stderr, "Runtime error: Power() expects 2 arguments, got %d\n", argc);
+          return -1;
+        }
+        AKSValue y = POP();
+        AKSValue x = POP();
+        double dx = ValKind(x) == VALFLOAT ? ValToFloat(x) : (double)ValToInt(x);
+        double dy = ValKind(y) == VALFLOAT ? ValToFloat(y) : (double)ValToInt(y);
+        PUSH(ValFloat(pow(dx, dy)));
+        ValFree(&x);
+        ValFree(&y);
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+    case 't': {
+      if (strcmp(name, "tan") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: tan() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        double vald = ValKind(arg) == VALFLOAT ? ValToFloat(arg) : (double)ValToInt(arg);
+        PUSH(ValFloat(tan(vald)));
+        ValFree(&arg);
+        *stacktopptr = stacktop;
+        return 1;
+      } else if (strcmp(name, "typeof") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: typeof() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        PUSH(ValTypeof(arg));
+        ValFree(&arg);
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+  }
+
   // Memory-Mapped Files (MMap)
   if (strcmp(name, "MMapOpen") == 0) {
     if (argc != 3) {

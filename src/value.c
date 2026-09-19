@@ -215,6 +215,7 @@ AKSValue ValMutex(VMMutex *m) { return ((uint64_t)0xFFFA << 48) | ((uintptr_t)m 
 AKSValue ValSem(VMSemaphore *s) { return ((uint64_t)0xFFFB << 48) | ((uintptr_t)s & 0x0000FFFFFFFFFFFFULL); }
 
 #define INTERN_BUCKETS 1024
+#define INTERN_STRIPES 32
 
 typedef struct StringInternEntry {
     AKSString *str;
@@ -224,26 +225,40 @@ typedef struct StringInternEntry {
 static StringInternEntry *g_intern_buckets[INTERN_BUCKETS];
 
 #ifdef _WIN32
-static CRITICAL_SECTION g_intern_cs;
+static CRITICAL_SECTION g_intern_cs[INTERN_STRIPES];
 static volatile LONG g_intern_init_flag = 0;
-static inline void InternLock(void) {
+static inline void EnsureInternInit(void) {
     if (g_intern_init_flag == 0) {
         if (InterlockedCompareExchange(&g_intern_init_flag, 1, 0) == 0) {
-            InitializeCriticalSection(&g_intern_cs);
+            for (int i = 0; i < INTERN_STRIPES; i++) {
+                InitializeCriticalSection(&g_intern_cs[i]);
+            }
             g_intern_init_flag = 2;
         } else {
             while (g_intern_init_flag != 2) Sleep(0);
         }
     }
-    EnterCriticalSection(&g_intern_cs);
 }
-static inline void InternUnlock(void) {
-    LeaveCriticalSection(&g_intern_cs);
+static inline void InternLock(uint32_t bucket) {
+    EnsureInternInit();
+    EnterCriticalSection(&g_intern_cs[bucket & (INTERN_STRIPES - 1)]);
+}
+static inline void InternUnlock(uint32_t bucket) {
+    LeaveCriticalSection(&g_intern_cs[bucket & (INTERN_STRIPES - 1)]);
 }
 #else
-static pthread_mutex_t g_intern_mutex = PTHREAD_MUTEX_INITIALIZER;
-static inline void InternLock(void) { pthread_mutex_lock(&g_intern_mutex); }
-static inline void InternUnlock(void) { pthread_mutex_unlock(&g_intern_mutex); }
+static pthread_mutex_t g_intern_mutex[INTERN_STRIPES] = {
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER
+};
+static inline void InternLock(uint32_t bucket) { pthread_mutex_lock(&g_intern_mutex[bucket & (INTERN_STRIPES - 1)]); }
+static inline void InternUnlock(uint32_t bucket) { pthread_mutex_unlock(&g_intern_mutex[bucket & (INTERN_STRIPES - 1)]); }
 #endif
 
 static inline uint32_t HashStr(const char *s, int len) {
@@ -259,15 +274,15 @@ AKSValue ValStrLen(const char *s, int len) {
     if (!s) s = "";
     if (len <= 64) {
         uint32_t h = HashStr(s, len) & (INTERN_BUCKETS - 1);
-        InternLock();
+        InternLock(h);
         for (StringInternEntry *e = g_intern_buckets[h]; e; e = e->next) {
             if (e->str && e->str->len == len && memcmp(e->str->data, s, len) == 0) {
                 AtomicIncrement(&e->str->refcount);
-                InternUnlock();
+                InternUnlock(h);
                 return ((uint64_t)0xFFF4 << 48) | ((uintptr_t)e->str & 0x0000FFFFFFFFFFFFULL);
             }
         }
-        InternUnlock();
+        InternUnlock(h);
     }
 
     AKSString *str = malloc(sizeof(AKSString));
@@ -282,21 +297,21 @@ AKSValue ValStrLen(const char *s, int len) {
 
     if (len <= 64) {
         uint32_t h = HashStr(s, len) & (INTERN_BUCKETS - 1);
-        InternLock();
+        InternLock(h);
         StringInternEntry *entry = malloc(sizeof(StringInternEntry));
         if (entry) {
             entry->str = str;
             entry->next = g_intern_buckets[h];
             g_intern_buckets[h] = entry;
         }
-        InternUnlock();
+        InternUnlock(h);
     }
 
     return ((uint64_t)0xFFF4 << 48) | ((uintptr_t)str & 0x0000FFFFFFFFFFFFULL);
 }
 
 void ValDumpActiveStrings(void) {
-    InternLock();
+    for (int s = 0; s < INTERN_STRIPES; s++) InternLock(s);
     for (int i = 0; i < INTERN_BUCKETS; i++) {
         for (StringInternEntry *e = g_intern_buckets[i]; e; e = e->next) {
             if (e->str && e->str->refcount > 0) {
@@ -304,7 +319,7 @@ void ValDumpActiveStrings(void) {
             }
         }
     }
-    InternUnlock();
+    for (int s = 0; s < INTERN_STRIPES; s++) InternUnlock(s);
 }
 
 AKSValue ValStr(const char *s) {
@@ -377,9 +392,9 @@ void ValFreeFunc(AKSValue *v) {
             if (str) {
                 int should_free = 0;
                 if (str->len <= 64 && str->data) {
-                    InternLock();
+                    uint32_t h = HashStr(str->data, str->len) & (INTERN_BUCKETS - 1);
+                    InternLock(h);
                     if (AtomicDecrement(&str->refcount) <= 0) {
-                        uint32_t h = HashStr(str->data, str->len) & (INTERN_BUCKETS - 1);
                         StringInternEntry **curr = &g_intern_buckets[h];
                         while (*curr) {
                             if ((*curr)->str == str) {
@@ -392,7 +407,7 @@ void ValFreeFunc(AKSValue *v) {
                         }
                         should_free = 1;
                     }
-                    InternUnlock();
+                    InternUnlock(h);
                 } else {
                     if (AtomicDecrement(&str->refcount) <= 0) {
                         should_free = 1;

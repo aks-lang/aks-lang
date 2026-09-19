@@ -11634,12 +11634,24 @@ enter_stack_interpreter: for (;;) {
       AKSValue *dest = task->stack + frame->slotsbase;
       AKSValue *src = stacktop - argc;
 
+      AKSValue temp_args[32];
+      AKSValue *args_buf = temp_args;
+      if (argc > 32) {
+        args_buf = (AKSValue *)malloc(sizeof(AKSValue) * argc);
+      }
+      for (int i = 0; i < argc; i++) {
+        args_buf[i] = src[i];
+      }
+
       for (int i = 0; i < frame->fn->localcount; i++) {
         ValFree(&dest[i]);
       }
 
       for (int i = 0; i < argc; i++) {
-        dest[i] = src[i];
+        dest[i] = args_buf[i];
+      }
+      if (argc > 32) {
+        free(args_buf);
       }
 
       stacktop = dest + argc;

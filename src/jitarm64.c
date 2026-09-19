@@ -11,12 +11,29 @@
 #include <sys/mman.h>
 #endif
 
-// Allocates executable memory
-static void *AllocExecMem(int size) {
+// Allocates memory with write-only permissions
+static void *AllocExecMem(size_t size) {
 #ifdef _WIN32
-    return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 #else
-    return mmap(NULL, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    return mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+#endif
+}
+
+// Transitions memory to execute-only and flushes instruction cache
+static int MarkExecMem(void *ptr, size_t size) {
+    if (!ptr || size == 0) return 0;
+#ifdef _WIN32
+    DWORD old_protect;
+    int ok = VirtualProtect(ptr, size, PAGE_EXECUTE_READ, &old_protect) ? 1 : 0;
+    FlushInstructionCache(GetCurrentProcess(), ptr, size);
+    return ok;
+#else
+    int ok = (mprotect(ptr, size, PROT_READ | PROT_EXEC) == 0) ? 1 : 0;
+#if defined(__GNUC__) || defined(__clang__)
+    __builtin___clear_cache((char *)ptr, (char *)ptr + size);
+#endif
+    return ok;
 #endif
 }
 
@@ -46,30 +63,33 @@ void JITArm64Emit32(JITArm64Buffer *buf, uint32_t inst) {
 
 // Helpers called from ARM64 JIT
 static AKSValue JITArm64HelperAdd(AKSValue a, AKSValue b) {
-    if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
-        return ValInt(ValToInt(a) + ValToInt(b));
+    if (ValIsInt(a) && ValIsInt(b)) {
+        return ValAddIntInt(a, b);
     }
-    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
-    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
-    return ValFloat(fa + fb);
+    if (ValIsFloat(a) && ValIsFloat(b)) {
+        return ValAddFloatFloat(a, b);
+    }
+    return ValAdd(a, b);
 }
 
 static AKSValue JITArm64HelperSub(AKSValue a, AKSValue b) {
-    if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
-        return ValInt(ValToInt(a) - ValToInt(b));
+    if (ValIsInt(a) && ValIsInt(b)) {
+        return ValSubIntInt(a, b);
     }
-    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
-    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
-    return ValFloat(fa - fb);
+    if (ValIsFloat(a) && ValIsFloat(b)) {
+        return ValSubFloatFloat(a, b);
+    }
+    return ValSub(a, b);
 }
 
 static AKSValue JITArm64HelperMul(AKSValue a, AKSValue b) {
-    if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
-        return ValInt(ValToInt(a) * ValToInt(b));
+    if (ValIsInt(a) && ValIsInt(b)) {
+        return ValMulIntInt(a, b);
     }
-    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
-    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
-    return ValFloat(fa * fb);
+    if (ValIsFloat(a) && ValIsFloat(b)) {
+        return ValMulFloatFloat(a, b);
+    }
+    return ValMul(a, b);
 }
 
 static AKSValue JITArm64HelperDiv(AKSValue a, AKSValue b) {
@@ -357,6 +377,7 @@ void *CompileArm64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, 
     uint8_t *exec = (uint8_t *)AllocExecMem(buf.size);
     if (exec) {
         memcpy(exec, buf.code, buf.size);
+        MarkExecMem(exec, buf.size);
     }
     JITArm64BufferFree(&buf);
     return exec;
