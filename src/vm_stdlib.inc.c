@@ -5770,16 +5770,11 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     AKSValue NameVal = POP();
     AKSValue InitVal = POP();
     AKSValue ManualVal = POP();
-    AKSValue ResVal = ValInt(0);
-#ifdef _WIN32
     const char *NameStr = (ValKind(NameVal) == VALSTR) ? ValToStrPtr(NameVal)->data : NULL;
     BOOL ManualReset = ValToBool(ManualVal) ? TRUE : FALSE;
     BOOL InitState = ValToBool(InitVal) ? TRUE : FALSE;
     HANDLE EventHandle = CreateEventA(NULL, ManualReset, InitState, NameStr);
-    ResVal = ValInt((int64_t)(uintptr_t)EventHandle);
-#else
-    ResVal = ValInt(1);
-#endif
+    AKSValue ResVal = ValInt((int64_t)(uintptr_t)EventHandle);
     ValFree(&ManualVal);
     ValFree(&InitVal);
     ValFree(&NameVal);
@@ -5795,12 +5790,10 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     }
     AKSValue EventVal = POP();
     BOOL SetOk = FALSE;
-#ifdef _WIN32
     HANDLE EventHandle = (HANDLE)(uintptr_t)ValToInt(EventVal);
     if (EventHandle && EventHandle != INVALID_HANDLE_VALUE) {
       SetOk = SetEvent(EventHandle);
     }
-#endif
     ValFree(&EventVal);
     PUSH(ValBool(SetOk ? 1 : 0));
     *stacktopptr = stacktop;
@@ -5814,12 +5807,10 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     }
     AKSValue EventVal = POP();
     BOOL ResetOk = FALSE;
-#ifdef _WIN32
     HANDLE EventHandle = (HANDLE)(uintptr_t)ValToInt(EventVal);
     if (EventHandle && EventHandle != INVALID_HANDLE_VALUE) {
       ResetOk = ResetEvent(EventHandle);
     }
-#endif
     ValFree(&EventVal);
     PUSH(ValBool(ResetOk ? 1 : 0));
     *stacktopptr = stacktop;
@@ -5834,16 +5825,12 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     AKSValue TimeoutVal = POP();
     AKSValue EventVal = POP();
     AKSValue ResVal = ValBool(0);
-#ifdef _WIN32
     HANDLE EventHandle = (HANDLE)(uintptr_t)ValToInt(EventVal);
     DWORD TimeoutMs = (DWORD)ValToInt(TimeoutVal);
     if (EventHandle && EventHandle != INVALID_HANDLE_VALUE) {
       DWORD WaitResult = WaitForSingleObject(EventHandle, TimeoutMs);
       ResVal = ValBool(WaitResult == WAIT_OBJECT_0 ? 1 : 0);
     }
-#else
-    ResVal = ValBool(1);
-#endif
     ValFree(&EventVal);
     ValFree(&TimeoutVal);
     PUSH(ResVal);
@@ -5857,12 +5844,10 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       return -1;
     }
     AKSValue EventVal = POP();
-#ifdef _WIN32
     HANDLE EventHandle = (HANDLE)(uintptr_t)ValToInt(EventVal);
     if (EventHandle && EventHandle != INVALID_HANDLE_VALUE) {
       CloseHandle(EventHandle);
     }
-#endif
     ValFree(&EventVal);
     PUSH(ValBool(1));
     *stacktopptr = stacktop;
@@ -9619,6 +9604,9 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     uint64_t Src = (uint64_t)ValToInt(SrcVal);
     uint64_t Mask = (uint64_t)ValToInt(MaskVal);
     uint64_t Res = 0;
+#if (defined(_MSC_VER) && (defined(_M_X64) || defined(_M_AMD64))) || defined(__BMI2__)
+    Res = _pext_u64(Src, Mask);
+#else
     uint64_t Bit = 1;
     for (int i = 0; i < 64; i++) {
       if (Mask & (1ULL << i)) {
@@ -9626,6 +9614,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
         Bit <<= 1;
       }
     }
+#endif
     ValFree(&SrcVal);
     ValFree(&MaskVal);
     PUSH(ValInt((int64_t)Res));
@@ -9643,6 +9632,9 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     uint64_t Src = (uint64_t)ValToInt(SrcVal);
     uint64_t Mask = (uint64_t)ValToInt(MaskVal);
     uint64_t Res = 0;
+#if (defined(_MSC_VER) && (defined(_M_X64) || defined(_M_AMD64))) || defined(__BMI2__)
+    Res = _pdep_u64(Src, Mask);
+#else
     uint64_t Bit = 1;
     for (int i = 0; i < 64; i++) {
       if (Mask & (1ULL << i)) {
@@ -9650,6 +9642,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
         Bit <<= 1;
       }
     }
+#endif
     ValFree(&SrcVal);
     ValFree(&MaskVal);
     PUSH(ValInt((int64_t)Res));
@@ -9667,9 +9660,15 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     uint64_t Src = (uint64_t)ValToInt(SrcVal);
     int64_t Index = ValToInt(IndexVal);
     uint64_t Res = 0;
+#if (defined(_MSC_VER) && (defined(_M_X64) || defined(_M_AMD64))) || defined(__BMI2__)
+    if (Index <= 0) Res = 0;
+    else if (Index >= 64) Res = Src;
+    else Res = _bzhi_u64(Src, (unsigned int)Index);
+#else
     if (Index <= 0) Res = 0;
     else if (Index >= 64) Res = Src;
     else Res = Src & ((1ULL << Index) - 1ULL);
+#endif
     ValFree(&SrcVal);
     ValFree(&IndexVal);
     PUSH(ValInt((int64_t)Res));

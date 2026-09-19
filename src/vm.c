@@ -7854,7 +7854,7 @@ while (0)
         for (int i = 0; i < argc; i++) {
           *stacktop++ = ValCopy(frameslots[dst + i]);
         }
-        res = ExecuteStdlib(vm, callee->name, argc, &stacktop);
+        res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
       }
 
       if (res == -2) {
@@ -8084,7 +8084,7 @@ while (0)
             *stacktop++ = ValCopy(frameslots[dst + i]);
           }
         }
-        res = ExecuteStdlib(vm, callee->name, argc, &stacktop);
+        res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
       }
 
       if (res == -2) {
@@ -9143,7 +9143,7 @@ while (0)
         for (int i = 0; i < argc; i++) {
           *stacktop++ = ValCopy(frameslots[dst + i]);
         }
-        res = ExecuteStdlib(vm, callee->name, argc, &stacktop);
+        res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
       }
 
       if (res == -2) {
@@ -9607,7 +9607,7 @@ while (0)
           frameslots[dst] = ValTask(spawned);
           REG_DISPATCH_OR_BREAK();
         }
-        res = ExecuteStdlib(vm, callee->name, argc, &stacktop);
+        res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
       }
 
       if (res == -2) {
@@ -10879,7 +10879,7 @@ enter_stack_interpreter: for (;;) {
     }
 
     task->stacktop = (int)(stacktop - task->stack);
-    int res = ExecuteStdlib(vm, callee->name, argc, &stacktop);
+    int res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
     if (res == -2) {
       task->blockedonstdlib = 1;
       strncpy(task->stdlibname, callee->name, 63);
@@ -11145,7 +11145,7 @@ enter_stack_interpreter: for (;;) {
     }
 
     task->stacktop = (int)(stacktop - task->stack);
-    int res = ExecuteStdlib(vm, callee->name, argc, &stacktop);
+    int res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
     if (res == -2) {
       task->blockedonstdlib = 1;
       strncpy(task->stdlibname, callee->name, 63);
@@ -11484,7 +11484,7 @@ enter_stack_interpreter: for (;;) {
     }
 
     task->stacktop = (int)(stacktop - task->stack);
-    int res = ExecuteStdlib(vm, callee->name, argc, &stacktop);
+    int res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
     if (res == -2) {
       task->blockedonstdlib = 1;
       strncpy(task->stdlibname, callee->name, 63);
@@ -11591,7 +11591,7 @@ enter_stack_interpreter: for (;;) {
     }
 
     task->stacktop = (int)(stacktop - task->stack);
-    int res = ExecuteStdlib(vm, callee->name, argc, &stacktop);
+    int res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
     if (res == -2) {
       task->blockedonstdlib = 1;
       strncpy(task->stdlibname, callee->name, 63);

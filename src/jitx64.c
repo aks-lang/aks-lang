@@ -34,12 +34,23 @@ typedef struct {
     void *jitcleanupframe;
 } JITHelperTable;
 
-// Allocates executable memory
+// Allocates memory for JIT code generation (W^X compliant)
 static void *AllocExecMem(int size) {
 #ifdef _WIN32
-    return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 #else
-    return mmap(NULL, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    return mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+#endif
+}
+
+// Transitions JIT memory to executable (W^X enforcement)
+static void MarkExecMem(void *ptr, int size) {
+    if (!ptr || size <= 0) return;
+#ifdef _WIN32
+    DWORD oldProtect;
+    VirtualProtect(ptr, size, PAGE_EXECUTE_READ, &oldProtect);
+#else
+    mprotect(ptr, size, PROT_READ | PROT_EXEC);
 #endif
 }
 
@@ -90,29 +101,32 @@ void JITEmitQword(JITBuffer *buf, uint64_t qw) {
 // C Helper functions called from the JIT code
 static AKSValue JITHelperAdd(AKSValue a, AKSValue b) {
     if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
-        return ValInt(ValToInt(a) + ValToInt(b));
+        return ValAddIntInt(a, b);
     }
-    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
-    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
-    return ValFloat(fa + fb);
+    if (ValKind(a) == VALFLOAT && ValKind(b) == VALFLOAT) {
+        return ValAddFloatFloat(a, b);
+    }
+    return ValAdd(a, b);
 }
 
 static AKSValue JITHelperSub(AKSValue a, AKSValue b) {
     if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
-        return ValInt(ValToInt(a) - ValToInt(b));
+        return ValSubIntInt(a, b);
     }
-    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
-    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
-    return ValFloat(fa - fb);
+    if (ValKind(a) == VALFLOAT && ValKind(b) == VALFLOAT) {
+        return ValSubFloatFloat(a, b);
+    }
+    return ValSub(a, b);
 }
 
 static AKSValue JITHelperMul(AKSValue a, AKSValue b) {
     if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
-        return ValInt(ValToInt(a) * ValToInt(b));
+        return ValMulIntInt(a, b);
     }
-    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
-    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
-    return ValFloat(fa * fb);
+    if (ValKind(a) == VALFLOAT && ValKind(b) == VALFLOAT) {
+        return ValMulFloatFloat(a, b);
+    }
+    return ValMul(a, b);
 }
 
 static AKSValue JITHelperDiv(AKSValue a, AKSValue b) {
@@ -964,10 +978,11 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
         }
     }
 
-    // Map to executable memory
+    // Map to executable memory (W^X: copy then mark RX)
     uint8_t *exec = AllocExecMem(buf.size);
     if (exec) {
         memcpy(exec, buf.code, buf.size);
+        MarkExecMem(exec, buf.size);
     }
     JITBufferFree(&buf);
     return exec;
@@ -1058,10 +1073,11 @@ void *LoadX64TraceFromCache(const char *cachefile, int *outsize) {
         }
     }
     
-    // Allocate executable memory
+    // Allocate executable memory (W^X: copy then mark RX)
     uint8_t *exec = AllocExecMem(codesize);
     if (exec) {
         memcpy(exec, code, codesize);
+        MarkExecMem(exec, codesize);
     }
     free(code);
     *outsize = codesize;

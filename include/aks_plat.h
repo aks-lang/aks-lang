@@ -65,17 +65,31 @@ static inline int LnxSleepConditionVariableCS(pthread_cond_t *cond, pthread_mute
 #define InterlockedDecrement(ptr) __sync_sub_and_fetch(ptr, 1)
 #define InterlockedIncrement(ptr) __sync_add_and_fetch(ptr, 1)
 
+#ifndef BOOL
+#define BOOL int
+#endif
+#ifndef TRUE
+#define TRUE 1
+#endif
+#ifndef FALSE
+#define FALSE 0
+#endif
+
 #define DWORD unsigned long
 #define WINAPI
 #define LPVOID void*
 #define HANDLE void*
+#ifndef INVALID_HANDLE_VALUE
+#define INVALID_HANDLE_VALUE ((HANDLE)(intptr_t)-1)
+#endif
 #define CloseHandle(h) LnxCloseHandle(h)
 #define INFINITE 0xFFFFFFFFUL
 #define WAIT_OBJECT_0 0
 #define WAIT_TIMEOUT 258
-#define WAIT_FAILED ((DWORD)0xFFFFFFFFUL)
-#define CreateEvent(attr, manual, initial, name) LnxCreateEvent()
+#define CreateEvent(attr, manual, initial, name) LnxCreateEvent(manual, initial)
+#define CreateEventA(attr, manual, initial, name) LnxCreateEvent(manual, initial)
 #define SetEvent(h) LnxSetEvent(h)
+#define ResetEvent(h) LnxResetEvent(h)
 #define WaitForSingleObject(h, timeout) LnxWaitHandle(h, timeout)
 
 typedef struct {
@@ -85,6 +99,7 @@ typedef struct {
     int signaled;
     int is_thread;
     int joined;
+    int manual_reset;
 } LinuxHandle;
 
 typedef struct {
@@ -110,28 +125,39 @@ static inline void* LnxThreadProc(void *p) {
     return res;
 }
 
-static inline void* LnxCreateEvent(void) {
+static inline void* LnxCreateEvent(int manual_reset, int initial_state) {
     LinuxHandle *h = calloc(1, sizeof(LinuxHandle));
     if (!h) return NULL;
     h->is_thread = 0;
     h->joined = 0;
+    h->manual_reset = manual_reset ? 1 : 0;
+    h->signaled = initial_state ? 1 : 0;
     pthread_mutex_init(&h->mutex, NULL);
     pthread_cond_init(&h->cond, NULL);
-    h->signaled = 0;
     return h;
 }
 
-static inline void LnxSetEvent(void *handle) {
-    if (!handle) return;
+static inline BOOL LnxSetEvent(void *handle) {
+    if (!handle || handle == INVALID_HANDLE_VALUE) return FALSE;
     LinuxHandle *h = (LinuxHandle*)handle;
     pthread_mutex_lock(&h->mutex);
     h->signaled = 1;
     pthread_cond_broadcast(&h->cond);
     pthread_mutex_unlock(&h->mutex);
+    return TRUE;
 }
 
-static inline void LnxCloseHandle(void *handle) {
-    if (!handle) return;
+static inline BOOL LnxResetEvent(void *handle) {
+    if (!handle || handle == INVALID_HANDLE_VALUE) return FALSE;
+    LinuxHandle *h = (LinuxHandle*)handle;
+    pthread_mutex_lock(&h->mutex);
+    h->signaled = 0;
+    pthread_mutex_unlock(&h->mutex);
+    return TRUE;
+}
+
+static inline BOOL LnxCloseHandle(void *handle) {
+    if (!handle || handle == INVALID_HANDLE_VALUE) return FALSE;
     LinuxHandle *h = (LinuxHandle*)handle;
     if (h->is_thread) {
         pthread_mutex_lock(&h->mutex);
@@ -147,6 +173,7 @@ static inline void LnxCloseHandle(void *handle) {
         pthread_cond_destroy(&h->cond);
     }
     free(h);
+    return TRUE;
 }
 
 static inline DWORD LnxWaitHandle(void *handle, DWORD timeout_ms) {
@@ -156,7 +183,7 @@ static inline DWORD LnxWaitHandle(void *handle, DWORD timeout_ms) {
     pthread_mutex_lock(&h->mutex);
     if (h->signaled) {
         if (!h->is_thread) {
-            h->signaled = 0;
+            if (!h->manual_reset) h->signaled = 0;
         } else if (!h->joined) {
             h->joined = 1;
             pthread_join(h->thread, NULL);
@@ -170,7 +197,7 @@ static inline DWORD LnxWaitHandle(void *handle, DWORD timeout_ms) {
             pthread_cond_wait(&h->cond, &h->mutex);
         }
         if (!h->is_thread) {
-            h->signaled = 0;
+            if (!h->manual_reset) h->signaled = 0;
         } else if (!h->joined) {
             h->joined = 1;
             pthread_join(h->thread, NULL);
@@ -192,7 +219,7 @@ static inline DWORD LnxWaitHandle(void *handle, DWORD timeout_ms) {
         }
         if (h->signaled) {
             if (!h->is_thread) {
-                h->signaled = 0;
+                if (!h->manual_reset) h->signaled = 0;
             } else if (!h->joined) {
                 h->joined = 1;
                 pthread_join(h->thread, NULL);

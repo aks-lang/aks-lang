@@ -255,56 +255,45 @@ static inline void AksArrayEnsureCapacity(AKSArray *a, int needed) {
     }
 }
 
+#define AKS_INT48_MAX ((int64_t)0x00007FFFFFFFFFFFULL)
+#define AKS_INT48_MIN (-((int64_t)0x0000800000000000ULL))
+
 static inline int ChkAddOvf(int64_t a, int64_t b, int64_t *res) {
-#if defined(__GNUC__) || defined(__clang__)
-    return __builtin_add_overflow(a, b, res);
-#else
-    if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b)) {
+    if ((b > 0 && a > AKS_INT48_MAX - b) || (b < 0 && a < AKS_INT48_MIN - b)) {
         return 1;
     }
     *res = a + b;
     return 0;
-#endif
 }
 
 static inline int ChkSubOvf(int64_t a, int64_t b, int64_t *res) {
-#if defined(__GNUC__) || defined(__clang__)
-    return __builtin_sub_overflow(a, b, res);
-#else
-    if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b)) {
+    if ((b < 0 && a > AKS_INT48_MAX + b) || (b > 0 && a < AKS_INT48_MIN + b)) {
         return 1;
     }
     *res = a - b;
     return 0;
-#endif
 }
 
 static inline int ChkMulOvf(int64_t a, int64_t b, int64_t *res) {
-#if defined(__GNUC__) || defined(__clang__)
-    return __builtin_mul_overflow(a, b, res);
-#else
     if (a == 0 || b == 0) {
         *res = 0;
         return 0;
     }
     if (a > 0) {
         if (b > 0) {
-            if (b > INT64_MAX / a) return 1;
+            if (b > AKS_INT48_MAX / a) return 1;
         } else {
-            if (b < INT64_MIN / a) return 1;
+            if (b < AKS_INT48_MIN / a) return 1;
         }
     } else {
         if (b > 0) {
-            if (a < INT64_MIN / b) return 1;
+            if (a < AKS_INT48_MIN / b) return 1;
         } else {
-            /* Both negative: product is positive. Overflow if |a*b| > INT64_MAX.
-               Equivalently: b < INT64_MIN / a  (a < 0, so division flips sign). */
-            if (b < INT64_MIN / a) return 1;
+            if (b < AKS_INT48_MAX / a) return 1;
         }
     }
     *res = a * b;
     return 0;
-#endif
 }
 
 AKS_INLINE AKSValue ValAddIntInt(AKSValue a, AKSValue b) {

@@ -15,6 +15,12 @@ fn main() {
     let tag3 = CryptoPoly1305.Auth(key_32bytes, "Different Message");
     assert(tag1 != tag3);
 
+    // RFC 8439 Section 2.5.2 official test vector validation
+    let rfc_key = "85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b";
+    let rfc_msg = "Cryptographic Forum Research Group";
+    let rfc_tag = CryptoPoly1305.Auth(rfc_key, rfc_msg);
+    assert_eq(rfc_tag, "a8061dc1305136c6c22b8baf0c0127a9");
+
     print("TestCryptoPoly1305 passed");
 }
 

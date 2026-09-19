@@ -37,6 +37,17 @@
 #define ROTR64(x, y) (((x) >> (y)) | ((x) << (64 - (y))))
 #define ROL64(x, y) (((x) << (y)) | ((x) >> (64 - (y))))
 
+static inline void SecureZero(void *p, size_t n) {
+#if defined(_WIN32)
+  SecureZeroMemory(p, n);
+#elif defined(__STDC_LIB_EXT1__)
+  memset_s(p, n, 0, n);
+#else
+  volatile uint8_t *vp = (volatile uint8_t *)p;
+  while (n--) *vp++ = 0;
+#endif
+}
+
 // Hex Encoding / Decoding
 
 void HexEncodeC(const uint8_t *in, size_t in_len, char *out) {
@@ -2279,15 +2290,18 @@ int CryptoPoly1305(const uint8_t *key, const uint8_t *msg, size_t msg_len, uint8
   h3 = (h3 & mask) | g3;
   h4 = (h4 & mask) | g4;
 
-  uint64_t f0 = ((uint64_t)h0) | (((uint64_t)h1) << 26);
-  uint64_t f1 = ((uint64_t)h1 >> 38) | (((uint64_t)h2) << 12) | (((uint64_t)h3) << 38);
-  uint64_t f2 = ((uint64_t)h3 >> 26) | (((uint64_t)h4) << 0);
+  uint64_t f0 = ((uint64_t)h0) | (((uint64_t)h1) << 26) | (((uint64_t)h2 & 0xfff) << 52);
+  uint64_t f1 = (((uint64_t)h2) >> 12) | (((uint64_t)h3) << 14) | (((uint64_t)h4) << 40);
 
-  f0 += ((uint64_t)st.pad[0]) | (((uint64_t)st.pad[1]) << 32);
-  f1 += ((uint64_t)st.pad[2]) | (((uint64_t)st.pad[3]) << 32) + (f0 < (((uint64_t)st.pad[0]) | (((uint64_t)st.pad[1]) << 32)));
+  uint64_t pad0 = ((uint64_t)st.pad[0]) | (((uint64_t)st.pad[1]) << 32);
+  uint64_t pad1 = ((uint64_t)st.pad[2]) | (((uint64_t)st.pad[3]) << 32);
+
+  f0 += pad0;
+  f1 += pad1 + (f0 < pad0);
 
   memcpy(tag + 0, &f0, 8);
   memcpy(tag + 8, &f1, 8);
+  SecureZero(&st, sizeof(st));
   return 1;
 }
 
