@@ -705,10 +705,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
           return -1;
         }
         AKSArray *a = ValToArr(arr);
-        if (a->count >= a->capacity) {
-          a->capacity = a->capacity == 0 ? 4 : a->capacity * 2;
-          a->items = realloc(a->items, a->capacity * sizeof(AKSValue));
-        }
+        AksArrayEnsureCapacity(a, a->count + 1);
         a->items[a->count++] = ValCopy(val);
         PUSH(ValNull());
         ValFree(&val);
@@ -6629,8 +6626,21 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     const char *CmdLineStr = "";
 #ifdef _WIN32
     CmdLineStr = GetCommandLineA();
-#endif
     PUSH(ValStr(CmdLineStr ? CmdLineStr : ""));
+#else
+    char cmdline_buf[4096] = {0};
+    FILE *fcmd = fopen("/proc/self/cmdline", "rb");
+    if (fcmd) {
+      size_t n = fread(cmdline_buf, 1, sizeof(cmdline_buf) - 1, fcmd);
+      fclose(fcmd);
+      if (n > 0) {
+        for (size_t i = 0; i < n - 1; i++) {
+          if (cmdline_buf[i] == '\0') cmdline_buf[i] = ' ';
+        }
+      }
+    }
+    PUSH(ValStr(cmdline_buf));
+#endif
     *stacktopptr = stacktop;
     return 1;
   }
@@ -6643,6 +6653,11 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     char ExecutablePathBuf[512] = {0};
 #ifdef _WIN32
     GetModuleFileNameA(NULL, ExecutablePathBuf, sizeof(ExecutablePathBuf));
+#else
+    ssize_t len = readlink("/proc/self/exe", ExecutablePathBuf, sizeof(ExecutablePathBuf) - 1);
+    if (len != -1) {
+      ExecutablePathBuf[len] = '\0';
+    }
 #endif
     PUSH(ValStr(ExecutablePathBuf));
     *stacktopptr = stacktop;
@@ -6657,6 +6672,8 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     int64_t CurrentPid = 0;
 #ifdef _WIN32
     CurrentPid = (int64_t)GetCurrentProcessId();
+#else
+    CurrentPid = (int64_t)getpid();
 #endif
     PUSH(ValInt(CurrentPid));
     *stacktopptr = stacktop;
@@ -6671,6 +6688,8 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     int64_t CurrentTid = 0;
 #ifdef _WIN32
     CurrentTid = (int64_t)GetCurrentThreadId();
+#else
+    CurrentTid = (int64_t)(uintptr_t)pthread_self();
 #endif
     PUSH(ValInt(CurrentTid));
     *stacktopptr = stacktop;
@@ -17157,10 +17176,14 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     slicearr->invalidated = 0;
     slicearr->isstack = 0;
     slicearr->isslice = 1;
+    slicearr->has_slices = 0;
+    slicearr->detached = NULL;
+    slicearr->arena = NULL;
     slicearr->parent = ValCopy(arrval);
     slicearr->items = parentarr->items + start;
     slicearr->count = length;
     slicearr->capacity = length;
+    parentarr->has_slices = 1;
     AtomicIncrement(&gactivearrs);
     AKSValue sliceval = ((uint64_t)0xFFF5 << 48) |
                         ((uintptr_t)slicearr & 0x0000FFFFFFFFFFFFULL);
@@ -17638,10 +17661,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       return -1;
     }
     AKSArray *a = ValToArr(arr);
-    if (a->count >= a->capacity) {
-      a->capacity = a->capacity == 0 ? 4 : a->capacity * 2;
-      a->items = realloc(a->items, a->capacity * sizeof(AKSValue));
-    }
+    AksArrayEnsureCapacity(a, a->count + 1);
     a->items[a->count++] = ValCopy(val);
     PUSH(ValNull());
     ValFree(&val);
@@ -17850,10 +17870,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       ValFree(&arr);
       return -1;
     }
-    if (a->count >= a->capacity) {
-      a->capacity = a->capacity == 0 ? 4 : a->capacity * 2;
-      a->items = realloc(a->items, a->capacity * sizeof(AKSValue));
-    }
+    AksArrayEnsureCapacity(a, a->count + 1);
     for (int i = a->count; i > idx; i--) {
       a->items[i] = a->items[i - 1];
     }

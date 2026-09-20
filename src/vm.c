@@ -208,10 +208,7 @@ static AKSValue AksJPParseString(AksJP *p) {
   return res;
 }
 static void AksArrPush(AKSArray *a, AKSValue v) {
-  if (a->count >= a->capacity) {
-    a->capacity = a->capacity == 0 ? 4 : a->capacity * 2;
-    a->items = realloc(a->items, a->capacity * sizeof(AKSValue));
-  }
+  AksArrayEnsureCapacity(a, a->count + 1);
   a->items[a->count++] = v;
 }
 static AKSValue AksJPParseValue(AksJP *p) {
@@ -2647,10 +2644,7 @@ static AKSValue ParseJSONArr(const char **ptr, int *Error) {
     }
     // append item
     AKSArray *a = ValToArr(arrval);
-    if (a->count >= a->capacity) {
-      a->capacity = a->capacity == 0 ? 4 : a->capacity * 2;
-      a->items = realloc(a->items, a->capacity * sizeof(AKSValue));
-    }
+    AksArrayEnsureCapacity(a, a->count + 1);
     a->items[a->count++] = item;
 
     SkipJSONWhitespace(ptr);
@@ -11980,11 +11974,14 @@ enter_stack_interpreter: for (;;) {
       slicearr->invalidated = 0;
       slicearr->isstack = 0;
       slicearr->isslice = 1;
+      slicearr->has_slices = 0;
+      slicearr->detached = NULL;
       slicearr->parent = ValCopy(arrval);
       slicearr->items = ValToArr(arrval)->items + start;
       slicearr->count = length;
       slicearr->capacity = length;
       slicearr->arena = NULL;
+      ValToArr(arrval)->has_slices = 1;
       AtomicIncrement(&gactivearrs);
       AKSValue sliceval = ((uint64_t)0xFFF5 << 48) |
                           ((uintptr_t)slicearr & 0x0000FFFFFFFFFFFFULL);

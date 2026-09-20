@@ -464,6 +464,12 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "void valfreefunc(AKSValue *v);\n");
     fprintf(f, "#define valfree(v) do { if ((v) && valtype(*(v)) >= VALSTR) valfreefunc(v); } while(0)\n\n");
 
+    fprintf(f, "typedef struct AKSDetachedBuffer AKSDetachedBuffer;\n");
+    fprintf(f, "struct AKSDetachedBuffer {\n");
+    fprintf(f, "    AKSValue *items;\n");
+    fprintf(f, "    int count;\n");
+    fprintf(f, "    AKSDetachedBuffer *next;\n");
+    fprintf(f, "};\n\n");
     fprintf(f, "struct AKSArray {\n");
     fprintf(f, "    AKSValue *items;\n");
     fprintf(f, "    int count;\n");
@@ -472,8 +478,10 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "    int invalidated;\n");
     fprintf(f, "    int isstack;\n");
     fprintf(f, "    int isslice;\n");
+    fprintf(f, "    int has_slices;\n");
     fprintf(f, "    AKSValue parent;\n");
     fprintf(f, "    void *arena;\n");
+    fprintf(f, "    AKSDetachedBuffer *detached;\n");
     fprintf(f, "};\n\n");
 
     fprintf(f, "struct AKSStruct {\n");
@@ -1367,6 +1375,9 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "        slicearr->invalidated = 0;\n");
     fprintf(f, "        slicearr->isstack = 0;\n");
     fprintf(f, "        slicearr->isslice = 1;\n");
+    fprintf(f, "        slicearr->has_slices = 0;\n");
+    fprintf(f, "        slicearr->detached = NULL;\n");
+    fprintf(f, "        valtoarr(arr)->has_slices = 1;\n");
     fprintf(f, "        slicearr->parent = valcopy(arr);\n");
     fprintf(f, "        slicearr->items = valtoarr(arr)->items + start;\n");
     fprintf(f, "        slicearr->count = length;\n");
@@ -2383,6 +2394,9 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "        slicearr->invalidated = 0;\n");
     fprintf(f, "        slicearr->isstack = 0;\n");
     fprintf(f, "        slicearr->isslice = 1;\n");
+    fprintf(f, "        slicearr->has_slices = 0;\n");
+    fprintf(f, "        slicearr->detached = NULL;\n");
+    fprintf(f, "        parentarr->has_slices = 1;\n");
     fprintf(f, "        slicearr->parent = valcopy(arrval);\n");
     fprintf(f, "        slicearr->items = parentarr->items + start;\n");
     fprintf(f, "        slicearr->count = length;\n");

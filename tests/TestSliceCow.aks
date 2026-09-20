@@ -1,0 +1,39 @@
+fn testSliceCow() {
+    let a = [10, 20, 30, 40, 50];
+    let s = a[1 .. 4];
+    print("Initial slice length: " + String(Length(s)));
+    print("Initial slice item 0: " + String(s[0]));
+    print("Initial slice item 1: " + String(s[1]));
+    print("Initial slice item 2: " + String(s[2]));
+
+    // Mutate parent massively so it reallocates multiple times
+    let i = 0;
+    while (i < 200) {
+        append(a, 1000 + i);
+        i = i + 1;
+    }
+
+    print("Parent length after growth: " + String(Length(a)));
+    print("Slice item 0 after parent growth: " + String(s[0]));
+    print("Slice item 1 after parent growth: " + String(s[1]));
+    print("Slice item 2 after parent growth: " + String(s[2]));
+
+    if (s[0] == 20 && s[1] == 30 && s[2] == 40) {
+        print("COW PASS: slice remained perfectly intact after parent growth");
+    } else {
+        print("COW FAIL: slice was corrupted!");
+    }
+
+    // Now grow slice so it detaches
+    append(s, 9999);
+    print("Slice length after append: " + String(Length(s)));
+    print("Slice new element: " + String(s[3]));
+    if (Length(s) == 4 && s[3] == 9999) {
+        print("SLICE DETACH PASS: slice successfully detached and grew");
+    } else {
+        print("SLICE DETACH FAIL: could not detach slice!");
+    }
+}
+
+testSliceCow();
+print("TestSliceCow completed successfully");

@@ -88,15 +88,24 @@ static int GetLLVMOpLen(uint8_t op) {
 extern void *GetJITCompiledFn(VM *vm, FnProto *fn, int targetoffset);
 
 void *CompileLLVMTrace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, int stepcount, int startdepth) {
-    char dllfile[128];
+    char dllfile[512];
+    char compilecmd[1024];
 #ifdef _WIN32
-    snprintf(dllfile, sizeof(dllfile), "jittrace%d%d.dll", fn->id, startoffset);
-    char compilecmd[256];
-    snprintf(compilecmd, sizeof(compilecmd), "clang -x ir -shared -o %s - 2>nul", dllfile);
+    char tempdir[MAX_PATH];
+    DWORD tlen = GetTempPathA(sizeof(tempdir), tempdir);
+    if (tlen == 0 || tlen >= sizeof(tempdir)) {
+        strcpy(tempdir, ".");
+    } else {
+        if (tempdir[tlen - 1] == '\\' || tempdir[tlen - 1] == '/')
+            tempdir[tlen - 1] = '\0';
+    }
+    snprintf(dllfile, sizeof(dllfile), "%s\\aks_jittrace_%lu_%d_%d.dll", tempdir, (unsigned long)GetCurrentProcessId(), fn->id, startoffset);
+    snprintf(compilecmd, sizeof(compilecmd), "clang -x ir -shared -o \"%s\" - 2>nul", dllfile);
 #else
-    snprintf(dllfile, sizeof(dllfile), "jittrace%d%d.so", fn->id, startoffset);
-    char compilecmd[256];
-    snprintf(compilecmd, sizeof(compilecmd), "clang -x ir -shared -fPIC -o %s - 2>nul", dllfile);
+    const char *tmp = getenv("TMPDIR");
+    if (!tmp || !*tmp) tmp = "/tmp";
+    snprintf(dllfile, sizeof(dllfile), "%s/aks_jittrace_%d_%d_%d.so", tmp, (int)getpid(), fn->id, startoffset);
+    snprintf(compilecmd, sizeof(compilecmd), "clang -x ir -shared -fPIC -o \"%s\" - 2>/dev/null", dllfile);
 #endif
 
     FILE *f = popenpipe(compilecmd, "w");

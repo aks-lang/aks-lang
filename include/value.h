@@ -213,6 +213,13 @@ AKS_INLINE AKSValue ValFn(int fnid) {
 
 #include <limits.h>
 
+typedef struct AKSDetachedBuffer AKSDetachedBuffer;
+struct AKSDetachedBuffer {
+    AKSValue *items;
+    int count;
+    AKSDetachedBuffer *next;
+};
+
 struct AKSArray {
     AKSValue *items;
     int count;
@@ -221,8 +228,10 @@ struct AKSArray {
     int invalidated;
     int isstack;
     int isslice;
+    int has_slices;
     AKSValue parent;
     void *arena;
+    AKSDetachedBuffer *detached;
 };
 
 struct AKSStruct {
@@ -236,24 +245,6 @@ struct AKSStruct {
     void *arena;
 };
 
-static inline void AksArrayEnsureCapacity(AKSArray *a, int needed) {
-    if (a->capacity < needed) {
-        int new_cap = a->capacity == 0 ? 4 : a->capacity * 2;
-        if (new_cap < needed) new_cap = needed;
-        if (a->isstack == 1) {
-            AKSValue *new_items = (AKSValue*)malloc(new_cap * sizeof(AKSValue));
-            if (a->count > 0 && a->items) {
-                memcpy(new_items, a->items, a->count * sizeof(AKSValue));
-            }
-            a->items = new_items;
-            a->capacity = new_cap;
-            a->isstack = 2; // header on stack arena, items migrated to CRT heap
-        } else {
-            a->capacity = new_cap;
-            a->items = (AKSValue*)realloc(a->items, a->capacity * sizeof(AKSValue));
-        }
-    }
-}
 
 #define AKS_INT48_MAX ((int64_t)0x00007FFFFFFFFFFFULL)
 #define AKS_INT48_MIN (-((int64_t)0x0000800000000000ULL))
@@ -471,5 +462,66 @@ void *AslrcAlloc(size_t num, size_t size);
 #define strdup(s) AslrStrDup(s)
 #define calloc(n, sz) AslrcAlloc(n, sz)
 #endif
+
+static inline void AksArrayEnsureCapacity(AKSArray *a, int needed) {
+    if (!a) return;
+    if (a->isslice) {
+        int new_cap = a->capacity == 0 ? 4 : a->capacity * 2;
+        if (new_cap < needed) new_cap = needed;
+        AKSValue *new_items = (AKSValue*)malloc(new_cap * sizeof(AKSValue));
+        if (a->count > 0 && a->items && new_items) {
+            for (int i = 0; i < a->count; i++) {
+                new_items[i] = ValCopy(a->items[i]);
+            }
+        }
+        ValFree(&a->parent);
+        a->parent = ValNull();
+        a->isslice = 0;
+        a->has_slices = 0;
+        a->detached = NULL;
+        a->items = new_items;
+        a->capacity = new_cap;
+        a->isstack = 0;
+        return;
+    }
+    if (a->has_slices) {
+        int new_cap = a->capacity == 0 ? 4 : a->capacity * 2;
+        if (new_cap < needed) new_cap = needed;
+        AKSValue *new_items = (AKSValue*)malloc(new_cap * sizeof(AKSValue));
+        if (a->count > 0 && a->items && new_items) {
+            for (int i = 0; i < a->count; i++) {
+                new_items[i] = ValCopy(a->items[i]);
+            }
+        }
+        AKSDetachedBuffer *node = (AKSDetachedBuffer*)malloc(sizeof(AKSDetachedBuffer));
+        if (node) {
+            node->items = a->items;
+            node->count = a->count;
+            node->next = a->detached;
+            a->detached = node;
+        }
+        a->items = new_items;
+        a->capacity = new_cap;
+        a->has_slices = 0;
+        a->isstack = 0;
+        return;
+    }
+    if (a->capacity < needed) {
+        int new_cap = a->capacity == 0 ? 4 : a->capacity * 2;
+        if (new_cap < needed) new_cap = needed;
+        if (a->isstack == 1) {
+            AKSValue *new_items = (AKSValue*)malloc(new_cap * sizeof(AKSValue));
+            if (a->count > 0 && a->items && new_items) {
+                memcpy(new_items, a->items, a->count * sizeof(AKSValue));
+            }
+            a->items = new_items;
+            a->capacity = new_cap;
+            a->isstack = 2; // header on stack arena, items migrated to CRT heap
+        } else {
+            a->capacity = new_cap;
+            a->items = (AKSValue*)realloc(a->items, a->capacity * sizeof(AKSValue));
+        }
+    }
+}
 
 #endif // Valh

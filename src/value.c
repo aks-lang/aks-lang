@@ -336,8 +336,10 @@ AKSValue ValArr(int cap) {
     arr->invalidated = 0;
     arr->isstack = 0;
     arr->isslice = 0;
+    arr->has_slices = 0;
     arr->parent = ValNull();
     arr->arena = NULL;
+    arr->detached = NULL;
     AtomicIncrement(&gactivearrs);
     return ((uint64_t)0xFFF5 << 48) | ((uintptr_t)arr & 0x0000FFFFFFFFFFFFULL);
 }
@@ -437,6 +439,14 @@ void ValFreeFunc(AKSValue *v) {
                         } else {
                             for (int i = 0; i < arr->count; i++) ValFree(&arr->items[i]);
                             if (arr->isstack != 1 && arr->items) free(arr->items);
+                        }
+                        AKSDetachedBuffer *cur_detached = arr->detached;
+                        while (cur_detached) {
+                            AKSDetachedBuffer *next_detached = cur_detached->next;
+                            for (int i = 0; i < cur_detached->count; i++) ValFree(&cur_detached->items[i]);
+                            free(cur_detached->items);
+                            free(cur_detached);
+                            cur_detached = next_detached;
                         }
                         if (!arr->isstack) free(arr);
                         AtomicDecrement(&gactivearrs);
@@ -1028,8 +1038,10 @@ AKSValue ValArrStack(VMTask *task, int cap) {
     arr->invalidated = 0;
     arr->isstack = 1;
     arr->isslice = 0;
+    arr->has_slices = 0;
     arr->parent = ValNull();
     arr->arena = NULL;
+    arr->detached = NULL;
     AtomicIncrement(&gactivearrs);
     return ((uint64_t)0xFFF5 << 48) | ((uintptr_t)arr & 0x0000FFFFFFFFFFFFULL);
 }
