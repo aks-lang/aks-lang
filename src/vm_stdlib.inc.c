@@ -22505,11 +22505,8 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     int res = HexDecodeC(hex, bin);
     if (res) {
       bin[bin_len] = '\0';
-      AKSValue str = ValStr("");
-      free(ValToStrPtr(str)->data);
-      ValToStrPtr(str)->data = (char *)bin;
-      ValToStrPtr(str)->len = (int)bin_len;
-      PUSH(str);
+      PUSH(ValStrLen((const char *)bin, (int)bin_len));
+      free(bin);
     } else {
       free(bin);
       PUSH(ValNull());

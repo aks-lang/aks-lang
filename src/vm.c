@@ -1054,7 +1054,8 @@ void VMFree(VM *vm) {
     fprintf(stderr,
             "\n[AKS ALLOC TRACKER ERROR] Active allocations remaining:\n");
     fprintf(stderr, "  Strings: %lld, Arrays: %lld, Structs: %lld\n",
-            gActiveStrs, gactivearrs, gactivestructs);
+            (long long)gActiveStrs, (long long)gactivearrs,
+            (long long)gactivestructs);
   } else {
     printf("Memory diagnostics: all runtime references clean. 0 leaks.\n");
   }
