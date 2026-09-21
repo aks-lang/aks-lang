@@ -1,0 +1,100 @@
+// TestFastHashByteAt.aks
+// Tests native HashCode, ByteAt, Ordinal(s, idx), HashMap, HashSet, and string concat
+
+fn TestHashBasics() {
+    let h1 = HashCode(42);
+    let h2 = HashCode(42);
+    assert(h1 == h2, "HashCode int determinism failed");
+
+    let hs1 = HashCode("aks_language");
+    let hs2 = HashCode("aks_language");
+    let hs3 = HashCode("other_string");
+    assert(hs1 == hs2, "HashCode str determinism failed");
+    assert(hs1 != hs3, "HashCode str collision unexpected");
+
+    let hf1 = HashCode(3.14159);
+    let hf2 = HashCode(3.14159);
+    assert(hf1 == hf2, "HashCode float determinism failed");
+
+    let hb1 = HashCode(true);
+    let hb2 = HashCode(false);
+    assert(hb1 != hb2, "HashCode bool distinction failed");
+
+    let hn = HashCode(null);
+    assert(hn == 0, "HashCode null failed");
+    println("TestHashBasics PASSED");
+}
+
+fn TestByteAtAndOrdinal() {
+    let str = "Hello, AKS!";
+    assert(ByteAt(str, 0) == 72, "ByteAt 0 failed (expected 'H'=72)");
+    assert(ByteAt(str, 1) == 101, "ByteAt 1 failed (expected 'e'=101)");
+    assert(ByteAt(str, 10) == 33, "ByteAt 10 failed (expected '!'=33)");
+    assert(ByteAt(str, 100) == -1, "ByteAt out-of-bounds failed");
+
+    // 2-argument Ordinal
+    assert(Ordinal(str, 0) == 72, "Ordinal(str, 0) failed");
+    assert(Ordinal(str, 1) == 101, "Ordinal(str, 1) failed");
+    assert(Ordinal(str) == 72, "Ordinal(str) 1-arg failed");
+    println("TestByteAtAndOrdinal PASSED");
+}
+
+fn TestHashMapAndSetThroughput() {
+    let map = HashMap();
+    let i = 0;
+    while (i < 500) {
+        map.Put(i, i * 10);
+        i++;
+    }
+    assert(map.Len() == 500, "HashMap size mismatch");
+
+    i = 0;
+    while (i < 500) {
+        assert(map.Get(i) == i * 10, "HashMap get mismatch");
+        assert(map.ContainsKey(i), "HashMap containsKey mismatch");
+        i++;
+    }
+    assert(!map.ContainsKey(9999), "HashMap unexpected key hit");
+
+    let set = HashSet();
+    i = 0;
+    while (i < 200) {
+        set.Add("key_" + String(i));
+        i++;
+    }
+    assert(set.Len() == 200, "HashSet size mismatch");
+    assert(set.Contains("key_50"), "HashSet contains key_50 failed");
+    assert(!set.Contains("key_9999"), "HashSet false positive hit");
+    println("TestHashMapAndSetThroughput PASSED");
+}
+
+fn TestStringConcatAndStruct() {
+    let a = "prefix_";
+    let b = "suffix";
+    let c = a + b;
+    assert(c == "prefix_suffix", "String concat failed");
+
+    struct Config {
+        host: string;
+        port: int;
+    }
+    let cfg = new Config();
+    cfg.host = "127.0.0.1";
+    cfg.port = 8080;
+
+    assert(cfg["host"] == "127.0.0.1", "Struct bracket get failed");
+    assert(cfg["port"] == 8080, "Struct bracket get port failed");
+
+    cfg["port"] = 9090;
+    assert(cfg["port"] == 9090, "Struct bracket set port failed");
+    println("TestStringConcatAndStruct PASSED");
+}
+
+fn main() {
+    TestHashBasics();
+    TestByteAtAndOrdinal();
+    TestHashMapAndSetThroughput();
+    TestStringConcatAndStruct();
+    println("ALL PHASE 5 TESTS COMPLETED SUCCESSFULLY");
+}
+main();

@@ -616,9 +616,23 @@ AKSValue ValCopySlow(AKSValue v) {
 AKSValue ValAdd(AKSValue a, AKSValue b) {
     ValType ta = ValKind(a);
     ValType tb = ValKind(b);
+    if (ta == VALSTR && tb == VALSTR) {
+        AKSString *sa = ValToStrPtr(a);
+        AKSString *sb = ValToStrPtr(b);
+        int len = sa->len + sb->len;
+        char stackbuf[512];
+        char *buf = (len < 512) ? stackbuf : malloc(len + 1);
+        if (!buf) return ValNull();
+        memcpy(buf, sa->data, sa->len);
+        memcpy(buf + sa->len, sb->data, sb->len);
+        buf[len] = 0;
+        AKSValue r = ValStrLen(buf, len);
+        if (buf != stackbuf) free(buf);
+        return r;
+    }
     if (ta == VALSTR || tb == VALSTR) {
-        AKSValue as = ValToStr(a);
-        AKSValue bs = ValToStr(b);
+        AKSValue as = (ta == VALSTR) ? ValCopy(a) : ValToStr(a);
+        AKSValue bs = (tb == VALSTR) ? ValCopy(b) : ValToStr(b);
         int len = ValToStrPtr(as)->len + ValToStrPtr(bs)->len;
         char stackbuf[512];
         char *buf = (len < 512) ? stackbuf : malloc(len + 1);

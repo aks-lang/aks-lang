@@ -8493,7 +8493,7 @@ while (0)
         const char *fieldname = ValToStrPtr(idxval)->data;
         int found = -1;
         for (int i = 0; i < s->fieldcount; i++) {
-          if (strcmp(s->fieldnames[i], fieldname) == 0) {
+          if (s->fieldnames[i] == fieldname || strcmp(s->fieldnames[i], fieldname) == 0) {
             found = i;
             break;
           }
@@ -8607,7 +8607,7 @@ while (0)
         const char *fieldname = ValToStrPtr(idxval)->data;
         int found = -1;
         for (int i = 0; i < s->fieldcount; i++) {
-          if (strcmp(s->fieldnames[i], fieldname) == 0) {
+          if (s->fieldnames[i] == fieldname || strcmp(s->fieldnames[i], fieldname) == 0) {
             found = i;
             break;
           }
@@ -12063,7 +12063,7 @@ enter_stack_interpreter: for (;;) {
       const char *fieldname = ValToStrPtr(idxval)->data;
       int found = -1;
       for (int i = 0; i < s->fieldcount; i++) {
-        if (strcmp(s->fieldnames[i], fieldname) == 0) {
+        if (s->fieldnames[i] == fieldname || strcmp(s->fieldnames[i], fieldname) == 0) {
           found = i;
           break;
         }
@@ -12161,7 +12161,7 @@ enter_stack_interpreter: for (;;) {
       const char *fieldname = ValToStrPtr(idxval)->data;
       int found = -1;
       for (int i = 0; i < s->fieldcount; i++) {
-        if (strcmp(s->fieldnames[i], fieldname) == 0) {
+        if (s->fieldnames[i] == fieldname || strcmp(s->fieldnames[i], fieldname) == 0) {
           found = i;
           break;
         }

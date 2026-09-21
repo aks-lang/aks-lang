@@ -18324,22 +18324,96 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
-  if (strcmp(name, "Ordinal") == 0) {
+  if (strcmp(name, "Ordinal") == 0 || strcmp(name, "ByteAt") == 0) {
+    if (argc < 1 || argc > 2) {
+      fprintf(stderr, "Runtime error: %s() expects 1 or 2 arguments, got %d\n",
+              name, argc);
+      return -1;
+    }
+    int64_t idx = 0;
+    if (argc == 2) {
+      AKSValue idx_val = POP();
+      if (!ValIsInt(idx_val)) {
+        fprintf(stderr, "Runtime error: %s() index must be an integer\n", name);
+        ValFree(&idx_val);
+        return -1;
+      }
+      idx = ValToInt(idx_val);
+    }
+    AKSValue arg = POP();
+    if (ValKind(arg) != VALSTR) {
+      fprintf(stderr, "Runtime error: %s() argument must be a string\n", name);
+      ValFree(&arg);
+      return -1;
+    }
+    AKSString *s = ValToStrPtr(arg);
+    int code = -1;
+    if (s && s->data && idx >= 0 && idx < s->len) {
+      code = (unsigned char)s->data[idx];
+    }
+    PUSH(ValInt(code));
+    ValFree(&arg);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "HashCode") == 0) {
     if (argc != 1) {
-      fprintf(stderr, "Runtime error: Ordinal() expects 1 argument, got %d\n",
+      fprintf(stderr, "Runtime error: HashCode() expects 1 argument, got %d\n",
               argc);
       return -1;
     }
     AKSValue arg = POP();
-    if (ValKind(arg) != VALSTR) {
-      fprintf(stderr, "Runtime error: Ordinal() argument must be a string\n");
-      ValFree(&arg);
-      return -1;
+    uint64_t h = 0;
+    ValType t = ValKind(arg);
+    switch (t) {
+      case VALINT: {
+        uint64_t x = (uint64_t)ValToInt(arg);
+        x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+        x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+        x ^= (x >> 31);
+        h = x & 0x7FFFFFFFFFFFFFFFULL;
+        break;
+      }
+      case VALFLOAT: {
+        union { double d; uint64_t u; } u;
+        u.d = ValToFloat(arg);
+        if (u.d == 0.0) u.u = 0;
+        uint64_t x = u.u;
+        x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+        x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+        x ^= (x >> 31);
+        h = x & 0x7FFFFFFFFFFFFFFFULL;
+        break;
+      }
+      case VALBOOL:
+        h = ValToBool(arg) ? 1231 : 1237;
+        break;
+      case VALNULL:
+        h = 0;
+        break;
+      case VALSTR: {
+        AKSString *s = ValToStrPtr(arg);
+        if (s && s->data) {
+          uint64_t x = 14695981039346656037ULL;
+          for (int i = 0; i < s->len; i++) {
+            x ^= (uint8_t)s->data[i];
+            x *= 1099511628211ULL;
+          }
+          h = x & 0x7FFFFFFFFFFFFFFFULL;
+        }
+        break;
+      }
+      default: {
+        uintptr_t ptr = (uintptr_t)(arg & 0x0000FFFFFFFFFFFFULL);
+        uint64_t x = (uint64_t)ptr;
+        x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+        x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+        x ^= (x >> 31);
+        h = x & 0x7FFFFFFFFFFFFFFFULL;
+        break;
+      }
     }
-    int code = ValToStrPtr(arg)->len > 0
-                   ? (unsigned char)ValToStrPtr(arg)->data[0]
-                   : -1;
-    PUSH(ValInt(code));
+    PUSH(ValInt((int64_t)h));
     ValFree(&arg);
     *stacktopptr = stacktop;
     return 1;

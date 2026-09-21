@@ -6990,6 +6990,8 @@ Compiler *CompNew(void) {
     NewFn(c, "remove");
     NewFn(c, "slice");
     NewFn(c, "Ordinal");
+    NewFn(c, "ByteAt");
+    NewFn(c, "HashCode");
     NewFn(c, "Character");
     NewFn(c, "Substring");
     NewFn(c, "type");

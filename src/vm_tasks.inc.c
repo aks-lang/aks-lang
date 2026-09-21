@@ -179,21 +179,21 @@ VMSemaphore *SemNew(int initialcount) {
 // deque operations
 static void WorkerPushTail(VMWorker *w, VMTask *t) {
   MutexLockNative(w->lock);
-  while (w->tail - w->head >= 1024) {
+  while ((uint32_t)(w->tail - w->head) >= 1024) {
     MutexUnlockNative(w->lock);
     SleepMs(1);
     MutexLockNative(w->lock);
   }
-  w->deque[w->tail % 1024] = t;
+  w->deque[w->tail & 1023] = t;
   w->tail++;
   MutexUnlockNative(w->lock);
 }
 static VMTask *WorkerPopTail(VMWorker *w) {
   VMTask *t = NULL;
   MutexLockNative(w->lock);
-  if (w->tail > w->head) {
+  if (w->tail != w->head) {
     w->tail--;
-    t = w->deque[w->tail % 1024];
+    t = w->deque[w->tail & 1023];
   }
   MutexUnlockNative(w->lock);
   return t;
@@ -201,8 +201,8 @@ static VMTask *WorkerPopTail(VMWorker *w) {
 static VMTask *WorkerSteal(VMWorker *w) {
   VMTask *t = NULL;
   MutexLockNative(w->lock);
-  if (w->tail > w->head) {
-    t = w->deque[w->head % 1024];
+  if (w->tail != w->head) {
+    t = w->deque[w->head & 1023];
     w->head++;
   }
   MutexUnlockNative(w->lock);
@@ -1363,6 +1363,7 @@ DWORD WINAPI WorkerThreadFunc(LPVOID lpParam) {
     }
     if (task) {
       int res = 0;
+#if defined(_WIN32) && defined(_MSC_VER)
       __try {
         res = RunTaskSlice(vm, task, 100);
       } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -1386,6 +1387,9 @@ DWORD WINAPI WorkerThreadFunc(LPVOID lpParam) {
         }
         exit(1);
       }
+#else
+      res = RunTaskSlice(vm, task, 100);
+#endif
       if (res == 1 || res == -1) {
         MutexLockNative(vm->globallock);
         task->state = 3; // Completed

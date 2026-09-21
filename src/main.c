@@ -2160,7 +2160,9 @@ static int LogCrash(EXCEPTION_POINTERS *ep) {
 
 #ifndef NO_MAIN
 int main(int argc, char **argv) {
+#if defined(_WIN32) && defined(_MSC_VER)
     __try {
+#endif
         SysEnableAnsi();
         int embedded_res = CheckAndRunEmbeddedPayload(argc, argv);
         if (embedded_res != -999) {
@@ -2864,6 +2866,7 @@ int main(int argc, char **argv) {
             PrintUsage(argv[0]);
             return 1;
         }
+#if defined(_WIN32) && defined(_MSC_VER)
     } __except (
         GetExceptionCode() == 0x80000001 || GetExceptionCode() == 0xC00000FD
             ? (fprintf(stderr, "Runtime panic: Stack Overflow detected (guard page violated)\n"), EXCEPTION_EXECUTE_HANDLER)
@@ -2871,6 +2874,10 @@ int main(int argc, char **argv) {
     ) {
         return 1;
     }
+#else
+    }
+#endif
+    return 0;
 }
 
 int CompileModulesParallel(Compiler *c, const char **module_paths, int count) {

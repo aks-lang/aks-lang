@@ -159,8 +159,8 @@ typedef struct {
     void *threadhandle;
     int id;
     VMTask *deque[1024];
-    int head;
-    int tail;
+    uint32_t head;
+    uint32_t tail;
     void *lock; // opaque pointer to CRITICAL_SECTION
 } VMWorker;
 
