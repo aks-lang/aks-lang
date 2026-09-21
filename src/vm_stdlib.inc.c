@@ -13281,11 +13281,11 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
             tkey[tki]=0;
             char *vp=eq+1; while (*vp==' ') vp++;
             AKSValue tval;
-            if (*vp=='"') { vp++; char vb[512]; int vi=0; while (*vp&&*vp!='"') vb[vi++]=*vp++; vb[vi]=0; tval=ValStr(vb); }
+            if (*vp=='"') { vp++; char vb[512]; int vi=0; while (*vp&&*vp!='"'&&vi<511) vb[vi++]=*vp++; vb[vi]=0; tval=ValStr(vb); }
             else if (!strncmp(vp,"true",4)) tval=ValBool(1);
             else if (!strncmp(vp,"false",5)) tval=ValBool(0);
             else if (strchr(vp,'.')) tval=ValFloat(atof(vp));
-            else tval=ValInt(atol(vp));
+            else tval=ValInt((int64_t)strtoll(vp, NULL, 10));
             AKSStruct *target = (cur_sec>=0) ? ValToObj(rs->fieldvals[cur_sec]) : rs;
             target->fieldnames = realloc(target->fieldnames,(target->fieldcount+1)*sizeof(char*));
             target->fieldvals  = realloc(target->fieldvals, (target->fieldcount+1)*sizeof(AKSValue));
@@ -13318,22 +13318,43 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       ValFree(&PtV); ValFree(&RpV); ValFree(&TxV); PUSH(ValBool(0)); *stacktopptr=stacktop; return 1;
     }
     const char *rxr_pat=ValToStrPtr(PtV)->data, *rxr_rep=ValToStrPtr(RpV)->data, *rxr_txt=ValToStrPtr(TxV)->data;
-    char rxr_out[8192]; int rxr_oi=0;
-    int rxr_anchor=(rxr_pat[0]=='^');
-    const char *pat2=rxr_anchor?rxr_pat+1:rxr_pat, *tp=rxr_txt;
-    while (*tp && rxr_oi<8000) {
-      int mlen=0;
+    size_t rxr_cap = 1024;
+    size_t rxr_oi = 0;
+    char *rxr_out = malloc(rxr_cap);
+    int rxr_anchor = (rxr_pat[0] == '^');
+    const char *pat2 = rxr_anchor ? rxr_pat + 1 : rxr_pat, *tp = rxr_txt;
+    int rep_len = (int)strlen(rxr_rep);
+    while (*tp) {
+      int mlen = 0;
       if (AksRxMatchLen(pat2, tp, &mlen)) {
-        const char *rp=rxr_rep;
-        while (*rp && rxr_oi<8000) rxr_out[rxr_oi++]=*rp++;
-        tp += mlen>0?mlen:1;
+        if (rxr_oi + rep_len + 1 >= rxr_cap) {
+          rxr_cap = (rxr_cap + rep_len + 1) * 2;
+          rxr_out = realloc(rxr_out, rxr_cap);
+        }
+        memcpy(rxr_out + rxr_oi, rxr_rep, rep_len);
+        rxr_oi += rep_len;
+        tp += mlen > 0 ? mlen : 1;
         if (rxr_anchor) break;
-      } else rxr_out[rxr_oi++]=*tp++;
+      } else {
+        if (rxr_oi + 2 >= rxr_cap) {
+          rxr_cap = rxr_cap * 2 + 16;
+          rxr_out = realloc(rxr_out, rxr_cap);
+        }
+        rxr_out[rxr_oi++] = *tp++;
+      }
     }
-    while (*tp && rxr_oi<8191) rxr_out[rxr_oi++]=*tp++;
-    rxr_out[rxr_oi]=0;
+    while (*tp) {
+      if (rxr_oi + 2 >= rxr_cap) {
+        rxr_cap = rxr_cap * 2 + 16;
+        rxr_out = realloc(rxr_out, rxr_cap);
+      }
+      rxr_out[rxr_oi++] = *tp++;
+    }
+    rxr_out[rxr_oi] = 0;
     ValFree(&PtV); ValFree(&RpV); ValFree(&TxV);
-    PUSH(ValStr(rxr_out)); *stacktopptr=stacktop; return 1;
+    AKSValue res_str = ValStrLen(rxr_out, (int)rxr_oi);
+    free(rxr_out);
+    PUSH(res_str); *stacktopptr=stacktop; return 1;
   }
   if (strcmp(name, "RegexSplitC") == 0) {
     if (argc != 2) { fprintf(stderr, "Runtime error: RegexSplitC() expects 2 args (pattern, text)\n"); return -1; }
@@ -13346,14 +13367,12 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       int mlen=0;
       if (AksRxMatchLen(rxs_pat, sp, &mlen) && mlen>0) {
         int slen=(int)(sp-seg);
-        char *sbuf=malloc(slen+1); memcpy(sbuf,seg,slen); sbuf[slen]=0;
-        AksArrPush(pa, ValStr(sbuf)); free(sbuf);
+        AksArrPush(pa, ValStrLen(seg, slen));
         sp+=mlen; seg=sp;
       } else sp++;
     }
     int slen2=(int)(sp-seg);
-    char *sbuf2=malloc(slen2+1); memcpy(sbuf2,seg,slen2); sbuf2[slen2]=0;
-    AksArrPush(pa, ValStr(sbuf2)); free(sbuf2);
+    AksArrPush(pa, ValStrLen(seg, slen2));
     ValFree(&PtV); ValFree(&TxV); PUSH(parts); *stacktopptr=stacktop; return 1;
   }
 
@@ -20031,7 +20050,11 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       ValFree(&arrval);
       return -1;
     }
-    qsort(ValToArr(arrval)->items, ValToArr(arrval)->count, sizeof(AKSValue),
+    AKSArray *arr = ValToArr(arrval);
+    if (arr->isslice || arr->has_slices) {
+      AksArrayEnsureCapacity(arr, arr->count);
+    }
+    qsort(arr->items, arr->count, sizeof(AKSValue),
           CompareAKSVals);
     PUSH(arrval);
     *stacktopptr = stacktop;

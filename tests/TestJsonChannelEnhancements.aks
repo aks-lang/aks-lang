@@ -78,6 +78,5 @@ fn main() {
     TestJsonUnicodeAndEscapes();
     TestJsonNumberArray();
     TestChannelIntrospection();
-    println("ALL PHASE 6 TESTS COMPLETED SUCCESSFULLY");
 }
 main();

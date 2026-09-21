@@ -95,6 +95,5 @@ fn main() {
     TestByteAtAndOrdinal();
     TestHashMapAndSetThroughput();
     TestStringConcatAndStruct();
-    println("ALL PHASE 5 TESTS COMPLETED SUCCESSFULLY");
 }
 main();

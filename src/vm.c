@@ -176,26 +176,60 @@ static void AksJPSkip(AksJP *p) {
 static AKSValue AksJPParseValue(AksJP *p);
 static AKSValue AksJPParseString(AksJP *p) {
   p->pos++;
-  int cap = 256;
+  char stackbuf[256];
+  int cap = (int)sizeof(stackbuf);
   int bi = 0;
-  char *buf = malloc(cap);
+  char *buf = stackbuf;
   while (p->s[p->pos] && p->s[p->pos] != '"') {
-    if (bi + 4 >= cap) {
-      cap *= 2;
-      char *nb = realloc(buf, cap);
-      if (nb) buf = nb;
+    if (bi + 6 >= cap) {
+      int new_cap = cap * 2 + 16;
+      char *nb = (buf == stackbuf) ? malloc(new_cap) : realloc(buf, new_cap);
+      if (nb) {
+        if (buf == stackbuf) memcpy(nb, stackbuf, bi);
+        buf = nb;
+        cap = new_cap;
+      }
     }
     if (p->s[p->pos] == '\\') {
       p->pos++;
       char c = p->s[p->pos];
       if (c) p->pos++;
       switch(c) {
-        case 'n': buf[bi++]='\n'; break;
-        case 't': buf[bi++]='\t'; break;
-        case 'r': buf[bi++]='\r'; break;
-        case '"': buf[bi++]='"'; break;
-        case '\\': buf[bi++]='\\'; break;
-        default: buf[bi++]=c; break;
+        case 'n': buf[bi++] = '\n'; break;
+        case 't': buf[bi++] = '\t'; break;
+        case 'r': buf[bi++] = '\r'; break;
+        case 'b': buf[bi++] = '\b'; break;
+        case 'f': buf[bi++] = '\f'; break;
+        case '/': buf[bi++] = '/'; break;
+        case '"': buf[bi++] = '"'; break;
+        case '\\': buf[bi++] = '\\'; break;
+        case 'u': {
+          uint32_t cp = 0;
+          int hex_ok = 1;
+          for (int h = 0; h < 4; h++) {
+            char hc = p->s[p->pos];
+            int val;
+            if (hc >= '0' && hc <= '9') val = hc - '0';
+            else if (hc >= 'a' && hc <= 'f') val = hc - 'a' + 10;
+            else if (hc >= 'A' && hc <= 'F') val = hc - 'A' + 10;
+            else { hex_ok = 0; break; }
+            cp = (cp << 4) | (uint32_t)val;
+            p->pos++;
+          }
+          if (!hex_ok) break;
+          if (cp <= 0x7F) {
+            buf[bi++] = (char)cp;
+          } else if (cp <= 0x7FF) {
+            buf[bi++] = (char)(0xC0 | (cp >> 6));
+            buf[bi++] = (char)(0x80 | (cp & 0x3F));
+          } else {
+            buf[bi++] = (char)(0xE0 | (cp >> 12));
+            buf[bi++] = (char)(0x80 | ((cp >> 6) & 0x3F));
+            buf[bi++] = (char)(0x80 | (cp & 0x3F));
+          }
+          break;
+        }
+        default: buf[bi++] = c; break;
       }
     } else {
       buf[bi++] = p->s[p->pos++];
@@ -204,7 +238,7 @@ static AKSValue AksJPParseString(AksJP *p) {
   buf[bi] = 0;
   if (p->s[p->pos] == '"') p->pos++;
   AKSValue res = ValStrLen(buf, bi);
-  free(buf);
+  if (buf != stackbuf) free(buf);
   return res;
 }
 static void AksArrPush(AKSArray *a, AKSValue v) {
@@ -268,7 +302,7 @@ static AKSValue AksJPParseValue(AksJP *p) {
     }
     nbuf[ni] = 0;
     if (is_float) return ValFloat(atof(nbuf));
-    return ValInt((int64_t)atol(nbuf));
+    return ValInt((int64_t)strtoll(nbuf, NULL, 10));
   }
   return ValNull();
 }
@@ -2563,20 +2597,27 @@ static char *GetCwdStr(void) {
 static int CompareAKSVals(const void *a, const void *b) {
   AKSValue va = *(const AKSValue *)a;
   AKSValue vb = *(const AKSValue *)b;
-  if (ValKind(va) != ValKind(vb)) {
-    return (int)ValKind(va) - (int)ValKind(vb);
+  ValType ta = ValKind(va);
+  ValType tb = ValKind(vb);
+  if ((ta == VALINT || ta == VALFLOAT) && (tb == VALINT || tb == VALFLOAT)) {
+    double da = (ta == VALINT) ? (double)ValToInt(va) : ValToFloat(va);
+    double db = (tb == VALINT) ? (double)ValToInt(vb) : ValToFloat(vb);
+    return (da > db) - (da < db);
   }
-  if (ValKind(va) == VALINT) {
+  if (ta != tb) {
+    return (int)ta - (int)tb;
+  }
+  if (ta == VALINT) {
     return (ValToInt(va) > ValToInt(vb)) - (ValToInt(va) < ValToInt(vb));
   }
-  if (ValKind(va) == VALFLOAT) {
+  if (ta == VALFLOAT) {
     return (ValToFloat(va) > ValToFloat(vb)) -
            (ValToFloat(va) < ValToFloat(vb));
   }
-  if (ValKind(va) == VALSTR) {
+  if (ta == VALSTR) {
     return strcmp(ValToStrPtr(va)->data, ValToStrPtr(vb)->data);
   }
-  if (ValKind(va) == VALBOOL) {
+  if (ta == VALBOOL) {
     return ValToBool(va) - ValToBool(vb);
   }
   return 0;
@@ -2666,7 +2707,7 @@ static AKSValue ParseJSONStr(const char **ptr, int *Error) {
     *Error = 1;
   }
   buf[len] = '\0';
-  AKSValue v = ValStr(buf);
+  AKSValue v = ValStrLen(buf, (int)len);
   free(buf);
   return v;
 }
@@ -5829,15 +5870,16 @@ static int MatchNFA(ReInst *program, int pc, const int *input, int input_len,
       break;
     }
     case RE_SPLIT: {
-      int *old_saves = malloc(save_count * sizeof(int));
+      int stack_saves[64];
+      int *old_saves = (save_count <= 64) ? stack_saves : malloc(save_count * sizeof(int));
       memcpy(old_saves, saves, save_count * sizeof(int));
       if (MatchNFA(program, inst.target1, input, input_len, idx, saves,
                    save_count)) {
-        free(old_saves);
+        if (old_saves != stack_saves) free(old_saves);
         return 1;
       }
       memcpy(saves, old_saves, save_count * sizeof(int));
-      free(old_saves);
+      if (old_saves != stack_saves) free(old_saves);
       pc = inst.target2;
       break;
     }
