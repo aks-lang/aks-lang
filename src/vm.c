@@ -2615,6 +2615,43 @@ static AKSValue ParseJSONStr(const char **ptr, int *Error) {
         c = '\b';
       else if (c == 'f')
         c = '\f';
+      else if (c == '"')
+        c = '"';
+      else if (c == '\\')
+        c = '\\';
+      else if (c == '/')
+        c = '/';
+      else if (c == 'u') {
+        uint32_t cp = 0;
+        int hex_ok = 1;
+        for (int h = 0; h < 4; h++) {
+          (*ptr)++;
+          char hc = **ptr;
+          int val;
+          if (hc >= '0' && hc <= '9') val = hc - '0';
+          else if (hc >= 'a' && hc <= 'f') val = hc - 'a' + 10;
+          else if (hc >= 'A' && hc <= 'F') val = hc - 'A' + 10;
+          else { hex_ok = 0; break; }
+          cp = (cp << 4) | (uint32_t)val;
+        }
+        if (!hex_ok) { *Error = 1; break; }
+        if (cp <= 0x7F) {
+          c = (char)cp;
+        } else if (cp <= 0x7FF) {
+          if (len + 2 >= cap) { cap = cap * 2 + 8; buf = realloc(buf, cap); }
+          buf[len++] = (char)(0xC0 | (cp >> 6));
+          buf[len++] = (char)(0x80 | (cp & 0x3F));
+          (*ptr)++;
+          continue;
+        } else {
+          if (len + 3 >= cap) { cap = cap * 2 + 8; buf = realloc(buf, cap); }
+          buf[len++] = (char)(0xE0 | (cp >> 12));
+          buf[len++] = (char)(0x80 | ((cp >> 6) & 0x3F));
+          buf[len++] = (char)(0x80 | (cp & 0x3F));
+          (*ptr)++;
+          continue;
+        }
+      }
     }
     if (len + 1 >= cap) {
       cap *= 2;
@@ -2656,7 +2693,8 @@ static AKSValue ParseJSONNumber(const char **ptr, int *Error) {
       (*ptr)++;
   }
   size_t len = *ptr - start;
-  char *numbuf = malloc(len + 1);
+  char stackbuf[64];
+  char *numbuf = (len < sizeof(stackbuf)) ? stackbuf : malloc(len + 1);
   memcpy(numbuf, start, len);
   numbuf[len] = '\0';
   AKSValue v;
@@ -2665,7 +2703,7 @@ static AKSValue ParseJSONNumber(const char **ptr, int *Error) {
   } else {
     v = ValInt((int64_t)strtoll(numbuf, NULL, 10));
   }
-  free(numbuf);
+  if (numbuf != stackbuf) free(numbuf);
   return v;
 }
 
@@ -2743,7 +2781,8 @@ static AKSValue ParseJSONObj(const char **ptr, int *Error) {
     AKSStruct *s = ValToObj(objval);
     int found = -1;
     for (int i = 0; i < s->fieldcount; i++) {
-      if (strcmp(s->fieldnames[i], ValToStrPtr(keyval)->data) == 0) {
+      const char *kstr = ValToStrPtr(keyval)->data;
+      if (s->fieldnames[i] == kstr || strcmp(s->fieldnames[i], kstr) == 0) {
         found = i;
         break;
       }
@@ -2810,6 +2849,54 @@ static AKSValue ParseJSONVal(const char **ptr, int *Error) {
   return ValNull();
 }
 
+static void StrIfyString(const char *data, int slen, char **buf, size_t *len, size_t *cap) {
+  if (*len + 2 >= *cap) {
+    *cap = *cap * 2 + 16;
+    *buf = realloc(*buf, *cap);
+  }
+  (*buf)[(*len)++] = '"';
+  for (int i = 0; i < slen; i++) {
+    char c = data[i];
+    if (c == '"' || c == '\\') {
+      if (*len + 2 >= *cap) { *cap = *cap * 2 + 16; *buf = realloc(*buf, *cap); }
+      (*buf)[(*len)++] = '\\';
+      (*buf)[(*len)++] = c;
+    } else if (c == '\n') {
+      if (*len + 2 >= *cap) { *cap = *cap * 2 + 16; *buf = realloc(*buf, *cap); }
+      (*buf)[(*len)++] = '\\';
+      (*buf)[(*len)++] = 'n';
+    } else if (c == '\t') {
+      if (*len + 2 >= *cap) { *cap = *cap * 2 + 16; *buf = realloc(*buf, *cap); }
+      (*buf)[(*len)++] = '\\';
+      (*buf)[(*len)++] = 't';
+    } else if (c == '\r') {
+      if (*len + 2 >= *cap) { *cap = *cap * 2 + 16; *buf = realloc(*buf, *cap); }
+      (*buf)[(*len)++] = '\\';
+      (*buf)[(*len)++] = 'r';
+    } else if (c == '\b') {
+      if (*len + 2 >= *cap) { *cap = *cap * 2 + 16; *buf = realloc(*buf, *cap); }
+      (*buf)[(*len)++] = '\\';
+      (*buf)[(*len)++] = 'b';
+    } else if (c == '\f') {
+      if (*len + 2 >= *cap) { *cap = *cap * 2 + 16; *buf = realloc(*buf, *cap); }
+      (*buf)[(*len)++] = '\\';
+      (*buf)[(*len)++] = 'f';
+    } else if ((unsigned char)c < 32) {
+      if (*len + 6 >= *cap) { *cap = *cap * 2 + 16; *buf = realloc(*buf, *cap); }
+      snprintf(*buf + *len, 7, "\\u%04x", (unsigned char)c);
+      *len += 6;
+    } else {
+      if (*len + 1 >= *cap) { *cap = *cap * 2 + 16; *buf = realloc(*buf, *cap); }
+      (*buf)[(*len)++] = c;
+    }
+  }
+  if (*len + 1 >= *cap) {
+    *cap = *cap * 2 + 16;
+    *buf = realloc(*buf, *cap);
+  }
+  (*buf)[(*len)++] = '"';
+}
+
 static void StrIfyVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
   char temp[64];
   if (ValKind(v) == VALNULL) {
@@ -2849,54 +2936,7 @@ static void StrIfyVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
     memcpy(*buf + *len, temp, slen);
     *len += slen;
   } else if (ValKind(v) == VALSTR) {
-    if (*len + 2 >= *cap) {
-      *cap *= 2;
-      *buf = realloc(*buf, *cap);
-    }
-    (*buf)[(*len)++] = '"';
-    for (int i = 0; i < ValToStrPtr(v)->len; i++) {
-      char c = ValToStrPtr(v)->data[i];
-      if (c == '"' || c == '\\') {
-        if (*len + 2 >= *cap) {
-          *cap *= 2;
-          *buf = realloc(*buf, *cap);
-        }
-        (*buf)[(*len)++] = '\\';
-        (*buf)[(*len)++] = c;
-      } else if (c == '\n') {
-        if (*len + 2 >= *cap) {
-          *cap *= 2;
-          *buf = realloc(*buf, *cap);
-        }
-        (*buf)[(*len)++] = '\\';
-        (*buf)[(*len)++] = 'n';
-      } else if (c == '\t') {
-        if (*len + 2 >= *cap) {
-          *cap *= 2;
-          *buf = realloc(*buf, *cap);
-        }
-        (*buf)[(*len)++] = '\\';
-        (*buf)[(*len)++] = 't';
-      } else if (c == '\r') {
-        if (*len + 2 >= *cap) {
-          *cap *= 2;
-          *buf = realloc(*buf, *cap);
-        }
-        (*buf)[(*len)++] = '\\';
-        (*buf)[(*len)++] = 'r';
-      } else {
-        if (*len + 1 >= *cap) {
-          *cap *= 2;
-          *buf = realloc(*buf, *cap);
-        }
-        (*buf)[(*len)++] = c;
-      }
-    }
-    if (*len + 1 >= *cap) {
-      *cap *= 2;
-      *buf = realloc(*buf, *cap);
-    }
-    (*buf)[(*len)++] = '"';
+    StrIfyString(ValToStrPtr(v)->data, ValToStrPtr(v)->len, buf, len, cap);
   } else if (ValKind(v) == VALARR) {
     if (*len + 1 >= *cap) {
       *cap *= 2;
@@ -2960,9 +3000,8 @@ static void StrIfyVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
         }
         (*buf)[(*len)++] = ',';
       }
-      AKSValue key = ValStr(ValToObj(v)->fieldnames[i]);
-      StrIfyVal(key, buf, len, cap);
-      ValFree(&key);
+      const char *fn = ValToObj(v)->fieldnames[i];
+      StrIfyString(fn, (int)strlen(fn), buf, len, cap);
       if (*len + 1 >= *cap) {
         *cap *= 2;
         *buf = realloc(*buf, *cap);

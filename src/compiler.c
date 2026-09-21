@@ -7205,6 +7205,10 @@ Compiler *CompNew(void) {
     NewFn(c, "ChannelSend");
     NewFn(c, "ChannelReceive");
     NewFn(c, "ChannelClose");
+    NewFn(c, "ChannelLen");
+    NewFn(c, "ChannelCount");
+    NewFn(c, "ChannelCap");
+    NewFn(c, "ChannelIsClosed");
     NewFn(c, "mutex");
     NewFn(c, "lock");
     NewFn(c, "unlock");

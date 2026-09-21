@@ -1,0 +1,83 @@
+// TestJsonChannelEnhancements.aks
+// Tests RFC 8259 JSON unicode/control character parsing & stringifying, and channel introspection
+
+fn TestJsonUnicodeAndEscapes() {
+    let json_unicode = """{"ascii": "\u0041\u0042\u0043", "copyright": "\u00a9"}""";
+    let parsed = JsonParse(json_unicode);
+    assert(parsed != null, "JsonParse failed on unicode escapes");
+    assert(parsed.ascii == "ABC", "Unicode \\u0041\\u0042\\u0043 decode failed");
+    assert(parsed.copyright == "\u00a9" || Length(parsed.copyright) == 2, "Unicode \\u00a9 decode failed");
+    
+    // Test serialization of special characters
+    let obj = {
+        name: "Test\bSpecial\fChars\nLine",
+        val: 42
+    };
+    let s = JsonStringify(obj);
+    assert(find(s, "\\b") >= 0, "JsonStringify missing \\b escape");
+    assert(find(s, "\\f") >= 0, "JsonStringify missing \\f escape");
+    assert(find(s, "\\n") >= 0, "JsonStringify missing \\n escape");
+
+    let reparsed = JsonParse(s);
+    assert(reparsed.val == 42, "Reparsed value failed");
+    println("TestJsonUnicodeAndEscapes PASSED");
+}
+
+fn TestJsonNumberArray() {
+    // Array of 200 numbers to test stack-buffer number parsing
+    let json_arr = "[";
+    let i = 0;
+    while (i < 200) {
+        if (i > 0) {
+            json_arr = json_arr + ",";
+        }
+        json_arr = json_arr + String(i * 3.5);
+        i++;
+    }
+    json_arr = json_arr + "]";
+
+    let arr = JsonParse(json_arr);
+    assert(arr != null, "JsonParse failed on number array");
+    assert(Length(arr) == 200, "JsonParse number array length mismatch");
+    assert(arr[0] == 0, "arr[0] mismatch");
+    assert(arr[10] == 35, "arr[10] mismatch");
+    println("TestJsonNumberArray PASSED");
+}
+
+fn TestChannelIntrospection() {
+    let ch = Channel(4);
+    assert(ChannelCap(ch) == 4, "ChannelCap expected 4");
+    assert(ChannelLen(ch) == 0, "ChannelLen expected 0 initially");
+    assert(ChannelCount(ch) == 0, "ChannelCount expected 0 initially");
+    assert(!ChannelIsClosed(ch), "ChannelIsClosed expected false initially");
+
+    send(ch, 10);
+    send(ch, 20);
+    send(ch, 30);
+    assert(ChannelLen(ch) == 3, "ChannelLen expected 3 after 3 sends");
+
+    let v1 = receive(ch);
+    assert(v1 == 10, "receive v1 expected 10");
+    assert(ChannelLen(ch) == 2, "ChannelLen expected 2 after 1 receive");
+
+    close(ch);
+    assert(ChannelIsClosed(ch), "ChannelIsClosed expected true after close");
+    assert(ChannelLen(ch) == 2, "ChannelLen expected 2 remaining items in closed channel");
+
+    let v2 = receive(ch);
+    let v3 = receive(ch);
+    assert(v2 == 20 && v3 == 30, "receive v2 & v3 mismatch");
+    assert(ChannelLen(ch) == 0, "ChannelLen expected 0 after draining closed channel");
+
+    let v4 = receive(ch);
+    assert(v4 == null, "receive on drained closed channel expected null");
+    println("TestChannelIntrospection PASSED");
+}
+
+fn main() {
+    TestJsonUnicodeAndEscapes();
+    TestJsonNumberArray();
+    TestChannelIntrospection();
+    println("ALL PHASE 6 TESTS COMPLETED SUCCESSFULLY");
+}
+main();

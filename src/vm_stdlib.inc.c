@@ -23490,6 +23490,64 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
+  if (strcmp(name, "ChannelLen") == 0 || strcmp(name, "ChannelCount") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: %s() expects 1 argument, got %d\n", name, argc);
+      return -1;
+    }
+    AKSValue chanval = POP();
+    if (ValKind(chanval) != VALCHANNEL) {
+      fprintf(stderr, "Runtime error: %s() argument must be a channel\n", name);
+      ValFree(&chanval);
+      return -1;
+    }
+    VMChannel *c = ValToChan(chanval);
+    MutexLockNative(c->lock);
+    int count = c->count;
+    MutexUnlockNative(c->lock);
+    ValFree(&chanval);
+    PUSH(ValInt(count));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "ChannelCap") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: %s() expects 1 argument, got %d\n", name, argc);
+      return -1;
+    }
+    AKSValue chanval = POP();
+    if (ValKind(chanval) != VALCHANNEL) {
+      fprintf(stderr, "Runtime error: %s() argument must be a channel\n", name);
+      ValFree(&chanval);
+      return -1;
+    }
+    VMChannel *c = ValToChan(chanval);
+    int cap = c->capacity;
+    ValFree(&chanval);
+    PUSH(ValInt(cap));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "ChannelIsClosed") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: %s() expects 1 argument, got %d\n", name, argc);
+      return -1;
+    }
+    AKSValue chanval = POP();
+    if (ValKind(chanval) != VALCHANNEL) {
+      fprintf(stderr, "Runtime error: %s() argument must be a channel\n", name);
+      ValFree(&chanval);
+      return -1;
+    }
+    VMChannel *c = ValToChan(chanval);
+    MutexLockNative(c->lock);
+    int isclosed = c->isclosed;
+    MutexUnlockNative(c->lock);
+    ValFree(&chanval);
+    PUSH(ValBool(isclosed));
+    *stacktopptr = stacktop;
+    return 1;
+  }
   if (strcmp(name, "mutex") == 0) {
     if (argc != 0) {
       fprintf(stderr, "Runtime error: mutex() expects 0 arguments, got %d\n",

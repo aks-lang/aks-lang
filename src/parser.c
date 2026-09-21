@@ -380,6 +380,13 @@ static Node *ParseInterpolatedStr(const char *str, int line) {
   Node *exprnode = ParseExprFromStr(exprstr, line);
   free(exprstr);
 
+  if (!exprnode) {
+    NodeFree(prefixnode);
+    Node *n = NodeNew(NSTR, line);
+    n->sval = strdup(str);
+    return n;
+  }
+
   Node *add1 = NodeNew(NBINOP, line);
   add1->binop.op = strdup("+");
   add1->binop.left = prefixnode;
@@ -395,12 +402,21 @@ static Node *ParseInterpolatedStr(const char *str, int line) {
 
 static Node *ParseExprFromStr(const char *source, int line) {
   Parser p;
+  memset(&p, 0, sizeof(Parser));
   p.lex = LexNew(source);
   p.err = 0;
-  p.suppresserrors = 0;
+  p.suppresserrors = 1;
+  p.recursion_depth = 0;
+  p.error_count = 0;
   p.cur = LexNext(&p.lex);
   p.peek = LexNext(&p.lex);
   Node *expr = ParserExpr(&p);
+  if (p.err || !Check(&p, TEOF)) {
+    if (expr) {
+      NodeFree(expr);
+      expr = NULL;
+    }
+  }
   TokFree(&p.cur);
   TokFree(&p.peek);
   return expr;
