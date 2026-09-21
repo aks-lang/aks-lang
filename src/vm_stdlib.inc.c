@@ -1308,8 +1308,66 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
 #else
+    int in_pipe[2];
+    int out_pipe[2];
+    int err_pipe[2];
+    if (pipe(in_pipe) < 0 || pipe(out_pipe) < 0 || pipe(err_pipe) < 0) {
+      ValFree(&cmd_val);
+      PUSH(ValNull());
+      *stacktopptr = stacktop;
+      return 1;
+    }
+    pid_t pid = fork();
+    if (pid < 0) {
+      close(in_pipe[0]); close(in_pipe[1]);
+      close(out_pipe[0]); close(out_pipe[1]);
+      close(err_pipe[0]); close(err_pipe[1]);
+      ValFree(&cmd_val);
+      PUSH(ValNull());
+      *stacktopptr = stacktop;
+      return 1;
+    }
+    if (pid == 0) {
+      dup2(in_pipe[0], STDIN_FILENO);
+      dup2(out_pipe[1], STDOUT_FILENO);
+      dup2(err_pipe[1], STDERR_FILENO);
+
+      close(in_pipe[0]); close(in_pipe[1]);
+      close(out_pipe[0]); close(out_pipe[1]);
+      close(err_pipe[0]); close(err_pipe[1]);
+
+      execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+      _exit(127);
+    }
+    close(in_pipe[0]);
+    close(out_pipe[1]);
+    close(err_pipe[1]);
+
+    fcntl(out_pipe[0], F_SETFL, fcntl(out_pipe[0], F_GETFL, 0) | O_NONBLOCK);
+    fcntl(err_pipe[0], F_SETFL, fcntl(err_pipe[0], F_GETFL, 0) | O_NONBLOCK);
+
+    AKSValue proc_val = ValStruct("ProcessHandle");
+    AKSStruct *s = ValToObj(proc_val);
+    s->fieldcount = 7;
+    s->fieldnames = malloc(7 * sizeof(char *));
+    s->fieldvals = malloc(7 * sizeof(AKSValue));
+    s->fieldnames[0] = strdup("pid");
+    s->fieldvals[0] = ValInt((int64_t)pid);
+    s->fieldnames[1] = strdup("h_proc");
+    s->fieldvals[1] = ValInt((int64_t)pid);
+    s->fieldnames[2] = strdup("h_thread");
+    s->fieldvals[2] = ValInt(0);
+    s->fieldnames[3] = strdup("stdin_write");
+    s->fieldvals[3] = ValInt((int64_t)in_pipe[1]);
+    s->fieldnames[4] = strdup("stdout_read");
+    s->fieldvals[4] = ValInt((int64_t)out_pipe[0]);
+    s->fieldnames[5] = strdup("stderr_read");
+    s->fieldvals[5] = ValInt((int64_t)err_pipe[0]);
+    s->fieldnames[6] = strdup("is_alive");
+    s->fieldvals[6] = ValBool(1);
+
     ValFree(&cmd_val);
-    PUSH(ValNull());
+    PUSH(proc_val);
     *stacktopptr = stacktop;
     return 1;
 #endif
@@ -1337,6 +1395,23 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
         const char *data = ValToStrPtr(data_val)->data;
         DWORD len = (DWORD)ValToStrPtr(data_val)->len;
         WriteFile(hWrite, data, len, &written, NULL);
+      }
+    }
+#else
+    if (ValKind(proc_val) == VALSTRUCT && ValKind(data_val) == VALSTR) {
+      AKSStruct *s = ValToObj(proc_val);
+      int fd = -1;
+      for (int i = 0; i < s->fieldcount; i++) {
+        if (strcmp(s->fieldnames[i], "stdin_write") == 0) {
+          fd = (int)ValToInt(s->fieldvals[i]);
+          break;
+        }
+      }
+      if (fd >= 0) {
+        const char *data = ValToStrPtr(data_val)->data;
+        int len = ValToStrPtr(data_val)->len;
+        ssize_t n = write(fd, data, len);
+        if (n > 0) written = (int64_t)n;
       }
     }
 #endif
@@ -1377,6 +1452,21 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
           if (to_read > avail) to_read = avail;
           ReadFile(hRead, buf, to_read, &bytes_read, NULL);
         }
+      }
+    }
+#else
+    if (ValKind(proc_val) == VALSTRUCT) {
+      AKSStruct *s = ValToObj(proc_val);
+      int fd = -1;
+      for (int i = 0; i < s->fieldcount; i++) {
+        if (strcmp(s->fieldnames[i], "stdout_read") == 0) {
+          fd = (int)ValToInt(s->fieldvals[i]);
+          break;
+        }
+      }
+      if (fd >= 0) {
+        ssize_t n = read(fd, buf, (size_t)max_bytes);
+        if (n > 0) bytes_read = (int)n;
       }
     }
 #endif
@@ -1422,6 +1512,21 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
         }
       }
     }
+#else
+    if (ValKind(proc_val) == VALSTRUCT) {
+      AKSStruct *s = ValToObj(proc_val);
+      int fd = -1;
+      for (int i = 0; i < s->fieldcount; i++) {
+        if (strcmp(s->fieldnames[i], "stderr_read") == 0) {
+          fd = (int)ValToInt(s->fieldvals[i]);
+          break;
+        }
+      }
+      if (fd >= 0) {
+        ssize_t n = read(fd, buf, (size_t)max_bytes);
+        if (n > 0) bytes_read = (int)n;
+      }
+    }
 #endif
     buf[bytes_read] = '\0';
     AKSValue str_res = ValStrLen(buf, (int)bytes_read);
@@ -1457,6 +1562,32 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
         ok = (res == WAIT_OBJECT_0);
       }
     }
+#else
+    if (ValKind(proc_val) == VALSTRUCT) {
+      AKSStruct *s = ValToObj(proc_val);
+      pid_t pid = -1;
+      for (int i = 0; i < s->fieldcount; i++) {
+        if (strcmp(s->fieldnames[i], "pid") == 0) {
+          pid = (pid_t)ValToInt(s->fieldvals[i]);
+          break;
+        }
+      }
+      if (pid > 0) {
+        int status;
+        if (timeout_ms < 0) {
+          ok = (waitpid(pid, &status, 0) == pid);
+        } else {
+          int elapsed = 0;
+          while (elapsed <= timeout_ms) {
+            pid_t r = waitpid(pid, &status, WNOHANG);
+            if (r == pid) { ok = 1; break; }
+            if (r < 0) break;
+            usleep(10000);
+            elapsed += 10;
+          }
+        }
+      }
+    }
 #endif
     ValFree(&timeout_val);
     ValFree(&proc_val);
@@ -1483,6 +1614,20 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       }
       if (hProc) {
         TerminateProcess(hProc, 1);
+      }
+    }
+#else
+    if (ValKind(proc_val) == VALSTRUCT) {
+      AKSStruct *s = ValToObj(proc_val);
+      pid_t pid = -1;
+      for (int i = 0; i < s->fieldcount; i++) {
+        if (strcmp(s->fieldnames[i], "pid") == 0) {
+          pid = (pid_t)ValToInt(s->fieldvals[i]);
+          break;
+        }
+      }
+      if (pid > 0) {
+        kill(pid, SIGTERM);
       }
     }
 #endif
@@ -1516,6 +1661,24 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
         }
       }
     }
+#else
+    if (ValKind(proc_val) == VALSTRUCT) {
+      AKSStruct *s = ValToObj(proc_val);
+      pid_t pid = -1;
+      for (int i = 0; i < s->fieldcount; i++) {
+        if (strcmp(s->fieldnames[i], "pid") == 0) {
+          pid = (pid_t)ValToInt(s->fieldvals[i]);
+          break;
+        }
+      }
+      if (pid > 0) {
+        int status;
+        pid_t r = waitpid(pid, &status, WNOHANG);
+        if (r == pid && WIFEXITED(status)) {
+          code = (int64_t)WEXITSTATUS(status);
+        }
+      }
+    }
 #endif
     ValFree(&proc_val);
     PUSH(ValInt(code));
@@ -1542,6 +1705,21 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
           if (h && h != INVALID_HANDLE_VALUE) {
             CloseHandle(h);
             s->fieldvals[i] = ValInt(0);
+          }
+        }
+      }
+    }
+#else
+    if (ValKind(proc_val) == VALSTRUCT) {
+      AKSStruct *s = ValToObj(proc_val);
+      for (int i = 0; i < s->fieldcount; i++) {
+        if (strcmp(s->fieldnames[i], "stdin_write") == 0 ||
+            strcmp(s->fieldnames[i], "stdout_read") == 0 ||
+            strcmp(s->fieldnames[i], "stderr_read") == 0) {
+          int fd = (int)ValToInt(s->fieldvals[i]);
+          if (fd >= 0) {
+            close(fd);
+            s->fieldvals[i] = ValInt(-1);
           }
         }
       }

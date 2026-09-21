@@ -1,0 +1,46 @@
+struct Calculator {
+    base: int;
+}
+
+fn Calculator.Add(self, x) {
+    return self.base + x;
+}
+
+fn Calculator.Multiply(self, factor) {
+    return self.base * factor;
+}
+
+struct Accumulator {
+    total: int;
+}
+
+fn Accumulator.Step(self, delta) {
+    self.total = self.total + delta;
+    return self.total;
+}
+
+fn testMethodInlineCache() {
+    let calc = new Calculator();
+    calc.base = 100;
+
+    let acc = new Accumulator();
+    acc.total = 0;
+
+    let i = 0;
+    while (i < 20000) {
+        let sum = calc.Add(i);
+        let prod = calc.Multiply(2);
+        acc.Step(1);
+        i = i + 1;
+    }
+
+    print("Accumulator final total: " + String(acc.total));
+    if (acc.total == 20000) {
+        print("METHOD INLINE CACHE PASS: 20000 iterations executed cleanly");
+    } else {
+        print("METHOD INLINE CACHE FAIL: unexpected total " + String(acc.total));
+    }
+}
+
+testMethodInlineCache();
+print("TestMethodInlineCache completed successfully");

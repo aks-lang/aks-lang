@@ -165,6 +165,15 @@ typedef struct {
 } VMWorker;
 
 typedef struct {
+    char typename[48];
+    char methodname[48];
+    uint16_t fnid;
+    uint8_t valid;
+} VMMethodCacheEntry;
+
+#define VM_METHOD_CACHE_SIZE 1024
+
+typedef struct {
     FnProto *fns[MAXFNS];
     int fncount;
 
@@ -254,6 +263,7 @@ typedef struct {
     int strict_ovf;
     int test_mode;
     int coverage_enabled;
+    VMMethodCacheEntry method_cache[VM_METHOD_CACHE_SIZE];
 } VM;
 
 typedef enum {

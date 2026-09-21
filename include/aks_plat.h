@@ -22,6 +22,8 @@
 #include <sys/select.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <sys/wait.h>
+#include <signal.h>
 
 #define SleepMs(ms) usleep((ms) * 1000)
 #define Sleep(ms) usleep((ms) * 1000)

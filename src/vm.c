@@ -1026,6 +1026,47 @@ void VMFree(VM *vm) {
   }
 }
 
+static inline uint16_t FindTypeMethod(VM *vm, const char *typename, const char *methodname) {
+  if (!vm || !typename || !methodname) return 65535;
+
+  uint32_t h = 2166136261u;
+  for (const char *p = typename; *p; p++) {
+    h ^= (uint8_t)*p;
+    h *= 16777619u;
+  }
+  h ^= (uint8_t)'.';
+  h *= 16777619u;
+  for (const char *p = methodname; *p; p++) {
+    h ^= (uint8_t)*p;
+    h *= 16777619u;
+  }
+
+  int idx = (int)(h & (VM_METHOD_CACHE_SIZE - 1));
+  VMMethodCacheEntry *entry = &vm->method_cache[idx];
+  if (entry->valid && strcmp(entry->typename, typename) == 0 && strcmp(entry->methodname, methodname) == 0) {
+    return entry->fnid;
+  }
+
+  char fullfnname[256];
+  snprintf(fullfnname, sizeof(fullfnname), "%s.%s", typename, methodname);
+  uint16_t found = 65535;
+  for (uint16_t k = 0; k < vm->fncount; k++) {
+    if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, fullfnname) == 0) {
+      found = k;
+      break;
+    }
+  }
+
+  strncpy(entry->typename, typename, sizeof(entry->typename) - 1);
+  entry->typename[sizeof(entry->typename) - 1] = '\0';
+  strncpy(entry->methodname, methodname, sizeof(entry->methodname) - 1);
+  entry->methodname[sizeof(entry->methodname) - 1] = '\0';
+  entry->fnid = found;
+  entry->valid = 1;
+
+  return found;
+}
+
 int VMGenerateFlamegraphSVG(VM *vm, const char *filepath) {
   if (!vm || !filepath) return 0;
   FILE *f = fopen(filepath, "w");
@@ -3261,6 +3302,7 @@ typedef struct {
   SecPkgContext_StreamSizes sizes;
   int has_context;
   int is_server;
+  int in_use;
   char *in_buf;
   int in_buf_len;
   int in_buf_cap;
@@ -3272,13 +3314,19 @@ typedef struct {
 
 #define MAX_TLS_CONTEXTS 128
 static TLSContext tls_contexts[MAX_TLS_CONTEXTS];
-static int tls_context_count = 0;
 
 static int CreateTLSContext(SOCKET sock, int is_server) {
-  if (tls_context_count >= MAX_TLS_CONTEXTS)
-    return -1;
-  int id = tls_context_count++;
+  int id = -1;
+  for (int i = 0; i < MAX_TLS_CONTEXTS; i++) {
+    if (!tls_contexts[i].in_use) {
+      id = i;
+      break;
+    }
+  }
+  if (id < 0) return -1;
   TLSContext *c = &tls_contexts[id];
+  memset(c, 0, sizeof(TLSContext));
+  c->in_use = 1;
   c->sock = sock;
   c->has_context = 0;
   c->is_server = is_server;
@@ -3293,7 +3341,7 @@ static int CreateTLSContext(SOCKET sock, int is_server) {
 }
 
 static void TLSCloseContext(int tls_id) {
-  if (tls_id < 0 || tls_id >= tls_context_count)
+  if (tls_id < 0 || tls_id >= MAX_TLS_CONTEXTS || !tls_contexts[tls_id].in_use)
     return;
   TLSContext *c = &tls_contexts[tls_id];
   if (c->has_context) {
@@ -3305,15 +3353,12 @@ static void TLSCloseContext(int tls_id) {
   if (c->dec_buf)
     free(c->dec_buf);
   closesocket(c->sock);
-
-  for (int i = tls_id; i < tls_context_count - 1; i++) {
-    tls_contexts[i] = tls_contexts[i + 1];
-  }
-  tls_context_count--;
+  memset(c, 0, sizeof(TLSContext));
+  c->in_use = 0;
 }
 
 static int PerformTLSHandshake(int tls_id, const char *hostname) {
-  if (tls_id < 0 || tls_id >= tls_context_count)
+  if (tls_id < 0 || tls_id >= MAX_TLS_CONTEXTS || !tls_contexts[tls_id].in_use)
     return -1;
   TLSContext *c = &tls_contexts[tls_id];
 
@@ -3429,7 +3474,7 @@ static int PerformTLSHandshake(int tls_id, const char *hostname) {
 }
 
 static int TLSSendData(int tls_id, const char *data, int len) {
-  if (tls_id < 0 || tls_id >= tls_context_count)
+  if (tls_id < 0 || tls_id >= MAX_TLS_CONTEXTS || !tls_contexts[tls_id].in_use)
     return -1;
   TLSContext *c = &tls_contexts[tls_id];
   int max_payload = c->sizes.cbMaximumMessage;
@@ -3486,7 +3531,7 @@ static int TLSSendData(int tls_id, const char *data, int len) {
 }
 
 static int TLSRecvData(int tls_id, char *out_buf, int max_len) {
-  if (tls_id < 0 || tls_id >= tls_context_count)
+  if (tls_id < 0 || tls_id >= MAX_TLS_CONTEXTS || !tls_contexts[tls_id].in_use)
     return -1;
   TLSContext *c = &tls_contexts[tls_id];
 
@@ -7985,14 +8030,7 @@ while (0)
           }
           uint16_t global_fnid = 65535;
           if (found < 0 && s->typename) {
-            char fullfnname[256];
-            snprintf(fullfnname, sizeof(fullfnname), "%s.%s", s->typename, methodname);
-            for (uint16_t k = 0; k < vm->fncount; k++) {
-              if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, fullfnname) == 0) {
-                global_fnid = k;
-                break;
-              }
-            }
+            global_fnid = FindTypeMethod(vm, s->typename, methodname);
           }
           if ((found >= 0 && ValKind(s->fieldvals[found]) == VALFN) || global_fnid != 65535) {
             *stacktop++ = ValCopy(receiver);
@@ -8695,14 +8733,7 @@ while (0)
         } else {
           int has_type_method = 0;
           if (s->typename) {
-            char fullfnname[256];
-            snprintf(fullfnname, sizeof(fullfnname), "%s.%s", s->typename, curr_inst->fieldname);
-            for (uint16_t k = 0; k < vm->fncount; k++) {
-              if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, fullfnname) == 0) {
-                has_type_method = 1;
-                break;
-              }
-            }
+            has_type_method = (FindTypeMethod(vm, s->typename, curr_inst->fieldname) != 65535);
           }
           if (has_type_method) {
             res = ValBoundmethod(objval, curr_inst->fieldname);
@@ -9055,14 +9086,7 @@ while (0)
             }
             uint16_t global_fnid = 65535;
             if (found < 0 && s->typename) {
-              char fullfnname[256];
-              snprintf(fullfnname, sizeof(fullfnname), "%s.%s", s->typename, methodname);
-              for (uint16_t k = 0; k < vm->fncount; k++) {
-                if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, fullfnname) == 0) {
-                  global_fnid = k;
-                  break;
-                }
-              }
+              global_fnid = FindTypeMethod(vm, s->typename, methodname);
             }
             if ((found >= 0 && ValKind(s->fieldvals[found]) == VALFN) || global_fnid != 65535) {
               for (int i = argc - 1; i >= 0; i--) {
@@ -9509,14 +9533,7 @@ while (0)
           }
           uint16_t global_fnid = 65535;
           if (found < 0 && s->typename) {
-            char fullfnname[256];
-            snprintf(fullfnname, sizeof(fullfnname), "%s.%s", s->typename, methodname);
-            for (uint16_t k = 0; k < vm->fncount; k++) {
-              if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, fullfnname) == 0) {
-                global_fnid = k;
-                break;
-              }
-            }
+            global_fnid = FindTypeMethod(vm, s->typename, methodname);
           }
           if ((found >= 0 && ValKind(s->fieldvals[found]) == VALFN) || global_fnid != 65535) {
             if (stacktop >= stacklimit) {
@@ -11045,14 +11062,7 @@ enter_stack_interpreter: for (;;) {
       }
       uint16_t global_fnid = 65535;
       if (found < 0 && s->typename) {
-        char fullfnname[256];
-        snprintf(fullfnname, sizeof(fullfnname), "%s.%s", s->typename, methodname);
-        for (uint16_t k = 0; k < vm->fncount; k++) {
-          if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, fullfnname) == 0) {
-            global_fnid = k;
-            break;
-          }
-        }
+        global_fnid = FindTypeMethod(vm, s->typename, methodname);
       }
       if ((found >= 0 && ValKind(s->fieldvals[found]) == VALFN) || global_fnid != 65535) {
         if (stacktop >= stacklimit) {
@@ -11374,14 +11384,7 @@ enter_stack_interpreter: for (;;) {
       }
       uint16_t global_fnid = 65535;
       if (found < 0 && s->typename) {
-        char fullfnname[256];
-        snprintf(fullfnname, sizeof(fullfnname), "%s.%s", s->typename, methodname);
-        for (uint16_t k = 0; k < vm->fncount; k++) {
-          if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, fullfnname) == 0) {
-            global_fnid = k;
-            break;
-          }
-        }
+        global_fnid = FindTypeMethod(vm, s->typename, methodname);
       }
       if ((found >= 0 && ValKind(s->fieldvals[found]) == VALFN) || global_fnid != 65535) {
         if (stacktop >= stacklimit) {
@@ -12316,14 +12319,7 @@ enter_stack_interpreter: for (;;) {
       if (!is_swizzle) {
         int has_type_method = 0;
         if (s->typename) {
-          char fullfnname[256];
-          snprintf(fullfnname, sizeof(fullfnname), "%s.%s", s->typename, fieldname);
-          for (uint16_t k = 0; k < vm->fncount; k++) {
-            if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, fullfnname) == 0) {
-              has_type_method = 1;
-              break;
-            }
-          }
+          has_type_method = (FindTypeMethod(vm, s->typename, fieldname) != 65535);
         }
         if (has_type_method) {
           PUSH(ValBoundmethod(objval, fieldname));
