@@ -18123,8 +18123,8 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     AKSValue endval = POP();
     AKSValue startval = POP();
     AKSValue arr = POP();
-    if (ValKind(arr) != VALARR || ValKind(startval) != VALINT ||
-        ValKind(endval) != VALINT) {
+    if ((ValKind(arr) != VALARR && ValKind(arr) != VALTUPLE && ValKind(arr) != VALSTR) ||
+        ValKind(startval) != VALINT || ValKind(endval) != VALINT) {
       fprintf(stderr, "Runtime error: slice() invalid argument types\n");
       ValFree(&endval);
       ValFree(&startval);
@@ -18133,30 +18133,39 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     }
     int64_t start = ValToInt(startval);
     int64_t end = ValToInt(endval);
-    int64_t count = ValToArr(arr)->count;
+    int64_t count = (ValKind(arr) == VALSTR) ? (int64_t)ValToStrPtr(arr)->len : (int64_t)ValToArr(arr)->count;
     if (start < 0)
       start += count;
-    if (end < 0)
-      end += count;
     if (start < 0)
       start = 0;
-    if (end < 0)
-      end = 0;
     if (start > count)
       start = count;
+
+    if (end >= 2147483647LL) {
+      end = count;
+    } else if (end < 0) {
+      end += count;
+    }
+    if (end < 0)
+      end = 0;
     if (end > count)
       end = count;
+    if (end < start)
+      end = start;
 
     int slicelen = (int)(end - start);
-    if (slicelen < 0)
-      slicelen = 0;
-
-    AKSValue res = ValArr(slicelen);
-    ValToArr(res)->count = slicelen;
-    for (int i = 0; i < slicelen; i++) {
-      ValToArr(res)->items[i] = ValCopy(ValToArr(arr)->items[start + i]);
+    if (ValKind(arr) == VALSTR) {
+      const char *s = ValToStrPtr(arr)->data;
+      AKSValue res = ValStrLen(s + start, slicelen);
+      PUSH(res);
+    } else {
+      AKSValue res = ValArr(slicelen);
+      ValToArr(res)->count = slicelen;
+      for (int i = 0; i < slicelen; i++) {
+        ValToArr(res)->items[i] = ValCopy(ValToArr(arr)->items[start + i]);
+      }
+      PUSH(res);
     }
-    PUSH(res);
     ValFree(&endval);
     ValFree(&startval);
     ValFree(&arr);

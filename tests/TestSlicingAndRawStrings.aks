@@ -1,0 +1,117 @@
+// TestSlicingAndRawStrings.aks
+// Test suite for Native Slicing, Negative Indexing, and Raw String Literals
+
+fn TestArraySlicing() {
+    let arr = [10, 20, 30, 40, 50];
+
+    // Standard slice [start:end]
+    let s1 = arr[1:4];
+    assert(Length(s1) == 3, "s1 length");
+    assert(s1[0] == 20 && s1[1] == 30 && s1[2] == 40, "s1 contents");
+
+    // Slice from start [:end]
+    let s2 = arr[:3];
+    assert(Length(s2) == 3, "s2 length");
+    assert(s2[0] == 10 && s2[1] == 20 && s2[2] == 30, "s2 contents");
+
+    // Slice to end [start:]
+    let s3 = arr[2:];
+    assert(Length(s3) == 3, "s3 length");
+    assert(s3[0] == 30 && s3[1] == 40 && s3[2] == 50, "s3 contents");
+
+    // Full copy slice [:]
+    let s4 = arr[:];
+    assert(Length(s4) == 5, "s4 length");
+    assert(s4[0] == 10 && s4[4] == 50, "s4 contents");
+
+    // Range-syntax slice [start..end]
+    let s5 = arr[1..4];
+    assert(Length(s5) == 3, "s5 length");
+    assert(s5[0] == 20 && s5[2] == 40, "s5 contents");
+
+    // Range-syntax slice [..end]
+    let s6 = arr[..3];
+    assert(Length(s6) == 3, "s6 length");
+    assert(s6[0] == 10 && s6[2] == 30, "s6 contents");
+
+    // Negative indexing
+    assert(arr[-1] == 50, "arr[-1] == 50");
+    assert(arr[-2] == 40, "arr[-2] == 40");
+    assert(arr[-5] == 10, "arr[-5] == 10");
+
+    // Negative slicing
+    let s7 = arr[-3:];
+    assert(Length(s7) == 3, "s7 length");
+    assert(s7[0] == 30 && s7[2] == 50, "s7 contents");
+
+    let s8 = arr[:-1];
+    assert(Length(s8) == 4, "s8 length");
+    assert(s8[0] == 10 && s8[3] == 40, "s8 contents");
+
+    println("TestArraySlicing PASSED");
+}
+
+fn TestStringSlicing() {
+    let text = "Hello, World!";
+
+    // Slicing substrings
+    let hello = text[0:5];
+    assert(hello == "Hello", "text[0:5] == Hello");
+
+    let world = text[7:12];
+    assert(world == "World", "text[7:12] == World");
+
+    let tail = text[7:];
+    assert(tail == "World!", "text[7:] == World!");
+
+    let fromStart = text[:5];
+    assert(fromStart == "Hello", "text[:5] == Hello");
+
+    let copy = text[:];
+    assert(copy == "Hello, World!", "text[:] full copy");
+
+    // Negative index on string
+    assert(text[-1] == "!", "text[-1] == !");
+    assert(text[-2] == "d", "text[-2] == d");
+
+    // Negative slicing on string
+    let lastWord = text[-6:];
+    assert(lastWord == "World!", "text[-6:] == World!");
+
+    let noLast = text[:-1];
+    assert(noLast == "Hello, World", "text[:-1] == Hello, World");
+
+    println("TestStringSlicing PASSED");
+}
+
+fn TestRawStrings() {
+    // Raw double-quoted string
+    let r1 = r"C:\test\data";
+    assert(Length(r1) == 12, "r1 raw string length");
+    assert(r1[2] == "\\", "r1 backslash at index 2");
+    assert(r1[7] == "\\", "r1 backslash at index 7");
+
+    // Raw single-quoted string with regex
+    let r2 = r'^\d{3}-\d{4}$';
+    assert(RegexMatch(r2, "123-4567") == true, "raw regex match");
+    assert(RegexMatch(r2, "abc-defg") == false, "raw regex mismatch");
+
+    // Literal escape sequences preserved
+    let r3 = r'hello\nworld';
+    assert(Length(r3) == 12, "raw single-quote length with literal backslash-n");
+    assert(r3[5] == "\\", "literal backslash");
+    assert(r3[6] == "n", "literal n");
+
+    // Triple-quoted raw string
+    let r4 = r"""SELECT * FROM "users" WHERE path = 'C:\db';""";
+    assert(Length(r4) > 10, "r4 triple quoted raw string");
+
+    println("TestRawStrings PASSED");
+}
+
+fn main() {
+    TestArraySlicing();
+    TestStringSlicing();
+    TestRawStrings();
+}
+main();

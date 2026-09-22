@@ -58,6 +58,7 @@ aks.exe run tests\TestLockFreeQueue.aks || exit /b 1
 aks.exe run tests\TestSoftwareTransactionalMemory.aks || exit /b 1
 aks.exe run tests\TestScientificOdeSuite.aks || exit /b 1
 aks.exe run tests\TestPhase8Enhancements.aks || exit /b 1
+aks.exe run tests\TestSlicingAndRawStrings.aks || exit /b 1
 aks.exe compile-exe tests\TestComptimeExecution.aks -o test_standalone.exe || exit /b 1
 test_standalone.exe || exit /b 1
 del /f /q test_standalone.exe 2>nul

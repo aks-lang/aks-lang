@@ -503,15 +503,35 @@ int PkgPublish(void) {
 
 int PkgAdd(const char *pkgspec) {
     char pkgname[128] = "";
-    char pkgversion[128] = "*";
+    char pkgversion[512] = "*";
     
     const char *at = strchr(pkgspec, '@');
-    if (at) {
+    const char *proto = strstr(pkgspec, "://");
+    if (at && (!proto || at < proto)) {
         int namelen = (int)(at - pkgspec);
         if (namelen > 127) namelen = 127;
         strncpy(pkgname, pkgspec, namelen);
         pkgname[namelen] = '\0';
         strncpy(pkgversion, at + 1, sizeof(pkgversion) - 1);
+    } else if (strncmp(pkgspec, "git+", 4) == 0 || strstr(pkgspec, ".git") != NULL) {
+        const char *src = pkgspec;
+        if (strncmp(src, "git+", 4) == 0) src += 4;
+        const char *hashp = strchr(src, '#');
+        const char *end = hashp ? hashp : src + strlen(src);
+        const char *dotgit = strstr(src, ".git");
+        if (dotgit && dotgit < end) {
+            end = dotgit;
+        }
+        const char *slash = end;
+        while (slash > src && *(slash - 1) != '/' && *(slash - 1) != '\\') slash--;
+        int nlen = (int)(end - slash);
+        if (nlen > 0 && nlen < 128) {
+            strncpy(pkgname, slash, nlen);
+            pkgname[nlen] = '\0';
+        } else {
+            strncpy(pkgname, "gitpkg", sizeof(pkgname) - 1);
+        }
+        strncpy(pkgversion, pkgspec, sizeof(pkgversion) - 1);
     } else {
         strncpy(pkgname, pkgspec, sizeof(pkgname) - 1);
     }
@@ -581,6 +601,7 @@ typedef struct {
     char name[128];
     char version[64];
     char hash[65];
+    int is_git;
 } ResolvedDep;
 
 static ResolvedDep gresolved[128];
@@ -598,6 +619,77 @@ static int ResolvePackage(const char *name, const char *constraint) {
                 return 0;
             }
         }
+    }
+    
+    if (strncmp(constraint, "git+", 4) == 0 || strstr(constraint, ".git") != NULL) {
+        char giturl[512] = "";
+        char gitref[128] = "";
+        const char *src = constraint;
+        if (strncmp(src, "git+", 4) == 0) src += 4;
+        const char *hashp = strchr(src, '#');
+        if (hashp) {
+            int ulen = (int)(hashp - src);
+            if (ulen > 511) ulen = 511;
+            strncpy(giturl, src, ulen);
+            giturl[ulen] = '\0';
+            strncpy(gitref, hashp + 1, sizeof(gitref) - 1);
+        } else {
+            strncpy(giturl, src, sizeof(giturl) - 1);
+        }
+        char venvpkgdir[512];
+        snprintf(venvpkgdir, sizeof(venvpkgdir), ".akspackages\\%s", name);
+        MkDirp(".akspackages");
+        
+        char manifestpath[512];
+        snprintf(manifestpath, sizeof(manifestpath), "%s\\aks.json", venvpkgdir);
+        FILE *tf = fopen(manifestpath, "r");
+        if (tf) {
+            fclose(tf);
+        } else {
+            char cmd[1024];
+            if (strlen(gitref) > 0) {
+                snprintf(cmd, sizeof(cmd), "git clone --depth 1 --branch %s %s %s 2>nul", gitref, giturl, venvpkgdir);
+                if (system(cmd) != 0) {
+                    snprintf(cmd, sizeof(cmd), "git clone %s %s 2>nul", giturl, venvpkgdir);
+                    system(cmd);
+                }
+            } else {
+                snprintf(cmd, sizeof(cmd), "git clone --depth 1 %s %s 2>nul", giturl, venvpkgdir);
+                system(cmd);
+            }
+        }
+        
+        char entrypoint[256] = "src/main.aks";
+        char *venvmanifest = ReadFileContent(manifestpath);
+        if (venvmanifest) {
+            JSONGetVal(venvmanifest, "entrypoint", entrypoint, sizeof(entrypoint));
+            free(venvmanifest);
+        }
+        char entrypath[512];
+        snprintf(entrypath, sizeof(entrypath), "%s\\%s", venvpkgdir, entrypoint);
+        for (char *p = entrypath; *p; p++) {
+            if (*p == '/') *p = '\\';
+        }
+        char computed_hash[65] = "";
+        if (!Sha256File(entrypath, computed_hash)) {
+            char altpath[512];
+            snprintf(altpath, sizeof(altpath), "%s\\src\\main.aks", venvpkgdir);
+            if (!Sha256File(altpath, computed_hash)) {
+                snprintf(altpath, sizeof(altpath), "%s\\index.aks", venvpkgdir);
+                if (!Sha256File(altpath, computed_hash)) {
+                    snprintf(altpath, sizeof(altpath), "%s\\aks.json", venvpkgdir);
+                    Sha256File(altpath, computed_hash);
+                }
+            }
+        }
+        
+        strcpy(gresolved[gresolvedcount].name, name);
+        snprintf(gresolved[gresolvedcount].version, sizeof(gresolved[gresolvedcount].version),
+                 "git:%s", strlen(gitref) > 0 ? gitref : "HEAD");
+        strcpy(gresolved[gresolvedcount].hash, computed_hash);
+        gresolved[gresolvedcount].is_git = 1;
+        gresolvedcount++;
+        return 1;
     }
     
     char regpkgdir[512];
@@ -723,6 +815,11 @@ int PkgInstall(void) {
     
     MkDirp(".akspackages");
     for (int i = 0; i < gresolvedcount; i++) {
+        if (gresolved[i].is_git) {
+            printf("Installed git package '%s@%s' (SHA-256: %s) to local environment.\n",
+                   gresolved[i].name, gresolved[i].version, gresolved[i].hash);
+            continue;
+        }
         char regpkgdir[512];
         snprintf(regpkgdir, sizeof(regpkgdir), "%s\\%s\\%s", GetRegIsTryDir(), gresolved[i].name, gresolved[i].version);
         

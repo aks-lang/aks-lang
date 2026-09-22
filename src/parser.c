@@ -1489,7 +1489,7 @@ static Node *ParsePatternPrimary(Parser *p) {
     TokFree(&tok);
     Token lb = Expect(p, TLBRACE);
     TokFree(&lb);
-    Token str = Expect(p, TSTRLIT);
+    Token str = (Check(p, TRAWSTRLIT) ? Consume(p) : Expect(p, TSTRLIT));
     char *code = strdup(str.val);
     TokFree(&str);
     Token rb = Expect(p, TRBRACE);
@@ -1520,7 +1520,7 @@ static Node *ParsePatternPrimary(Parser *p) {
     TokFree(&t);
     return n;
   }
-  if (Check(p, TSTR) || Check(p, TSTRLIT)) {
+  if (Check(p, TSTR) || Check(p, TSTRLIT) || Check(p, TRAWSTRLIT)) {
     Token t = Consume(p);
     Node *n = NodeNew(NSTR, line);
     n->sval = strdup(t.val);
@@ -2691,7 +2691,7 @@ static Node *ParseStmtInternal(Parser *p) {
     int line = p->cur.line;
     Token kw = Consume(p);  /* consume 'import' */
     TokFree(&kw);
-    Token pathtok = Expect(p, TSTRLIT);
+    Token pathtok = (Check(p, TRAWSTRLIT) ? Consume(p) : Expect(p, TSTRLIT));
     char *path = strdup(pathtok.val);
     TokFree(&pathtok);
     Token sc = Expect(p, TSEMI);
@@ -2997,7 +2997,7 @@ parse_use:;
     int line = p->cur.line;
     Token kw = Consume(p);
     TokFree(&kw);
-    Token pathtok = Expect(p, TSTRLIT);
+    Token pathtok = (Check(p, TRAWSTRLIT) ? Consume(p) : Expect(p, TSTRLIT));
     char *path = strdup(pathtok.val);
     TokFree(&pathtok);
     // optional: as namespace
@@ -3087,7 +3087,7 @@ parse_use:;
     if (Check(p, TLPAREN)) {
       Token lp = Consume(p);
       TokFree(&lp);
-      if (Check(p, TSTR) || Check(p, TSTRLIT)) {
+      if (Check(p, TSTR) || Check(p, TSTRLIT) || Check(p, TRAWSTRLIT)) {
         Token st = Consume(p);
         asm_str = strdup(st.val);
         TokFree(&st);
@@ -3112,7 +3112,7 @@ parse_use:;
       Token rb = Expect(p, TRBRACE);
       TokFree(&rb);
       asm_str = ts.buf;
-    } else if (Check(p, TSTR) || Check(p, TSTRLIT)) {
+    } else if (Check(p, TSTR) || Check(p, TSTRLIT) || Check(p, TRAWSTRLIT)) {
       Token st = Consume(p);
       asm_str = strdup(st.val);
       TokFree(&st);
@@ -4024,7 +4024,46 @@ static Node *ParsePostfix(Parser *p) {
     } else if (Check(p, TLBRACKET)) {
       Token lb = Consume(p);
       TokFree(&lb);
-      Node *idx = ParserExpr(p);
+      Node *idx = NULL;
+      if (Check(p, TCOLON) || Check(p, TDOTDOT)) {
+        Token sep = Consume(p);
+        TokFree(&sep);
+        Node *endnode = NULL;
+        if (!Check(p, TRBRACKET) && !Check(p, TEOF)) {
+          endnode = ParserExpr(p);
+        }
+        Node *rng = NodeNew(NRANGE, line);
+        rng->range.start = NULL;
+        rng->range.end = endnode;
+        idx = rng;
+      } else {
+        Node *startnode = ParserExpr(p);
+        if (Check(p, TCOLON)) {
+          Token col = Consume(p);
+          TokFree(&col);
+          Node *endnode = NULL;
+          if (!Check(p, TRBRACKET) && !Check(p, TEOF)) {
+            endnode = ParserExpr(p);
+          }
+          Node *rng = NodeNew(NRANGE, line);
+          rng->range.start = startnode;
+          rng->range.end = endnode;
+          idx = rng;
+        } else if (Check(p, TDOTDOT) && startnode->type != NRANGE) {
+          Token dd = Consume(p);
+          TokFree(&dd);
+          Node *endnode = NULL;
+          if (!Check(p, TRBRACKET) && !Check(p, TEOF)) {
+            endnode = ParserExpr(p);
+          }
+          Node *rng = NodeNew(NRANGE, line);
+          rng->range.start = startnode;
+          rng->range.end = endnode;
+          idx = rng;
+        } else {
+          idx = startnode;
+        }
+      }
       Token rb = Expect(p, TRBRACKET);
       TokFree(&rb);
       Node *n = NodeNew(NINDEX, line);
@@ -4148,6 +4187,13 @@ static Node *ParsePrimary(Parser *p) {
     TokFree(&t);
     return n;
   }
+  if (Check(p, TRAWSTRLIT)) {
+    Token t = Consume(p);
+    Node *n = NodeNew(NSTR, line);
+    n->sval = strdup(t.val);
+    TokFree(&t);
+    return n;
+  }
   if (Check(p, TSTR) || Check(p, TSTRLIT)) {
     Token t = Consume(p);
     Node *n = ParseInterpolatedStr(t.val, line);
@@ -4253,7 +4299,7 @@ static Node *ParsePrimary(Parser *p) {
     if (Check(p, TLPAREN)) {
       Token lp = Consume(p);
       TokFree(&lp);
-      if (Check(p, TSTR) || Check(p, TSTRLIT)) {
+      if (Check(p, TSTR) || Check(p, TSTRLIT) || Check(p, TRAWSTRLIT)) {
         Token st = Consume(p);
         asm_str = strdup(st.val);
         TokFree(&st);
@@ -4274,7 +4320,7 @@ static Node *ParsePrimary(Parser *p) {
       Token rb = Expect(p, TRBRACE);
       TokFree(&rb);
       asm_str = ts.buf;
-    } else if (Check(p, TSTR) || Check(p, TSTRLIT)) {
+    } else if (Check(p, TSTR) || Check(p, TSTRLIT) || Check(p, TRAWSTRLIT)) {
       Token st = Consume(p);
       asm_str = strdup(st.val);
       TokFree(&st);
@@ -4513,7 +4559,7 @@ static Node *ParsePrimary(Parser *p) {
       }
       // key can be string literal or identifier
       char *key = NULL;
-      if (Check(p, TSTRLIT)) {
+      if (Check(p, TSTRLIT) || Check(p, TRAWSTRLIT)) {
         Token kt = Consume(p);
         key = strdup(kt.val);
         TokFree(&kt);

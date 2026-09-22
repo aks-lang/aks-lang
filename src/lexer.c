@@ -269,34 +269,48 @@ Token LexNext(Lexer *l) {
         return t;
     }
 
-    // raw strings (e.g. r"pattern" or r"""pattern""")
-    if (c == 'r' && Ln(l) == '"') {
-        int is_triple = (l->src[l->pos+2] == '"' && l->src[l->pos+3] == '"');
+    // raw strings (e.g. r"pattern", r'pattern', r"""pattern""", or r'''pattern''')
+    if ((c == 'r' || c == 'R') && (Ln(l) == '"' || Ln(l) == '\'')) {
+        char q = Ln(l);
+        int is_triple = (l->src[l->pos+2] == q && l->src[l->pos+3] == q);
         Adv(l); // consume 'r'
         if (is_triple) {
-            Adv(l); Adv(l); Adv(l); // consume '"""'
+            Adv(l); Adv(l); Adv(l); // consume 3 quotes
         } else {
-            Adv(l); // consume '"'
+            Adv(l); // consume quote
         }
         size_t start = l->pos;
         while (Lc(l)) {
             if (is_triple) {
-                if (Lc(l) == '"' && l->src[l->pos+1] == '"' && l->src[l->pos+2] == '"') break;
+                if (Lc(l) == q && l->src[l->pos+1] == q && l->src[l->pos+2] == q) break;
             } else {
-                if (Lc(l) == '"') break;
+                if (Lc(l) == q) break;
             }
             Adv(l);
         }
         size_t len = l->pos - start;
-        char *buf = malloc(len + 1);
-        memcpy(buf, l->src + start, len);
-        buf[len] = '\0';
-        if (is_triple) {
-            if (Lc(l) == '"') { Adv(l); Adv(l); Adv(l); }
-        } else {
-            if (Lc(l) == '"') Adv(l);
+        size_t bslash_count = 0;
+        for (size_t i = 0; i < len; i++) {
+            if (l->src[start + i] == '\\') bslash_count++;
         }
-        Token t = MkTok(TSTRLIT, buf, line, col);
+        char *buf = malloc(len + bslash_count + 1);
+        size_t bi = 0;
+        for (size_t i = 0; i < len; i++) {
+            char ch = l->src[start + i];
+            if (ch == '\\') {
+                buf[bi++] = '\\';
+                buf[bi++] = '\\';
+            } else {
+                buf[bi++] = ch;
+            }
+        }
+        buf[bi] = '\0';
+        if (is_triple) {
+            if (Lc(l) == q) { Adv(l); Adv(l); Adv(l); }
+        } else {
+            if (Lc(l) == q) Adv(l);
+        }
+        Token t = MkTok(TRAWSTRLIT, buf, line, col);
         free(buf);
         return t;
     }
@@ -522,7 +536,7 @@ void TokFree(Token *t) {
 const char *ToktypeName(TType t) {
     switch(t) {
         case TINTLIT: return "INT"; case TFLOATLIT: return "FLOAT";
-        case TSTRLIT: return "STRING"; case TIDENT: return "IDENT";
+        case TSTRLIT: return "STRING"; case TRAWSTRLIT: return "RAWSTRING"; case TIDENT: return "IDENT";
         case TEOF: return "EOF"; case TLET: return "let";
         case TCONST: return "const"; case TFN: return "fn";
         case TRETURN: return "return"; case TIF: return "if";

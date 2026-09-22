@@ -34,6 +34,7 @@ typedef enum {
     TINTLIT,
     TFLOATLIT,
     TSTRLIT,
+    TRAWSTRLIT,
     TBOOLLIT,
     TPLUSPLUS,
     TMINUSMINUS,

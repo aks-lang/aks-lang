@@ -1115,7 +1115,7 @@ void LearnHighlight(const char *inputpath, const char *outputpath) {
                 printf("\033[35m%s\033[0m", t.val);
             } else if (t.type == TINTLIT || t.type == TFLOATLIT) {
                 printf("\033[33m%s\033[0m", t.val);
-            } else if (t.type == TSTRLIT) {
+            } else if (t.type == TSTRLIT || t.type == TRAWSTRLIT) {
                 printf("\033[32m\"%s\"\033[0m", t.val);
             } else if (t.type == TAT) {
                 printf("\033[36m%s\033[0m", t.val);
@@ -1159,7 +1159,7 @@ void LearnHighlight(const char *inputpath, const char *outputpath) {
                 fprintf(f, "<span class='kw'>%s</span>", t.val);
             } else if (t.type == TINTLIT || t.type == TFLOATLIT) {
                 fprintf(f, "<span class='num'>%s</span>", t.val);
-            } else if (t.type == TSTRLIT) {
+            } else if (t.type == TSTRLIT || t.type == TRAWSTRLIT) {
                 fprintf(f, "<span class='str'>\"%s\"</span>", t.val);
             } else if (t.type == TAT) {
                 fprintf(f, "<span class='deco'>%s</span>", t.val);

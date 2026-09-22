@@ -6891,6 +6891,56 @@ static int FastBuiltin_Power(VM *vm, VMTask *task, int argc, AKSValue **stacktop
   return 1;
 }
 
+static int FastBuiltin_slice(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 3) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue endval = StdlibPop(&stacktop);
+  AKSValue startval = StdlibPop(&stacktop);
+  AKSValue arr = StdlibPop(&stacktop);
+  if ((ValKind(arr) != VALARR && ValKind(arr) != VALTUPLE && ValKind(arr) != VALSTR) ||
+      ValKind(startval) != VALINT || ValKind(endval) != VALINT) {
+    ValFree(&endval);
+    ValFree(&startval);
+    ValFree(&arr);
+    return -1;
+  }
+  int64_t start = ValToInt(startval);
+  int64_t end = ValToInt(endval);
+  int64_t count = (ValKind(arr) == VALSTR) ? (int64_t)ValToStrPtr(arr)->len : (int64_t)ValToArr(arr)->count;
+
+  if (start < 0) start += count;
+  if (start < 0) start = 0;
+  if (start > count) start = count;
+
+  if (end >= 2147483647LL) {
+    end = count;
+  } else if (end < 0) {
+    end += count;
+  }
+  if (end < 0) end = 0;
+  if (end > count) end = count;
+  if (end < start) end = start;
+
+  int slicelen = (int)(end - start);
+  if (ValKind(arr) == VALSTR) {
+    const char *s = ValToStrPtr(arr)->data;
+    *stacktop++ = ValStrLen(s + start, slicelen);
+  } else {
+    AKSValue res = ValArr(slicelen);
+    ValToArr(res)->count = slicelen;
+    for (int i = 0; i < slicelen; i++) {
+      ValToArr(res)->items[i] = ValCopy(ValToArr(arr)->items[start + i]);
+    }
+    *stacktop++ = res;
+  }
+  ValFree(&endval);
+  ValFree(&startval);
+  ValFree(&arr);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
 static const FastBuiltinEntry g_fast_builtins[] = {
   {"Length", FastBuiltin_Length},
   {"ByteAt", FastBuiltin_ByteAt},
@@ -6910,6 +6960,7 @@ static const FastBuiltinEntry g_fast_builtins[] = {
   {"Minimum", FastBuiltin_Minimum},
   {"Maximum", FastBuiltin_Maximum},
   {"Power", FastBuiltin_Power},
+  {"slice", FastBuiltin_slice},
   {NULL, NULL}
 };
 
@@ -8909,12 +8960,14 @@ while (0)
       if ((ValKind(arrval) == VALARR || ValKind(arrval) == VALTUPLE) &&
           ValKind(idxval) == VALINT) {
         int64_t idx = ValToInt(idxval);
+        int64_t orig_idx = idx;
+        if (idx < 0) idx += ValToArr(arrval)->count;
         if (!vm->no_bounds_check) {
           if (idx < 0 || idx >= ValToArr(arrval)->count) {
             char buf[128];
             snprintf(buf, sizeof(buf),
                      "Array index out of bounds: index %lld, size %d",
-                     (long long)idx, ValToArr(arrval)->count);
+                     (long long)orig_idx, ValToArr(arrval)->count);
             RaiseX(vm, buf, &ip, &stacktop, &frame, &frameslots);
             continue;
           }
@@ -8946,11 +8999,13 @@ while (0)
       } else if (ValKind(arrval) == VALSTR && ValKind(idxval) == VALINT) {
         int64_t idx = ValToInt(idxval);
         int64_t count = ValToStrPtr(arrval)->len;
+        int64_t orig_idx = idx;
+        if (idx < 0) idx += count;
         if (idx < 0 || idx >= count) {
           char buf[128];
           snprintf(buf, sizeof(buf),
                    "String index out of bounds: index %lld, size %lld",
-                   (long long)idx, (long long)count);
+                   (long long)orig_idx, (long long)count);
           RaiseX(vm, buf, &ip, &stacktop, &frame, &frameslots);
           continue;
         }
@@ -12368,12 +12423,14 @@ enter_stack_interpreter: for (;;) {
     if ((ValKind(arrval) == VALARR || ValKind(arrval) == VALTUPLE) &&
         ValKind(idxval) == VALINT) {
       int64_t idx = ValToInt(idxval);
+      int64_t orig_idx = idx;
+      if (idx < 0) idx += ValToArr(arrval)->count;
       if (!vm->no_bounds_check) {
         if (idx < 0 || idx >= ValToArr(arrval)->count) {
           char buf[128];
           snprintf(buf, sizeof(buf),
                    "Array index out of bounds: index %lld, size %d",
-                   (long long)idx, ValToArr(arrval)->count);
+                   (long long)orig_idx, ValToArr(arrval)->count);
           ValFree(&idxval);
           ValFree(&arrval);
           RaiseX(vm, buf, &ip, &stacktop, &frame, &frameslots);
@@ -12460,11 +12517,13 @@ enter_stack_interpreter: for (;;) {
     } else if (ValKind(arrval) == VALSTR && ValKind(idxval) == VALINT) {
       int64_t idx = ValToInt(idxval);
       int64_t count = ValToStrPtr(arrval)->len;
+      int64_t orig_idx = idx;
+      if (idx < 0) idx += count;
       if (idx < 0 || idx >= count) {
         char buf[128];
         snprintf(buf, sizeof(buf),
                  "String index out of bounds: index %lld, size %lld",
-                 (long long)idx, (long long)count);
+                 (long long)orig_idx, (long long)count);
         ValFree(&idxval);
         ValFree(&arrval);
         RaiseX(vm, buf, &ip, &stacktop, &frame, &frameslots);

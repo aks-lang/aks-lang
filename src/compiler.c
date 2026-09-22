@@ -3519,16 +3519,25 @@ static void EmitExpr(Compiler *c, Node *n) {
         case NINDEX: {
             if (n->index.idx->type == NRANGE) {
                 EmitExpr(c, n->index.arr);
-                EmitExpr(c, n->index.idx->range.start);
-                EmitExpr(c, n->index.idx->range.end);
-                int fnid = ResolveGlobal(c, "slice", 0);
-                if (fnid >= 0) {
-                    ChunkWrite(ch, OPCALL, n->line);
-                    ChunkWriteU16(ch, (uint16_t)fnid, n->line);
-                    ChunkWrite(ch, 3, n->line);
+                if (n->index.idx->range.start) {
+                    EmitExpr(c, n->index.idx->range.start);
                 } else {
-                    Error(c, n->line, "Compiler internal error: slice helper not found");
+                    ChunkWrite(ch, OPPUSHINT, n->line);
+                    ChunkWriteI64(ch, 0, n->line);
                 }
+                if (n->index.idx->range.end) {
+                    EmitExpr(c, n->index.idx->range.end);
+                } else {
+                    ChunkWrite(ch, OPPUSHINT, n->line);
+                    ChunkWriteI64(ch, 2147483647LL, n->line);
+                }
+                int fnid = ResolveGlobal(c, "slice", 0);
+                if (fnid < 0) {
+                    fnid = NewFn(c, "slice")->id;
+                }
+                ChunkWrite(ch, OPCALL, n->line);
+                ChunkWriteU16(ch, (uint16_t)fnid, n->line);
+                ChunkWrite(ch, 3, n->line);
             } else {
                 EmitExpr(c,n->index.arr);
                 EmitExpr(c,n->index.idx);

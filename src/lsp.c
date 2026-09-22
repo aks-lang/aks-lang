@@ -1151,7 +1151,7 @@ static void HandleSemanticTokens(JsonValue *id, const char *uri) {
             type_idx = 0; // Keyword
         } else if (t.type >= TINT && t.type <= TVOID) {
             type_idx = 1; // Type
-        } else if (t.type == TSTRLIT) {
+        } else if (t.type == TSTRLIT || t.type == TRAWSTRLIT) {
             type_idx = 2; // String
         } else if (t.type == TIDENT) {
             // Check peek token to see if it is a function call
