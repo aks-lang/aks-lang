@@ -34,6 +34,10 @@ if not exist myapp\aks.lock (
     exit /b 1
 )
 
+cd myapp
+..\aks.exe pkg verify >nul || exit /b 1
+cd ..
+
 echo import "mylib"; > myapp\src\main.aks
 echo print("Hello from myapp"); >> myapp\src\main.aks
 

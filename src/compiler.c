@@ -2955,10 +2955,23 @@ static void EmitExpr(Compiler *c, Node *n) {
             if(target->type==NIDENT){
                 int slot=ResolveLocal(c,target->sval);
                 if(slot>=0){
+                    if (c->current->locals[slot].isconst) {
+                        char buf[256];
+                        snprintf(buf, sizeof(buf), "cannot assign to const variable '%s'", target->sval);
+                        Error(c, n->line, buf);
+                    }
                     ChunkWrite(ch,OPDUP,n->line);
                     ChunkWrite(ch,OPSTORE,n->line);
                     ChunkWriteU16(ch,(uint16_t)slot,n->line);
                 } else {
+                    for (int gi = 0; gi < c->const_global_count; gi++) {
+                        if (strcmp(c->const_globals[gi], target->sval) == 0) {
+                            char buf[256];
+                            snprintf(buf, sizeof(buf), "cannot assign to const variable '%s'", target->sval);
+                            Error(c, n->line, buf);
+                            break;
+                        }
+                    }
                     ChunkWrite(ch,OPDUP,n->line);
                     ChunkWrite(ch,OPSTOREGLOBAL,n->line);
                     int gsid=AddStr(c,target->sval);
@@ -3588,12 +3601,26 @@ static void EmitExpr(Compiler *c, Node *n) {
             if(n->incdec.expr->type==NIDENT){
                 int slot=ResolveLocal(c,n->incdec.expr->sval);
                 if(slot>=0){
+                    if (c->current->locals[slot].isconst) {
+                        char buf[256];
+                        snprintf(buf, sizeof(buf), "cannot assign to const variable '%s'", n->incdec.expr->sval);
+                        Error(c, n->line, buf);
+                    }
                     ChunkWrite(ch,OPLOAD,n->line);
                     ChunkWriteU16(ch,(uint16_t)slot,n->line);
                     ChunkWrite(ch,OPDUP,n->line);
                     ChunkWrite(ch,OPINC,n->line);
                     ChunkWrite(ch,OPSTORE,n->line);
                     ChunkWriteU16(ch,(uint16_t)slot,n->line);
+                } else {
+                    for (int gi = 0; gi < c->const_global_count; gi++) {
+                        if (strcmp(c->const_globals[gi], n->incdec.expr->sval) == 0) {
+                            char buf[256];
+                            snprintf(buf, sizeof(buf), "cannot assign to const variable '%s'", n->incdec.expr->sval);
+                            Error(c, n->line, buf);
+                            break;
+                        }
+                    }
                 }
             }
             break;
@@ -3602,12 +3629,26 @@ static void EmitExpr(Compiler *c, Node *n) {
             if(n->incdec.expr->type==NIDENT){
                 int slot=ResolveLocal(c,n->incdec.expr->sval);
                 if(slot>=0){
+                    if (c->current->locals[slot].isconst) {
+                        char buf[256];
+                        snprintf(buf, sizeof(buf), "cannot assign to const variable '%s'", n->incdec.expr->sval);
+                        Error(c, n->line, buf);
+                    }
                     ChunkWrite(ch,OPLOAD,n->line);
                     ChunkWriteU16(ch,(uint16_t)slot,n->line);
                     ChunkWrite(ch,OPDUP,n->line);
                     ChunkWrite(ch,OPDEC,n->line);
                     ChunkWrite(ch,OPSTORE,n->line);
                     ChunkWriteU16(ch,(uint16_t)slot,n->line);
+                } else {
+                    for (int gi = 0; gi < c->const_global_count; gi++) {
+                        if (strcmp(c->const_globals[gi], n->incdec.expr->sval) == 0) {
+                            char buf[256];
+                            snprintf(buf, sizeof(buf), "cannot assign to const variable '%s'", n->incdec.expr->sval);
+                            Error(c, n->line, buf);
+                            break;
+                        }
+                    }
                 }
             }
             break;
@@ -5036,6 +5077,11 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             int isconst = n->decl.isconstflag;
             if (n->type == NVARDECL && gImmutableByDefault) {
                 isconst = 1;
+            }
+            if (isconst && n->decl.name && c->const_global_count < 512) {
+                strncpy(c->const_globals[c->const_global_count], n->decl.name, 127);
+                c->const_globals[c->const_global_count][127] = '\0';
+                c->const_global_count++;
             }
             const char *expectedtype = n->decl.tname ? n->decl.tname : "any";
             const char *actualtype = "null";

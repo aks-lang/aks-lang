@@ -1349,6 +1349,69 @@ int PkgVerify(const char *bundle_path, const char *pubkey_path) {
     }
 }
 
+int PkgVerifyLock(void) {
+    ParseLockfile();
+    if (glockdepscount == 0) {
+        FILE *f = fopen("aks.lock", "r");
+        if (!f) {
+            printf("No lockfile 'aks.lock' found in current directory.\n");
+            return 0;
+        }
+        fclose(f);
+        printf("Lockfile 'aks.lock' contains 0 dependencies.\n");
+        return 0;
+    }
+    printf("Verifying lockfile 'aks.lock' integrity (%d package%s)...\n",
+           glockdepscount, glockdepscount == 1 ? "" : "s");
+    int errors = 0;
+    for (int i = 0; i < glockdepscount; i++) {
+        char pkgmanifest[512];
+        snprintf(pkgmanifest, sizeof(pkgmanifest), ".akspackages\\%s\\aks.json", glockdeps[i].name);
+        char *json = ReadFileContent(pkgmanifest);
+        if (!json) {
+            snprintf(pkgmanifest, sizeof(pkgmanifest), ".akspackages/%s/aks.json", glockdeps[i].name);
+            json = ReadFileContent(pkgmanifest);
+        }
+        if (!json) {
+            fprintf(stderr, "Error: Package '%s' not found in .akspackages directory.\n", glockdeps[i].name);
+            errors++;
+            continue;
+        }
+        char entrypoint[256] = "";
+        JSONGetVal(json, "entrypoint", entrypoint, sizeof(entrypoint));
+        free(json);
+        if (!entrypoint[0]) {
+            strcpy(entrypoint, "index.aks");
+        }
+        char pkentry[512];
+        snprintf(pkentry, sizeof(pkentry), ".akspackages\\%s\\%s", glockdeps[i].name, entrypoint);
+        char computed_hash[65] = "";
+        if (!Sha256File(pkentry, computed_hash)) {
+            snprintf(pkentry, sizeof(pkentry), ".akspackages/%s/%s", glockdeps[i].name, entrypoint);
+            if (!Sha256File(pkentry, computed_hash)) {
+                fprintf(stderr, "Error: Could not calculate SHA-256 for entrypoint '%s'\n", pkentry);
+                errors++;
+                continue;
+            }
+        }
+        if (strlen(glockdeps[i].hash) > 0 && strcmp(glockdeps[i].hash, computed_hash) != 0) {
+            fprintf(stderr, "Security Alert: SHA-256 mismatch for '%s'! Expected '%s', got '%s'.\n",
+                    glockdeps[i].name, glockdeps[i].hash, computed_hash);
+            errors++;
+        } else {
+            printf("  \033[1;32m[VERIFIED]\033[0m %s@%s (SHA-256: %.16s...)\n",
+                   glockdeps[i].name, glockdeps[i].version, computed_hash);
+        }
+    }
+    if (errors == 0) {
+        printf("\033[1;32mAll %d dependencies passed integrity verification (0 errors).\033[0m\n", glockdepscount);
+        return 0;
+    } else {
+        fprintf(stderr, "Lockfile verification failed: %d error(s) found.\n", errors);
+        return 1;
+    }
+}
+
 int PkgExportSbom(const char *output_path) {
     char *json = ReadFileContent("aks.json");
     if (!json) {

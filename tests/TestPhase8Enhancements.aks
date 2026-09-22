@@ -1,0 +1,87 @@
+// TestPhase8Enhancements.aks
+// Comprehensive test suite for Phase 8 Language & Runtime Enhancements
+
+fn TestContextualInputKeyword() {
+    // 1. input as a local variable
+    let input = "data_stream_alpha";
+    assert(input == "data_stream_alpha", "input as local variable failed");
+
+    // 2. input reassignment
+    input = "data_stream_beta";
+    assert(input == "data_stream_beta", "input reassignment failed");
+
+    // 3. input as function parameter
+    fn ProcessInput(input) {
+        return "processed_" + input;
+    }
+    let res = ProcessInput(input);
+    assert(res == "processed_data_stream_beta", "input as parameter failed");
+
+    // 4. input in object map
+    let config = { input: 42, count: 10 };
+    assert(config["input"] == 42, "input as map key failed");
+
+    println("TestContextualInputKeyword PASSED");
+}
+
+fn TestConstImmutability() {
+    const SPEED_OF_LIGHT = 299792458;
+    const APP_NAME = "AKS Engine";
+    assert(SPEED_OF_LIGHT == 299792458, "const int failed");
+    assert(APP_NAME == "AKS Engine", "const str failed");
+
+    const LOCAL_FACTOR = 42;
+    let computed = LOCAL_FACTOR * 2;
+    assert(computed == 84, "const computation failed");
+
+    println("TestConstImmutability PASSED");
+}
+
+fn TestFastNativeBuiltinsThroughput() {
+    let s = "FastBuiltinVerificationString";
+    let len = Length(s);
+    assert(len == 29, "Fast Length failed");
+
+    // Verify ByteAt & Ordinal
+    let b0 = ByteAt(s, 0);
+    assert(b0 == 70, "Fast ByteAt(0) failed (expected 'F'=70)");
+    let bEnd = ByteAt(s, 28);
+    assert(bEnd == 103, "Fast ByteAt(28) failed (expected 'g'=103)");
+    assert(Ordinal(s, 0) == 70, "Fast Ordinal(s, 0) failed");
+
+    // Verify HashCode determinism
+    let h1 = HashCode("DeterministicHashSeed");
+    let h2 = HashCode("DeterministicHashSeed");
+    assert(h1 == h2, "Fast HashCode determinism failed");
+    assert(HashCode(12345678) == HashCode(12345678), "Fast int HashCode failed");
+
+    // Verify Math Builtins
+    let sq = SquareRoot(144.0);
+    assert(sq == 12.0, "Fast SquareRoot failed");
+    assert(Absolute(-999) == 999, "Fast Absolute int failed");
+    assert(Absolute(-12.5) == 12.5, "Fast Absolute float failed");
+    assert(Minimum(10, 20) == 10, "Fast Minimum failed");
+    assert(Maximum(10, 20) == 20, "Fast Maximum failed");
+    assert(Power(2.0, 10.0) == 1024.0, "Fast Power failed");
+    assert(floor(3.7) == 3, "Fast floor failed");
+    assert(Ceiling(3.2) == 4, "Fast Ceiling failed");
+    assert(String(12345) == "12345", "Fast String failed");
+
+    // Loop throughput verification (50,000 iterations of fast dispatch)
+    let iter = 0;
+    let checksum = 0;
+    while (iter < 50000) {
+        checksum = checksum + ByteAt(s, iter % 29);
+        iter = iter + 1;
+    }
+    assert(checksum > 0, "Loop checksum failed");
+
+    println("TestFastNativeBuiltinsThroughput PASSED");
+}
+
+fn main() {
+    TestContextualInputKeyword();
+    TestConstImmutability();
+    TestFastNativeBuiltinsThroughput();
+}
+main();

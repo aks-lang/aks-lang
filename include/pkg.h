@@ -18,6 +18,7 @@ int PkgDocker(void);
 int PkgKeygen(const char *prefix);
 int PkgSign(const char *bundle_path, const char *privkey_path);
 int PkgVerify(const char *bundle_path, const char *pubkey_path);
+int PkgVerifyLock(void);
 int PkgExportSbom(const char *output_path);
 
 // virtual environment & isolated package resolution

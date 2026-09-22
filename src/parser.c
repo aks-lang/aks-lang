@@ -32,6 +32,9 @@ static Token Consume(Parser *p) {
 static int Check(Parser *p, TType t) { return p->cur.type == t; }
 static int Check2(Parser *p, TType t) { return p->peek.type == t; }
 static Token Expect(Parser *p, TType t) {
+  if (t == TIDENT && p->cur.type == TINPUT) {
+    return Consume(p);
+  }
   if (!Check(p, t)) {
     if (!p->suppresserrors) {
       if (p->error_count < 50) {
@@ -2954,12 +2957,12 @@ parse_use:;
     return n;
   }
   case TINPUT: {
-    int line = p->cur.line;
-    Token kw = Consume(p);
-    TokFree(&kw);
-    char *varname = NULL;
-    Node *arg = NULL;
-    if (Check(p, TLPAREN)) {
+    if (Check2(p, TLPAREN)) {
+      int line = p->cur.line;
+      Token kw = Consume(p);
+      TokFree(&kw);
+      char *varname = NULL;
+      Node *arg = NULL;
       Token lp = Consume(p);
       TokFree(&lp);
       if (!Check(p, TRPAREN) && !Check(p, TEOF)) {
@@ -2973,14 +2976,21 @@ parse_use:;
       }
       Token rp = Expect(p, TRPAREN);
       TokFree(&rp);
+      if (Check(p, TSEMI)) {
+        Token sc = Consume(p);
+        TokFree(&sc);
+      }
+      Node *n = NodeNew(NINPUT, line);
+      n->single.var = varname;
+      n->single.expr = arg;
+      return n;
     }
-    if (Check(p, TSEMI)) {
-      Token sc = Consume(p);
-      TokFree(&sc);
-    }
-    Node *n = NodeNew(NINPUT, line);
-    n->single.var = varname;
-    n->single.expr = arg;
+    int line = p->cur.line;
+    Node *e = ParserExpr(p);
+    Token sc = Expect(p, TSEMI);
+    TokFree(&sc);
+    Node *n = NodeNew(NEXPRSTMT, line);
+    n->single.expr = e;
     return n;
   }
   case TIMPORT: {
@@ -4157,11 +4167,11 @@ static Node *ParsePrimary(Parser *p) {
     return NodeNew(NNULL, line);
   }
   if (Check(p, TINPUT)) {
-    int line = p->cur.line;
-    Token kw = Consume(p);
-    TokFree(&kw);
-    Node *promptnode = NULL;
-    if (Check(p, TLPAREN)) {
+    if (Check2(p, TLPAREN)) {
+      int line = p->cur.line;
+      Token kw = Consume(p);
+      TokFree(&kw);
+      Node *promptnode = NULL;
       Token lp = Consume(p);
       TokFree(&lp);
       if (!Check(p, TRPAREN) && !Check(p, TEOF)) {
@@ -4169,11 +4179,18 @@ static Node *ParsePrimary(Parser *p) {
       }
       Token rp = Expect(p, TRPAREN);
       TokFree(&rp);
+      Node *n = NodeNew(NINPUT, line);
+      n->single.var = NULL;
+      n->single.expr = promptnode;
+      return n;
+    } else {
+      int line = p->cur.line;
+      Token kw = Consume(p);
+      Node *n = NodeNew(NIDENT, line);
+      n->sval = strdup(kw.val ? kw.val : "input");
+      TokFree(&kw);
+      return n;
     }
-    Node *n = NodeNew(NINPUT, line);
-    n->single.var = NULL;
-    n->single.expr = promptnode;
-    return n;
   }
   if (Check(p, TMATCH)) {
     return ParsePatternMatch(p);

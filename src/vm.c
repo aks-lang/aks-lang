@@ -6588,6 +6588,362 @@ static void StructSetFieldNative(AKSStruct *s, const char *fieldname,
 
 #include "vm_stdlib.inc.c"
 
+typedef int (*FastBuiltinFn)(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr);
+
+typedef struct {
+  const char *name;
+  FastBuiltinFn fn;
+} FastBuiltinEntry;
+
+static int FastBuiltin_Length(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 1) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue arg = StdlibPop(&stacktop);
+  if (ValKind(arg) == VALSTR) {
+    *stacktop++ = ValInt(ValToStrPtr(arg)->len);
+  } else if (ValKind(arg) == VALARR || ValKind(arg) == VALTUPLE) {
+    *stacktop++ = ValInt(ValToArr(arg)->count);
+  } else if (ValKind(arg) == VALSTRUCT && strcmp(ValToObj(arg)->typename, "Range") == 0) {
+    AKSStruct *s = ValToObj(arg);
+    int64_t start = 0, end = 0;
+    for (int i = 0; i < s->fieldcount; i++) {
+      if (strcmp(s->fieldnames[i], "start") == 0) start = ValToInt(s->fieldvals[i]);
+      else if (strcmp(s->fieldnames[i], "end") == 0) end = ValToInt(s->fieldvals[i]);
+    }
+    *stacktop++ = ValInt(end - start);
+  } else {
+    *stacktop++ = ValInt(0);
+  }
+  ValFree(&arg);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_ByteAt(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc < 1 || argc > 2) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  int64_t idx = 0;
+  if (argc == 2) {
+    AKSValue idx_val = StdlibPop(&stacktop);
+    if (!ValIsInt(idx_val)) {
+      ValFree(&idx_val);
+      *stacktopptr = stacktop;
+      return -1;
+    }
+    idx = ValToInt(idx_val);
+  }
+  AKSValue arg = StdlibPop(&stacktop);
+  if (ValKind(arg) != VALSTR) {
+    ValFree(&arg);
+    *stacktopptr = stacktop;
+    return -1;
+  }
+  AKSString *s = ValToStrPtr(arg);
+  int code = -1;
+  if (s && s->data && idx >= 0 && idx < s->len) {
+    code = (unsigned char)s->data[idx];
+  }
+  *stacktop++ = ValInt(code);
+  ValFree(&arg);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_HashCode(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 1) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue arg = StdlibPop(&stacktop);
+  uint64_t h = 0;
+  ValType t = ValKind(arg);
+  switch (t) {
+    case VALINT: {
+      uint64_t x = (uint64_t)ValToInt(arg);
+      x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+      x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+      x ^= (x >> 31);
+      h = x & 0x7FFFFFFFFFFFFFFFULL;
+      break;
+    }
+    case VALFLOAT: {
+      union { double d; uint64_t u; } u;
+      u.d = ValToFloat(arg);
+      if (u.d == 0.0) u.u = 0;
+      uint64_t x = u.u;
+      x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+      x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+      x ^= (x >> 31);
+      h = x & 0x7FFFFFFFFFFFFFFFULL;
+      break;
+    }
+    case VALBOOL:
+      h = ValToBool(arg) ? 1231 : 1237;
+      break;
+    case VALNULL:
+      h = 0;
+      break;
+    case VALSTR: {
+      AKSString *s = ValToStrPtr(arg);
+      if (s && s->data) {
+        uint64_t x = 14695981039346656037ULL;
+        for (int i = 0; i < s->len; i++) {
+          x ^= (uint8_t)s->data[i];
+          x *= 1099511628211ULL;
+        }
+        h = x & 0x7FFFFFFFFFFFFFFFULL;
+      }
+      break;
+    }
+    default: {
+      uintptr_t ptr = (uintptr_t)(arg & 0x0000FFFFFFFFFFFFULL);
+      uint64_t x = (uint64_t)ptr;
+      x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+      x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+      x ^= (x >> 31);
+      h = x & 0x7FFFFFFFFFFFFFFFULL;
+      break;
+    }
+  }
+  *stacktop++ = ValInt((int64_t)h);
+  ValFree(&arg);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_SquareRoot(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 1) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue arg = StdlibPop(&stacktop);
+  double vald = ValKind(arg) == VALFLOAT ? ValToFloat(arg) : (double)ValToInt(arg);
+  *stacktop++ = ValFloat(sqrt(vald));
+  ValFree(&arg);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_Absolute(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 1) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue arg = StdlibPop(&stacktop);
+  if (ValKind(arg) == VALINT) {
+    int64_t v = ValToInt(arg);
+    *stacktop++ = ValInt(v < 0 ? -v : v);
+  } else if (ValKind(arg) == VALFLOAT) {
+    double v = ValToFloat(arg);
+    *stacktop++ = ValFloat(v < 0 ? -v : v);
+  } else {
+    *stacktop++ = ValCopy(arg);
+  }
+  ValFree(&arg);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_String(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 1) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue arg = StdlibPop(&stacktop);
+  *stacktop++ = ValToStr(arg);
+  ValFree(&arg);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_clock(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 0) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  double secs = (double)clock() / CLOCKS_PER_SEC;
+  *stacktop++ = ValFloat(secs);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_sin(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 1) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue arg = StdlibPop(&stacktop);
+  double v = ValKind(arg) == VALFLOAT ? ValToFloat(arg) : (double)ValToInt(arg);
+  *stacktop++ = ValFloat(sin(v));
+  ValFree(&arg);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_cos(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 1) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue arg = StdlibPop(&stacktop);
+  double v = ValKind(arg) == VALFLOAT ? ValToFloat(arg) : (double)ValToInt(arg);
+  *stacktop++ = ValFloat(cos(v));
+  ValFree(&arg);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_tan(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 1) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue arg = StdlibPop(&stacktop);
+  double v = ValKind(arg) == VALFLOAT ? ValToFloat(arg) : (double)ValToInt(arg);
+  *stacktop++ = ValFloat(tan(v));
+  ValFree(&arg);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_log(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 1) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue arg = StdlibPop(&stacktop);
+  double v = ValKind(arg) == VALFLOAT ? ValToFloat(arg) : (double)ValToInt(arg);
+  *stacktop++ = ValFloat(log(v));
+  ValFree(&arg);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_floor(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 1) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue arg = StdlibPop(&stacktop);
+  double v = ValKind(arg) == VALFLOAT ? ValToFloat(arg) : (double)ValToInt(arg);
+  *stacktop++ = ValInt((int64_t)floor(v));
+  ValFree(&arg);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_Ceiling(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 1) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue arg = StdlibPop(&stacktop);
+  double v = ValKind(arg) == VALFLOAT ? ValToFloat(arg) : (double)ValToInt(arg);
+  *stacktop++ = ValInt((int64_t)ceil(v));
+  ValFree(&arg);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_Minimum(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 2) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue b = StdlibPop(&stacktop);
+  AKSValue a = StdlibPop(&stacktop);
+  if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
+    int64_t va = ValToInt(a), vb = ValToInt(b);
+    *stacktop++ = ValInt(va < vb ? va : vb);
+  } else {
+    double va = ValKind(a) == VALFLOAT ? ValToFloat(a) : (double)ValToInt(a);
+    double vb = ValKind(b) == VALFLOAT ? ValToFloat(b) : (double)ValToInt(b);
+    *stacktop++ = ValFloat(va < vb ? va : vb);
+  }
+  ValFree(&b);
+  ValFree(&a);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_Maximum(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 2) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue b = StdlibPop(&stacktop);
+  AKSValue a = StdlibPop(&stacktop);
+  if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
+    int64_t va = ValToInt(a), vb = ValToInt(b);
+    *stacktop++ = ValInt(va > vb ? va : vb);
+  } else {
+    double va = ValKind(a) == VALFLOAT ? ValToFloat(a) : (double)ValToInt(a);
+    double vb = ValKind(b) == VALFLOAT ? ValToFloat(b) : (double)ValToInt(b);
+    *stacktop++ = ValFloat(va > vb ? va : vb);
+  }
+  ValFree(&b);
+  ValFree(&a);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static int FastBuiltin_Power(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr) {
+  (void)vm; (void)task;
+  if (argc != 2) return -1;
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue b = StdlibPop(&stacktop);
+  AKSValue a = StdlibPop(&stacktop);
+  double va = ValKind(a) == VALFLOAT ? ValToFloat(a) : (double)ValToInt(a);
+  double vb = ValKind(b) == VALFLOAT ? ValToFloat(b) : (double)ValToInt(b);
+  *stacktop++ = ValFloat(pow(va, vb));
+  ValFree(&b);
+  ValFree(&a);
+  *stacktopptr = stacktop;
+  return 1;
+}
+
+static const FastBuiltinEntry g_fast_builtins[] = {
+  {"Length", FastBuiltin_Length},
+  {"ByteAt", FastBuiltin_ByteAt},
+  {"Ordinal", FastBuiltin_ByteAt},
+  {"HashCode", FastBuiltin_HashCode},
+  {"SquareRoot", FastBuiltin_SquareRoot},
+  {"Absolute", FastBuiltin_Absolute},
+  {"String", FastBuiltin_String},
+  {"clock", FastBuiltin_clock},
+  {"sin", FastBuiltin_sin},
+  {"cos", FastBuiltin_cos},
+  {"tan", FastBuiltin_tan},
+  {"log", FastBuiltin_log},
+  {"floor", FastBuiltin_floor},
+  {"Ceiling", FastBuiltin_Ceiling},
+  {"ceil", FastBuiltin_Ceiling},
+  {"Minimum", FastBuiltin_Minimum},
+  {"Maximum", FastBuiltin_Maximum},
+  {"Power", FastBuiltin_Power},
+  {NULL, NULL}
+};
+
+static FastBuiltinFn FindFastBuiltin(const char *name) {
+  if (!name) return NULL;
+  for (int i = 0; g_fast_builtins[i].name != NULL; i++) {
+    if (strcmp(g_fast_builtins[i].name, name) == 0) {
+      return g_fast_builtins[i].fn;
+    }
+  }
+  return NULL;
+}
+
+static int DispatchFastOrStdlib(VM *vm, VMTask *task, FnProto *callee, const char *name, int argc, AKSValue **stacktopptr) {
+  if (callee) {
+    if (callee->fast_handler) {
+      return ((FastBuiltinFn)callee->fast_handler)(vm, task, argc, stacktopptr);
+    }
+    FastBuiltinFn fn = FindFastBuiltin(callee->name);
+    if (fn) {
+      callee->fast_handler = (void*)fn;
+      return fn(vm, task, argc, stacktopptr);
+    }
+    return ExecuteStdlib(vm, task, callee->name, argc, stacktopptr);
+  }
+  if (name) {
+    FastBuiltinFn fn = FindFastBuiltin(name);
+    if (fn) {
+      return fn(vm, task, argc, stacktopptr);
+    }
+    return ExecuteStdlib(vm, task, name, argc, stacktopptr);
+  }
+  return 0;
+}
 
 #include "vm_jit.inc.c"
 
@@ -6619,7 +6975,7 @@ static int ChkopOverload(VM *vm, VMTask *task, uint8_t **ipptr,
       if (ValKind(callee) == VALFN) {
         FnProto *calleefn = vm->fns[ValToFn(callee)];
         task->stacktop = (int)(stacktop - task->stack);
-        int res = ExecuteStdlib(vm, task, calleefn->name, 2, &stacktop);
+        int res = DispatchFastOrStdlib(vm, task, calleefn, calleefn->name, 2, &stacktop);
         if (res == 0) {
           if (task->framecount >= MAXFRAMES) {
             ValFree(&callee);
@@ -6769,7 +7125,9 @@ int RunTaskSlice(VM *vm, VMTask *task, int maxinstructions) {
     }                                                                          \
   } while (0)
 #define ExecuteStdlib(vmptr, name, argc, stptr)                                \
-  ExecuteStdlib(vmptr, task, name, argc, stptr)
+  DispatchFastOrStdlib(vmptr, task, NULL, name, argc, stptr)
+#define DispatchStdlib(vmptr, callee, name, argc, stptr)                      \
+  DispatchFastOrStdlib(vmptr, task, callee, name, argc, stptr)
 #define READBYTE() (*ip++)
 #define READU16() (ip += 2, (uint16_t)((ip[-2] << 8) | ip[-1]))
 #define READI32()                                                              \
@@ -7975,7 +8333,7 @@ while (0)
         for (int i = 0; i < argc; i++) {
           *stacktop++ = ValCopy(frameslots[dst + i]);
         }
-        res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
+        res = (callee && callee->chunk.count == 0) ? DispatchStdlib(vm, callee, callee->name, argc, &stacktop) : 0;
       }
 
       if (res == -2) {
@@ -8198,7 +8556,7 @@ while (0)
             *stacktop++ = ValCopy(frameslots[dst + i]);
           }
         }
-        res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
+        res = (callee && callee->chunk.count == 0) ? DispatchStdlib(vm, callee, callee->name, argc, &stacktop) : 0;
       }
 
       if (res == -2) {
@@ -9243,7 +9601,7 @@ while (0)
         for (int i = 0; i < argc; i++) {
           *stacktop++ = ValCopy(frameslots[dst + i]);
         }
-        res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
+        res = (callee && callee->chunk.count == 0) ? DispatchStdlib(vm, callee, callee->name, argc, &stacktop) : 0;
       }
 
       if (res == -2) {
@@ -9700,7 +10058,7 @@ while (0)
           frameslots[dst] = ValTask(spawned);
           REG_DISPATCH_OR_BREAK();
         }
-        res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
+        res = (callee && callee->chunk.count == 0) ? DispatchStdlib(vm, callee, callee->name, argc, &stacktop) : 0;
       }
 
       if (res == -2) {
@@ -10972,7 +11330,7 @@ enter_stack_interpreter: for (;;) {
     }
 
     task->stacktop = (int)(stacktop - task->stack);
-    int res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
+    int res = (callee && callee->chunk.count == 0) ? DispatchStdlib(vm, callee, callee->name, argc, &stacktop) : 0;
     if (res == -2) {
       task->blockedonstdlib = 1;
       strncpy(task->stdlibname, callee->name, 63);
@@ -11231,7 +11589,7 @@ enter_stack_interpreter: for (;;) {
     }
 
     task->stacktop = (int)(stacktop - task->stack);
-    int res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
+    int res = (callee && callee->chunk.count == 0) ? DispatchStdlib(vm, callee, callee->name, argc, &stacktop) : 0;
     if (res == -2) {
       task->blockedonstdlib = 1;
       strncpy(task->stdlibname, callee->name, 63);
@@ -11563,7 +11921,7 @@ enter_stack_interpreter: for (;;) {
     }
 
     task->stacktop = (int)(stacktop - task->stack);
-    int res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
+    int res = (callee && callee->chunk.count == 0) ? DispatchStdlib(vm, callee, callee->name, argc, &stacktop) : 0;
     if (res == -2) {
       task->blockedonstdlib = 1;
       strncpy(task->stdlibname, callee->name, 63);
@@ -11670,7 +12028,7 @@ enter_stack_interpreter: for (;;) {
     }
 
     task->stacktop = (int)(stacktop - task->stack);
-    int res = (callee && callee->chunk.count == 0) ? ExecuteStdlib(vm, callee->name, argc, &stacktop) : 0;
+    int res = (callee && callee->chunk.count == 0) ? DispatchStdlib(vm, callee, callee->name, argc, &stacktop) : 0;
     if (res == -2) {
       task->blockedonstdlib = 1;
       strncpy(task->stdlibname, callee->name, 63);
@@ -13074,6 +13432,7 @@ return 0;
 #endif
 #undef RaiseX
 #undef ExecuteStdlib
+#undef DispatchStdlib
 #undef FRAME_GROW
 #undef STACK_GROW
 static void StructSetFieldNative(AKSStruct *s, const char *fieldname,

@@ -59,6 +59,7 @@ static int CountUnbalancedBrackets(const char *str) {
     int instr = 0;
     char strchar = '\0';
     int escaped = 0;
+    int last_non_ws = -1;
 
     for (int i = 0; str[i] != '\0'; i++) {
         if (escaped) {
@@ -67,6 +68,7 @@ static int CountUnbalancedBrackets(const char *str) {
         }
         if (str[i] == '\\') {
             escaped = 1;
+            last_non_ws = str[i];
             continue;
         }
         if (instr) {
@@ -78,7 +80,11 @@ static int CountUnbalancedBrackets(const char *str) {
         if (str[i] == '"' || str[i] == '\'') {
             instr = 1;
             strchar = str[i];
+            last_non_ws = str[i];
             continue;
+        }
+        if (str[i] != ' ' && str[i] != '\t' && str[i] != '\r' && str[i] != '\n') {
+            last_non_ws = str[i];
         }
         if (str[i] == '{') braces++;
         else if (str[i] == '}') braces--;
@@ -87,7 +93,57 @@ static int CountUnbalancedBrackets(const char *str) {
         else if (str[i] == '[') brackets++;
         else if (str[i] == ']') brackets--;
     }
-    return (braces > 0 || parens > 0 || brackets > 0);
+    if (instr) return 1;
+    if (braces > 0 || parens > 0 || brackets > 0) return 1;
+    if (last_non_ws == '\\' || last_non_ws == ',' || last_non_ws == '+' ||
+        last_non_ws == '-' || last_non_ws == '*' || last_non_ws == '/' ||
+        last_non_ws == '%' || last_non_ws == '=' || last_non_ws == '&' ||
+        last_non_ws == '|') {
+        return 1;
+    }
+    return 0;
+}
+
+static void GetHistoryFilePath(char *buf, size_t size) {
+    const char *home = getenv("USERPROFILE");
+    if (!home) home = getenv("HOME");
+    if (home) {
+        snprintf(buf, size, "%s\\.aks_history", home);
+    } else {
+        snprintf(buf, size, ".aks_history");
+    }
+}
+
+static void AppendReplHistory(const char *cmd) {
+    if (!cmd || !cmd[0]) return;
+    char path[512];
+    GetHistoryFilePath(path, sizeof(path));
+    FILE *f = fopen(path, "a");
+    if (f) {
+        fprintf(f, "%s\n", cmd);
+        fclose(f);
+    }
+}
+
+static void ShowReplHistory(void) {
+    char path[512];
+    GetHistoryFilePath(path, sizeof(path));
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        printf("\033[1;33mNo previous command history found.\033[0m\n");
+        return;
+    }
+    printf("\033[1;33mRecent Command History:\033[0m\n");
+    char line[1024];
+    int count = 1;
+    while (fgets(line, sizeof(line), f)) {
+        size_t l = strlen(line);
+        while (l > 0 && (line[l-1] == '\r' || line[l-1] == '\n')) line[--l] = '\0';
+        if (l > 0) {
+            printf("  \033[1;30m%3d\033[0m  %s\n", count++, line);
+        }
+    }
+    fclose(f);
 }
 
 static void RunRepl(void) {
@@ -202,12 +258,17 @@ static void RunRepl(void) {
             }
             continue;
         }
+        if (strcmp(trimmed, ":history") == 0) {
+            ShowReplHistory();
+            continue;
+        }
         if (strcmp(trimmed, ":help") == 0 || strcmp(trimmed, "help") == 0 || strcmp(trimmed, "help()") == 0) {
             printf("\033[1;33mAKS Interactive REPL Commands:\033[0m\n");
             printf("  \033[1;36m:help\033[0m          Show this help message\n");
             printf("  \033[1;36m:clear, :cls\033[0m   Clear the terminal screen\n");
             printf("  \033[1;36m:vars\033[0m          List all defined global variables and values\n");
             printf("  \033[1;36m:fns\033[0m           List all compiled functions\n");
+            printf("  \033[1;36m:history\033[0m       Display recent command history\n");
             printf("  \033[1;36m:quit, :q\033[0m      Exit the REPL session (or type exit())\n\n");
             LearnHelp("");
             continue;
@@ -272,6 +333,7 @@ static void RunRepl(void) {
         if (CompCompile(c, ast)) {
             VMSync(vm, c, 1);
             VMRepl(vm, startoffset);
+            AppendReplHistory(codebuf);
         } else {
             // Restore ophalt
             ChunkWrite(&mainfn->chunk, OPHALT, 0);
@@ -422,6 +484,7 @@ static void PrintUsage(const char *programname) {
     printf("  %s fuzz [file.aks]                              Execute automated fuzz testing loop\n", programname);
     printf("  %s fmt [file.aks]                               Format source code to standard style\n", programname);
     printf("  %s lint [file.aks]                              Lint source code and enforce best practices\n", programname);
+    printf("  %s fix [file.aks]                               Automatically fix lint warnings and code style issues\n", programname);
     printf("  %s dap <file.aks> [port]                        Start Debug Adapter Protocol (DAP) server\n", programname);
     printf("\nLearning & Documentation:\n");
     printf("  %s help [topic]                                 Show documentation on syntax, types, and concurrency\n", programname);
@@ -2786,12 +2849,16 @@ int main(int argc, char **argv) {
                 extern int PkgSign(const char *bundle_path, const char *privkey_path);
                 return PkgSign(argv[3], argv[4]);
             } else if (strcmp(subcmd, "verify") == 0) {
-                if (argc < 5) {
-                    fprintf(stderr, "Error: Missing arguments. Example: %s pkg verify <bundle.aksb> <public_key.pem>\n", argv[0]);
-                    return 1;
+                if (argc >= 5) {
+                    extern int PkgVerify(const char *bundle_path, const char *pubkey_path);
+                    return PkgVerify(argv[3], argv[4]);
+                } else {
+                    extern int PkgVerifyLock(void);
+                    return PkgVerifyLock();
                 }
-                extern int PkgVerify(const char *bundle_path, const char *pubkey_path);
-                return PkgVerify(argv[3], argv[4]);
+            } else if (strcmp(subcmd, "check") == 0 || strcmp(subcmd, "audit") == 0 || strcmp(subcmd, "verify-lock") == 0) {
+                extern int PkgVerifyLock(void);
+                return PkgVerifyLock();
             } else if (strcmp(subcmd, "sbom") == 0) {
                 const char *outpath = (argc >= 4) ? argv[3] : NULL;
                 extern int PkgExportSbom(const char *output_path);
@@ -2823,6 +2890,19 @@ int main(int argc, char **argv) {
                 strcat(cmd, " ");
                 strcat(cmd, argv[i]);
             }
+            return system(cmd);
+        } else if (strcmp(command, "fix") == 0) {
+            char cmd[4096] = "";
+#ifdef _WIN32
+            strcat(cmd, ".\\akslint.exe --fix");
+#else
+            strcat(cmd, "./akslint --fix");
+#endif
+            for (int i = 2; i < argc; i++) {
+                strcat(cmd, " ");
+                strcat(cmd, argv[i]);
+            }
+            return system(cmd);
         } else if (strcmp(command, "record") == 0) {
             if (argc < 3) {
                 fprintf(stderr, "Usage: %s record <script.aks> [out.akstrace]\n", argv[0]);

@@ -142,6 +142,7 @@ typedef struct {
     struct Node *ast;
     char file_name[256];
     int is_lazy_stub;   /* 1 = fn declared but body not yet compiled */
+    int (*fast_handler)(void *vm, void *task, int argc, void *stacktopptr);
 } FnProto;
 
 typedef struct {
@@ -325,6 +326,9 @@ typedef struct {
     int parallel_compilation;
     int contract_check;
     int debug_build;
+    /* Const variable tracking for immutability enforcement */
+    char const_globals[512][128];
+    int  const_global_count;
 } Compiler;
 
 struct Node; // forward declare Node from ast.h
