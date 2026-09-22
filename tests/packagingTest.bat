@@ -61,4 +61,18 @@ if not exist myapp\dist\myapp.aks (
 rmdir /s /q mylib myapp 2>nul
 del /q outtarget.c 2>nul
 
+echo Testing local path package dependencies
+.\aks.exe pkg init mypathlib >nul || exit /b 1
+echo { "name": "mypathlib", "version": "1.0.0", "entrypoint": "src/main.aks", "dependencies": {} } > mypathlib\aks.json
+echo print("Hello from mypathlib"); > mypathlib\src\main.aks
+
+.\aks.exe pkg init mypathapp >nul || exit /b 1
+echo { "name": "mypathapp", "version": "1.0.0", "entrypoint": "src/main.aks", "dependencies": {} } > mypathapp\aks.json
+cd mypathapp
+..\aks.exe pkg add path:..\mypathlib >nul || exit /b 1
+..\aks.exe pkg install >nul || exit /b 1
+..\aks.exe pkg verify >nul || exit /b 1
+cd ..
+rmdir /s /q mypathlib mypathapp 2>nul
+
 echo Package manager tests passed

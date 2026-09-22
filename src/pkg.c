@@ -513,6 +513,26 @@ int PkgAdd(const char *pkgspec) {
         strncpy(pkgname, pkgspec, namelen);
         pkgname[namelen] = '\0';
         strncpy(pkgversion, at + 1, sizeof(pkgversion) - 1);
+    } else if (strncmp(pkgspec, "path:", 5) == 0 ||
+               strncmp(pkgspec, "./", 2) == 0 || strncmp(pkgspec, ".\\", 2) == 0 ||
+               strncmp(pkgspec, "../", 3) == 0 || strncmp(pkgspec, "..\\", 3) == 0) {
+        const char *src = pkgspec;
+        if (strncmp(src, "path:", 5) == 0) src += 5;
+        char cleanpath[512];
+        strncpy(cleanpath, src, sizeof(cleanpath) - 1);
+        cleanpath[sizeof(cleanpath) - 1] = '\0';
+        size_t plen = strlen(cleanpath);
+        while (plen > 0 && (cleanpath[plen - 1] == '/' || cleanpath[plen - 1] == '\\')) {
+            cleanpath[--plen] = '\0';
+        }
+        const char *slash = cleanpath + plen;
+        while (slash > cleanpath && *(slash - 1) != '/' && *(slash - 1) != '\\') slash--;
+        if (strlen(slash) > 0) {
+            strncpy(pkgname, slash, sizeof(pkgname) - 1);
+        } else {
+            strncpy(pkgname, "pathpkg", sizeof(pkgname) - 1);
+        }
+        snprintf(pkgversion, sizeof(pkgversion), "path:%s", cleanpath);
     } else if (strncmp(pkgspec, "git+", 4) == 0 || strstr(pkgspec, ".git") != NULL) {
         const char *src = pkgspec;
         if (strncmp(src, "git+", 4) == 0) src += 4;
@@ -619,6 +639,59 @@ static int ResolvePackage(const char *name, const char *constraint) {
                 return 0;
             }
         }
+    }
+    
+    if (strncmp(constraint, "path:", 5) == 0) {
+        const char *srcpath = constraint + 5;
+        char manifestpath[512];
+        snprintf(manifestpath, sizeof(manifestpath), "%s\\aks.json", srcpath);
+        for (char *p = manifestpath; *p; p++) { if (*p == '/') *p = '\\'; }
+        
+        char *srcmanifest = ReadFileContent(manifestpath);
+        if (!srcmanifest) {
+            fprintf(stderr, "Error: Could not find aks.json at path dependency '%s'\n", srcpath);
+            return 0;
+        }
+        
+        char entrypoint[256] = "src/main.aks";
+        JSONGetVal(srcmanifest, "entrypoint", entrypoint, sizeof(entrypoint));
+        free(srcmanifest);
+        
+        char venvpkgdir[512];
+        snprintf(venvpkgdir, sizeof(venvpkgdir), ".akspackages\\%s", name);
+        MkDirp(".akspackages");
+        MkDirp(venvpkgdir);
+        
+        char copycmd[1024];
+        snprintf(copycmd, sizeof(copycmd), "xcopy /E /I /Y /Q \"%s\" \"%s\" >nul 2>nul", srcpath, venvpkgdir);
+        system(copycmd);
+        
+        char entrypath[512];
+        snprintf(entrypath, sizeof(entrypath), "%s\\%s", venvpkgdir, entrypoint);
+        for (char *p = entrypath; *p; p++) { if (*p == '/') *p = '\\'; }
+        
+        char computed_hash[65] = "";
+        if (!Sha256File(entrypath, computed_hash)) {
+            char altpath[512];
+            snprintf(altpath, sizeof(altpath), "%s\\src\\main.aks", venvpkgdir);
+            if (!Sha256File(altpath, computed_hash)) {
+                snprintf(altpath, sizeof(altpath), "%s\\index.aks", venvpkgdir);
+                if (!Sha256File(altpath, computed_hash)) {
+                    snprintf(altpath, sizeof(altpath), "%s\\aks.json", venvpkgdir);
+                    Sha256File(altpath, computed_hash);
+                }
+            }
+        }
+        
+        strcpy(gresolved[gresolvedcount].name, name);
+        snprintf(gresolved[gresolvedcount].version, sizeof(gresolved[gresolvedcount].version),
+                 "path:%s", srcpath);
+        strcpy(gresolved[gresolvedcount].hash, computed_hash);
+        gresolved[gresolvedcount].is_git = 1;
+        gresolvedcount++;
+        printf("Installed path package '%s@path:%s' (SHA-256: %s) to local environment.\n",
+               name, srcpath, computed_hash);
+        return 1;
     }
     
     if (strncmp(constraint, "git+", 4) == 0 || strstr(constraint, ".git") != NULL) {
@@ -761,6 +834,30 @@ static int ResolvePackage(const char *name, const char *constraint) {
                             free(subjson);
                             return 0;
                         }
+                    } else if (*p == '{') {
+                        char objblock[512] = "";
+                        int obidx = 0;
+                        int depth = 0;
+                        while (*p && obidx < 511) {
+                            if (*p == '{') depth++;
+                            else if (*p == '}') {
+                                depth--;
+                                objblock[obidx++] = *p++;
+                                if (depth == 0) break;
+                                continue;
+                            }
+                            objblock[obidx++] = *p++;
+                        }
+                        objblock[obidx] = '\0';
+                        char pathval[256] = "";
+                        if (JSONGetVal(objblock, "path", pathval, sizeof(pathval))) {
+                            char depconstraint[512];
+                            snprintf(depconstraint, sizeof(depconstraint), "path:%s", pathval);
+                            if (!ResolvePackage(depname, depconstraint)) {
+                                free(subjson);
+                                return 0;
+                            }
+                        }
                     }
                 }
                 p++;
@@ -806,6 +903,30 @@ int PkgInstall(void) {
                         free(json);
                         return 1;
                     }
+                } else if (*p == '{') {
+                    char objblock[512] = "";
+                    int obidx = 0;
+                    int depth = 0;
+                    while (*p && obidx < 511) {
+                        if (*p == '{') depth++;
+                        else if (*p == '}') {
+                            depth--;
+                            objblock[obidx++] = *p++;
+                            if (depth == 0) break;
+                            continue;
+                        }
+                        objblock[obidx++] = *p++;
+                    }
+                    objblock[obidx] = '\0';
+                    char pathval[256] = "";
+                    if (JSONGetVal(objblock, "path", pathval, sizeof(pathval))) {
+                        char depconstraint[512];
+                        snprintf(depconstraint, sizeof(depconstraint), "path:%s", pathval);
+                        if (!ResolvePackage(depname, depconstraint)) {
+                            free(json);
+                            return 1;
+                        }
+                    }
                 }
             }
             p++;
@@ -816,8 +937,6 @@ int PkgInstall(void) {
     MkDirp(".akspackages");
     for (int i = 0; i < gresolvedcount; i++) {
         if (gresolved[i].is_git) {
-            printf("Installed git package '%s@%s' (SHA-256: %s) to local environment.\n",
-                   gresolved[i].name, gresolved[i].version, gresolved[i].hash);
             continue;
         }
         char regpkgdir[512];

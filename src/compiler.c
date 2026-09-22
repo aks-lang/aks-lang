@@ -5031,7 +5031,6 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             snprintf(tmpvar, sizeof(tmpvar), "destructtmp%d", c->current->localcount);
             int tmpslot = AddLocal(c, tmpvar, 0);
             strcpy(c->current->locals[tmpslot].typename, "any");
-            ChunkWrite(ch, OPDUP, n->line);
             ChunkWrite(ch, OPSTORE, n->line);
             ChunkWriteU16(ch, (uint16_t)tmpslot, n->line);
             
@@ -5047,7 +5046,6 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                 
                 ChunkWrite(ch, OPARRGET, n->line);
                 
-                ChunkWrite(ch, OPDUP, n->line);
                 ChunkWrite(ch, OPSTORE, n->line);
                 ChunkWriteU16(ch, (uint16_t)varslot, n->line);
             }
@@ -5060,7 +5058,6 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             snprintf(tmpvar, sizeof(tmpvar), "destructtmp%d", c->current->localcount);
             int tmpslot = AddLocal(c, tmpvar, 0);
             strcpy(c->current->locals[tmpslot].typename, "any");
-            ChunkWrite(ch, OPDUP, n->line);
             ChunkWrite(ch, OPSTORE, n->line);
             ChunkWriteU16(ch, (uint16_t)tmpslot, n->line);
             
@@ -5075,7 +5072,6 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                 ChunkWrite(ch, OPGETFIELD, n->line);
                 ChunkWriteU16(ch, (uint16_t)fid, n->line);
                 
-                ChunkWrite(ch, OPDUP, n->line);
                 ChunkWrite(ch, OPSTORE, n->line);
                 ChunkWriteU16(ch, (uint16_t)varslot, n->line);
             }
@@ -8718,13 +8714,25 @@ static void AdjustJumps(Chunk *ch, int start, int deletecount) {
         int size = GetInstructionSize(ch->code, ch->count, i);
         if (op == OPJUMP || op == OPJUMPIFFALSE || op == OPJUMPIFNULL || 
             op == OPTRYPUSH || op == OPCOALESCE) {
-            int32_t offset = (int32_t)((ch->code[i+1] << 24) | (ch->code[i+2] << 16) | (ch->code[i+3] << 8) | ch->code[i+4]);
-            int target = i + 5 + offset;
-            
-            if (i < start && target >= start) {
-                offset -= deletecount;
-            } else if (i >= start && target < start) {
-                offset += deletecount;
+            int32_t offset = (int32_t)(((uint32_t)ch->code[i+1] << 24) |
+                                       ((uint32_t)ch->code[i+2] << 16) |
+                                       ((uint32_t)ch->code[i+3] << 8) |
+                                       (uint32_t)ch->code[i+4]);
+            if (i < start) {
+                int old_target = i + 5 + offset;
+                if (old_target > start + deletecount) {
+                    offset -= deletecount;
+                } else if (old_target >= start) {
+                    offset = start - (i + 5);
+                }
+            } else {
+                int old_i = i + deletecount;
+                int old_target = old_i + 5 + offset;
+                if (old_target < start) {
+                    offset += deletecount;
+                } else if (old_target <= start + deletecount) {
+                    offset = start - (i + 5);
+                }
             }
             
             ch->code[i+1] = (uint8_t)((offset >> 24) & 0xFF);

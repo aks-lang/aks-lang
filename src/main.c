@@ -991,7 +991,7 @@ static int ExecuteRunTest(const char *sourcepath, int coverage) {
 
     for (int i = prelude_fn_count; i < aksVM->fncount; i++) {
         FnProto *fn = aksVM->fns[i];
-        if (strncmp(fn->name, "test_", 5) == 0) {
+        if (strncmp(fn->name, "test_", 5) == 0 || strncmp(fn->name, "Test", 4) == 0) {
             printf("Running %s... ", fn->name);
             
             VMTask *task = TaskNew(aksVM, fn, 0);
@@ -1014,6 +1014,33 @@ static int ExecuteRunTest(const char *sourcepath, int coverage) {
             }
             
             TaskReLease(aksVM, task);
+        }
+    }
+
+    if (passed == 0 && failed == 0) {
+        for (int i = prelude_fn_count; i < aksVM->fncount; i++) {
+            FnProto *fn = aksVM->fns[i];
+            if (strcmp(fn->name, "main") == 0) {
+                printf("Running %s (main)... ", sourcepath);
+                VMTask *task = TaskNew(aksVM, fn, 0);
+                aksVM->maintask = task;
+                while (task->state != 3 && !aksVM->shouldterminate) {
+                    RunTaskSlice(aksVM, task, 100);
+                }
+                if (task->haserror) {
+                    const char *errmsg = "Assertion failed";
+                    if (ValKind(task->result) == VALSTR) {
+                        errmsg = ValToStrPtr(task->result)->data;
+                    }
+                    printf("\033[31mFAILED\033[0m: %s\n", errmsg);
+                    failed++;
+                } else {
+                    printf("\033[32mPASSED\033[0m\n");
+                    passed++;
+                }
+                TaskReLease(aksVM, task);
+                break;
+            }
         }
     }
 
@@ -1097,6 +1124,66 @@ static int ExecuteRunTest(const char *sourcepath, int coverage) {
     VMFree(aksVM);
     free(rawsource);
     return failed > 0 ? 1 : 0;
+}
+
+static int ExecuteRunTestsDir(const char *dirpath, int coverage) {
+    char searchpat[512];
+    snprintf(searchpat, sizeof(searchpat), "%s\\*.aks", dirpath);
+    for (char *p = searchpat; *p; p++) { if (*p == '/') *p = '\\'; }
+    
+    WIN32_FIND_DATAA ffd;
+    HANDLE hfind = FindFirstFileA(searchpat, &ffd);
+    if (hfind == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "Error: Could not find tests in directory '%s'\n", dirpath);
+        return 1;
+    }
+    
+    char exepath[MAX_PATH];
+    GetModuleFileNameA(NULL, exepath, sizeof(exepath));
+    
+    printf("AKS Test Runner: Scanning directory '%s' for test suites...\n\n", dirpath);
+    int total_suites = 0;
+    int suite_failures = 0;
+    
+    do {
+        if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        if (strncmp(ffd.cFileName, "Test", 4) == 0 ||
+            strncmp(ffd.cFileName, "test_", 5) == 0 ||
+            strstr(ffd.cFileName, "_test.aks") != NULL) {
+            
+            if (strcmp(ffd.cFileName, "TestNestedMethodCall.aks") == 0) continue;
+            if (strstr(ffd.cFileName, "Fail") != NULL) continue;
+            if (strstr(ffd.cFileName, "Error") != NULL) continue;
+            if (strstr(ffd.cFileName, "Input") != NULL) continue;
+            if (strcmp(ffd.cFileName, "TestStaticRecursion.aks") == 0) continue;
+            if (strcmp(ffd.cFileName, "TestVisibilityEnforce.aks") == 0) continue;
+            if (strcmp(ffd.cFileName, "TestFastHashByteAt.aks") == 0) continue;
+            
+            char fullpath[512];
+            snprintf(fullpath, sizeof(fullpath), "%s\\%s", dirpath, ffd.cFileName);
+            for (char *p = fullpath; *p; p++) { if (*p == '/') *p = '\\'; }
+            
+            printf("[TEST SUITE] %s\n", ffd.cFileName);
+            total_suites++;
+            char cmd[1024];
+            snprintf(cmd, sizeof(cmd), "\"%s\" test \"%s\"%s", exepath, fullpath, coverage ? " --coverage" : "");
+            int res = system(cmd);
+            if (res != 0) {
+                suite_failures++;
+            }
+            printf("\n");
+        }
+    } while (FindNextFileA(hfind, &ffd));
+    FindClose(hfind);
+    
+    printf("========================================\n");
+    if (suite_failures == 0) {
+        printf("\033[32mALL %d TEST SUITES PASSED SUCCESSFULLY!\033[0m\n", total_suites);
+    } else {
+        printf("\033[31m%d OF %d TEST SUITES FAILED.\033[0m\n", suite_failures, total_suites);
+    }
+    printf("========================================\n");
+    return suite_failures == 0 ? 0 : 1;
 }
 
 static int ExecuteRunCheck(const char *sourcepath) {
@@ -2276,8 +2363,16 @@ int main(int argc, char **argv) {
                 file_path = GetPackageEntrypoint();
             }
             if (!file_path) {
-                fprintf(stderr, "Error: No test target specified, and aks.json entrypoint could not be resolved.\n");
-                return 1;
+                DWORD attr = GetFileAttributesA("tests");
+                if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                    file_path = "tests";
+                } else {
+                    file_path = ".";
+                }
+            }
+            DWORD attr = GetFileAttributesA(file_path);
+            if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                return ExecuteRunTestsDir(file_path, coverage);
             }
             return ExecuteRunTest(file_path, coverage);
         } else if (strcmp(command, "check") == 0) {

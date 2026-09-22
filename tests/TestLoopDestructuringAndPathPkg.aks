@@ -1,0 +1,86 @@
+// TestLoopDestructuringAndPathPkg.aks
+// Test suite for Loop Destructuring (array, tuple, object) and operand stack balance
+
+fn TestArrayDestructuringLet() {
+    let pair = [100, 200];
+    let [a, b] = pair;
+    assert(a == 100, "let [a, b] first");
+    assert(b == 200, "let [a, b] second");
+
+    let triple = ["alpha", "beta", "gamma"];
+    let [x, y, z] = triple;
+    assert(x == "alpha" && y == "beta" && z == "gamma", "let [x, y, z] all matched");
+
+    println("TestArrayDestructuringLet PASSED");
+}
+
+fn TestObjectDestructuringLet() {
+    let user = { "name": "Anoop", "role": "creator" };
+    let { name, role } = user;
+    assert(name == "Anoop", "let {name} matched");
+    assert(role == "creator", "let {role} matched");
+
+    let point = { "x": 10, "y": 20 };
+    let { x: px, y: py } = point;
+    assert(px == 10 && py == 20, "let {x: px, y: py} alias matched");
+
+    println("TestObjectDestructuringLet PASSED");
+}
+
+fn TestLoopDestructuringArray() {
+    let entries = [
+        ["one", 1],
+        ["two", 2],
+        ["three", 3]
+    ];
+
+    let count = 0;
+    let sum = 0;
+
+    for (let [k, v] in entries) {
+        count = count + 1;
+        sum = sum + v;
+    }
+
+    assert(count == 3, "loop destructuring count");
+    assert(sum == 6, "loop destructuring sum");
+
+    // Without 'let'
+    let entries2 = [["a", 10], ["b", 20]];
+    let sum2 = 0;
+    for ([k2, v2] in entries2) {
+        sum2 = sum2 + v2;
+    }
+    assert(sum2 == 30, "loop destructuring without let sum");
+
+    println("TestLoopDestructuringArray PASSED");
+}
+
+fn TestLoopDestructuringObject() {
+    let points = [
+        { "x": 1, "y": 10 },
+        { "x": 2, "y": 20 },
+        { "x": 3, "y": 30 }
+    ];
+
+    let totalX = 0;
+    let totalY = 0;
+
+    for (let {x, y} in points) {
+        totalX = totalX + x;
+        totalY = totalY + y;
+    }
+
+    assert(totalX == 6, "totalX == 6");
+    assert(totalY == 60, "totalY == 60");
+
+    println("TestLoopDestructuringObject PASSED");
+}
+
+fn main() {
+    TestArrayDestructuringLet();
+    TestObjectDestructuringLet();
+    TestLoopDestructuringArray();
+    TestLoopDestructuringObject();
+}
+main();

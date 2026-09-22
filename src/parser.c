@@ -857,6 +857,129 @@ static Node *ParseFor(Parser *p) {
     Token lp = Consume(p); TokFree(&lp);
   }
 
+  // for destructuring: for (let [a, b] in iter) or for ([a, b] in iter) or for (let {x, y} in iter)
+  int is_destruct_arr = 0;
+  int is_destruct_obj = 0;
+  if (Check(p, TLET)) {
+    if (p->peek.type == TLBRACKET || p->peek.type == TLPAREN) is_destruct_arr = 1;
+    else if (p->peek.type == TLBRACE) is_destruct_obj = 1;
+  } else if (Check(p, TLBRACKET) || (has_paren && Check(p, TLPAREN))) {
+    is_destruct_arr = 1;
+  } else if (Check(p, TLBRACE)) {
+    is_destruct_obj = 1;
+  }
+
+  if (is_destruct_arr || is_destruct_obj) {
+    if (Check(p, TLET)) {
+      Token lt = Consume(p); TokFree(&lt);
+    }
+    char **names = NULL;
+    char **keys = NULL;
+    char **aliases = NULL;
+    int count = 0, cap = 4;
+    
+    if (is_destruct_arr) {
+      Token open_tok = Consume(p);
+      TType close_type = (open_tok.type == TLPAREN) ? TRPAREN : TRBRACKET;
+      TokFree(&open_tok);
+      names = malloc(cap * sizeof(char *));
+      while (!Check(p, close_type) && !Check(p, TEOF)) {
+        if (count == cap) {
+          cap *= 2;
+          names = realloc(names, cap * sizeof(char *));
+        }
+        Token nm = Expect(p, TIDENT);
+        names[count++] = strdup(nm.val);
+        TokFree(&nm);
+        if (!Check(p, close_type)) {
+          Token cm = Expect(p, TCOMMA);
+          TokFree(&cm);
+        }
+      }
+      Token cl = Expect(p, close_type);
+      TokFree(&cl);
+    } else {
+      Token lb = Expect(p, TLBRACE);
+      TokFree(&lb);
+      keys = malloc(cap * sizeof(char *));
+      aliases = malloc(cap * sizeof(char *));
+      while (!Check(p, TRBRACE) && !Check(p, TEOF)) {
+        if (count == cap) {
+          cap *= 2;
+          keys = realloc(keys, cap * sizeof(char *));
+          aliases = realloc(aliases, cap * sizeof(char *));
+        }
+        Token nm = Expect(p, TIDENT);
+        keys[count] = strdup(nm.val);
+        TokFree(&nm);
+        if (Match(p, TCOLON)) {
+          Token alias = Expect(p, TIDENT);
+          aliases[count] = strdup(alias.val);
+          TokFree(&alias);
+        } else {
+          aliases[count] = strdup(keys[count]);
+        }
+        count++;
+        if (!Check(p, TRBRACE)) {
+          Token cm = Expect(p, TCOMMA);
+          TokFree(&cm);
+        }
+      }
+      Token rb = Expect(p, TRBRACE);
+      TokFree(&rb);
+    }
+    
+    Token inkw = Expect(p, TIN);
+    TokFree(&inkw);
+    Node *iter = ParserExpr(p);
+    if (has_paren) {
+      Token rp = Expect(p, TRPAREN);
+      TokFree(&rp);
+    }
+    Node *body = ParseBlock(p);
+    
+    static int g_forin_id = 0;
+    char synth_var[64];
+    snprintf(synth_var, sizeof(synth_var), "__iter_item_%d", ++g_forin_id);
+    
+    Node *destruct = NULL;
+    if (is_destruct_arr) {
+      destruct = NodeNew(NDESTRUCTARR, line);
+      destruct->destructarr.names = names;
+      destruct->destructarr.count = count;
+      destruct->destructarr.value = NodeNew(NIDENT, line);
+      destruct->destructarr.value->sval = strdup(synth_var);
+    } else {
+      destruct = NodeNew(NDESTRUCTOBJ, line);
+      destruct->destructobj.keys = keys;
+      destruct->destructobj.aliases = aliases;
+      destruct->destructobj.count = count;
+      destruct->destructobj.value = NodeNew(NIDENT, line);
+      destruct->destructobj.value->sval = strdup(synth_var);
+    }
+    
+    if (body->type == NBLOCK) {
+      body->block.stmts = realloc(body->block.stmts, (body->block.count + 1) * sizeof(Node *));
+      memmove(body->block.stmts + 1, body->block.stmts, body->block.count * sizeof(Node *));
+      body->block.stmts[0] = destruct;
+      body->block.count++;
+    } else {
+      Node *nb = NodeNew(NBLOCK, line);
+      nb->block.count = 2;
+      nb->block.stmts = malloc(2 * sizeof(Node *));
+      nb->block.stmts[0] = destruct;
+      nb->block.stmts[1] = body;
+      body = nb;
+    }
+    
+    Node *n = NodeNew(NFORIN, line);
+    n->forin.var = strdup(synth_var);
+    n->forin.iter = iter;
+    n->forin.body = body;
+    n->forin.isasync = 0;
+    return n;
+  }
+
   // for (item in iterable) or for item in iterable
   if ((Check(p, TIDENT) || Check(p, TLET)) &&
       (Check2(p, TIN) || (p->cur.type == TIDENT && p->peek.type == TIN))) {
