@@ -480,7 +480,7 @@ static void PrintUsage(const char *programname) {
     printf("\nQuality & Testing Tools:\n");
     printf("  %s test [file.aks] [--coverage]                 Run test functions and optional code coverage report\n", programname);
     printf("  %s check [file.aks]                             Perform static type checking and safety validation\n", programname);
-    printf("  %s bench [file.aks]                             Run performance benchmark suites\n", programname);
+    printf("  %s bench [file.aks | dir]                       Run performance benchmark suites\n", programname);
     printf("  %s fuzz [file.aks]                              Execute automated fuzz testing loop\n", programname);
     printf("  %s fmt [file.aks]                               Format source code to standard style\n", programname);
     printf("  %s lint [file.aks]                              Lint source code and enforce best practices\n", programname);
@@ -1151,7 +1151,6 @@ static int ExecuteRunTestsDir(const char *dirpath, int coverage) {
             strncmp(ffd.cFileName, "test_", 5) == 0 ||
             strstr(ffd.cFileName, "_test.aks") != NULL) {
             
-            if (strcmp(ffd.cFileName, "TestNestedMethodCall.aks") == 0) continue;
             if (strstr(ffd.cFileName, "Fail") != NULL) continue;
             if (strstr(ffd.cFileName, "Error") != NULL) continue;
             if (strstr(ffd.cFileName, "Input") != NULL) continue;
@@ -1166,7 +1165,7 @@ static int ExecuteRunTestsDir(const char *dirpath, int coverage) {
             printf("[TEST SUITE] %s\n", ffd.cFileName);
             total_suites++;
             char cmd[1024];
-            snprintf(cmd, sizeof(cmd), "\"%s\" test \"%s\"%s", exepath, fullpath, coverage ? " --coverage" : "");
+            snprintf(cmd, sizeof(cmd), "\"\"%s\" test \"%s\"%s\"", exepath, fullpath, coverage ? " --coverage" : "");
             int res = system(cmd);
             if (res != 0) {
                 suite_failures++;
@@ -1176,13 +1175,11 @@ static int ExecuteRunTestsDir(const char *dirpath, int coverage) {
     } while (FindNextFileA(hfind, &ffd));
     FindClose(hfind);
     
-    printf("========================================\n");
     if (suite_failures == 0) {
         printf("\033[32mALL %d TEST SUITES PASSED SUCCESSFULLY!\033[0m\n", total_suites);
     } else {
         printf("\033[31m%d OF %d TEST SUITES FAILED.\033[0m\n", suite_failures, total_suites);
     }
-    printf("========================================\n");
     return suite_failures == 0 ? 0 : 1;
 }
 
@@ -1474,6 +1471,70 @@ static int ExecuteRunBench(const char *sourcepath) {
     VMFree(aksVM);
     free(rawsource);
     return 0;
+}
+
+static int ExecuteRunBenchDir(const char *dirpath) {
+    char searchpat[512];
+    snprintf(searchpat, sizeof(searchpat), "%s\\*.aks", dirpath);
+    for (char *p = searchpat; *p; p++) { if (*p == '/') *p = '\\'; }
+
+    WIN32_FIND_DATAA ffd;
+    HANDLE hfind = FindFirstFileA(searchpat, &ffd);
+    if (hfind == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "Error: Could not find benchmarks in directory '%s'\n", dirpath);
+        return 1;
+    }
+
+    char exepath[MAX_PATH];
+    GetModuleFileNameA(NULL, exepath, sizeof(exepath));
+
+    printf("AKS Benchmark Runner: Scanning directory '%s' for benchmarks...\n\n", dirpath);
+    int total_suites = 0;
+    int suite_failures = 0;
+
+    do {
+        if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+
+        char fullpath[512];
+        snprintf(fullpath, sizeof(fullpath), "%s\\%s", dirpath, ffd.cFileName);
+        for (char *p = fullpath; *p; p++) { if (*p == '/') *p = '\\'; }
+
+        int is_bench = (strncmp(ffd.cFileName, "Bench", 5) == 0 ||
+                        strncmp(ffd.cFileName, "bench_", 6) == 0 ||
+                        strstr(ffd.cFileName, "_bench.aks") != NULL ||
+                        strstr(ffd.cFileName, "Bench.aks") != NULL);
+        if (!is_bench) {
+            char *raw = ReadFileToStr(fullpath);
+            if (raw) {
+                if (strstr(raw, "bench_") != NULL) {
+                    is_bench = 1;
+                }
+                free(raw);
+            }
+        }
+
+        if (is_bench) {
+            printf("[BENCH SUITE] %s\n", ffd.cFileName);
+            total_suites++;
+            char cmd[1024];
+            snprintf(cmd, sizeof(cmd), "\"\"%s\" bench \"%s\"\"", exepath, fullpath);
+            int res = system(cmd);
+            if (res != 0) {
+                suite_failures++;
+            }
+            printf("\n");
+        }
+    } while (FindNextFileA(hfind, &ffd));
+    FindClose(hfind);
+
+    if (total_suites == 0) {
+        printf("No benchmark suites found in '%s'.\n", dirpath);
+    } else if (suite_failures == 0) {
+        printf("\033[32mALL %d BENCHMARK SUITES COMPLETED SUCCESSFULLY!\033[0m\n", total_suites);
+    } else {
+        printf("\033[31m%d OF %d BENCHMARK SUITES FAILED.\033[0m\n", suite_failures, total_suites);
+    }
+    return suite_failures == 0 ? 0 : 1;
 }
 
 static int ExecuteRunFuzz(const char *sourcepath) {
@@ -2398,11 +2459,31 @@ int main(int argc, char **argv) {
                 }
             }
             if (!file_path) {
+                DWORD attr = GetFileAttributesA("benches");
+                if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                    file_path = "benches";
+                }
+            }
+            if (!file_path) {
+                DWORD attr = GetFileAttributesA("bench");
+                if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                    file_path = "bench";
+                }
+            }
+            if (!file_path) {
                 file_path = GetPackageEntrypoint();
             }
             if (!file_path) {
-                fprintf(stderr, "Error: No target specified, and aks.json entrypoint could not be resolved.\n");
-                return 1;
+                DWORD attr = GetFileAttributesA("tests");
+                if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                    file_path = "tests";
+                } else {
+                    file_path = ".";
+                }
+            }
+            DWORD attr = GetFileAttributesA(file_path);
+            if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                return ExecuteRunBenchDir(file_path);
             }
             return ExecuteRunBench(file_path);
         } else if (strcmp(command, "fuzz") == 0) {

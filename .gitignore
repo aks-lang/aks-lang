@@ -30,6 +30,7 @@ test_trace_out*.txt
 verify_utf8.txt
 build_audit.txt
 build_out.txt
+AsyncIoDeepOutput.txt
 
 # Cache & Runtime generated residues
 .akscache/

@@ -1,0 +1,44 @@
+struct Sub {
+    x: int;
+}
+fn Sub.GetX(self) -> int {
+    return self.x;
+}
+fn Sub.Multiply(self, factor: int) -> int {
+    return self.x * factor;
+}
+
+struct Parent {
+    sub: Sub;
+}
+fn Parent.Test(self) -> int {
+    return self.sub.GetX();
+}
+fn Parent.Scale(self, factor: int) -> int {
+    return self.sub.Multiply(factor);
+}
+
+struct GrandParent {
+    parent: Parent;
+}
+fn GrandParent.DeepGet(self) -> int {
+    return self.parent.sub.GetX();
+}
+
+fn test_nested_method_calls() {
+    let p1 = Parent { sub: Sub { x: 42 } };
+    assert_eq(p1.Test(), 42);
+    assert_eq(p1.Scale(3), 126);
+
+    let s = new Sub();
+    s.x = 100;
+    let p2 = new Parent();
+    p2.sub = s;
+    assert_eq(p2.Test(), 100);
+    assert_eq(p2.Scale(5), 500);
+
+    let gp = GrandParent { parent: Parent { sub: Sub { x: 777 } } };
+    assert_eq(gp.DeepGet(), 777);
+}
+
+test_nested_method_calls();

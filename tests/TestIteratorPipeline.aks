@@ -1,0 +1,194 @@
+println("Test Suite: Comprehensive Iterator Pipeline and Result/Option Ergonomics");
+
+let stats = [0, 0];
+
+fn pass(name, st) {
+    println("  [PASS] " + name);
+    st[0] = st[0] + 1;
+}
+
+fn fail(name, extra, st) {
+    println("  [FAIL] " + name + " (" + extra + ")");
+    st[1] = st[1] + 1;
+}
+
+fn assert_eq(actual, expected, name, st) {
+    if (actual == expected) {
+        pass(name, st);
+    } else {
+        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+    }
+}
+
+println("\n1. Option and Result Top-level Constructors and Methods");
+
+let s = Some(42);
+assert_eq(s.IsSome(), true, "Some(42).IsSome() == true", stats);
+assert_eq(s.IsNone(), false, "Some(42).IsNone() == false", stats);
+assert_eq(s.Unwrap(), 42, "Some(42).Unwrap() == 42", stats);
+assert_eq(s.UnwrapOr(99), 42, "Some(42).UnwrapOr(99) == 42", stats);
+assert_eq(s.Expect("should not fail"), 42, "Some(42).Expect() == 42", stats);
+
+let n = None;
+assert_eq(n.IsSome(), false, "None.IsSome() == false", stats);
+assert_eq(n.IsNone(), true, "None.IsNone() == true", stats);
+assert_eq(n.UnwrapOr(99), 99, "None.UnwrapOr(99) == 99", stats);
+
+let ok_res = Ok("success");
+assert_eq(ok_res.IsOk(), true, "Ok('success').IsOk() == true", stats);
+assert_eq(ok_res.IsErr(), false, "Ok('success').IsErr() == false", stats);
+assert_eq(ok_res.Unwrap(), "success", "Ok('success').Unwrap() == 'success'", stats);
+assert_eq(ok_res.UnwrapOr("fallback"), "success", "Ok('success').UnwrapOr('fallback') == 'success'", stats);
+
+let err_res = Err("disk full");
+assert_eq(err_res.IsOk(), false, "Err('disk full').IsOk() == false", stats);
+assert_eq(err_res.IsErr(), true, "Err('disk full').IsErr() == true", stats);
+assert_eq(err_res.UnwrapOr("fallback"), "fallback", "Err('disk full').UnwrapOr('fallback') == 'fallback'", stats);
+
+let mapped_err = err_res.MapErr(fn(e) { return "IO: " + e; });
+assert_eq(mapped_err.IsErr(), true, "MapErr returns Err", stats);
+match (mapped_err) {
+    Result.Err(msg) => {
+        assert_eq(msg, "IO: disk full", "MapErr transforms message", stats);
+    },
+    Result.Ok(val) => {
+        fail("MapErr", "unexpected Ok", stats);
+    }
+}
+
+println("\n2. Try-Propagation (?) with Top-level Constructors");
+
+fn safe_div(a, b) {
+    if (b == 0) {
+        return Err("division by zero");
+    }
+    return Ok(a / b);
+}
+
+fn compute_flow(a, b, c) {
+    let q1 = safe_div(a, b)?;
+    let q2 = safe_div(q1, c)?;
+    return Ok(q2 + 10);
+}
+
+let flow_success = compute_flow(100, 2, 5);
+assert_eq(flow_success.IsOk(), true, "compute_flow(100, 2, 5).IsOk()", stats);
+assert_eq(flow_success.Unwrap(), 20, "compute_flow(100, 2, 5).Unwrap() == 20", stats);
+
+let flow_fail1 = compute_flow(100, 0, 5);
+assert_eq(flow_fail1.IsErr(), true, "compute_flow(100, 0, 5).IsErr()", stats);
+
+let flow_fail2 = compute_flow(100, 2, 0);
+assert_eq(flow_fail2.IsErr(), true, "compute_flow(100, 2, 0).IsErr()", stats);
+
+println("\n3. Lazy Pipeline: Skip, Take, Filter, Map");
+
+let raw_data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+let skipped_taken = lazy(raw_data)
+    .Skip(2)
+    .Take(5)
+    .Collect();
+
+assert_eq(Length(skipped_taken), 5, "Skip(2).Take(5) length == 5", stats);
+assert_eq(skipped_taken[0], 3, "skipped_taken[0] == 3", stats);
+assert_eq(skipped_taken[4], 7, "skipped_taken[4] == 7", stats);
+
+let filtered_mapped = lazy(raw_data)
+    .Filter(fn(x) { return x % 2 != 0; })
+    .Map(fn(x) { return x * 10; })
+    .Collect();
+
+assert_eq(Length(filtered_mapped), 5, "Filtered odds length == 5", stats);
+assert_eq(filtered_mapped[0], 10, "filtered_mapped[0] == 10 (1 * 10)", stats);
+assert_eq(filtered_mapped[1], 30, "filtered_mapped[1] == 30 (3 * 10)", stats);
+assert_eq(filtered_mapped[4], 90, "filtered_mapped[4] == 90 (9 * 10)", stats);
+
+println("\n4. Zip and Enumerate Pipelines");
+
+let letters = ["a", "b", "c"];
+let numbers = [10, 20, 30];
+
+let zipped = lazy(letters).Zip(numbers).Collect();
+assert_eq(Length(zipped), 3, "Zip length == 3", stats);
+assert_eq(zipped[0][0], "a", "zipped[0][0] == 'a'", stats);
+assert_eq(zipped[0][1], 10, "zipped[0][1] == 10", stats);
+assert_eq(zipped[2][0], "c", "zipped[2][0] == 'c'", stats);
+assert_eq(zipped[2][1], 30, "zipped[2][1] == 30", stats);
+
+let enumerated = lazy(["first", "second", "third"]).Enumerate().Collect();
+assert_eq(Length(enumerated), 3, "Enumerate length == 3", stats);
+assert_eq(enumerated[0][0], 0, "enumerated[0][0] == 0", stats);
+assert_eq(enumerated[0][1], "first", "enumerated[0][1] == 'first'", stats);
+assert_eq(enumerated[2][0], 2, "enumerated[2][0] == 2", stats);
+assert_eq(enumerated[2][1], "third", "enumerated[2][1] == 'third'", stats);
+
+println("\n5. Terminal Consumers");
+
+let sum_val = lazy([1, 2, 3, 4, 5]).Sum();
+assert_eq(sum_val, 15, "lazy([1..5]).Sum() == 15", stats);
+
+let count_val = lazy([10, 20, 30, 40]).Count();
+assert_eq(count_val, 4, "lazy([10..40]).Count() == 4", stats);
+
+let reduced = lazy([1, 2, 3, 4]).Reduce(100, fn(acc, x) { return acc + x; });
+assert_eq(reduced, 110, "lazy([1..4]).Reduce(100, +) == 110", stats);
+
+let has_even = lazy([1, 3, 5, 6, 7]).Any(fn(x) { return x % 2 == 0; });
+assert_eq(has_even, true, "lazy([1, 3, 5, 6, 7]).Any(is_even) == true", stats);
+
+let has_neg = lazy([1, 3, 5, 7]).Any(fn(x) { return x < 0; });
+assert_eq(has_neg, false, "lazy([1, 3, 5, 7]).Any(< 0) == false", stats);
+
+let all_positive = lazy([1, 2, 3, 4, 5]).All(fn(x) { return x > 0; });
+assert_eq(all_positive, true, "lazy([1..5]).All(> 0) == true", stats);
+
+let all_evens = lazy([2, 4, 5, 6]).All(fn(x) { return x % 2 == 0; });
+assert_eq(all_evens, false, "lazy([2, 4, 5, 6]).All(is_even) == false", stats);
+
+let found_item = lazy([10, 25, 30, 45]).Find(fn(x) { return x > 20; });
+assert_eq(found_item.IsSome(), true, "Find(> 20).IsSome() == true", stats);
+assert_eq(found_item.Unwrap(), 25, "Find(> 20).Unwrap() == 25", stats);
+
+let not_found = lazy([1, 2, 3]).Find(fn(x) { return x > 100; });
+assert_eq(not_found.IsNone(), true, "Find(> 100).IsNone() == true", stats);
+
+foreach_accum = [];
+lazy([100, 200, 300]).ForEach(fn(x) { append(foreach_accum, x * 2); });
+assert_eq(Length(foreach_accum), 3, "ForEach appended 3 items", stats);
+assert_eq(foreach_accum[0], 200, "foreach_accum[0] == 200", stats);
+assert_eq(foreach_accum[2], 600, "foreach_accum[2] == 600", stats);
+
+println("\n6. RangeIterator and Step");
+
+let r1 = range_iter(1, 6).Collect();
+assert_eq(Length(r1), 5, "range_iter(1, 6) length == 5", stats);
+assert_eq(r1[0], 1, "range_iter(1, 6)[0] == 1", stats);
+assert_eq(r1[4], 5, "range_iter(1, 6)[4] == 5", stats);
+
+let r2 = range_step(0, 10, 2).Collect();
+assert_eq(Length(r2), 5, "range_step(0, 10, 2) length == 5", stats);
+assert_eq(r2[0], 0, "r2[0] == 0", stats);
+assert_eq(r2[1], 2, "r2[1] == 2", stats);
+assert_eq(r2[4], 8, "r2[4] == 8", stats);
+
+let r3_sum = range_iter(1, 101).Sum();
+assert_eq(r3_sum, 5050, "range_iter(1, 101).Sum() == 5050", stats);
+
+println("\n7. ArrayIterator Direct Chaining");
+
+let direct_it = iter([1, 2, 3, 4, 5]);
+let direct_res = direct_it.Filter(fn(x) { return x > 2; }).Map(fn(x) { return x * 10; }).Collect();
+assert_eq(Length(direct_res), 3, "iter().Filter().Map().Collect() len == 3", stats);
+assert_eq(direct_res[0], 30, "direct_res[0] == 30", stats);
+assert_eq(direct_res[2], 50, "direct_res[2] == 50", stats);
+
+println("\nResults:");
+println("Passed: " + String(stats[0]));
+println("Failed: " + String(stats[1]));
+
+if (stats[1] == 0) {
+    println("All " + String(stats[0]) + " iterator pipeline and ergonomics tests passed successfully.");
+} else {
+    println("Test suite failed.");
+    exit(1);
+}

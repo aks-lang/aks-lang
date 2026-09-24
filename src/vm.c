@@ -1092,6 +1092,27 @@ static inline uint16_t FindTypeMethod(VM *vm, const char *typename, const char *
     }
   }
 
+  if (found == 65535) {
+    const char *dot = strchr(typename, '.');
+    if (dot) {
+      char basetype[128];
+      size_t baselen = (size_t)(dot - typename);
+      if (baselen < sizeof(basetype)) {
+        strncpy(basetype, typename, baselen);
+        basetype[baselen] = '\0';
+        char basefnname[256];
+        snprintf(basefnname, sizeof(basefnname), "%s.%s", basetype, methodname);
+        for (uint16_t k = 0; k < vm->fncount; k++) {
+          if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, basefnname) == 0) {
+            found = k;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+
   strncpy(entry->typename, typename, sizeof(entry->typename) - 1);
   entry->typename[sizeof(entry->typename) - 1] = '\0';
   strncpy(entry->methodname, methodname, sizeof(entry->methodname) - 1);

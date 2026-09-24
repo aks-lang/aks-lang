@@ -2705,6 +2705,17 @@ static void EmitExpr(Compiler *c, Node *n) {
                 }
                 ChunkWrite(ch,OPLOAD,n->line);
                 ChunkWriteU16(ch,(uint16_t)slot,n->line);
+            } else if (strcmp(n->sval, "None") == 0) {
+                int none_fnid = ResolveGlobal(c, "Option.None", n->line);
+                if (none_fnid >= 0 && c->fns[none_fnid]->paramcount == 0) {
+                    ChunkWrite(ch, OPCALL, n->line);
+                    ChunkWriteU16(ch, (uint16_t)none_fnid, n->line);
+                    ChunkWrite(ch, 0, n->line);
+                } else {
+                    ChunkWrite(ch,OPLOADGLOBAL,n->line);
+                    int gsid=AddStr(c,n->sval);
+                    ChunkWriteU16(ch,(uint16_t)gsid,n->line);
+                }
             } else {
                 int fnid=ResolveGlobal(c, n->sval, n->line);
                 if(fnid>=0){
@@ -3138,6 +3149,17 @@ static void EmitExpr(Compiler *c, Node *n) {
                         char fullname[512];
                         snprintf(fullname, sizeof(fullname), "%s.%s", tname, n->call.callee->member.field);
                         int fnid = ResolveGlobal(c, fullname, n->line);
+                        if (fnid < 0 && strchr(tname, '.')) {
+                            char basetname[128];
+                            const char *dot = strchr(tname, '.');
+                            size_t blen = (size_t)(dot - tname);
+                            if (blen < sizeof(basetname)) {
+                                strncpy(basetname, tname, blen);
+                                basetname[blen] = '\0';
+                                snprintf(fullname, sizeof(fullname), "%s.%s", basetname, n->call.callee->member.field);
+                                fnid = ResolveGlobal(c, fullname, n->line);
+                            }
+                        }
                         if (fnid >= 0) {
                             if (slot >= 0) {
                                 EmitExpr(c, n->call.callee->member.obj);
@@ -3167,6 +3189,19 @@ static void EmitExpr(Compiler *c, Node *n) {
                         ChunkWriteU16(ch,(uint16_t)slot,n->line);
                         ChunkWrite(ch,OPCALLDYNAMIC,n->line);
                         ChunkWrite(ch,(uint8_t)n->call.argc,n->line);
+                    } else if (strcmp(n->call.callee->sval, "None") == 0) {
+                        int fnid = ResolveGlobal(c, "Option.None", n->line);
+                        if (fnid >= 0) {
+                            ChunkWrite(ch, OPCALL, n->line);
+                            ChunkWriteU16(ch, (uint16_t)fnid, n->line);
+                            ChunkWrite(ch, (uint8_t)n->call.argc, n->line);
+                        } else {
+                            ChunkWrite(ch,OPLOADGLOBAL,n->line);
+                            int gsid=AddStr(c,n->call.callee->sval);
+                            ChunkWriteU16(ch,(uint16_t)gsid,n->line);
+                            ChunkWrite(ch,OPCALLDYNAMIC,n->line);
+                            ChunkWrite(ch,(uint8_t)n->call.argc,n->line);
+                        }
                     } else {
                         int fnid=ResolveGlobal(c, n->call.callee->sval, n->line);
                         if(fnid >= 0){
