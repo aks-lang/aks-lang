@@ -6970,6 +6970,7 @@ static const FastBuiltinEntry g_fast_builtins[] = {
   {"SquareRoot", FastBuiltin_SquareRoot},
   {"Absolute", FastBuiltin_Absolute},
   {"String", FastBuiltin_String},
+  {"str", FastBuiltin_String},
   {"clock", FastBuiltin_clock},
   {"sin", FastBuiltin_sin},
   {"cos", FastBuiltin_cos},

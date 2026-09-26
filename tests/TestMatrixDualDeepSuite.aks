@@ -16,49 +16,100 @@ fn assert_eq(actual, expected, name, st) {
     if (actual == expected) {
         pass(name, st);
     } else {
-        fail(name, "expected " + String(expected) + ", got " + String(actual), st);
+        fail(name, "expected " + str(expected) + ", got " + str(actual), st);
     }
 }
 
-// Matrix Subsystem (Matrix_new, Matrix_from, get, set)
+// 1. Matrix Subsystem (Matrix_new, Matrix_from, get, set, mul, transpose)
 println("\n1. Matrix Subsystem");
 
-let m = MatrixFrom(2, 2, [1.0, 2.0, 3.0, 4.0]);
+let m = Matrix_from(2, 2, [1.0, 2.0, 3.0, 4.0]);
+assert_eq(m.get(0, 0), 1.0, "Matrix m.get(0, 0) == 1.0", stats);
+assert_eq(m.get(1, 1), 4.0, "Matrix m.get(1, 1) == 4.0", stats);
 
-assert_eq(m.Get(0, 0), 1.0, "Matrix m.get(0, 0) == 1.0", stats);
-assert_eq(m.Get(1, 1), 4.0, "Matrix m.get(1, 1) == 4.0", stats);
+m.set(0, 1, 9.0);
+assert_eq(m.get(0, 1), 9.0, "Matrix m.set(0, 1, 9.0) updated cell", stats);
 
-m.Set(0, 1, 9.0);
-assert_eq(m.Get(0, 1), 9.0, "Matrix m.set(0, 1, 9.0) updated cell", stats);
+let m2 = Matrix_new(2, 2);
+assert_eq(m2.get(0, 0), 0.0, "Matrix_new(2, 2) initialized cell == 0.0", stats);
 
-let m2 = MatrixNew(2, 2);
-assert_eq(m2.Get(0, 0), 0.0, "Matrix_new(2, 2) initialized cell == 0.0", stats);
+let m3 = Matrix_from(2, 2, [2.0, 0.0, 0.0, 2.0]);
+let m_prod = m.mul(m3);
+assert_eq(m_prod.get(0, 0), 2.0, "Matrix m.mul(m3) cell (0, 0) == 2.0", stats);
 
-// Dual Numbers & Automatic Differentiation (Dual_new, add, mul, dual_sin)
+let m_trans = m.transpose();
+assert_eq(m_trans.get(1, 0), 9.0, "Matrix m.transpose() cell (1, 0) == 9.0", stats);
+
+// 2. Dual Numbers & Automatic Differentiation (Dual_new, add, mul, dual_sin, dual_cos)
 println("\n2. Dual Numbers & Auto-diff");
 
 // Dual number representing x = 3.0 with derivative dx = 1.0
-let x = DualNew(3.0, 1.0);
-let y = DualNew(2.0, 0.0);
+let x = Dual_new(3.0, 1.0);
+let y = Dual_new(2.0, 0.0);
 
-let sum_dual = x.Add(y);
+let sum_dual = x.add(y);
 assert_eq(sum_dual.val, 5.0, "Dual x + y value == 5.0", stats);
 assert_eq(sum_dual.deriv, 1.0, "Dual x + y derivative == 1.0", stats);
 
-let mul_dual = x.Mul(y);
+let mul_dual = x.mul(y);
 assert_eq(mul_dual.val, 6.0, "Dual x * y value == 6.0", stats);
 assert_eq(mul_dual.deriv, 2.0, "Dual x * y derivative == 2.0", stats);
 
-let sin_dual = DualSin(x);
+let sub_dual = x.sub(y);
+assert_eq(sub_dual.val, 1.0, "Dual x - y value == 1.0", stats);
+assert_eq(sub_dual.deriv, 1.0, "Dual x - y derivative == 1.0", stats);
+
+let div_dual = x.div(y);
+assert_eq(div_dual.val, 1.5, "Dual x / y value == 1.5", stats);
+assert_eq(div_dual.deriv, 0.5, "Dual x / y derivative == 0.5", stats);
+
+let sin_dual = dual_sin(x);
 assert_eq(sin_dual.val, sin(3.0), "dual_sin(x) value == sin(3.0)", stats);
 assert_eq(sin_dual.deriv, cos(3.0), "dual_sin(x) derivative == cos(3.0)", stats);
 
-println("Passed: " + String(stats[0]));
-println("Failed: " + String(stats[1]));
+let cos_dual = dual_cos(x);
+assert_eq(cos_dual.val, cos(3.0), "dual_cos(x) value == cos(3.0)", stats);
+assert_eq(cos_dual.deriv, -sin(3.0), "dual_cos(x) derivative == -sin(3.0)", stats);
+
+// Scalar arithmetic on Dual numbers
+let scalar_add = x.add(4.0);
+assert_eq(scalar_add.val, 7.0, "Dual x.add(4.0) value == 7.0", stats);
+assert_eq(scalar_add.deriv, 1.0, "Dual x.add(4.0) deriv == 1.0", stats);
+
+let scalar_mul = x.mul(5.0);
+assert_eq(scalar_mul.val, 15.0, "Dual x.mul(5.0) value == 15.0", stats);
+assert_eq(scalar_mul.deriv, 5.0, "Dual x.mul(5.0) deriv == 5.0", stats);
+
+println("Passed: " + str(stats[0]));
+println("Failed: " + str(stats[1]));
 
 if (stats[1] == 0) {
-    println("All " + String(stats[0]) + " matrix & dual subsystem tests passed successfully.");
+    println("All " + str(stats[0]) + " matrix & dual subsystem tests passed successfully.");
 } else {
     println("Test suite failed.");
     exit(1);
+}
+
+fn test_matrix_and_dual() {
+    let tm = Matrix_from(2, 2, [1.0, 2.0, 3.0, 4.0]);
+    assert(tm.get(0, 0) == 1.0, "tm.get(0, 0) == 1.0");
+    assert(tm.get(1, 1) == 4.0, "tm.get(1, 1) == 4.0");
+    tm.set(0, 1, 9.0);
+    assert(tm.get(0, 1) == 9.0, "tm.set(0, 1, 9.0)");
+    let tm2 = Matrix_new(2, 2);
+    assert(tm2.get(0, 0) == 0.0, "tm2.get(0, 0) == 0.0");
+
+    let tx = Dual_new(3.0, 1.0);
+    let ty = Dual_new(2.0, 0.0);
+    let tsum = tx.add(ty);
+    assert(tsum.val == 5.0, "tsum.val == 5.0");
+    assert(tsum.deriv == 1.0, "tsum.deriv == 1.0");
+
+    let tmul = tx.mul(ty);
+    assert(tmul.val == 6.0, "tmul.val == 6.0");
+    assert(tmul.deriv == 2.0, "tmul.deriv == 2.0");
+
+    let tsin = dual_sin(tx);
+    assert(Absolute(tsin.val - sin(3.0)) < 0.0001, "tsin.val == sin(3.0)");
+    assert(Absolute(tsin.deriv - cos(3.0)) < 0.0001, "tsin.deriv == cos(3.0)");
 }

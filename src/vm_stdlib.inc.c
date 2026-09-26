@@ -546,9 +546,9 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
         ValFree(&arg);
         *stacktopptr = stacktop;
         return 1;
-      } else if (strcmp(name, "String") == 0) {
+      } else if (strcmp(name, "String") == 0 || strcmp(name, "str") == 0) {
         if (argc != 1) {
-          fprintf(stderr, "Runtime error: String() expects 1 argument, got %d\n", argc);
+          fprintf(stderr, "Runtime error: %s() expects 1 argument, got %d\n", name, argc);
           return -1;
         }
         AKSValue arg = POP();
@@ -17498,10 +17498,10 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
-  if (strcmp(name, "String") == 0) {
+  if (strcmp(name, "String") == 0 || strcmp(name, "str") == 0) {
     if (argc != 1) {
-      fprintf(stderr, "Runtime error: String() expects 1 argument, got %d\n",
-              argc);
+      fprintf(stderr, "Runtime error: %s() expects 1 argument, got %d\n",
+              name, argc);
       return -1;
     }
     AKSValue arg = POP();

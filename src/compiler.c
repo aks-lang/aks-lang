@@ -7061,6 +7061,7 @@ Compiler *CompNew(void) {
     NewFn(c, "cause");
     NewFn(c, "Absolute");
     NewFn(c, "String");
+    NewFn(c, "str");
     NewFn(c, "append");
     NewFn(c, "Power");
     NewFn(c, "sin");

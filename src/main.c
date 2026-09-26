@@ -1156,7 +1156,6 @@ static int ExecuteRunTestsDir(const char *dirpath, int coverage) {
             if (strstr(ffd.cFileName, "Input") != NULL) continue;
             if (strcmp(ffd.cFileName, "TestStaticRecursion.aks") == 0) continue;
             if (strcmp(ffd.cFileName, "TestVisibilityEnforce.aks") == 0) continue;
-            if (strcmp(ffd.cFileName, "TestFastHashByteAt.aks") == 0) continue;
             
             char fullpath[512];
             snprintf(fullpath, sizeof(fullpath), "%s\\%s", dirpath, ffd.cFileName);
