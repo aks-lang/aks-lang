@@ -1,0 +1,51 @@
+struct Resource {
+    id: int;
+}
+
+let g_drop_count = 0;
+let g_last_dropped = 0;
+let g_drop_history = [];
+
+fn Resource.drop(self) {
+    g_drop_count = g_drop_count + 1;
+    g_last_dropped = self.id;
+    append(g_drop_history, self.id);
+}
+
+fn helper_scope() {
+    let r1 = Resource { id: 101 };
+    let r2 = Resource { id: 202 };
+}
+
+fn helper_early_return(cond: bool) -> int {
+    let r1 = Resource { id: 301 };
+    if (cond) {
+        let r2 = Resource { id: 302 };
+        return 999;
+    }
+    let r3 = Resource { id: 303 };
+    return 1000;
+}
+
+fn test_drop_trait() {
+    g_drop_count = 0;
+    g_last_dropped = 0;
+    g_drop_history = [];
+
+    // Test 1: Normal scope exit (LIFO order: 202 then 101)
+    helper_scope();
+    assert_eq(g_drop_count, 2);
+    assert_eq(g_drop_history[0], 202);
+    assert_eq(g_drop_history[1], 101);
+
+    // Test 2: Early return unwinds enclosing scopes in LIFO order
+    let res = helper_early_return(true);
+    assert_eq(res, 999);
+    assert_eq(g_drop_count, 4);
+    assert_eq(g_drop_history[2], 302);
+    assert_eq(g_drop_history[3], 301);
+
+    print("All Drop trait tests passed successfully!\n");
+}
+
+test_drop_trait();

@@ -3009,6 +3009,21 @@ parse_use:;
     if (en) en->enumdecl.visibility = visibility;
     return en;
   }
+  case TDEFER: {
+    int line = p->cur.line;
+    int col = p->cur.col;
+    Token kw = Consume(p);
+    TokFree(&kw);
+    Node *stmt = NULL;
+    if (Check(p, TLBRACE)) {
+      stmt = ParseBlock(p);
+    } else {
+      stmt = ParseStmt(p);
+    }
+    Node *n = NodeNew(NDEFER, line);
+    n->single.expr = stmt;
+    return n;
+  }
   case TRETURN: {
     int line = p->cur.line;
     Token kw = Consume(p);

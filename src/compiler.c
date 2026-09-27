@@ -998,6 +998,7 @@ static int AddLocal(Compiler *c, const char *name, int isconst) {
     FnProto *fn=c->current;
     if(fn->localcount>=MAXLOCALS){ Error(c,0,"Too many locals"); return -1; }
     Local *l=&fn->locals[fn->localcount];
+    memset(l, 0, sizeof(Local));
     strncpy(l->name,name,127);
     l->slot=fn->localcount;
     l->depth=fn->scopedepth;
@@ -1300,6 +1301,15 @@ static int ResolveGlobal(Compiler *c, const char *name, int line) {
     return -1;
 }
 
+static int ResolveDropFn(Compiler *c, const char *typename) {
+    if (!typename || !typename[0]) return -1;
+    char dropname[256];
+    snprintf(dropname, sizeof(dropname), "%s.drop", typename);
+    int fnid = ResolveGlobal(c, dropname, 0);
+    if (fnid >= 0) return fnid;
+    snprintf(dropname, sizeof(dropname), "%s.Drop", typename);
+    return ResolveGlobal(c, dropname, 0);
+}
 
 static FnProto *NewFn(Compiler *c, const char *name) {
     if(c->fncount>=MAXFNS){ Error(c,0,"Too many functions"); return NULL; }
@@ -2820,12 +2830,10 @@ static void EmitExpr(Compiler *c, Node *n) {
             ChunkWrite(ch, OPLOAD, n->line);
             ChunkWriteU16(ch, (uint16_t)slot, n->line);
             for (int d = c->current->scopedepth; d >= 0; d--) {
-                for (int i = 0; i < c->current->localcount; i++) {
+                for (int i = c->current->localcount - 1; i >= 0; i--) {
                     Local *l = &c->current->locals[i];
                     if (l->depth == d && !l->ismoved) {
-                        char dropname[256];
-                        snprintf(dropname, sizeof(dropname), "%s.drop", l->typename);
-                        int fnid = ResolveGlobal(c, dropname, 0);
+                        int fnid = ResolveDropFn(c, l->typename);
                         if (fnid >= 0) {
                             ChunkWrite(ch, OPLOAD, n->line);
                             ChunkWriteU16(ch, (uint16_t)l->slot, n->line);
@@ -5545,13 +5553,28 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                     EmitRefCheck(c, c->current->rettype, n->line, n->single.expr);
                 }
 
+                if (c->current->defer_count > 0) {
+                    int ret_slot = c->current->localcount;
+                    c->current->locals[ret_slot].slot = ret_slot;
+                    snprintf(c->current->locals[ret_slot].name, 64, "$ret_def_%d", n->line);
+                    c->current->locals[ret_slot].depth = c->current->scopedepth;
+                    c->current->localcount++;
+                    ChunkWrite(ch, OPSTORE, n->line);
+                    ChunkWriteU16(ch, (uint16_t)ret_slot, n->line);
+
+                    for (int i = c->current->defer_count - 1; i >= 0; i--) {
+                        EmitNode(c, c->current->defers[i]);
+                    }
+
+                    ChunkWrite(ch, OPLOAD, n->line);
+                    ChunkWriteU16(ch, (uint16_t)ret_slot, n->line);
+                }
+
                 for (int d = c->current->scopedepth; d >= 0; d--) {
-                    for (int i = 0; i < c->current->localcount; i++) {
+                    for (int i = c->current->localcount - 1; i >= 0; i--) {
                         Local *l = &c->current->locals[i];
                         if (l->depth == d && !l->ismoved) {
-                            char dropname[256];
-                            snprintf(dropname, sizeof(dropname), "%s.drop", l->typename);
-                            int fnid = ResolveGlobal(c, dropname, 0);
+                            int fnid = ResolveDropFn(c, l->typename);
                             if (fnid >= 0) {
                                 ChunkWrite(ch, OPLOAD, n->line);
                                 ChunkWriteU16(ch, (uint16_t)l->slot, n->line);
@@ -5559,6 +5582,7 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                                 ChunkWriteU16(ch, (uint16_t)fnid, n->line);
                                 ChunkWrite(ch, 1, n->line);
                                 ChunkWrite(ch, OPPOP, n->line);
+                                l->ismoved = 1;
                             }
                         }
                     }
@@ -5566,13 +5590,15 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
 
                 ChunkWrite(ch,OPRETURNVAL,n->line);
             } else {
+                for (int i = c->current->defer_count - 1; i >= 0; i--) {
+                    EmitNode(c, c->current->defers[i]);
+                }
+
                 for (int d = c->current->scopedepth; d >= 0; d--) {
-                    for (int i = 0; i < c->current->localcount; i++) {
+                    for (int i = c->current->localcount - 1; i >= 0; i--) {
                         Local *l = &c->current->locals[i];
                         if (l->depth == d && !l->ismoved) {
-                            char dropname[256];
-                            snprintf(dropname, sizeof(dropname), "%s.drop", l->typename);
-                            int fnid = ResolveGlobal(c, dropname, 0);
+                            int fnid = ResolveDropFn(c, l->typename);
                             if (fnid >= 0) {
                                 ChunkWrite(ch, OPLOAD, n->line);
                                 ChunkWriteU16(ch, (uint16_t)l->slot, n->line);
@@ -5580,6 +5606,7 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                                 ChunkWriteU16(ch, (uint16_t)fnid, n->line);
                                 ChunkWrite(ch, 1, n->line);
                                 ChunkWrite(ch, OPPOP, n->line);
+                                l->ismoved = 1;
                             }
                         }
                     }
@@ -5602,12 +5629,14 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
         case NBLOCK: {
             c->current->scopedepth++;
             for(int i=0;i<n->block.count;i++) EmitNode(c,n->block.stmts[i]);
-            for (int i = 0; i < c->current->localcount; i++) {
+            while (c->current->defer_count > 0 && c->current->defer_depths[c->current->defer_count - 1] == c->current->scopedepth) {
+                c->current->defer_count--;
+                EmitNode(c, c->current->defers[c->current->defer_count]);
+            }
+            for (int i = c->current->localcount - 1; i >= 0; i--) {
                 Local *l = &c->current->locals[i];
                 if (l->depth == c->current->scopedepth && !l->ismoved) {
-                    char dropname[256];
-                    snprintf(dropname, sizeof(dropname), "%s.drop", l->typename);
-                    int fnid = ResolveGlobal(c, dropname, 0);
+                    int fnid = ResolveDropFn(c, l->typename);
                     if (fnid >= 0) {
                         ChunkWrite(ch, OPLOAD, n->line);
                         ChunkWriteU16(ch, (uint16_t)l->slot, n->line);
@@ -5615,14 +5644,24 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                         ChunkWriteU16(ch, (uint16_t)fnid, n->line);
                         ChunkWrite(ch, 1, n->line);
                         ChunkWrite(ch, OPPOP, n->line);
+                        l->ismoved = 1;
                     } else if (c->is_static_mode) {
                         ChunkWrite(ch, OPLOAD, n->line);
                         ChunkWriteU16(ch, (uint16_t)l->slot, n->line);
                         ChunkWrite(ch, OP_STATIC_RELEASE, n->line);
+                        l->ismoved = 1;
                     }
                 }
             }
             c->current->scopedepth--;
+            break;
+        }
+        case NDEFER: {
+            if (c->current && c->current->defer_count < 64) {
+                c->current->defers[c->current->defer_count] = n->single.expr;
+                c->current->defer_depths[c->current->defer_count] = c->current->scopedepth;
+                c->current->defer_count++;
+            }
             break;
         }
         case NMACRODECL: {
@@ -5805,6 +5844,10 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                     snprintf(err_msg, sizeof(err_msg), "PostconditionViolated: %s failed", n->fn.name ? n->fn.name : "fn");
                     CompileContractCheck(c, n->fn.ensures[i], err_msg, n->line);
                 }
+            }
+            while (fn->defer_count > 0) {
+                fn->defer_count--;
+                EmitNode(c, fn->defers[fn->defer_count]);
             }
             // make sure we always return
             ChunkWrite(&fn->chunk,OPRETURN,n->line);
@@ -7313,6 +7356,8 @@ Compiler *CompNew(void) {
     NewFn(c, "ActorSend");
     NewFn(c, "cancel");
     NewFn(c, "IsCancelled");
+    NewFn(c, "TaskCancel");
+    NewFn(c, "TaskIsCancelled");
     NewFn(c, "CurrentTask");
 
     // metaprogramming and Reflection Builtins
@@ -7385,6 +7430,8 @@ Compiler *CompNew(void) {
     NewFn(c, "MMapOpen");
     NewFn(c, "MMapRead");
     NewFn(c, "MMapWrite");
+    NewFn(c, "MMapReadByte");
+    NewFn(c, "MMapWriteByte");
     NewFn(c, "MMapFlush");
     NewFn(c, "MMapClose");
 
@@ -10864,6 +10911,10 @@ int CompCompile(Compiler *c, Node *program) {
     program = NodeDceOpt(program);
     NodeEscapeAnalysis(program);
     EmitNode(c,program);
+    while (c->fns[0]->defer_count > 0) {
+        c->fns[0]->defer_count--;
+        EmitNode(c, c->fns[0]->defers[c->fns[0]->defer_count]);
+    }
     CompilerParallelOptimizeBytecode(c);
     ChunkWrite(&c->fns[0]->chunk, OPHALT, 0);
     return !c->haderror;

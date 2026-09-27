@@ -976,6 +976,64 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     return 1;
   }
 
+  if (strcmp(name, "MMapReadByte") == 0) {
+    if (argc != 2) {
+      fprintf(stderr, "Runtime error: MMapReadByte() expects 2 arguments (handle, offset)\n");
+      return -1;
+    }
+    AKSValue off_val = POP();
+    AKSValue h_val = POP();
+    int64_t offset = ValToInt(off_val);
+    void *pBuf = NULL;
+    int64_t max_size = 0;
+    if (ValKind(h_val) == VALSTRUCT) {
+      AKSStruct *s = ValToObj(h_val);
+      for (int i = 0; i < s->fieldcount; i++) {
+        if (strcmp(s->fieldnames[i], "ptr") == 0) pBuf = (void *)(uintptr_t)ValToInt(s->fieldvals[i]);
+        if (strcmp(s->fieldnames[i], "size") == 0) max_size = ValToInt(s->fieldvals[i]);
+      }
+    }
+    int byte_val = 0;
+    if (pBuf && offset >= 0 && offset < max_size) {
+      byte_val = (int)((unsigned char *)pBuf)[offset];
+    }
+    ValFree(&h_val);
+    ValFree(&off_val);
+    PUSH(ValInt(byte_val));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
+  if (strcmp(name, "MMapWriteByte") == 0) {
+    if (argc != 3) {
+      fprintf(stderr, "Runtime error: MMapWriteByte() expects 3 arguments (handle, offset, byte_val)\n");
+      return -1;
+    }
+    AKSValue b_val = POP();
+    AKSValue off_val = POP();
+    AKSValue h_val = POP();
+    int64_t offset = ValToInt(off_val);
+    int64_t byte_val = ValToInt(b_val);
+    void *pBuf = NULL;
+    int64_t max_size = 0;
+    if (ValKind(h_val) == VALSTRUCT) {
+      AKSStruct *s = ValToObj(h_val);
+      for (int i = 0; i < s->fieldcount; i++) {
+        if (strcmp(s->fieldnames[i], "ptr") == 0) pBuf = (void *)(uintptr_t)ValToInt(s->fieldvals[i]);
+        if (strcmp(s->fieldnames[i], "size") == 0) max_size = ValToInt(s->fieldvals[i]);
+      }
+    }
+    if (pBuf && offset >= 0 && offset < max_size) {
+      ((unsigned char *)pBuf)[offset] = (unsigned char)byte_val;
+    }
+    ValFree(&h_val);
+    ValFree(&off_val);
+    ValFree(&b_val);
+    PUSH(ValInt(1));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+
   if (strcmp(name, "MMapFlush") == 0) {
     if (argc != 1 && argc != 3) {
       fprintf(stderr, "Runtime error: MMapFlush() expects 1 or 3 arguments\n");
@@ -16180,7 +16238,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
-  if (strcmp(name, "cancel") == 0) {
+  if (strcmp(name, "cancel") == 0 || strcmp(name, "TaskCancel") == 0) {
     if (argc != 1) {
       fprintf(stderr, "Runtime error: cancel() expects 1 argument, got %d\n",
               argc);
@@ -16199,7 +16257,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
-  if (strcmp(name, "IsCancelled") == 0) {
+  if (strcmp(name, "IsCancelled") == 0 || strcmp(name, "TaskIsCancelled") == 0) {
     if (argc != 1) {
       fprintf(stderr,
               "Runtime error: IsCancelled() expects 1 argument, got %d\n",

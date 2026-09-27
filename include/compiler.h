@@ -143,6 +143,9 @@ typedef struct {
     char file_name[256];
     int is_lazy_stub;   /* 1 = fn declared but body not yet compiled */
     int (*fast_handler)(void *vm, void *task, int argc, void *stacktopptr);
+    struct Node *defers[64];
+    int defer_depths[64];
+    int defer_count;
 } FnProto;
 
 typedef struct {

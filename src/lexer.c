@@ -89,6 +89,7 @@ static TType KeyWord(const char *s) {
             if (!strcmp(s, "match")) return TMATCH;
             if (!strcmp(s, "where")) return TWHERE;
             if (!strcmp(s, "actor")) return TACTOR;
+            if (!strcmp(s, "defer")) return TDEFER;
             break;
         case 6:
             if (!strcmp(s, "return")) return TRETURN;
@@ -582,6 +583,7 @@ const char *ToktypeName(TType t) {
         case TRESUME: return "resume";
         case TGPU: return "gpu";
         case TATOMIC: return "atomic";
+        case TDEFER: return "defer";
         default: return "?";
     }
 }

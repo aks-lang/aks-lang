@@ -1,0 +1,54 @@
+let g_defer_log = [];
+
+fn helper_defer_order() {
+    defer append(g_defer_log, "third");
+    defer append(g_defer_log, "second");
+    defer append(g_defer_log, "first");
+    append(g_defer_log, "body");
+}
+
+fn helper_defer_return(x: int) -> int {
+    defer append(g_defer_log, "cleanup");
+    if (x > 10) {
+        return x * 2;
+    }
+    return x;
+}
+
+fn helper_defer_block() {
+    defer {
+        append(g_defer_log, "block_1");
+        append(g_defer_log, "block_2");
+    }
+    append(g_defer_log, "work");
+}
+
+fn test_defer() {
+    // Test 1: Defer execution order (LIFO after body)
+    g_defer_log = [];
+    helper_defer_order();
+    assert_eq(Length(g_defer_log), 4);
+    assert_eq(g_defer_log[0], "body");
+    assert_eq(g_defer_log[1], "first");
+    assert_eq(g_defer_log[2], "second");
+    assert_eq(g_defer_log[3], "third");
+
+    // Test 2: Defer on early return
+    g_defer_log = [];
+    let r = helper_defer_return(25);
+    assert_eq(r, 50);
+    assert_eq(Length(g_defer_log), 1);
+    assert_eq(g_defer_log[0], "cleanup");
+
+    // Test 3: Defer block
+    g_defer_log = [];
+    helper_defer_block();
+    assert_eq(Length(g_defer_log), 3);
+    assert_eq(g_defer_log[0], "work");
+    assert_eq(g_defer_log[1], "block_1");
+    assert_eq(g_defer_log[2], "block_2");
+
+    print("All defer tests passed successfully!\n");
+}
+
+test_defer();
