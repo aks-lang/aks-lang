@@ -2829,6 +2829,12 @@ static void EmitExpr(Compiler *c, Node *n) {
             ChunkWrite(ch, OPPOP, n->line);
             ChunkWrite(ch, OPLOAD, n->line);
             ChunkWriteU16(ch, (uint16_t)slot, n->line);
+            for (int i = c->current->errdefer_count - 1; i >= 0; i--) {
+                EmitNode(c, c->current->errdefers[i]);
+            }
+            for (int i = c->current->defer_count - 1; i >= 0; i--) {
+                EmitNode(c, c->current->defers[i]);
+            }
             for (int d = c->current->scopedepth; d >= 0; d--) {
                 for (int i = c->current->localcount - 1; i >= 0; i--) {
                     Local *l = &c->current->locals[i];
@@ -5486,7 +5492,7 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                 }
             }
 
-            if(n->single.expr && n->single.expr->type == NCALL && !strchr(c->current->rettype, '{')) {
+            if(n->single.expr && n->single.expr->type == NCALL && !strchr(c->current->rettype, '{') && c->current->defer_count == 0 && c->current->errdefer_count == 0) {
                 Node *call = n->single.expr;
                 for(int i=0; i<call->call.argc; i++) EmitExpr(c, call->call.args[i]);
                 
@@ -5553,7 +5559,8 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                     EmitRefCheck(c, c->current->rettype, n->line, n->single.expr);
                 }
 
-                if (c->current->defer_count > 0) {
+                int has_defer = (c->current->defer_count > 0 || c->current->errdefer_count > 0);
+                if (has_defer) {
                     int ret_slot = c->current->localcount;
                     c->current->locals[ret_slot].slot = ret_slot;
                     snprintf(c->current->locals[ret_slot].name, 64, "$ret_def_%d", n->line);
@@ -5561,6 +5568,17 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                     c->current->localcount++;
                     ChunkWrite(ch, OPSTORE, n->line);
                     ChunkWriteU16(ch, (uint16_t)ret_slot, n->line);
+
+                    if (c->current->errdefer_count > 0) {
+                        ChunkWrite(ch, OPLOAD, n->line);
+                        ChunkWriteU16(ch, (uint16_t)ret_slot, n->line);
+                        ChunkWrite(ch, OPISERR, n->line);
+                        int skip_err = ChunkEmitJump(ch, OPJUMPIFFALSE, n->line);
+                        for (int i = c->current->errdefer_count - 1; i >= 0; i--) {
+                            EmitNode(c, c->current->errdefers[i]);
+                        }
+                        ChunkPatchJump(ch, skip_err);
+                    }
 
                     for (int i = c->current->defer_count - 1; i >= 0; i--) {
                         EmitNode(c, c->current->defers[i]);
@@ -5653,6 +5671,9 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                     }
                 }
             }
+            while (c->current->errdefer_count > 0 && c->current->errdefer_depths[c->current->errdefer_count - 1] == c->current->scopedepth) {
+                c->current->errdefer_count--;
+            }
             c->current->scopedepth--;
             break;
         }
@@ -5661,6 +5682,14 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                 c->current->defers[c->current->defer_count] = n->single.expr;
                 c->current->defer_depths[c->current->defer_count] = c->current->scopedepth;
                 c->current->defer_count++;
+            }
+            break;
+        }
+        case NERRDEFER: {
+            if (c->current && c->current->errdefer_count < 64) {
+                c->current->errdefers[c->current->errdefer_count] = n->single.expr;
+                c->current->errdefer_depths[c->current->errdefer_count] = c->current->scopedepth;
+                c->current->errdefer_count++;
             }
             break;
         }
@@ -5845,6 +5874,7 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                     CompileContractCheck(c, n->fn.ensures[i], err_msg, n->line);
                 }
             }
+            fn->errdefer_count = 0;
             while (fn->defer_count > 0) {
                 fn->defer_count--;
                 EmitNode(c, fn->defers[fn->defer_count]);
@@ -6956,6 +6986,14 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             break;
         }
         case NTHROW: {
+            if (c->current) {
+                for (int i = c->current->errdefer_count - 1; i >= 0; i--) {
+                    EmitNode(c, c->current->errdefers[i]);
+                }
+                for (int i = c->current->defer_count - 1; i >= 0; i--) {
+                    EmitNode(c, c->current->defers[i]);
+                }
+            }
             EmitExpr(c, n->throwstmt.expr);
             ChunkWrite(ch, OPTHROW, n->line);
             break;

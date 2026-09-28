@@ -1,0 +1,53 @@
+let g_log = [];
+
+fn op_fail_result() -> Result {
+    defer append(g_log, "defer_always");
+    errdefer append(g_log, "errdefer_rollback");
+    return Err("something went wrong");
+}
+
+fn op_success_result() -> Result {
+    defer append(g_log, "defer_always");
+    errdefer append(g_log, "errdefer_rollback");
+    return Ok(100);
+}
+
+fn op_throw_exception() {
+    defer append(g_log, "defer_always");
+    errdefer append(g_log, "errdefer_rollback");
+    throw "critical failure";
+}
+
+fn test_errdefer() {
+    // Test 1: Returning Err triggers errdefer and defer
+    g_log = [];
+    let r1 = op_fail_result();
+    assert_eq(r1.IsErr(), true);
+    assert_eq(Length(g_log), 2);
+    assert_eq(g_log[0], "errdefer_rollback");
+    assert_eq(g_log[1], "defer_always");
+
+    // Test 2: Returning Ok skips errdefer and only runs defer
+    g_log = [];
+    let r2 = op_success_result();
+    assert_eq(r2.IsOk(), true);
+    assert_eq(Length(g_log), 1);
+    assert_eq(g_log[0], "defer_always");
+
+    // Test 3: Throwing exception triggers errdefer and defer
+    g_log = [];
+    let caught = false;
+    try {
+        op_throw_exception();
+    } catch (e) {
+        caught = true;
+    }
+    assert_eq(caught, true);
+    assert_eq(Length(g_log), 2);
+    assert_eq(g_log[0], "errdefer_rollback");
+    assert_eq(g_log[1], "defer_always");
+
+    print("All errdefer tests passed successfully!\n");
+}
+
+test_errdefer();

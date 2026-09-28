@@ -68,6 +68,7 @@ typedef enum {
     NGPUFN,      /* gpu compute kernel: gpu fn Name(args) { ... } */
     NATOMIC,     /* atomic transactional block: atomic { ... } */
     NDEFER,      /* defer statement: defer stmt */
+    NERRDEFER,   /* errdefer statement: errdefer stmt */
     /* Static mode node types  */
     NADT_VARIANT,   /* ADT tagged-union variant access (compile-time discriminant) */
     NUNSAFE,        /* unsafe { ... } block  -  suspends borrow checker */

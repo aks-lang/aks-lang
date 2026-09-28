@@ -13490,6 +13490,27 @@ enter_stack_interpreter: for (;;) {
     vm->static_rc_eliminated++;
     break;
   }
+  case OPISERR: {
+    AKSValue v = POP();
+    int is_err = 0;
+    if (ValKind(v) == VALSTRUCT) {
+      AKSStruct *st = ValToObj(v);
+      for (int i = 0; i < st->fieldcount; i++) {
+        if (strcmp(st->fieldnames[i], "$tag") == 0) {
+          if (ValKind(st->fieldvals[i]) == VALSTR) {
+            AKSString *str = ValToStrPtr(st->fieldvals[i]);
+            if (str && str->data && strcmp(str->data, "Result.Err") == 0) {
+              is_err = 1;
+            }
+          }
+          break;
+        }
+      }
+    }
+    ValFree(&v);
+    PUSH(ValBool(is_err));
+    break;
+  }
   default:
     fprintf(stderr,
             "Runtime error: unknown opcode: %d at PC: %d inside function: %s\n",
@@ -14021,6 +14042,8 @@ const char *StackOpName(int op) {
     return "OPCASTSTR";
   case OP_STATIC_RELEASE:
     return "OP_STATIC_RELEASE";
+  case OPISERR:
+    return "OPISERR";
   default:
     return "UNKNOWN";
   }

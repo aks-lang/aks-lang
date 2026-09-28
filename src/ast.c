@@ -110,7 +110,7 @@ void NodeFree(Node *n) {
             free(n->selectn.bodies);
             NodeFree(n->selectn.defaultbody);
             break;
-        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NINPUT: case NDEFER:
+        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NINPUT: case NDEFER: case NERRDEFER:
             NodeFree(n->single.expr); free(n->single.var);
             break;
         case NCAST:
@@ -628,7 +628,7 @@ Node *NodeCopyInternal(Node *n) {
             }
             copy->selectn.defaultbody = NodeCopy(n->selectn.defaultbody);
             break;
-        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NINPUT: case NDEFER:
+        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NINPUT: case NDEFER: case NERRDEFER:
             copy->single.expr = NodeCopy(n->single.expr);
             copy->single.var = n->single.var ? strdup(n->single.var) : NULL;
             break;
@@ -1966,6 +1966,7 @@ Node *NodeOpt(Node *n) {
         case NPRINT:
         case NEXPRSTMT:
         case NDEFER:
+        case NERRDEFER:
             if (n->single.expr) n->single.expr = NodeOpt(n->single.expr);
             break;
         case NTRYCATCH:
@@ -2201,7 +2202,7 @@ static void NodeSubstitute(Node **nodeptr, const char *varname, int64_t val) {
             NodeSubstitute(&n->forin.iter, varname, val);
             NodeSubstitute(&n->forin.body, varname, val);
             break;
-        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER:
+        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER: case NERRDEFER:
             NodeSubstitute(&n->single.expr, varname, val);
             break;
         case NUSE:
@@ -2377,7 +2378,7 @@ void ASTSubstitute(Node **nodeptr, char **pnames, Node **args, int pc) {
             ASTSubstitute(&n->forin.iter, pnames, args, pc);
             ASTSubstitute(&n->forin.body, pnames, args, pc);
             break;
-        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER:
+        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER: case NERRDEFER:
             ASTSubstitute(&n->single.expr, pnames, args, pc);
             break;
         case NUSE:
@@ -2551,7 +2552,7 @@ static void ASTPropagateConsts(Node **nodeptr, char **names, Node **vals, int co
             ASTPropagateConsts(&n->forin.iter, names, vals, count);
             ASTPropagateConsts(&n->forin.body, names, vals, count);
             break;
-        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER:
+        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER: case NERRDEFER:
             ASTPropagateConsts(&n->single.expr, names, vals, count);
             break;
         case NUSE:
@@ -2712,7 +2713,7 @@ static int CountNodes(Node *node) {
             count += CountNodes(node->forin.iter);
             count += CountNodes(node->forin.body);
             break;
-        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER:
+        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER: case NERRDEFER:
             count += CountNodes(node->single.expr);
             break;
         case NUSE:
@@ -2910,7 +2911,7 @@ static void InlineCallS(Node **nodeptr, InlineableFn *fns, int count) {
             InlineCallS(&n->forin.iter, fns, count);
             InlineCallS(&n->forin.body, fns, count);
             break;
-        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER:
+        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER: case NERRDEFER:
             InlineCallS(&n->single.expr, fns, count);
             break;
         case NUSE:
@@ -3149,7 +3150,7 @@ static int CountReferences(Node *node, const char *name) {
             }
             count += CountReferences(node->forin.iter, name);
             break;
-        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER:
+        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER: case NERRDEFER:
             count += CountReferences(node->single.expr, name);
             break;
         case NUSE:
@@ -3582,7 +3583,7 @@ static int ChecksEscape(Node *node, const char *name) {
                 return ChecksEscape(node->forin.iter, name);
             }
             return ChecksEscape(node->forin.iter, name) || ChecksEscape(node->forin.body, name);
-        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER:
+        case NRETURN: case NPRINT: case NEXPRSTMT: case NIMPORT: case NMODULE: case NDEFER: case NERRDEFER:
             return ChecksEscape(node->single.expr, name);
         case NUSE:
             return 0;

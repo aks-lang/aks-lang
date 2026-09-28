@@ -146,6 +146,9 @@ typedef struct {
     struct Node *defers[64];
     int defer_depths[64];
     int defer_count;
+    struct Node *errdefers[64];
+    int errdefer_depths[64];
+    int errdefer_count;
 } FnProto;
 
 typedef struct {

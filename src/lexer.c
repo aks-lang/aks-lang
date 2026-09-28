@@ -120,6 +120,7 @@ static TType KeyWord(const char *s) {
             if (!strcmp(s, "requires")) return TREQUIRES;
             if (!strcmp(s, "internal")) return TINTERNAL;
             if (!strcmp(s, "comptime")) return TCOMPTIME;
+            if (!strcmp(s, "errdefer")) return TERRDEFER;
             break;
         case 9:
             if (!strcmp(s, "interface")) return TINTERFACE;
@@ -584,6 +585,7 @@ const char *ToktypeName(TType t) {
         case TGPU: return "gpu";
         case TATOMIC: return "atomic";
         case TDEFER: return "defer";
+        case TERRDEFER: return "errdefer";
         default: return "?";
     }
 }

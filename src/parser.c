@@ -3024,6 +3024,21 @@ parse_use:;
     n->single.expr = stmt;
     return n;
   }
+  case TERRDEFER: {
+    int line = p->cur.line;
+    int col = p->cur.col;
+    Token kw = Consume(p);
+    TokFree(&kw);
+    Node *stmt = NULL;
+    if (Check(p, TLBRACE)) {
+      stmt = ParseBlock(p);
+    } else {
+      stmt = ParseStmt(p);
+    }
+    Node *n = NodeNew(NERRDEFER, line);
+    n->single.expr = stmt;
+    return n;
+  }
   case TRETURN: {
     int line = p->cur.line;
     Token kw = Consume(p);
