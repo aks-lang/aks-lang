@@ -4386,6 +4386,50 @@ static void EmitPatternCheck(Compiler *c, Node *pat, int valslot, int *failjumps
             if (strcmp(pat->sval, "_") == 0) {
                 break;
             }
+            int is_zero_variant = 0;
+            char z_enumname[128] = "";
+            char z_variantname[256] = "";
+            for (int i = 0; i < c->enumcount; i++) {
+                if (c->enums[i].isadt) {
+                    for (int m = 0; m < c->enums[i].count; m++) {
+                        if (strcmp(c->enums[i].members[m], pat->sval) == 0) {
+                            char checkname[256];
+                            snprintf(checkname, sizeof(checkname), "%s.%s", c->enums[i].name, c->enums[i].members[m]);
+                            int fnid = ResolveGlobal(c, checkname, 0);
+                            if (fnid >= 0 && c->fns[fnid]->paramcount == 0) {
+                                is_zero_variant = 1;
+                                strncpy(z_enumname, c->enums[i].name, sizeof(z_enumname) - 1);
+                                snprintf(z_variantname, sizeof(z_variantname), "%s", checkname);
+                                break;
+                            }
+                        }
+                    }
+                    if (is_zero_variant) break;
+                }
+            }
+            if (is_zero_variant) {
+                ChunkWrite(ch, OPLOAD, line);
+                ChunkWriteU16(ch, (uint16_t)valslot, line);
+                ChunkWrite(ch, OPTYPEOF, line);
+                int enumstr = AddStr(c, z_enumname);
+                ChunkWrite(ch, OPPUSHSTR, line);
+                ChunkWriteU16(ch, (uint16_t)enumstr, line);
+                ChunkWrite(ch, OPEQ, line);
+                failjumps[(*failcount)++] = ChunkEmitJump(ch, OPJUMPIFFALSE, line);
+                
+                ChunkWrite(ch, OPLOAD, line);
+                ChunkWriteU16(ch, (uint16_t)valslot, line);
+                int tagfid = AddStr(c, "$tag");
+                ChunkWrite(ch, OPGETFIELD, line);
+                ChunkWriteU16(ch, (uint16_t)tagfid, line);
+                
+                int varstrid = AddStr(c, z_variantname);
+                ChunkWrite(ch, OPPUSHSTR, line);
+                ChunkWriteU16(ch, (uint16_t)varstrid, line);
+                ChunkWrite(ch, OPEQ, line);
+                failjumps[(*failcount)++] = ChunkEmitJump(ch, OPJUMPIFFALSE, line);
+                break;
+            }
             int slot = AddLocal(c, pat->sval, 0);
             if (slot >= 0) {
                 strcpy(c->current->locals[slot].typename, "any");
@@ -4641,24 +4685,39 @@ static void EmitPatternCheck(Compiler *c, Node *pat, int valslot, int *failjumps
         }
         case NCALL: {
             int isadt = 0;
+            char enumname[128] = "";
+            char variantname[256] = "";
             if (pat->call.callee->type == NMEMBER && pat->call.callee->member.obj->type == NIDENT) {
                 for (int i = 0; i < c->enumcount; i++) {
                     if (strcmp(c->enums[i].name, pat->call.callee->member.obj->sval) == 0) {
                         if (c->enums[i].isadt) {
                             isadt = 1;
+                            strncpy(enumname, c->enums[i].name, sizeof(enumname) - 1);
+                            snprintf(variantname, sizeof(variantname), "%s.%s", pat->call.callee->member.obj->sval, pat->call.callee->member.field);
                         }
                         break;
                     }
                 }
+            } else if (pat->call.callee->type == NIDENT) {
+                for (int i = 0; i < c->enumcount; i++) {
+                    if (c->enums[i].isadt) {
+                        for (int m = 0; m < c->enums[i].count; m++) {
+                            if (strcmp(c->enums[i].members[m], pat->call.callee->sval) == 0) {
+                                isadt = 1;
+                                strncpy(enumname, c->enums[i].name, sizeof(enumname) - 1);
+                                snprintf(variantname, sizeof(variantname), "%s.%s", c->enums[i].name, c->enums[i].members[m]);
+                                break;
+                            }
+                        }
+                        if (isadt) break;
+                    }
+                }
             }
             if (isadt) {
-                char variantname[256];
-                snprintf(variantname, sizeof(variantname), "%s.%s", pat->call.callee->member.obj->sval, pat->call.callee->member.field);
-                
                 ChunkWrite(ch, OPLOAD, line);
                 ChunkWriteU16(ch, (uint16_t)valslot, line);
                 ChunkWrite(ch, OPTYPEOF, line);
-                int enumstr = AddStr(c, pat->call.callee->member.obj->sval);
+                int enumstr = AddStr(c, enumname);
                 ChunkWrite(ch, OPPUSHSTR, line);
                 ChunkWriteU16(ch, (uint16_t)enumstr, line);
                 ChunkWrite(ch, OPEQ, line);
@@ -6895,6 +6954,7 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             iterdecl->decl.isconstflag = 0;
             iterdecl->decl.init = NodeCopy(n->forin.iter);
             
+            // 1. Array loop
             Node *idecl = NodeNew(NVARDECL, n->line);
             idecl->decl.name = strdup(ivar);
             idecl->decl.tname = strdup("int");
@@ -6956,13 +7016,132 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             Node *whilestmt = NodeNew(NWHILE, n->line);
             whilestmt->whilen.cond = cond;
             whilestmt->whilen.body = whilebody;
+
+            Node *thenblock = NodeNew(NBLOCK, n->line);
+            thenblock->block.count = 2;
+            thenblock->block.stmts = malloc(2 * sizeof(Node*));
+            thenblock->block.stmts[0] = idecl;
+            thenblock->block.stmts[1] = whilestmt;
+
+            // 2. Generic Iterator protocol loop
+            char itobjvar[64];
+            snprintf(itobjvar, sizeof(itobjvar), "__it_obj_%d", c->current->localcount + 2);
+            Node *itcall = NodeNew(NCALL, n->line);
+            itcall->call.callee = NodeNew(NIDENT, n->line);
+            itcall->call.callee->sval = strdup("iter");
+            itcall->call.argc = 1;
+            itcall->call.args = malloc(sizeof(Node*));
+            itcall->call.args[0] = NodeNew(NIDENT, n->line);
+            itcall->call.args[0]->sval = strdup(itervar);
+            itcall->call.isspread = calloc(1, sizeof(int));
+            itcall->call.tc = 0;
+            itcall->call.targs = NULL;
+
+            Node *itdecl = NodeNew(NVARDECL, n->line);
+            itdecl->decl.name = strdup(itobjvar);
+            itdecl->decl.tname = strdup("any");
+            itdecl->decl.isconstflag = 0;
+            itdecl->decl.init = itcall;
+
+            char stepvar[64];
+            snprintf(stepvar, sizeof(stepvar), "__step_tmp_%d", c->current->localcount + 3);
+
+            Node *stepcall = NodeNew(NCALL, n->line);
+            stepcall->call.callee = NodeNew(NIDENT, n->line);
+            stepcall->call.callee->sval = strdup("__aks_iter_step");
+            stepcall->call.argc = 1;
+            stepcall->call.args = malloc(sizeof(Node*));
+            stepcall->call.args[0] = NodeNew(NIDENT, n->line);
+            stepcall->call.args[0]->sval = strdup(itobjvar);
+            stepcall->call.isspread = calloc(1, sizeof(int));
+            stepcall->call.tc = 0;
+            stepcall->call.targs = NULL;
+
+            Node *stepdecl = NodeNew(NVARDECL, n->line);
+            stepdecl->decl.name = strdup(stepvar);
+            stepdecl->decl.tname = strdup("any");
+            stepdecl->decl.isconstflag = 0;
+            stepdecl->decl.init = stepcall;
+
+            Node *doneidx = NodeNew(NINDEX, n->line);
+            doneidx->index.arr = NodeNew(NIDENT, n->line);
+            doneidx->index.arr->sval = strdup(stepvar);
+            doneidx->index.idx = NodeNew(NINT, n->line);
+            doneidx->index.idx->ival = 0;
+
+            Node *breakbody = NodeNew(NBLOCK, n->line);
+            breakbody->block.count = 1;
+            breakbody->block.stmts = malloc(sizeof(Node*));
+            breakbody->block.stmts[0] = NodeNew(NBREAK, n->line);
+
+            Node *ifdone = NodeNew(NIF, n->line);
+            ifdone->ifn.cond = doneidx;
+            ifdone->ifn.then = breakbody;
+            ifdone->ifn.els = NULL;
+
+            Node *validx = NodeNew(NINDEX, n->line);
+            validx->index.arr = NodeNew(NIDENT, n->line);
+            validx->index.arr->sval = strdup(stepvar);
+            validx->index.idx = NodeNew(NINT, n->line);
+            validx->index.idx->ival = 1;
+
+            Node *uservardecl = NodeNew(NVARDECL, n->line);
+            uservardecl->decl.name = strdup(n->forin.var);
+            uservardecl->decl.tname = strdup("any");
+            uservardecl->decl.isconstflag = 0;
+            uservardecl->decl.init = validx;
+
+            Node *iterwhilebody = NodeNew(NBLOCK, n->line);
+            iterwhilebody->block.count = 4;
+            iterwhilebody->block.stmts = malloc(4 * sizeof(Node*));
+            iterwhilebody->block.stmts[0] = stepdecl;
+            iterwhilebody->block.stmts[1] = ifdone;
+            iterwhilebody->block.stmts[2] = uservardecl;
+            iterwhilebody->block.stmts[3] = NodeCopy(n->forin.body);
+
+            Node *truecond = NodeNew(NBOOL, n->line);
+            truecond->sval = strdup("true");
+
+            Node *iterwhilestmt = NodeNew(NWHILE, n->line);
+            iterwhilestmt->whilen.cond = truecond;
+            iterwhilestmt->whilen.body = iterwhilebody;
+
+            Node *elseblock = NodeNew(NBLOCK, n->line);
+            elseblock->block.count = 2;
+            elseblock->block.stmts = malloc(2 * sizeof(Node*));
+            elseblock->block.stmts[0] = itdecl;
+            elseblock->block.stmts[1] = iterwhilestmt;
+
+            // 3. Condition check: type(__iter_tmp) == "array"
+            Node *typecall = NodeNew(NCALL, n->line);
+            typecall->call.callee = NodeNew(NIDENT, n->line);
+            typecall->call.callee->sval = strdup("type");
+            typecall->call.argc = 1;
+            typecall->call.args = malloc(sizeof(Node*));
+            typecall->call.args[0] = NodeNew(NIDENT, n->line);
+            typecall->call.args[0]->sval = strdup(itervar);
+            typecall->call.isspread = calloc(1, sizeof(int));
+            typecall->call.tc = 0;
+            typecall->call.targs = NULL;
             
+            Node *arrstr = NodeNew(NSTR, n->line);
+            arrstr->sval = strdup("array");
+            
+            Node *isarrayop = NodeNew(NBINOP, n->line);
+            isarrayop->binop.op = strdup("==");
+            isarrayop->binop.left = typecall;
+            isarrayop->binop.right = arrstr;
+
+            Node *dispatchif = NodeNew(NIF, n->line);
+            dispatchif->ifn.cond = isarrayop;
+            dispatchif->ifn.then = thenblock;
+            dispatchif->ifn.els = elseblock;
+
             Node *outerblock = NodeNew(NBLOCK, n->line);
-            outerblock->block.count = 3;
-            outerblock->block.stmts = malloc(3 * sizeof(Node*));
+            outerblock->block.count = 2;
+            outerblock->block.stmts = malloc(2 * sizeof(Node*));
             outerblock->block.stmts[0] = iterdecl;
-            outerblock->block.stmts[1] = idecl;
-            outerblock->block.stmts[2] = whilestmt;
+            outerblock->block.stmts[1] = dispatchif;
             
             EmitNode(c, outerblock);
             NodeFree(outerblock);
@@ -7163,6 +7342,8 @@ Compiler *CompNew(void) {
     NewFn(c, "Character");
     NewFn(c, "Substring");
     NewFn(c, "type");
+    NewFn(c, "clone");
+    NewFn(c, "deep_clone");
     NewFn(c, "WriteFile");
     NewFn(c, "ReadFile");
     NewFn(c, "WriteFileAsync");

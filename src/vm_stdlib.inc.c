@@ -18577,6 +18577,19 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
+  if (strcmp(name, "clone") == 0 || strcmp(name, "deep_clone") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: %s() expects 1 argument, got %d\n", name,
+              argc);
+      return -1;
+    }
+    AKSValue arg = POP();
+    AKSValue cloned = ValDeepClone(arg);
+    ValFree(&arg);
+    PUSH(cloned);
+    *stacktopptr = stacktop;
+    return 1;
+  }
   if (strcmp(name, "WriteFile") == 0) {
     AKSValue cap = ValNull();
     if (argc == 3) {
@@ -23367,7 +23380,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
         c->readercount--;
 
         ValFree(&reader->stack[reader->stacktop - 1]);
-        reader->stack[reader->stacktop - 1] = ValCopy(val);
+        reader->stack[reader->stacktop - 1] = ValDeepClone(val);
         reader->rendezvous_done = 1;
 
         WakeBlockedTaskOnChannel(vm, reader, c);
@@ -23397,7 +23410,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       }
     }
     if (c->count < c->capacity) {
-      c->buffer[(c->head + c->count) % c->capacity] = ValCopy(val);
+      c->buffer[(c->head + c->count) % c->capacity] = ValDeepClone(val);
       c->count++;
       if (c->readercount > 0) {
         VMTask *reader = c->blockedreaders[0];

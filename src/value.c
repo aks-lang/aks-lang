@@ -613,6 +613,60 @@ AKSValue ValCopySlow(AKSValue v) {
     }
 }
 
+AKSValue ValDeepClone(AKSValue v) {
+    if (ValIsPrimitive(v)) return v;
+    switch (ValKind(v)) {
+        case VALSTR: {
+            AKSString *s = ValToStrPtr(v);
+            if (!s || !s->data) return ValNull();
+            return ValStrLen(s->data, s->len);
+        }
+        case VALARR: {
+            AKSArray *arr = ValToArr(v);
+            if (!arr) return ValNull();
+            AKSValue clone_val = ValArr(arr->count);
+            AKSArray *dst = ValToArr(clone_val);
+            dst->count = arr->count;
+            for (int i = 0; i < arr->count; i++) {
+                dst->items[i] = ValDeepClone(arr->items[i]);
+            }
+            return clone_val;
+        }
+        case VALTUPLE: {
+            AKSArray *arr = ValToArr(v);
+            if (!arr) return ValNull();
+            AKSValue clone_val = ValTuple(arr->count);
+            AKSArray *dst = ValToArr(clone_val);
+            dst->count = arr->count;
+            for (int i = 0; i < arr->count; i++) {
+                dst->items[i] = ValDeepClone(arr->items[i]);
+            }
+            return clone_val;
+        }
+        case VALSTRUCT: {
+            AKSStruct *st = ValToObj(v);
+            if (!st) return ValNull();
+            AKSValue clone_val = ValStruct(st->typename ? st->typename : "");
+            AKSStruct *dst = ValToObj(clone_val);
+            dst->fieldcount = st->fieldcount;
+            if (st->fieldcount > 0) {
+                dst->fieldnames = malloc(st->fieldcount * sizeof(char *));
+                dst->fieldvals = malloc(st->fieldcount * sizeof(AKSValue));
+                for (int i = 0; i < st->fieldcount; i++) {
+                    dst->fieldnames[i] = strdup(st->fieldnames[i]);
+                    dst->fieldvals[i] = ValDeepClone(st->fieldvals[i]);
+                }
+            } else {
+                dst->fieldnames = NULL;
+                dst->fieldvals = NULL;
+            }
+            return clone_val;
+        }
+        default:
+            return ValCopy(v);
+    }
+}
+
 AKSValue ValAdd(AKSValue a, AKSValue b) {
     ValType ta = ValKind(a);
     ValType tb = ValKind(b);

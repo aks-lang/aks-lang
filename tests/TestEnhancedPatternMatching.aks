@@ -1,0 +1,66 @@
+// TestEnhancedPatternMatching.aks
+// Tests advanced pattern matching: bare ADT constructors, guard expressions, and nested ADT patterns
+
+fn classify_number(opt) {
+    match (opt) {
+        Some(x) if x > 100 => {
+            return "large: " + str(x);
+        },
+        Some(x) if x < 0 => {
+            return "negative: " + str(x);
+        },
+        Some(x) => {
+            return "small: " + str(x);
+        },
+        None => {
+            return "none";
+        }
+    }
+}
+
+fn handle_nested_result(nested) {
+    match (nested) {
+        Some(Ok(val)) => {
+            return "ok: " + str(val);
+        },
+        Some(Err(err)) => {
+            return "err: " + str(err);
+        },
+        None => {
+            return "missing";
+        },
+        _ => {
+            return "unknown";
+        }
+    }
+}
+
+fn TestEnhancedPatterns() {
+    // 1. Guard clauses and bare variants
+    assert_eq(classify_number(Some(200)), "large: 200");
+    assert_eq(classify_number(Some(-5)), "negative: -5");
+    assert_eq(classify_number(Some(50)), "small: 50");
+    assert_eq(classify_number(None), "none");
+
+    // 2. Nested ADT patterns
+    assert_eq(handle_nested_result(Some(Ok(42))), "ok: 42");
+    assert_eq(handle_nested_result(Some(Err("connection failed"))), "err: connection failed");
+    assert_eq(handle_nested_result(None), "missing");
+
+    // 3. Qualified variants with guards
+    let r1 = Result.Ok(500);
+    let matched_qual = match (r1) {
+        Result.Ok(v) if v >= 500 => "high",
+        Result.Ok(v) => "low",
+        Result.Err(_) => "error"
+    };
+    assert_eq(matched_qual, "high");
+
+    println("TestEnhancedPatterns PASSED");
+}
+
+fn main() {
+    TestEnhancedPatterns();
+}
+
+TestEnhancedPatterns();

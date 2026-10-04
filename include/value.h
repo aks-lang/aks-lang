@@ -385,6 +385,7 @@ AKSValue ValCastStr(AKSValue val);
 void ValFreeFunc(AKSValue *v);
 #define ValFree(v) do { if ((v) && !ValIsPrimitive(*(v))) ValFreeFunc(v); } while(0)
 AKSValue ValCopySlow(AKSValue v);
+AKSValue ValDeepClone(AKSValue v);
 static inline AKSValue ValCopy(AKSValue v) {
     if (ValIsPrimitive(v)) return v;
     uint64_t tag = (v >> 48) - 0xFFF0ULL;

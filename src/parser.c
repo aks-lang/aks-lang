@@ -1805,6 +1805,33 @@ static Node *ParsePatternPrimary(Parser *p) {
       return member;
     }
 
+    if (Check(p, TLPAREN)) {
+      Token lp = Consume(p);
+      TokFree(&lp);
+      int cap = 4, count = 0;
+      Node **args = malloc(cap * sizeof(Node *));
+      while (!Check(p, TRPAREN) && !Check(p, TEOF)) {
+        if (count == cap) {
+          cap *= 2;
+          args = realloc(args, cap * sizeof(Node *));
+        }
+        args[count++] = ParsePattern(p);
+        if (!Check(p, TRPAREN)) {
+          Token cm = Expect(p, TCOMMA);
+          TokFree(&cm);
+        }
+      }
+      Token rp = Expect(p, TRPAREN);
+      TokFree(&rp);
+
+      Node *call = NodeNew(NCALL, line);
+      call->call.callee = NodeNew(NIDENT, line);
+      call->call.callee->sval = name;
+      call->call.args = args;
+      call->call.argc = count;
+      return call;
+    }
+
     if (Check(p, TLBRACE)) {
       Token lb = Consume(p);
       TokFree(&lb);

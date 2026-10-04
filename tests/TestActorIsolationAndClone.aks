@@ -1,0 +1,63 @@
+// TestActorIsolationAndClone.aks
+// Tests deep cloning and channel message isolation for concurrency
+
+struct TaskPayload {
+    id: int;
+    meta: string;
+}
+
+fn TestDeepCloneArray() {
+    let arr = [1, [2, 3], 4];
+    let cloned = clone(arr);
+    cloned[1][0] = 999;
+    cloned[0] = 111;
+
+    assert_eq(arr[0], 1);
+    assert_eq(arr[1][0], 2);
+    assert_eq(cloned[0], 111);
+    assert_eq(cloned[1][0], 999);
+}
+
+fn TestDeepCloneStruct() {
+    let p = new TaskPayload();
+    p.id = 42;
+    p.meta = "original";
+
+    let p2 = clone(p);
+    p2.id = 99;
+    p2.meta = "modified";
+
+    assert_eq(p.id, 42);
+    assert_eq(p.meta, "original");
+    assert_eq(p2.id, 99);
+    assert_eq(p2.meta, "modified");
+}
+
+fn TestChannelMessageIsolation() {
+    let ch = Channel(2);
+    let packet = [10, 20, 30];
+    send(ch, packet);
+
+    // Mutate packet immediately after sending
+    packet[0] = 888;
+
+    let received = receive(ch);
+    // Received packet must be isolated from sender mutation
+    assert_eq(received[0], 10);
+    assert_eq(packet[0], 888);
+
+    close(ch);
+}
+
+fn TestActorIsolationSuite() {
+    TestDeepCloneArray();
+    TestDeepCloneStruct();
+    TestChannelMessageIsolation();
+    println("TestActorIsolationSuite PASSED");
+}
+
+fn main() {
+    TestActorIsolationSuite();
+}
+
+TestActorIsolationSuite();
