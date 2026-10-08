@@ -3066,6 +3066,20 @@ parse_use:;
     n->single.expr = stmt;
     return n;
   }
+  case TUNSAFE: {
+    int line = p->cur.line;
+    Token kw = Consume(p);
+    TokFree(&kw);
+    Node *stmt = NULL;
+    if (Check(p, TLBRACE)) {
+      stmt = ParseBlock(p);
+    } else {
+      stmt = ParseStmt(p);
+    }
+    Node *n = NodeNew(NUNSAFE, line);
+    n->single.expr = stmt;
+    return n;
+  }
   case TRETURN: {
     int line = p->cur.line;
     Token kw = Consume(p);
@@ -4461,6 +4475,20 @@ static Node *ParsePrimary(Parser *p) {
   }
   if (Check(p, TATOMIC)) {
     return ParseAtomic(p);
+  }
+  if (Check(p, TUNSAFE)) {
+    int line = p->cur.line;
+    Token kw = Consume(p);
+    TokFree(&kw);
+    Node *stmt = NULL;
+    if (Check(p, TLBRACE)) {
+      stmt = ParseBlock(p);
+    } else {
+      stmt = ParseStmt(p);
+    }
+    Node *n = NodeNew(NUNSAFE, line);
+    n->single.expr = stmt;
+    return n;
   }
   if (Check(p, TFN)) {
     static int anoncounter = 0;

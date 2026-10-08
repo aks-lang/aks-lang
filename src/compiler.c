@@ -2832,6 +2832,16 @@ static void EmitExpr(Compiler *c, Node *n) {
             ChunkPatchJump(ch, successjump);
             break;
         }
+        case NUNSAFE: {
+            int prev_unsafe = c->is_unsafe_block;
+            c->is_unsafe_block = 1;
+            int prev_borrow = c->borrow_checker_enabled;
+            c->borrow_checker_enabled = 0;
+            EmitExpr(c, n->single.expr);
+            c->borrow_checker_enabled = prev_borrow;
+            c->is_unsafe_block = prev_unsafe;
+            break;
+        }
         case NUNOP: {
             if (!strcmp(n->binop.op, "&") || !strcmp(n->binop.op, "&mut")) {
                 EmitExpr(c, n->binop.left);
@@ -3887,6 +3897,25 @@ static void EmitExpr(Compiler *c, Node *n) {
         case NSPAWN: {
             Node *call = n->spawnn.expr;
             if (call->type == NCALL) {
+                if (c->borrow_checker_enabled) {
+                    for (int i = 0; i < call->call.argc; i++) {
+                        Node *arg = call->call.args[i];
+                        if (arg->type == NUNOP && (!strcmp(arg->binop.op, "&mut") || !strcmp(arg->binop.op, "&"))) {
+                            Diagnostic diag;
+                            char dmsg[256];
+                            snprintf(dmsg, sizeof(dmsg), "cannot pass reference across task boundary: task boundaries require Send types");
+                            DiagnosticInit(&diag, DIAG_ERROR, "E0277", dmsg);
+                            const char *srcfile = (c && c->currentfilepath[0]) ? c->currentfilepath : "";
+                            if (srcfile[0] != '\0' && arg->line > 0) {
+                                DiagnosticAddSpan(&diag, srcfile, arg->line, 1, 4, "reference passed across spawn", 1);
+                            }
+                            DiagnosticSetNote(&diag, "references cannot cross task boundaries; use clone() or pass owned data");
+                            DiagnosticSetHelp(&diag, "consider cloning the value or communicating through channels");
+                            DiagnosticEmit(&diag);
+                            Error(c, arg->line, "BorrowError: cannot pass reference across task boundary; task boundaries require Send types");
+                        }
+                    }
+                }
                 for (int i = 0; i < call->call.argc; i++) EmitExpr(c, call->call.args[i]);
                 if (call->call.callee->type == NIDENT) {
                     int slot = ResolveLocal(c, call->call.callee->sval);
@@ -5064,6 +5093,16 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                     ChunkWrite(ch, OPPOP, n->line);
                 }
             }
+            break;
+        }
+        case NUNSAFE: {
+            int prev_unsafe = c->is_unsafe_block;
+            c->is_unsafe_block = 1;
+            int prev_borrow = c->borrow_checker_enabled;
+            c->borrow_checker_enabled = 0;
+            EmitNode(c, n->single.expr);
+            c->borrow_checker_enabled = prev_borrow;
+            c->is_unsafe_block = prev_unsafe;
             break;
         }
         case NEXPRSTMT:
@@ -7325,6 +7364,13 @@ Compiler *CompNew(void) {
     NewFn(c, "str_view");
     NewFn(c, "TaskGroup");
     NewFn(c, "TaskGroupNew");
+    NewFn(c, "SizeOf");
+    NewFn(c, "AlignOf");
+    NewFn(c, "OffsetOf");
+    NewFn(c, "IsSend");
+    NewFn(c, "IsSync");
+    NewFn(c, "derive");
+    NewFn(c, "repr");
     NewFn(c, "WriteFile");
     NewFn(c, "ReadFile");
     NewFn(c, "WriteFileAsync");

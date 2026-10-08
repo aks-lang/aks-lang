@@ -568,6 +568,55 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
         ValFree(&handler);
         *stacktopptr = stacktop;
         return 1;
+      } else if (strcmp(name, "SizeOf") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: SizeOf() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        int64_t sz = 8;
+        if (ValKind(arg) == VALINT || ValKind(arg) == VALFLOAT) {
+          sz = 8;
+        } else if (ValKind(arg) == VALBOOL) {
+          sz = 1;
+        } else if (ValKind(arg) == VALNULL) {
+          sz = 0;
+        } else if (ValKind(arg) == VALSTR) {
+          const char *s = ValToStrPtr(arg)->data;
+          if (strcmp(s, "int") == 0 || strcmp(s, "float") == 0 || strcmp(s, "i64") == 0 || strcmp(s, "f64") == 0) sz = 8;
+          else if (strcmp(s, "i32") == 0 || strcmp(s, "f32") == 0) sz = 4;
+          else if (strcmp(s, "i16") == 0) sz = 2;
+          else if (strcmp(s, "i8") == 0 || strcmp(s, "u8") == 0 || strcmp(s, "bool") == 0) sz = 1;
+          else if (strcmp(s, "string") == 0) sz = 16;
+          else sz = ValToStrPtr(arg)->len;
+        } else if (ValKind(arg) == VALSTRUCT) {
+          AKSStruct *st = ValToObj(arg);
+          int is_packed = 0;
+          for (int i = 0; i < st->fieldcount; i++) {
+            if (strcmp(st->fieldnames[i], "__repr_layout") == 0 && ValKind(st->fieldvals[i]) == VALSTR) {
+              if (strcmp(ValToStrPtr(st->fieldvals[i])->data, "packed") == 0) is_packed = 1;
+            }
+          }
+          if (is_packed) {
+            sz = 0;
+            for (int i = 0; i < st->fieldcount; i++) {
+              if (strcmp(st->fieldnames[i], "__repr_layout") == 0) continue;
+              if (ValKind(st->fieldvals[i]) == VALBOOL) sz += 1;
+              else if (ValKind(st->fieldvals[i]) == VALSTR) sz += 16;
+              else sz += 8;
+            }
+          } else {
+            int actual_fields = 0;
+            for (int i = 0; i < st->fieldcount; i++) {
+              if (strcmp(st->fieldnames[i], "__repr_layout") != 0) actual_fields++;
+            }
+            sz = (int64_t)actual_fields * 8;
+          }
+        }
+        ValFree(&arg);
+        PUSH(ValInt(sz));
+        *stacktopptr = stacktop;
+        return 1;
       }
       break;
     }
@@ -588,6 +637,160 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
         ValFree(&arg);
         *stacktopptr = stacktop;
         return 1;
+      } else if (strcmp(name, "AlignOf") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: AlignOf() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        int64_t al = 8;
+        if (ValKind(arg) == VALBOOL) {
+          al = 1;
+        } else if (ValKind(arg) == VALSTR) {
+          const char *s = ValToStrPtr(arg)->data;
+          if (strcmp(s, "i8") == 0 || strcmp(s, "u8") == 0 || strcmp(s, "bool") == 0) al = 1;
+          else if (strcmp(s, "i16") == 0) al = 2;
+          else if (strcmp(s, "i32") == 0 || strcmp(s, "f32") == 0) al = 4;
+          else al = 8;
+        } else if (ValKind(arg) == VALSTRUCT) {
+          AKSStruct *st = ValToObj(arg);
+          for (int i = 0; i < st->fieldcount; i++) {
+            if (strcmp(st->fieldnames[i], "__repr_layout") == 0 && ValKind(st->fieldvals[i]) == VALSTR) {
+              if (strcmp(ValToStrPtr(st->fieldvals[i])->data, "packed") == 0) al = 1;
+            }
+          }
+        }
+        ValFree(&arg);
+        PUSH(ValInt(al));
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+    case 'O': {
+      if (strcmp(name, "OffsetOf") == 0) {
+        if (argc != 2) {
+          fprintf(stderr, "Runtime error: OffsetOf() expects 2 arguments (struct, field_name), got %d\n", argc);
+          return -1;
+        }
+        AKSValue fieldarg = POP();
+        AKSValue structarg = POP();
+        int64_t offset = -1;
+        const char *fname = ValKind(fieldarg) == VALSTR ? ValToStrPtr(fieldarg)->data : "";
+        if (ValKind(structarg) == VALSTRUCT) {
+          AKSStruct *st = ValToObj(structarg);
+          int is_packed = 0;
+          for (int i = 0; i < st->fieldcount; i++) {
+            if (strcmp(st->fieldnames[i], "__repr_layout") == 0 && ValKind(st->fieldvals[i]) == VALSTR) {
+              if (strcmp(ValToStrPtr(st->fieldvals[i])->data, "packed") == 0) is_packed = 1;
+            }
+          }
+          int64_t curr_off = 0;
+          for (int i = 0; i < st->fieldcount; i++) {
+            if (strcmp(st->fieldnames[i], "__repr_layout") == 0) continue;
+            if (strcmp(st->fieldnames[i], fname) == 0) {
+              offset = curr_off;
+              break;
+            }
+            if (is_packed) {
+              if (ValKind(st->fieldvals[i]) == VALBOOL) curr_off += 1;
+              else if (ValKind(st->fieldvals[i]) == VALSTR) curr_off += 16;
+              else curr_off += 8;
+            } else {
+              curr_off += 8;
+            }
+          }
+        }
+        ValFree(&fieldarg);
+        ValFree(&structarg);
+        PUSH(ValInt(offset));
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+    case 'I': {
+      if (strcmp(name, "IsSend") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: IsSend() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        ValFree(&arg);
+        PUSH(ValBool(1));
+        *stacktopptr = stacktop;
+        return 1;
+      } else if (strcmp(name, "IsSync") == 0) {
+        if (argc != 1) {
+          fprintf(stderr, "Runtime error: IsSync() expects 1 argument, got %d\n", argc);
+          return -1;
+        }
+        AKSValue arg = POP();
+        ValFree(&arg);
+        PUSH(ValBool(1));
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+    case 'd': {
+      if (strcmp(name, "derive") == 0) {
+        if (argc < 1) {
+          fprintf(stderr, "Runtime error: derive() expects at least 1 argument\n");
+          return -1;
+        }
+        AKSValue trait_args[16];
+        for (int i = argc - 1; i >= 1; i--) {
+          trait_args[i - 1] = POP();
+        }
+        AKSValue target = POP();
+        for (int i = 0; i < argc - 1; i++) {
+          ValFree(&trait_args[i]);
+        }
+        PUSH(target);
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
+    case 'r': {
+      if (strcmp(name, "repr") == 0) {
+        if (argc < 1) {
+          fprintf(stderr, "Runtime error: repr() expects at least 1 argument\n");
+          return -1;
+        }
+        if (argc == 1) {
+          AKSValue arg = POP();
+          AKSValue str = ValToStr(arg);
+          ValFree(&arg);
+          PUSH(str);
+          *stacktopptr = stacktop;
+          return 1;
+        } else {
+          AKSValue layout_arg = POP();
+          AKSValue struct_arg = POP();
+          if (ValKind(struct_arg) == VALSTRUCT) {
+            AKSStruct *st = ValToObj(struct_arg);
+            int found = 0;
+            for (int i = 0; i < st->fieldcount; i++) {
+              if (strcmp(st->fieldnames[i], "__repr_layout") == 0) {
+                ValFree(&st->fieldvals[i]);
+                st->fieldvals[i] = ValCopy(layout_arg);
+                found = 1;
+                break;
+              }
+            }
+            if (!found && st->fieldcount < 32) {
+              st->fieldnames[st->fieldcount] = strdup("__repr_layout");
+              st->fieldvals[st->fieldcount] = ValCopy(layout_arg);
+              st->fieldcount++;
+            }
+          }
+          ValFree(&layout_arg);
+          PUSH(struct_arg);
+          *stacktopptr = stacktop;
+          return 1;
+        }
       }
       break;
     }

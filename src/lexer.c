@@ -104,6 +104,7 @@ static TType KeyWord(const char *s) {
             if (!strcmp(s, "handle")) return THANDLE;
             if (!strcmp(s, "resume")) return TRESUME;
             if (!strcmp(s, "atomic")) return TATOMIC;
+            if (!strcmp(s, "unsafe")) return TUNSAFE;
             break;
         case 7:
             if (!strcmp(s, "default")) return TDEFAULT;
@@ -586,6 +587,7 @@ const char *ToktypeName(TType t) {
         case TATOMIC: return "atomic";
         case TDEFER: return "defer";
         case TERRDEFER: return "errdefer";
+        case TUNSAFE: return "unsafe";
         default: return "?";
     }
 }

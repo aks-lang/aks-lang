@@ -127,7 +127,8 @@ typedef enum {
     TGPU,          /* gpu keyword */
     TATOMIC,       /* atomic keyword */
     TDEFER,        /* defer keyword */
-    TERRDEFER      /* errdefer keyword */
+    TERRDEFER,     /* errdefer keyword */
+    TUNSAFE        /* unsafe keyword */
 } TType;
 
 typedef struct {

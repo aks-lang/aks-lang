@@ -1,0 +1,62 @@
+struct Point {
+    x: int;
+    y: int;
+}
+
+struct PackedHeader {
+    flag: bool;
+    id: int;
+}
+
+struct NodeRecord {
+    tag: int;
+    val: float;
+    active: bool;
+}
+
+fn test_systems_programming() {
+    let mut safe_val = 10;
+    unsafe {
+        safe_val = safe_val + 32;
+    }
+    assert_eq(safe_val, 42);
+
+    let p = Point { x: 10, y: 20 };
+    assert_eq(SizeOf(p), 16);
+    assert_eq(AlignOf(p), 8);
+    assert_eq(OffsetOf(p, "x"), 0);
+    assert_eq(OffsetOf(p, "y"), 8);
+
+    assert_eq(SizeOf("int"), 8);
+    assert_eq(SizeOf("float"), 8);
+    assert_eq(SizeOf("i32"), 4);
+    assert_eq(SizeOf("i16"), 2);
+    assert_eq(SizeOf("i8"), 1);
+    assert_eq(SizeOf("bool"), 1);
+
+    assert_eq(AlignOf("i8"), 1);
+    assert_eq(AlignOf("i16"), 2);
+    assert_eq(AlignOf("i32"), 4);
+    assert_eq(AlignOf("int"), 8);
+
+    assert_eq(IsSend(p), true);
+    assert_eq(IsSync(p), true);
+
+    let ph = repr(PackedHeader { flag: true, id: 100 }, "packed");
+    assert_eq(SizeOf(ph), 9);
+    assert_eq(AlignOf(ph), 1);
+    assert_eq(OffsetOf(ph, "flag"), 0);
+    assert_eq(OffsetOf(ph, "id"), 1);
+
+    let nr = NodeRecord { tag: 1, val: 3.14, active: true };
+    assert_eq(SizeOf(nr), 24);
+    assert_eq(OffsetOf(nr, "tag"), 0);
+    assert_eq(OffsetOf(nr, "val"), 8);
+    assert_eq(OffsetOf(nr, "active"), 16);
+
+    let d_p = derive(p, "Debug", "Clone");
+    assert_eq(d_p.x, 10);
+    assert_eq(d_p.y, 20);
+}
+
+test_systems_programming();
