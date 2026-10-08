@@ -78,7 +78,8 @@ typedef enum {
     OPCASTSTR,
     OPASM,
     OP_STATIC_RELEASE,
-    OPISERR
+    OPISERR,
+    OPUNWRAP
 } OpCode;
 
 #endif // Opcodeh

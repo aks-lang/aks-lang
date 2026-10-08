@@ -13493,13 +13493,17 @@ enter_stack_interpreter: for (;;) {
   case OPISERR: {
     AKSValue v = POP();
     int is_err = 0;
-    if (ValKind(v) == VALSTRUCT) {
+    if (ValKind(v) == VALNULL) {
+      is_err = 1;
+    } else if (ValKind(v) == VALSTRUCT) {
       AKSStruct *st = ValToObj(v);
       for (int i = 0; i < st->fieldcount; i++) {
         if (strcmp(st->fieldnames[i], "$tag") == 0) {
           if (ValKind(st->fieldvals[i]) == VALSTR) {
             AKSString *str = ValToStrPtr(st->fieldvals[i]);
-            if (str && str->data && strcmp(str->data, "Result.Err") == 0) {
+            if (str && str->data &&
+                (strcmp(str->data, "Result.Err") == 0 ||
+                 strcmp(str->data, "Option.None") == 0)) {
               is_err = 1;
             }
           }
@@ -13509,6 +13513,43 @@ enter_stack_interpreter: for (;;) {
     }
     ValFree(&v);
     PUSH(ValBool(is_err));
+    break;
+  }
+  case OPUNWRAP: {
+    AKSValue v = POP();
+    if (ValKind(v) == VALSTRUCT) {
+      AKSStruct *st = ValToObj(v);
+      int is_wrapped = 0;
+      for (int i = 0; i < st->fieldcount; i++) {
+        if (strcmp(st->fieldnames[i], "$tag") == 0) {
+          if (ValKind(st->fieldvals[i]) == VALSTR) {
+            AKSString *str = ValToStrPtr(st->fieldvals[i]);
+            if (str && str->data &&
+                (strcmp(str->data, "Result.Ok") == 0 ||
+                 strcmp(str->data, "Option.Some") == 0)) {
+              is_wrapped = 1;
+            }
+          }
+          break;
+        }
+      }
+      if (is_wrapped) {
+        for (int i = 0; i < st->fieldcount; i++) {
+          if (strcmp(st->fieldnames[i], "field0") == 0) {
+            AKSValue inner = ValCopy(st->fieldvals[i]);
+            ValFree(&v);
+            PUSH(inner);
+            is_wrapped = 2;
+            break;
+          }
+        }
+      }
+      if (is_wrapped != 2) {
+        PUSH(v);
+      }
+    } else {
+      PUSH(v);
+    }
     break;
   }
   default:
@@ -14044,6 +14085,8 @@ const char *StackOpName(int op) {
     return "OP_STATIC_RELEASE";
   case OPISERR:
     return "OPISERR";
+  case OPUNWRAP:
+    return "OPUNWRAP";
   default:
     return "UNKNOWN";
   }

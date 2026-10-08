@@ -1558,6 +1558,7 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
                             for (int i = 0; i < n->match.count; i++) {
                                 Node *pat = n->match.patterns[i];
                                 if (!pat) continue;
+                                if (n->match.guards && n->match.guards[i] != NULL) continue;
                                 if (pat->type == NCALL) {
                                     if (pat->call.callee->type == NMEMBER && strcmp(pat->call.callee->member.field, en->members[m]) == 0) {
                                         matched = 1; break;

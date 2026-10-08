@@ -258,6 +258,24 @@ static void RunRepl(void) {
             }
             continue;
         }
+        int time_execution = 0;
+        if (strncmp(trimmed, ":time ", 6) == 0) {
+            const char *stmt = linebuffer;
+            while (*stmt && *stmt != ' ') stmt++;
+            while (*stmt == ' ') stmt++;
+            strncpy(linebuffer, stmt, sizeof(linebuffer) - 1);
+            linebuffer[sizeof(linebuffer) - 1] = '\0';
+            time_execution = 1;
+        } else if (strncmp(trimmed, ":type ", 6) == 0) {
+            const char *expr = linebuffer;
+            while (*expr && *expr != ' ') expr++;
+            while (*expr == ' ') expr++;
+            char wrap[1024];
+            snprintf(wrap, sizeof(wrap), "println(type(%s));\n", expr);
+            strncpy(linebuffer, wrap, sizeof(linebuffer) - 1);
+            linebuffer[sizeof(linebuffer) - 1] = '\0';
+        }
+
         if (strcmp(trimmed, ":history") == 0) {
             ShowReplHistory();
             continue;
@@ -268,6 +286,8 @@ static void RunRepl(void) {
             printf("  \033[1;36m:clear, :cls\033[0m   Clear the terminal screen\n");
             printf("  \033[1;36m:vars\033[0m          List all defined global variables and values\n");
             printf("  \033[1;36m:fns\033[0m           List all compiled functions\n");
+            printf("  \033[1;36m:type <expr>\033[0m   Inspect runtime type of an expression\n");
+            printf("  \033[1;36m:time <stmt>\033[0m   Benchmark execution duration of statement\n");
             printf("  \033[1;36m:history\033[0m       Display recent command history\n");
             printf("  \033[1;36m:quit, :q\033[0m      Exit the REPL session (or type exit())\n\n");
             LearnHelp("");
@@ -332,7 +352,19 @@ static void RunRepl(void) {
 
         if (CompCompile(c, ast)) {
             VMSync(vm, c, 1);
+#ifdef _WIN32
+            LARGE_INTEGER t_freq, t_0, t_1;
+            QueryPerformanceFrequency(&t_freq);
+            QueryPerformanceCounter(&t_0);
+#endif
             VMRepl(vm, startoffset);
+#ifdef _WIN32
+            QueryPerformanceCounter(&t_1);
+            if (time_execution) {
+                double elapsed_ms = (t_1.QuadPart - t_0.QuadPart) * 1000.0 / (double)t_freq.QuadPart;
+                printf("\033[1;32m[Time: %.3f ms]\033[0m\n", elapsed_ms);
+            }
+#endif
             AppendReplHistory(codebuf);
         } else {
             // Restore ophalt

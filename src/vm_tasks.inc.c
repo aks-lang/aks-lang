@@ -501,7 +501,7 @@ void TranslateToRegister(VM *vm, FnProto *fn) {
     uint8_t *bytecode = fn->chunk.code;
     while (ip < fn->chunk.count) {
       uint8_t op = bytecode[ip];
-      if (op == OPSELECT || op == OPAWAIT || op == OPISERR) {
+      if (op == OPSELECT || op == OPAWAIT || op == OPISERR || op == OPUNWRAP) {
         fn->regcode = NULL;
         fn->regcount = 0;
         fn->maxregisters = fn->localcount;

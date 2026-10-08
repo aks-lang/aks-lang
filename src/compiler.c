@@ -2793,42 +2793,17 @@ static void EmitExpr(Compiler *c, Node *n) {
         }
         case NTRYPROPAGATE: {
             EmitExpr(c, n->single.expr);
-            char tmpvar[64];
-            snprintf(tmpvar, sizeof(tmpvar), "trytmp%d", c->current->localcount);
-            int slot = AddLocal(c, tmpvar, 0);
-            ChunkWrite(ch, OPSTORE, n->line);
-            ChunkWriteU16(ch, (uint16_t)slot, n->line);
-            ChunkWrite(ch, OPLOAD, n->line);
-            ChunkWriteU16(ch, (uint16_t)slot, n->line);
-            int tagfid = AddStr(c, "$tag");
-            ChunkWrite(ch, OPGETFIELD, n->line);
-            ChunkWriteU16(ch, (uint16_t)tagfid, n->line);
             ChunkWrite(ch, OPDUP, n->line);
-            int errid = AddStr(c, "Result.Err");
-            ChunkWrite(ch, OPPUSHSTR, n->line);
-            ChunkWriteU16(ch, (uint16_t)errid, n->line);
-            ChunkWrite(ch, OPEQ, n->line);
+            ChunkWrite(ch, OPISERR, n->line);
             ChunkWrite(ch, OPNOT, n->line);
             int errjump = ChunkEmitJump(ch, OPJUMPIFFALSE, n->line);
-            ChunkWrite(ch, OPDUP, n->line);
-            int noneid = AddStr(c, "Option.None");
-            ChunkWrite(ch, OPPUSHSTR, n->line);
-            ChunkWriteU16(ch, (uint16_t)noneid, n->line);
-            ChunkWrite(ch, OPEQ, n->line);
-            ChunkWrite(ch, OPNOT, n->line);
-            int nonejump = ChunkEmitJump(ch, OPJUMPIFFALSE, n->line);
-            ChunkWrite(ch, OPPOP, n->line);
-            ChunkWrite(ch, OPLOAD, n->line);
-            ChunkWriteU16(ch, (uint16_t)slot, n->line);
-            int f0fid = AddStr(c, "field0");
-            ChunkWrite(ch, OPGETFIELD, n->line);
-            ChunkWriteU16(ch, (uint16_t)f0fid, n->line);
+
+            // Success path: unwrap field0 if Ok/Some, then jump past error return
+            ChunkWrite(ch, OPUNWRAP, n->line);
             int successjump = ChunkEmitJump(ch, OPJUMP, n->line);
+
+            // Error branch (Result.Err, Option.None, or null):
             ChunkPatchJump(ch, errjump);
-            ChunkPatchJump(ch, nonejump);
-            ChunkWrite(ch, OPPOP, n->line);
-            ChunkWrite(ch, OPLOAD, n->line);
-            ChunkWriteU16(ch, (uint16_t)slot, n->line);
             for (int i = c->current->errdefer_count - 1; i >= 0; i--) {
                 EmitNode(c, c->current->errdefers[i]);
             }
@@ -2853,6 +2828,7 @@ static void EmitExpr(Compiler *c, Node *n) {
             }
             ChunkWrite(ch, OPRETURNVAL, n->line);
             ChunkWrite(ch, OPPUSHNULL, n->line);
+
             ChunkPatchJump(ch, successjump);
             break;
         }
@@ -7344,6 +7320,11 @@ Compiler *CompNew(void) {
     NewFn(c, "type");
     NewFn(c, "clone");
     NewFn(c, "deep_clone");
+    NewFn(c, "StrView");
+    NewFn(c, "StrViewNew");
+    NewFn(c, "str_view");
+    NewFn(c, "TaskGroup");
+    NewFn(c, "TaskGroupNew");
     NewFn(c, "WriteFile");
     NewFn(c, "ReadFile");
     NewFn(c, "WriteFileAsync");

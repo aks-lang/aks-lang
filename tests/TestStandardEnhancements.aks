@@ -1,0 +1,58 @@
+// Comprehensive tests for StrView, TaskGroup, enhanced ? operator, and nested method calls
+
+fn test_strview() {
+    let s = "Hello, AKS World!";
+    let sv = StrView(s, 7, 3);
+    assert_eq(sv.Len(), 3);
+    assert_eq(sv.ToString(), "AKS");
+    assert_eq(sv.At(0), "A");
+    assert_eq(sv.At(1), "K");
+    assert_eq(sv.At(2), "S");
+    assert_eq(sv.Equals("AKS"), true);
+    assert_eq(sv.Equals("AKX"), false);
+
+    let sub = sv.Slice(1, 2);
+    assert_eq(sub.Len(), 2);
+    assert_eq(sub.ToString(), "KS");
+}
+
+fn test_taskgroup() {
+    let tg = TaskGroup();
+    assert_eq(Length(tg.tasks), 0);
+}
+
+fn try_val(x) {
+    let unwrapped = x?;
+    return "got:" + String(unwrapped);
+}
+
+fn test_question_mark_operator() {
+    assert_eq(try_val(null), null);
+    assert_eq(try_val(123), "got:123");
+    assert_eq(try_val("hello"), "got:hello");
+    assert_eq(try_val(Ok("success")), "got:success");
+    assert_eq(try_val(Some(42)), "got:42");
+
+    let err_res = try_val(Err("failed"));
+    assert(err_res.IsErr(), "Result.Err must be propagated");
+    assert_eq(err_res.UnwrapOr("fallback"), "fallback");
+
+    let none_res = try_val(None);
+    assert(none_res.IsNone(), "Option.None must be propagated");
+}
+
+fn test_nested_method_chaining() {
+    struct Inner { val: int; }
+    fn Inner.Get(self) -> int { return self.val; }
+
+    struct Outer { inner: Inner; }
+    fn Outer.GetInnerVal(self) -> int { return self.inner.Get(); }
+
+    let o = Outer { inner: Inner { val: 99 } };
+    assert_eq(o.GetInnerVal(), 99);
+}
+
+test_strview();
+test_taskgroup();
+test_question_mark_operator();
+test_nested_method_chaining();
