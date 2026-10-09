@@ -4791,6 +4791,23 @@ static void EmitStructMetadata(Compiler *c, Node *n) {
     (void)c; (void)n;
 }
 
+static int MatchPatternMatchesVariant(Node *pat, const char *variant) {
+    if (!pat) return 0;
+    if (pat->type == NCALL) {
+        if (pat->call.callee->type == NMEMBER && strcmp(pat->call.callee->member.field, variant) == 0) return 1;
+        if (pat->call.callee->type == NIDENT && strcmp(pat->call.callee->sval, variant) == 0) return 1;
+    } else if (pat->type == NMEMBER) {
+        if (strcmp(pat->member.field, variant) == 0) return 1;
+    } else if (pat->type == NIDENT) {
+        if (strcmp(pat->sval, variant) == 0) return 1;
+    } else if (pat->type == NSTRUCTPAT) {
+        if (pat->structpat.name && strcmp(pat->structpat.name, variant) == 0) return 1;
+    } else if (pat->type == NORPAT) {
+        return MatchPatternMatchesVariant(pat->orpat.left, variant) || MatchPatternMatchesVariant(pat->orpat.right, variant);
+    }
+    return 0;
+}
+
 static int emit_depth = 0;
 static void EmitNodeInternal(Compiler *c, Node *n);
 
@@ -4928,23 +4945,8 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                     for (int m = 0; m < en->count; m++) {
                         int matched = 0;
                         for (int i = 0; i < n->match.count; i++) {
-                            Node *pat = n->match.patterns[i];
-                            if (!pat) continue;
-                            if (pat->type == NCALL) {
-                                if (pat->call.callee->type == NMEMBER && strcmp(pat->call.callee->member.field, en->members[m]) == 0) {
-                                    matched = 1; break;
-                                }
-                                if (pat->call.callee->type == NIDENT && strcmp(pat->call.callee->sval, en->members[m]) == 0) {
-                                    matched = 1; break;
-                                }
-                            } else if (pat->type == NMEMBER) {
-                                if (strcmp(pat->member.field, en->members[m]) == 0) {
-                                    matched = 1; break;
-                                }
-                            } else if (pat->type == NIDENT) {
-                                if (strcmp(pat->sval, en->members[m]) == 0) {
-                                    matched = 1; break;
-                                }
+                            if (MatchPatternMatchesVariant(n->match.patterns[i], en->members[m])) {
+                                matched = 1; break;
                             }
                         }
                         if (!matched) {
@@ -7371,6 +7373,7 @@ Compiler *CompNew(void) {
     NewFn(c, "IsSync");
     NewFn(c, "derive");
     NewFn(c, "repr");
+    NewFn(c, "FormatValue");
     NewFn(c, "WriteFile");
     NewFn(c, "ReadFile");
     NewFn(c, "WriteFileAsync");

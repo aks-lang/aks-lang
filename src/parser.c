@@ -376,12 +376,62 @@ static Node *ParseInterpolatedStr(const char *str, int line) {
     n->sval = strdup(str);
     return n;
   }
-  size_t exprlen = exprend - exprstart;
-  char *exprstr = malloc(exprlen + 1);
-  memcpy(exprstr, exprstart, exprlen);
-  exprstr[exprlen] = '\0';
-  Node *exprnode = ParseExprFromStr(exprstr, line);
-  free(exprstr);
+  const char *colon = NULL;
+  int paren_depth = 0;
+  int bracket_depth = 0;
+  for (const char *c = exprstart; c < exprend; c++) {
+    if (*c == '(') paren_depth++;
+    else if (*c == ')') paren_depth--;
+    else if (*c == '[') bracket_depth++;
+    else if (*c == ']') bracket_depth--;
+    else if (*c == ':' && paren_depth == 0 && bracket_depth == 0) {
+      colon = c;
+      break;
+    }
+  }
+
+  Node *exprnode = NULL;
+  if (colon) {
+    size_t subexprlen = colon - exprstart;
+    char *subexpr = malloc(subexprlen + 1);
+    memcpy(subexpr, exprstart, subexprlen);
+    subexpr[subexprlen] = '\0';
+    Node *raw_expr = ParseExprFromStr(subexpr, line);
+    free(subexpr);
+
+    if (raw_expr) {
+      size_t speclen = exprend - (colon + 1);
+      char *spec = malloc(speclen + 1);
+      memcpy(spec, colon + 1, speclen);
+      spec[speclen] = '\0';
+
+      Node *callee = NodeNew(NIDENT, line);
+      callee->sval = strdup("FormatValue");
+      Node *spec_node = NodeNew(NSTR, line);
+      spec_node->sval = spec;
+
+      Node **args = malloc(2 * sizeof(Node *));
+      args[0] = raw_expr;
+      args[1] = spec_node;
+      int *isspread = calloc(2, sizeof(int));
+
+      Node *callnode = NodeNew(NCALL, line);
+      callnode->call.callee = callee;
+      callnode->call.args = args;
+      callnode->call.argc = 2;
+      callnode->call.isspread = isspread;
+      callnode->call.targs = NULL;
+      callnode->call.tc = 0;
+      exprnode = callnode;
+    }
+  } else {
+    size_t exprlen = exprend - exprstart;
+    char *exprstr = malloc(exprlen + 1);
+    memcpy(exprstr, exprstart, exprlen);
+    exprstr[exprlen] = '\0';
+    exprnode = ParseExprFromStr(exprstr, line);
+    free(exprstr);
+  }
 
   if (!exprnode) {
     NodeFree(prefixnode);

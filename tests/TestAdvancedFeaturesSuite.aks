@@ -1,0 +1,98 @@
+// TestAdvancedFeaturesSuite.aks
+// Tests formatted string interpolation, pattern matching, and arena collections.
+
+enum Status {
+    Active,
+    Inactive,
+    Suspended
+};
+
+fn test_format_specifiers() {
+    let pi = 3.14159265;
+    let s_pi = f"{pi:.2f}";
+    assert(s_pi == "3.14", "float .2f format");
+
+    let val = 42;
+    let s_hex = f"{val:x}";
+    assert(s_hex == "2a", "hex x format");
+
+    let s_hex08 = f"{val:08x}";
+    assert(s_hex08 == "0000002a", "hex 08x format");
+
+    let s_bin = f"{val:08b}";
+    assert(s_bin == "00101010", "binary 08b format");
+
+    let s_dec = f"{val:05d}";
+    assert(s_dec == "00042", "decimal 05d format");
+
+    let name = "AKS";
+    let s_right = f"{name:>8}";
+    assert(s_right == "     AKS", "right align >8");
+
+    let s_left = f"{name:<8}";
+    assert(s_left == "AKS     ", "left align <8");
+
+    let s_mid = f"{name:^7}";
+    assert(s_mid == "  AKS  ", "center align ^7");
+
+    assert(FormatValue(123.456, ".1f") == "123.5", "FormatValue direct");
+}
+
+fn test_pattern_matching_exhaustive() {
+    let s = Status.Active;
+    let mut msg = "";
+    match (s) {
+        case Status.Active => {
+            msg = "running";
+        }
+        case Status.Inactive | Status.Suspended => {
+            msg = "stopped";
+        }
+    }
+    assert(msg == "running", "or pattern in enum match");
+
+    let s2 = Status.Suspended;
+    let mut msg2 = "";
+    match (s2) {
+        case Status.Active => {
+            msg2 = "running";
+        }
+        case Status.Inactive | Status.Suspended => {
+            msg2 = "stopped";
+        }
+    }
+    assert(msg2 == "stopped", "suspended matched via or-pattern");
+}
+
+fn test_arena_collections() {
+    let r = RegionNew("SuiteArena");
+    let arr = r.Array(4);
+    arr[0] = 100;
+    arr[1] = 200;
+    arr[2] = 300;
+    arr[3] = 400;
+
+    assert(len(arr) == 4, "arena array len");
+    assert(arr[0] == 100, "arena item 0");
+    assert(arr[3] == 400, "arena item 3");
+
+    r.Dispose();
+}
+
+fn test_len_builtin() {
+    let arr = [1, 2, 3, 4, 5];
+    assert(len(arr) == 5, "len(array)");
+
+    let str = "hello world";
+    assert(len(str) == 11, "len(string)");
+}
+
+fn TestAdvancedFeatures() {
+    test_format_specifiers();
+    test_pattern_matching_exhaustive();
+    test_arena_collections();
+    test_len_builtin();
+    println("TestAdvancedFeaturesSuite passed cleanly!");
+}
+
+TestAdvancedFeatures();

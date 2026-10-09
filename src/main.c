@@ -51,6 +51,7 @@ const char *gBuildProfile = "release";
 extern int gContractCheck;
 
 extern const char *AKSPRELUDE;
+static char *ReadFileToStr(const char *path);
 
 static int CountUnbalancedBrackets(const char *str) {
     int braces = 0;
@@ -266,7 +267,7 @@ static void RunRepl(void) {
             strncpy(linebuffer, stmt, sizeof(linebuffer) - 1);
             linebuffer[sizeof(linebuffer) - 1] = '\0';
             time_execution = 1;
-        } else if (strncmp(trimmed, ":type ", 6) == 0) {
+        } else if (strncmp(trimmed, ":type ", 6) == 0 || strncmp(trimmed, ":t ", 3) == 0) {
             const char *expr = linebuffer;
             while (*expr && *expr != ' ') expr++;
             while (*expr == ' ') expr++;
@@ -274,6 +275,59 @@ static void RunRepl(void) {
             snprintf(wrap, sizeof(wrap), "println(type(%s));\n", expr);
             strncpy(linebuffer, wrap, sizeof(linebuffer) - 1);
             linebuffer[sizeof(linebuffer) - 1] = '\0';
+        }
+
+        if (strncmp(trimmed, ":doc ", 5) == 0) {
+            const char *topic = linebuffer;
+            while (*topic && *topic != ' ') topic++;
+            while (*topic == ' ') topic++;
+            char clean_topic[256];
+            strncpy(clean_topic, topic, sizeof(clean_topic) - 1);
+            clean_topic[sizeof(clean_topic) - 1] = '\0';
+            for (int ci = 0; clean_topic[ci]; ci++) {
+                if (clean_topic[ci] == '\r' || clean_topic[ci] == '\n') clean_topic[ci] = '\0';
+            }
+            LearnHelp(clean_topic);
+            continue;
+        }
+
+        if (strncmp(trimmed, ":load ", 6) == 0) {
+            const char *filepath = linebuffer;
+            while (*filepath && *filepath != ' ') filepath++;
+            while (*filepath == ' ') filepath++;
+            char clean_path[512];
+            strncpy(clean_path, filepath, sizeof(clean_path) - 1);
+            clean_path[sizeof(clean_path) - 1] = '\0';
+            for (int ci = 0; clean_path[ci]; ci++) {
+                if (clean_path[ci] == '\r' || clean_path[ci] == '\n') clean_path[ci] = '\0';
+            }
+            char *filesrc = ReadFileToStr(clean_path);
+            if (!filesrc) {
+                printf("\033[31mError: Could not load file '%s'\033[0m\n", clean_path);
+            } else {
+                int lerr = 0;
+                Node *last = Parse(filesrc, &lerr);
+                if (lerr || !last) {
+                    printf("\033[31mSyntax error in '%s'\033[0m\n", clean_path);
+                    if (last) NodeFree(last);
+                } else {
+                    int prev_scopedepth = c->current ? c->current->scopedepth : 0;
+                    if (c->current) c->current->scopedepth = 0;
+                    int startip = c->fns[0]->chunk.count;
+                    if (CompCompile(c, last)) {
+                        if (c->current) c->current->scopedepth = prev_scopedepth;
+                        VMSync(vm, c, 1);
+                        VMRepl(vm, startip);
+                        printf("\033[32mLoaded and executed '%s'\033[0m\n", clean_path);
+                    } else {
+                        if (c->current) c->current->scopedepth = prev_scopedepth;
+                        printf("\033[31mCompilation failed for '%s'\033[0m\n", clean_path);
+                    }
+                    NodeFree(last);
+                }
+                free(filesrc);
+            }
+            continue;
         }
 
         if (strcmp(trimmed, ":history") == 0) {
@@ -286,7 +340,9 @@ static void RunRepl(void) {
             printf("  \033[1;36m:clear, :cls\033[0m   Clear the terminal screen\n");
             printf("  \033[1;36m:vars\033[0m          List all defined global variables and values\n");
             printf("  \033[1;36m:fns\033[0m           List all compiled functions\n");
-            printf("  \033[1;36m:type <expr>\033[0m   Inspect runtime type of an expression\n");
+            printf("  \033[1;36m:type, :t <e>\033[0m  Inspect runtime type of an expression\n");
+            printf("  \033[1;36m:doc <topic>\033[0m   View documentation for topic or builtin\n");
+            printf("  \033[1;36m:load <file>\033[0m   Load and run script into session\n");
             printf("  \033[1;36m:time <stmt>\033[0m   Benchmark execution duration of statement\n");
             printf("  \033[1;36m:history\033[0m       Display recent command history\n");
             printf("  \033[1;36m:quit, :q\033[0m      Exit the REPL session (or type exit())\n\n");
@@ -1360,7 +1416,7 @@ static int ExecuteRunCheck(const char *sourcepath) {
     return failed > 0 ? 1 : 0;
 }
 
-static int ExecuteRunBench(const char *sourcepath) {
+static int ExecuteRunBench(const char *sourcepath, const char *savepath, const char *comparepath) {
     char *rawsource = ReadFileToStr(sourcepath);
     if (!rawsource) {
         fprintf(stderr, "Error: Could not read source file '%s'\n", sourcepath);
@@ -1440,8 +1496,46 @@ static int ExecuteRunBench(const char *sourcepath) {
 
     gTestMode = 1;
 
+    typedef struct {
+        char name[128];
+        double time_us;
+    } BenchRecord;
+    BenchRecord baselines[256];
+    int baseline_count = 0;
+
+    if (comparepath) {
+        FILE *bf = fopen(comparepath, "r");
+        if (bf) {
+            char bline[256];
+            while (fgets(bline, sizeof(bline), bf)) {
+                char bname[128];
+                double btime = 0.0;
+                char *np = strstr(bline, "\"name\":");
+                char *tp = strstr(bline, "\"time_us\":");
+                if (np && tp) {
+                    if (sscanf(np, "\"name\": \"%127[^\"]\"", bname) == 1 &&
+                        sscanf(tp, "\"time_us\": %lf", &btime) == 1) {
+                        if (baseline_count < 256) {
+                            strncpy(baselines[baseline_count].name, bname, 127);
+                            baselines[baseline_count].time_us = btime;
+                            baseline_count++;
+                        }
+                    }
+                }
+            }
+            fclose(bf);
+        }
+    }
+
+    BenchRecord recorded[256];
+    int recorded_count = 0;
+
     printf("\nRunning AKS Micro-Benchmarks\n");
-    printf("%-30s %-12s %-12s %-12s\n", "Benchmark", "Iterations", "Time/Op", "Ops/Sec");
+    if (comparepath && baseline_count > 0) {
+        printf("%-30s %-12s %-12s %-10s %-12s\n", "Benchmark", "Iterations", "Time/Op", "vs Base", "Ops/Sec");
+    } else {
+        printf("%-30s %-12s %-12s %-12s\n", "Benchmark", "Iterations", "Time/Op", "Ops/Sec");
+    }
 
     for (int i = prelude_fn_count; i < aksVM->fncount; i++) {
         FnProto *fn = aksVM->fns[i];
@@ -1494,7 +1588,43 @@ static int ExecuteRunBench(const char *sourcepath) {
             double time_per_op_us = (elapsed_sec / iterations) * 1e6;
             double ops_sec = (double)iterations / elapsed_sec;
 
-            printf("%-30s %-12d %-10.2f us %-12.0f\n", fn->name, iterations, time_per_op_us, ops_sec);
+            if (recorded_count < 256) {
+                strncpy(recorded[recorded_count].name, fn->name, 127);
+                recorded[recorded_count].time_us = time_per_op_us;
+                recorded_count++;
+            }
+
+            if (comparepath && baseline_count > 0) {
+                int found_base = -1;
+                for (int b = 0; b < baseline_count; b++) {
+                    if (strcmp(baselines[b].name, fn->name) == 0) {
+                        found_base = b;
+                        break;
+                    }
+                }
+                if (found_base >= 0) {
+                    double delta = ((time_per_op_us - baselines[found_base].time_us) / baselines[found_base].time_us) * 100.0;
+                    printf("%-30s %-12d %-10.2f us (%+6.1f%%) %-12.0f\n", fn->name, iterations, time_per_op_us, delta, ops_sec);
+                } else {
+                    printf("%-30s %-12d %-10.2f us            %-12.0f\n", fn->name, iterations, time_per_op_us, ops_sec);
+                }
+            } else {
+                printf("%-30s %-12d %-10.2f us %-12.0f\n", fn->name, iterations, time_per_op_us, ops_sec);
+            }
+        }
+    }
+
+    if (savepath) {
+        FILE *sf = fopen(savepath, "w");
+        if (sf) {
+            fprintf(sf, "{\n  \"benchmarks\": [\n");
+            for (int r = 0; r < recorded_count; r++) {
+                fprintf(sf, "    { \"name\": \"%s\", \"time_us\": %.4f }%s\n",
+                        recorded[r].name, recorded[r].time_us, (r + 1 < recorded_count) ? "," : "");
+            }
+            fprintf(sf, "  ]\n}\n");
+            fclose(sf);
+            printf("\nSaved benchmark results to '%s'\n", savepath);
         }
     }
 
@@ -1504,7 +1634,7 @@ static int ExecuteRunBench(const char *sourcepath) {
     return 0;
 }
 
-static int ExecuteRunBenchDir(const char *dirpath) {
+static int ExecuteRunBenchDir(const char *dirpath, const char *savepath, const char *comparepath) {
     char searchpat[512];
     snprintf(searchpat, sizeof(searchpat), "%s\\*.aks", dirpath);
     for (char *p = searchpat; *p; p++) { if (*p == '/') *p = '\\'; }
@@ -1547,8 +1677,15 @@ static int ExecuteRunBenchDir(const char *dirpath) {
         if (is_bench) {
             printf("[BENCH SUITE] %s\n", ffd.cFileName);
             total_suites++;
+            char extra[512] = "";
+            if (savepath) {
+                snprintf(extra + strlen(extra), sizeof(extra) - strlen(extra), " --save \"%s\"", savepath);
+            }
+            if (comparepath) {
+                snprintf(extra + strlen(extra), sizeof(extra) - strlen(extra), " --compare \"%s\"", comparepath);
+            }
             char cmd[1024];
-            snprintf(cmd, sizeof(cmd), "\"\"%s\" bench \"%s\"\"", exepath, fullpath);
+            snprintf(cmd, sizeof(cmd), "\"\"%s\" bench \"%s\"%s\"", exepath, fullpath, extra);
             int res = system(cmd);
             if (res != 0) {
                 suite_failures++;
@@ -2484,8 +2621,14 @@ int main(int argc, char **argv) {
             return ExecuteRunCheck(file_path);
         } else if (strcmp(command, "bench") == 0) {
             const char *file_path = NULL;
+            const char *save_path = NULL;
+            const char *compare_path = NULL;
             for (int i = 2; i < argc; i++) {
-                if (argv[i][0] != '-') {
+                if (strcmp(argv[i], "--save") == 0 && i + 1 < argc) {
+                    save_path = argv[++i];
+                } else if (strcmp(argv[i], "--compare") == 0 && i + 1 < argc) {
+                    compare_path = argv[++i];
+                } else if (argv[i][0] != '-') {
                     file_path = argv[i];
                 }
             }
@@ -2514,9 +2657,9 @@ int main(int argc, char **argv) {
             }
             DWORD attr = GetFileAttributesA(file_path);
             if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
-                return ExecuteRunBenchDir(file_path);
+                return ExecuteRunBenchDir(file_path, save_path, compare_path);
             }
-            return ExecuteRunBench(file_path);
+            return ExecuteRunBench(file_path, save_path, compare_path);
         } else if (strcmp(command, "fuzz") == 0) {
             const char *file_path = NULL;
             for (int i = 2; i < argc; i++) {

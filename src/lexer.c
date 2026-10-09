@@ -198,6 +198,36 @@ Token LexNext(Lexer *l) {
         return t;
     }
 
+    // f-strings: f"..." or F"..."
+    if((c=='f' || c=='F') && Ln(l)=='"') {
+        Adv(l); // consume 'f' / 'F'
+        if(l->src[l->pos+1]=='"' && l->src[l->pos+2]=='"') {
+            Adv(l); Adv(l); Adv(l);
+            size_t start=l->pos;
+            while(Lc(l)) {
+                if(Lc(l)=='"' && l->src[l->pos+1]=='"' && l->src[l->pos+2]=='"') break;
+                Adv(l);
+            }
+            size_t len=l->pos-start;
+            char *buf=malloc(len+1); memcpy(buf,l->src+start,len); buf[len]=0;
+            if(Lc(l)=='"') { Adv(l); Adv(l); Adv(l); }
+            Token t=MkTok(TSTRLIT,buf,line,col); free(buf);
+            return t;
+        } else {
+            Adv(l);
+            size_t start=l->pos;
+            while(Lc(l) && Lc(l)!='"') {
+                if(Lc(l)=='\\') { Adv(l); if (!Lc(l)) break; }
+                Adv(l);
+            }
+            size_t len=l->pos-start;
+            char *buf=malloc(len+1); memcpy(buf,l->src+start,len); buf[len]=0;
+            if(Lc(l)=='"') Adv(l);
+            Token t=MkTok(TSTRLIT,buf,line,col); free(buf);
+            return t;
+        }
+    }
+
     // regular strings
     if(c=='"') {
         Adv(l);

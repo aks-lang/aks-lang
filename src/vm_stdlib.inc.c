@@ -794,6 +794,133 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       }
       break;
     }
+    case 'F': {
+      if (strcmp(name, "FormatValue") == 0) {
+        if (argc != 2) {
+          fprintf(stderr, "Runtime error: FormatValue() expects 2 arguments (val, spec), got %d\n", argc);
+          return -1;
+        }
+        AKSValue specarg = POP();
+        AKSValue valarg = POP();
+        const char *spec = (ValKind(specarg) == VALSTR) ? ValToStrPtr(specarg)->data : "";
+        char buf[512];
+        buf[0] = '\0';
+        
+        int has_dot = (strchr(spec, '.') != NULL);
+        int has_f = (strchr(spec, 'f') != NULL || strchr(spec, 'F') != NULL);
+        int has_e = (strchr(spec, 'e') != NULL || strchr(spec, 'E') != NULL);
+        int has_g = (strchr(spec, 'g') != NULL || strchr(spec, 'G') != NULL);
+        int has_x = (strchr(spec, 'x') != NULL);
+        int has_X = (strchr(spec, 'X') != NULL);
+        int has_b = (strchr(spec, 'b') != NULL || strchr(spec, 'B') != NULL);
+
+        if ((has_dot || has_f || has_e || has_g) && (ValKind(valarg) == VALFLOAT || ValKind(valarg) == VALINT)) {
+          double d = (ValKind(valarg) == VALFLOAT) ? ValToFloat(valarg) : (double)ValToInt(valarg);
+          char fmt[64];
+          snprintf(fmt, sizeof(fmt), "%%%s", spec);
+          if (has_dot && !has_f && !has_e && !has_g) {
+            strncat(fmt, "f", sizeof(fmt) - strlen(fmt) - 1);
+          }
+          snprintf(buf, sizeof(buf), fmt, d);
+        } else if ((has_x || has_X) && (ValKind(valarg) == VALINT || ValKind(valarg) == VALFLOAT)) {
+          int64_t v = (ValKind(valarg) == VALINT) ? ValToInt(valarg) : (int64_t)ValToFloat(valarg);
+          char fmt[64];
+          snprintf(fmt, sizeof(fmt), "%%%s", spec);
+          char *xp = strchr(fmt, 'x');
+          if (!xp) xp = strchr(fmt, 'X');
+          if (xp) {
+            char cap = *xp;
+            *xp = '\0';
+            strncat(fmt, (cap == 'x') ? "llx" : "llX", sizeof(fmt) - strlen(fmt) - 1);
+          }
+          snprintf(buf, sizeof(buf), fmt, (long long)v);
+        } else if (has_b && (ValKind(valarg) == VALINT || ValKind(valarg) == VALFLOAT)) {
+          int64_t v = (ValKind(valarg) == VALINT) ? ValToInt(valarg) : (int64_t)ValToFloat(valarg);
+          char bbits[66];
+          bbits[0] = '\0';
+          if (v == 0) {
+            strcpy(bbits, "0");
+          } else {
+            uint64_t uv = (uint64_t)v;
+            int bitidx = 0;
+            char rev[66];
+            while (uv > 0) {
+              rev[bitidx++] = (uv & 1) ? '1' : '0';
+              uv >>= 1;
+            }
+            for (int i = 0; i < bitidx; i++) {
+              bbits[i] = rev[bitidx - 1 - i];
+            }
+            bbits[bitidx] = '\0';
+          }
+          int width = 0;
+          char padchar = ' ';
+          if (spec[0] == '0') padchar = '0';
+          for (const char *sp = spec; *sp; sp++) {
+            if (isdigit((unsigned char)*sp)) width = width * 10 + (*sp - '0');
+          }
+          if (width > 0 && (int)strlen(bbits) < width) {
+            int padlen = width - (int)strlen(bbits);
+            if (padlen > 256) padlen = 256;
+            for (int i = 0; i < padlen; i++) buf[i] = padchar;
+            buf[padlen] = '\0';
+            strcat(buf, bbits);
+          } else {
+            strcpy(buf, bbits);
+          }
+        } else if ((strchr(spec, 'd') != NULL || strchr(spec, 'i') != NULL || isdigit((unsigned char)spec[0])) &&
+                   (ValKind(valarg) == VALINT || ValKind(valarg) == VALFLOAT)) {
+          int64_t v = (ValKind(valarg) == VALINT) ? ValToInt(valarg) : (int64_t)ValToFloat(valarg);
+          char fmt[64];
+          snprintf(fmt, sizeof(fmt), "%%%s", spec);
+          char *dp = strchr(fmt, 'd');
+          if (!dp) dp = strchr(fmt, 'i');
+          if (dp) {
+            *dp = '\0';
+            strncat(fmt, "lld", sizeof(fmt) - strlen(fmt) - 1);
+          } else {
+            strncat(fmt, "lld", sizeof(fmt) - strlen(fmt) - 1);
+          }
+          snprintf(buf, sizeof(buf), fmt, (long long)v);
+        } else {
+          AKSValue rawstr = ValToStr(valarg);
+          const char *s = (ValKind(rawstr) == VALSTR) ? ValToStrPtr(rawstr)->data : "";
+          int slen = (int)strlen(s);
+          int align = 0;
+          int width = 0;
+          const char *sp = spec;
+          if (*sp == '<') { align = -1; sp++; }
+          else if (*sp == '>') { align = 1; sp++; }
+          else if (*sp == '^') { align = 2; sp++; }
+          while (*sp && isdigit((unsigned char)*sp)) {
+            width = width * 10 + (*sp - '0');
+            sp++;
+          }
+          if (width > slen) {
+            int diff = width - slen;
+            if (align == -1) {
+              snprintf(buf, sizeof(buf), "%s%*s", s, diff, "");
+            } else if (align == 2) {
+              int leftpad = diff / 2;
+              int rightpad = diff - leftpad;
+              snprintf(buf, sizeof(buf), "%*s%s%*s", leftpad, "", s, rightpad, "");
+            } else {
+              snprintf(buf, sizeof(buf), "%*s%s", diff, "", s);
+            }
+          } else {
+            strncpy(buf, s, sizeof(buf) - 1);
+            buf[sizeof(buf) - 1] = '\0';
+          }
+          ValFree(&rawstr);
+        }
+        ValFree(&specarg);
+        ValFree(&valarg);
+        PUSH(ValStr(buf));
+        *stacktopptr = stacktop;
+        return 1;
+      }
+      break;
+    }
     case 'T': {
       if (strcmp(name, "TimerNowNanos") == 0) {
         int64_t nanos = 0;
