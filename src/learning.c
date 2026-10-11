@@ -73,6 +73,7 @@ void LearnHelp(const char *topic) {
         printf("  \033[33mmodules\033[0m      Topological DAG ordering, circular import detection, and parallel compilation\n");
         printf("  \033[33mparallel\033[0m     Multi-threaded AST & bytecode chunk optimization (--parallel, -j, --jobs)\n");
         printf("  \033[33mdiagnostics\033[0m  Parser statement sync, caret markers (^~~~), and 'Did you mean?' suggestions\n");
+        printf("  \033[33maot\033[0m          Ahead-of-time compilation, zero-overhead executables, and bare-metal targets\n");
         printf("  \033[33mtooling\033[0m      CLI flags, LSP (aksls), DAP debugger, formatter, and linter\n\n");
         printf("Usage: aks help <topic>\n");
         return;
@@ -257,6 +258,19 @@ void LearnHelp(const char *topic) {
         printf("  let a = Acceleration(v, t);     // 1.0 m/s^2 (unit.m = 1, unit.s = -2)\n");
         printf("  let f = Newton(m, a);           // 2.0 N (unit.kg = 1, unit.m = 1, unit.s = -2)\n");
         printf("  let w = Joule(f, d);            // 200.0 J\n");
+    } else if (strcmp(topic, "aot") == 0) {
+        printf("\033[36mAhead-of-Time (AOT) Native Compilation & Zero-Cost Abstractions\033[0m\n");
+        printf("Compilation Modes:\n");
+        printf("  aks compile-exe <file.aks> [-o <out.exe>]  Emit standalone native executable (0 external dependencies)\n");
+        printf("  aks compile-aot <file.aks> <out.c>         Generate standalone C code with zero VM interpreter overhead\n");
+        printf("  aks compile-llvm <file.aks> [-o <out.ll>]  Emit unboxed multi-arch LLVM IR with LTO and PGO support\n");
+        printf("  aks compile-nostd <file.aks> [-o <out.c>]  Emit freestanding bare-metal C module for microcontrollers\n");
+        printf("  aks wasm <file.aks> [-o <out.wat>]         Emit WebAssembly text format (browser / WASI)\n\n");
+        printf("Zero-Cost Memory & Layout Control:\n");
+        printf("  - Compile-Time Execution: comptime blocks evaluate at compile time with 0 runtime instructions.\n");
+        printf("  - Scoped Arenas: RegionNew/RegionScope allocate via pointer bump with O(1) bulk teardown.\n");
+        printf("  - Layout Introspection: SizeOf, AlignOf, OffsetOf, and repr() packed struct attributes.\n");
+        printf("  - Direct Linking: Native Win64 PE executable synthesis with direct entrypoints.\n");
     } else if (strcmp(topic, "actors") == 0) {
         printf("\033[36mState-Isolated Actor Model Concurrency\033[0m\n");
         printf("Actor Declaration:\n");
