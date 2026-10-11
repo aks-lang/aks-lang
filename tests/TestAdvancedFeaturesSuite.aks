@@ -87,11 +87,22 @@ fn test_len_builtin() {
     assert(len(str) == 11, "len(string)");
 }
 
+fn test_math_utilities() {
+    assert(abs(-42) == 42, "abs negative");
+    assert(abs(42) == 42, "abs positive");
+    assert(min(10, 20) == 10, "min(10, 20)");
+    assert(max(10, 20) == 20, "max(10, 20)");
+    assert(clamp(5, 10, 20) == 10, "clamp lower bound");
+    assert(clamp(25, 10, 20) == 20, "clamp upper bound");
+    assert(clamp(15, 10, 20) == 15, "clamp within bounds");
+}
+
 fn TestAdvancedFeatures() {
     test_format_specifiers();
     test_pattern_matching_exhaustive();
     test_arena_collections();
     test_len_builtin();
+    test_math_utilities();
     println("TestAdvancedFeaturesSuite passed cleanly!");
 }
 
