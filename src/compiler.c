@@ -7649,6 +7649,9 @@ Compiler *CompNew(void) {
     NewFn(c, "ArenaAllocArray");
     NewFn(c, "ArenaAllocStruct");
     NewFn(c, "ArenaFree");
+    NewFn(c, "ArenaReset");
+    NewFn(c, "ArenaAllocCount");
+    NewFn(c, "ArenaAllocatedBytes");
 
     // Next-Gen Runtime Builtins
     NewFn(c, "ReinterpretCast");

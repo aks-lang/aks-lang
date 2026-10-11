@@ -3245,16 +3245,19 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       fprintf(stderr, "Runtime error: ArenaReset() expects 1 argument (arena)\n");
       return -1;
     }
-    AKSValue a_val = POP();
-    typedef struct { uint8_t *base; size_t capacity; size_t offset; } AKSArena;
-    AKSArena *a = (AKSArena *)(uintptr_t)ValToInt(a_val);
-    if (a) {
-      a->offset = 0;
+    AKSValue peek_val = *(stacktop - 1);
+    if (ValKind(peek_val) != VALARENA) {
+      AKSValue a_val = POP();
+      typedef struct { uint8_t *base; size_t capacity; size_t offset; } AKSRawArena;
+      AKSRawArena *a = (AKSRawArena *)(uintptr_t)ValToInt(a_val);
+      if (a) {
+        a->offset = 0;
+      }
+      ValFree(&a_val);
+      PUSH(ValNull());
+      *stacktopptr = stacktop;
+      return 1;
     }
-    ValFree(&a_val);
-    PUSH(ValNull());
-    *stacktopptr = stacktop;
-    return 1;
   }
 
   if (strcmp(name, "ArenaUsed") == 0) {
@@ -18609,6 +18612,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     for (int i = 0; i < cap; i++) {
       arr->items[i] = ValNull();
     }
+    AtomicIncrement(&arr->refcount);
 
     if (arena->count >= arena->capacity) {
       arena->capacity = arena->capacity == 0 ? 8 : arena->capacity * 2;
@@ -18653,6 +18657,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     }
     const char *tname = ValToStrPtr(type_val)->data;
     AKSValue res = ValStructArena(tname, arena);
+    AtomicIncrement(&ValToObj(res)->refcount);
 
     if (arena->count >= arena->capacity) {
       arena->capacity = arena->capacity == 0 ? 8 : arena->capacity * 2;
@@ -18691,17 +18696,17 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
         if (type == 1) {
           AKSArray *arr = (AKSArray *)ptr;
           if (!arr->invalidated) {
-            // Free item contents so held references are released
             for (int j = 0; j < arr->count; j++)
               ValFree(&arr->items[j]);
             free(arr->items);
             arr->items = NULL;
             arr->count = 0;
             arr->capacity = 0;
-            // Mark invalidated but do NOT free the header and do NOT
-            // touch gactivearrs - valfree() will do both when the
-            // last AKSValue handle goes out of scope.
             arr->invalidated = 1;
+          }
+          if (AtomicDecrement(&arr->refcount) <= 0) {
+            if (!arr->isstack) free(arr);
+            AtomicDecrement(&gactivearrs);
           }
         } else if (type == 2) {
           AKSStruct *obj = (AKSStruct *)ptr;
@@ -18717,9 +18722,11 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
             obj->fieldvals = NULL;
             obj->typename = NULL;
             obj->fieldcount = 0;
-            // Mark invalidated but keep header alive for UAF detection.
-            // Do NOT touch gactivestructs - valfree() handles it.
             obj->invalidated = 1;
+          }
+          if (AtomicDecrement(&obj->refcount) <= 0) {
+            if (!obj->isstack) free(obj);
+            AtomicDecrement(&gactivestructs);
           }
         }
       }
@@ -18736,6 +18743,126 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       arena->invalidated = 1;
     }
     PUSH(ValNull());
+    ValFree(&arena_val);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "ArenaReset") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: ArenaReset() expects 1 argument, got %d\n",
+              argc);
+      return -1;
+    }
+    AKSValue arena_val = POP();
+    if (ValKind(arena_val) != VALARENA) {
+      fprintf(stderr, "Runtime error: ArenaReset() argument must be an arena\n");
+      ValFree(&arena_val);
+      return -1;
+    }
+    AKSArena *arena = ValToArena(arena_val);
+    if (arena && !arena->invalidated) {
+      for (int i = 0; i < arena->count; i++) {
+        void *ptr = arena->allocations[i];
+        int type = arena->alloc_types[i];
+        if (type == 1) {
+          AKSArray *arr = (AKSArray *)ptr;
+          if (!arr->invalidated) {
+            for (int j = 0; j < arr->count; j++)
+              ValFree(&arr->items[j]);
+            free(arr->items);
+            arr->items = NULL;
+            arr->count = 0;
+            arr->capacity = 0;
+            arr->invalidated = 1;
+          }
+          if (AtomicDecrement(&arr->refcount) <= 0) {
+            if (!arr->isstack) free(arr);
+            AtomicDecrement(&gactivearrs);
+          }
+        } else if (type == 2) {
+          AKSStruct *obj = (AKSStruct *)ptr;
+          if (!obj->invalidated) {
+            for (int j = 0; j < obj->fieldcount; j++) {
+              free(obj->fieldnames[j]);
+              ValFree(&obj->fieldvals[j]);
+            }
+            free(obj->fieldnames);
+            free(obj->fieldvals);
+            free(obj->typename);
+            obj->fieldnames = NULL;
+            obj->fieldvals = NULL;
+            obj->typename = NULL;
+            obj->fieldcount = 0;
+            obj->invalidated = 1;
+          }
+          if (AtomicDecrement(&obj->refcount) <= 0) {
+            if (!obj->isstack) free(obj);
+            AtomicDecrement(&gactivestructs);
+          }
+        }
+      }
+      arena->count = 0;
+    }
+    PUSH(ValBool(1));
+    ValFree(&arena_val);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "ArenaAllocCount") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: ArenaAllocCount() expects 1 argument, got %d\n",
+              argc);
+      return -1;
+    }
+    AKSValue arena_val = POP();
+    if (ValKind(arena_val) != VALARENA) {
+      fprintf(stderr, "Runtime error: ArenaAllocCount() argument must be an arena\n");
+      ValFree(&arena_val);
+      return -1;
+    }
+    AKSArena *arena = ValToArena(arena_val);
+    int64_t count = (arena && !arena->invalidated) ? (int64_t)arena->count : 0;
+    PUSH(ValInt(count));
+    ValFree(&arena_val);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "ArenaAllocatedBytes") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: ArenaAllocatedBytes() expects 1 argument, got %d\n",
+              argc);
+      return -1;
+    }
+    AKSValue arena_val = POP();
+    if (ValKind(arena_val) != VALARENA) {
+      fprintf(stderr, "Runtime error: ArenaAllocatedBytes() argument must be an arena\n");
+      ValFree(&arena_val);
+      return -1;
+    }
+    AKSArena *arena = ValToArena(arena_val);
+    int64_t bytes = 0;
+    if (arena && !arena->invalidated) {
+      bytes += (int64_t)sizeof(AKSArena);
+      bytes += (int64_t)(arena->capacity * sizeof(void *));
+      bytes += (int64_t)(arena->capacity * sizeof(int));
+      for (int i = 0; i < arena->count; i++) {
+        int type = arena->alloc_types[i];
+        if (type == 1) {
+          bytes += (int64_t)sizeof(AKSArray);
+          AKSArray *arr = (AKSArray *)arena->allocations[i];
+          if (arr && !arr->invalidated) {
+            bytes += (int64_t)(arr->capacity * sizeof(AKSValue));
+          }
+        } else if (type == 2) {
+          bytes += (int64_t)sizeof(AKSStruct);
+          AKSStruct *obj = (AKSStruct *)arena->allocations[i];
+          if (obj && !obj->invalidated) {
+            bytes += (int64_t)(obj->fieldcount * (sizeof(char *) + sizeof(AKSValue)));
+          }
+        }
+      }
+    }
+    PUSH(ValInt(bytes));
     ValFree(&arena_val);
     *stacktopptr = stacktop;
     return 1;

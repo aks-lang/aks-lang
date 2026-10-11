@@ -97,12 +97,55 @@ fn test_math_utilities() {
     assert(clamp(15, 10, 20) == 15, "clamp within bounds");
 }
 
+fn test_arena_introspection_and_reset() {
+    let r = RegionNew();
+    assert(r.AllocCount() == 0, "initial alloc count is 0");
+    let initial_bytes = r.AllocatedBytes();
+    assert(initial_bytes > 0, "initial bytes includes arena header");
+
+    let a1 = r.Array(10);
+    assert(r.AllocCount() == 1, "alloc count after array is 1");
+    let after_a1_bytes = r.AllocatedBytes();
+    assert(after_a1_bytes > initial_bytes, "bytes increased after array");
+
+    let a2 = r.Array(20);
+    assert(r.AllocCount() == 2, "alloc count after second array is 2");
+
+    r.Reset();
+    assert(r.AllocCount() == 0, "alloc count after reset is 0");
+
+    let a3 = r.Array(5);
+    assert(r.AllocCount() == 1, "alloc count after reuse is 1");
+    r.Dispose();
+}
+
+fn test_string_array_ergonomics() {
+    let s = "architecture";
+    assert(starts_with(s, "arch") == true, "starts_with positive");
+    assert(StartsWith(s, "arch") == true, "StartsWith positive");
+    assert(starts_with(s, "tect") == false, "starts_with negative");
+
+    assert(ends_with(s, "ture") == true, "ends_with positive");
+    assert(EndsWith(s, "ture") == true, "EndsWith positive");
+    assert(ends_with(s, "arch") == false, "ends_with negative");
+
+    assert(contains(s, "itec") == true, "contains positive");
+    assert(Contains(s, "itec") == true, "Contains positive");
+    assert(contains(s, "xyz") == false, "contains negative");
+
+    let items = [10, 20, 30, 40];
+    assert(array_contains(items, 30) == true, "array_contains found");
+    assert(array_contains(items, 99) == false, "array_contains not found");
+}
+
 fn TestAdvancedFeatures() {
     test_format_specifiers();
     test_pattern_matching_exhaustive();
     test_arena_collections();
     test_len_builtin();
     test_math_utilities();
+    test_arena_introspection_and_reset();
+    test_string_array_ergonomics();
     println("TestAdvancedFeaturesSuite passed cleanly!");
 }
 
