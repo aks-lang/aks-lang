@@ -384,6 +384,11 @@ AKSValue ValCastStr(AKSValue val);
 
 void ValFreeFunc(AKSValue *v);
 #define ValFree(v) do { if ((v) && !ValIsPrimitive(*(v))) ValFreeFunc(v); } while(0)
+void AksNotifyWeakFreed(void *ptr);
+int AksWeakNew(AKSValue target);
+int AksWeakAlive(int id);
+AKSValue AksWeakRawUpgrade(int id);
+void AksFreeWeakRegistry(void);
 AKSValue ValCopySlow(AKSValue v);
 AKSValue ValDeepClone(AKSValue v);
 static inline AKSValue ValCopy(AKSValue v) {

@@ -18257,6 +18257,89 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
+  if (strcmp(name, "pop") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: pop() expects 1 argument, got %d\n", argc);
+      return -1;
+    }
+    AKSValue arr = POP();
+    if (ValKind(arr) != VALARR) {
+      fprintf(stderr, "Runtime error: pop() argument must be an array\n");
+      ValFree(&arr);
+      return -1;
+    }
+    AKSArray *a = ValToArr(arr);
+    if (a->count == 0) {
+      PUSH(ValNull());
+    } else {
+      a->count--;
+      AKSValue popped = a->items[a->count];
+      PUSH(popped);
+    }
+    ValFree(&arr);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "remove") == 0 || strcmp(name, "remove_at") == 0) {
+    if (argc != 2) {
+      fprintf(stderr, "Runtime error: remove() expects 2 arguments (array, index), got %d\n", argc);
+      return -1;
+    }
+    AKSValue idxval = POP();
+    AKSValue arr = POP();
+    if (ValKind(arr) != VALARR) {
+      fprintf(stderr, "Runtime error: remove() first argument must be an array\n");
+      ValFree(&idxval);
+      ValFree(&arr);
+      return -1;
+    }
+    int64_t idx = ValToInt(idxval);
+    AKSArray *a = ValToArr(arr);
+    if (idx < 0 || idx >= a->count) {
+      fprintf(stderr, "Runtime error: remove() index %lld out of bounds (size %d)\n", (long long)idx, a->count);
+      ValFree(&idxval);
+      ValFree(&arr);
+      return -1;
+    }
+    AKSValue removed = a->items[idx];
+    for (int i = (int)idx; i < a->count - 1; i++) {
+      a->items[i] = a->items[i + 1];
+    }
+    a->count--;
+    PUSH(removed);
+    ValFree(&idxval);
+    ValFree(&arr);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "type") == 0 || strcmp(name, "TypeOf") == 0 || strcmp(name, "typeof") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: type() expects 1 argument, got %d\n", argc);
+      return -1;
+    }
+    AKSValue v = POP();
+    const char *ts = "null";
+    switch (ValKind(v)) {
+      case VALNULL: ts = "null"; break;
+      case VALBOOL: ts = "bool"; break;
+      case VALINT: ts = "int"; break;
+      case VALFLOAT: ts = "float"; break;
+      case VALSTR: ts = "string"; break;
+      case VALARR: ts = "array"; break;
+      case VALSTRUCT: {
+        AKSStruct *st = ValToObj(v);
+        ts = (st && st->typename) ? st->typename : "struct";
+        break;
+      }
+      case VALFN: ts = "function"; break;
+      case VALTASK: ts = "task"; break;
+      default: ts = "unknown"; break;
+    }
+    ValFree(&v);
+    PUSH(ValStr(ts));
+    *stacktopptr = stacktop;
+    return 1;
+  }
   if (strcmp(name, "Power") == 0) {
     if (argc != 2) {
       fprintf(stderr, "Runtime error: Power() expects 2 arguments, got %d\n",
@@ -20450,6 +20533,387 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     PUSH(ValStr(trimmed));
     free(trimmed);
     ValFree(&strval);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "trim_start") == 0 || strcmp(name, "trim_left") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: trim_start() expects 1 argument, got %d\n", argc);
+      return -1;
+    }
+    AKSValue strval = POP();
+    if (ValKind(strval) != VALSTR) {
+      fprintf(stderr, "Runtime error: trim_start() argument must be a string\n");
+      ValFree(&strval);
+      return -1;
+    }
+    const char *s = ValToStrPtr(strval)->data;
+    while (*s && (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n')) {
+      s++;
+    }
+    PUSH(ValStr(s));
+    ValFree(&strval);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "trim_end") == 0 || strcmp(name, "trim_right") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: trim_end() expects 1 argument, got %d\n", argc);
+      return -1;
+    }
+    AKSValue strval = POP();
+    if (ValKind(strval) != VALSTR) {
+      fprintf(stderr, "Runtime error: trim_end() argument must be a string\n");
+      ValFree(&strval);
+      return -1;
+    }
+    const char *s = ValToStrPtr(strval)->data;
+    int len = ValToStrPtr(strval)->len;
+    while (len > 0 && (s[len - 1] == ' ' || s[len - 1] == '\t' ||
+                       s[len - 1] == '\r' || s[len - 1] == '\n')) {
+      len--;
+    }
+    PUSH(ValStrLen(s, len));
+    ValFree(&strval);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "lines") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: lines() expects 1 argument, got %d\n", argc);
+      return -1;
+    }
+    AKSValue strval = POP();
+    if (ValKind(strval) != VALSTR) {
+      fprintf(stderr, "Runtime error: lines() argument must be a string\n");
+      ValFree(&strval);
+      return -1;
+    }
+    AKSValue arrval = ValArr(4);
+    const char *s = ValToStrPtr(strval)->data;
+    const char *cur = s;
+    while (*cur) {
+      const char *next = strchr(cur, '\n');
+      if (next) {
+        int linelen = (int)(next - cur);
+        if (linelen > 0 && cur[linelen - 1] == '\r') {
+          linelen--;
+        }
+        AKSValue item = ValStrLen(cur, linelen);
+        AKSArray *a = ValToArr(arrval);
+        if (a->count >= a->capacity) {
+          a->capacity = a->capacity == 0 ? 4 : a->capacity * 2;
+          a->items = realloc(a->items, a->capacity * sizeof(AKSValue));
+        }
+        a->items[a->count++] = item;
+        cur = next + 1;
+      } else {
+        int linelen = (int)strlen(cur);
+        if (linelen > 0 && cur[linelen - 1] == '\r') {
+          linelen--;
+        }
+        AKSValue item = ValStrLen(cur, linelen);
+        AKSArray *a = ValToArr(arrval);
+        if (a->count >= a->capacity) {
+          a->capacity = a->capacity == 0 ? 4 : a->capacity * 2;
+          a->items = realloc(a->items, a->capacity * sizeof(AKSValue));
+        }
+        a->items[a->count++] = item;
+        break;
+      }
+    }
+    PUSH(arrval);
+    ValFree(&strval);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "chars") == 0 || strcmp(name, "Utf8ToChars") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: chars() expects 1 argument, got %d\n", argc);
+      return -1;
+    }
+    AKSValue strval = POP();
+    if (ValKind(strval) != VALSTR) {
+      fprintf(stderr, "Runtime error: chars() argument must be a string\n");
+      ValFree(&strval);
+      return -1;
+    }
+    AKSValue arrval = ValArr(4);
+    const unsigned char *s = (const unsigned char *)ValToStrPtr(strval)->data;
+    int blen = ValToStrPtr(strval)->len;
+    int i = 0;
+    while (i < blen) {
+      int step = 1;
+      unsigned char c = s[i];
+      if (c < 0x80) step = 1;
+      else if ((c & 0xE0) == 0xC0) step = 2;
+      else if ((c & 0xF0) == 0xE0) step = 3;
+      else if ((c & 0xF8) == 0xF0) step = 4;
+      if (i + step > blen) step = blen - i;
+      AKSValue item = ValStrLen((const char *)(s + i), step);
+      AKSArray *a = ValToArr(arrval);
+      if (a->count >= a->capacity) {
+        a->capacity = a->capacity == 0 ? 4 : a->capacity * 2;
+        a->items = realloc(a->items, a->capacity * sizeof(AKSValue));
+      }
+      a->items[a->count++] = item;
+      i += step;
+    }
+    PUSH(arrval);
+    ValFree(&strval);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "repeat_str") == 0) {
+    if (argc != 2) {
+      fprintf(stderr, "Runtime error: repeat_str() expects 2 arguments, got %d\n", argc);
+      return -1;
+    }
+    AKSValue countval = POP();
+    AKSValue strval = POP();
+    if (ValKind(strval) != VALSTR || ValKind(countval) != VALINT) {
+      fprintf(stderr, "Runtime error: repeat_str() expects (string, int)\n");
+      ValFree(&countval);
+      ValFree(&strval);
+      return -1;
+    }
+    int64_t count = ValToInt(countval);
+    if (count <= 0) {
+      PUSH(ValStr(""));
+    } else {
+      AKSString *src = ValToStrPtr(strval);
+      size_t total_len = (size_t)src->len * (size_t)count;
+      char *buf = (char *)malloc(total_len + 1);
+      if (buf) {
+        for (int64_t k = 0; k < count; k++) {
+          memcpy(buf + (size_t)k * src->len, src->data, src->len);
+        }
+        buf[total_len] = '\0';
+        PUSH(ValStrLen(buf, (int)total_len));
+        free(buf);
+      } else {
+        PUSH(ValStr(""));
+      }
+    }
+    ValFree(&countval);
+    ValFree(&strval);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "Utf8Len") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: Utf8Len() expects 1 argument, got %d\n", argc);
+      return -1;
+    }
+    AKSValue strval = POP();
+    if (ValKind(strval) != VALSTR) {
+      fprintf(stderr, "Runtime error: Utf8Len() argument must be a string\n");
+      ValFree(&strval);
+      return -1;
+    }
+    const unsigned char *s = (const unsigned char *)ValToStrPtr(strval)->data;
+    int blen = ValToStrPtr(strval)->len;
+    int count = 0;
+    int i = 0;
+    while (i < blen) {
+      int step = 1;
+      unsigned char c = s[i];
+      if (c < 0x80) step = 1;
+      else if ((c & 0xE0) == 0xC0) step = 2;
+      else if ((c & 0xF0) == 0xE0) step = 3;
+      else if ((c & 0xF8) == 0xF0) step = 4;
+      if (i + step > blen) step = blen - i;
+      i += step;
+      count++;
+    }
+    PUSH(ValInt(count));
+    ValFree(&strval);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "Utf8CharAt") == 0) {
+    if (argc != 2) {
+      fprintf(stderr, "Runtime error: Utf8CharAt() expects 2 arguments, got %d\n", argc);
+      return -1;
+    }
+    AKSValue idxval = POP();
+    AKSValue strval = POP();
+    if (ValKind(strval) != VALSTR || ValKind(idxval) != VALINT) {
+      fprintf(stderr, "Runtime error: Utf8CharAt() expects (string, int)\n");
+      ValFree(&idxval);
+      ValFree(&strval);
+      return -1;
+    }
+    int64_t target_idx = ValToInt(idxval);
+    const unsigned char *s = (const unsigned char *)ValToStrPtr(strval)->data;
+    int blen = ValToStrPtr(strval)->len;
+    int cur_idx = 0;
+    int i = 0;
+    AKSValue res = ValStr("");
+    while (i < blen) {
+      int step = 1;
+      unsigned char c = s[i];
+      if (c < 0x80) step = 1;
+      else if ((c & 0xE0) == 0xC0) step = 2;
+      else if ((c & 0xF0) == 0xE0) step = 3;
+      else if ((c & 0xF8) == 0xF0) step = 4;
+      if (i + step > blen) step = blen - i;
+      if (cur_idx == target_idx) {
+        res = ValStrLen((const char *)(s + i), step);
+        break;
+      }
+      i += step;
+      cur_idx++;
+    }
+    PUSH(res);
+    ValFree(&idxval);
+    ValFree(&strval);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "Utf8CodepointAt") == 0) {
+    if (argc != 2) {
+      fprintf(stderr, "Runtime error: Utf8CodepointAt() expects 2 arguments, got %d\n", argc);
+      return -1;
+    }
+    AKSValue idxval = POP();
+    AKSValue strval = POP();
+    if (ValKind(strval) != VALSTR || ValKind(idxval) != VALINT) {
+      fprintf(stderr, "Runtime error: Utf8CodepointAt() expects (string, int)\n");
+      ValFree(&idxval);
+      ValFree(&strval);
+      return -1;
+    }
+    int64_t target_idx = ValToInt(idxval);
+    const unsigned char *s = (const unsigned char *)ValToStrPtr(strval)->data;
+    int blen = ValToStrPtr(strval)->len;
+    int cur_idx = 0;
+    int i = 0;
+    int64_t codepoint = -1;
+    while (i < blen) {
+      int step = 1;
+      unsigned char c = s[i];
+      uint32_t cp = 0;
+      if (c < 0x80) {
+        step = 1;
+        cp = c;
+      } else if ((c & 0xE0) == 0xC0) {
+        step = 2;
+        if (i + 1 < blen) cp = ((c & 0x1F) << 6) | (s[i + 1] & 0x3F);
+      } else if ((c & 0xF0) == 0xE0) {
+        step = 3;
+        if (i + 2 < blen) cp = ((c & 0x0F) << 12) | ((s[i + 1] & 0x3F) << 6) | (s[i + 2] & 0x3F);
+      } else if ((c & 0xF8) == 0xF0) {
+        step = 4;
+        if (i + 3 < blen) cp = ((c & 0x07) << 18) | ((s[i + 1] & 0x3F) << 12) | ((s[i + 2] & 0x3F) << 6) | (s[i + 3] & 0x3F);
+      }
+      if (i + step > blen) step = blen - i;
+      if (cur_idx == target_idx) {
+        codepoint = (int64_t)cp;
+        break;
+      }
+      i += step;
+      cur_idx++;
+    }
+    PUSH(ValInt(codepoint));
+    ValFree(&idxval);
+    ValFree(&strval);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "Utf8FromCodepoints") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: Utf8FromCodepoints() expects 1 argument, got %d\n", argc);
+      return -1;
+    }
+    AKSValue arrval = POP();
+    if (ValKind(arrval) != VALARR) {
+      fprintf(stderr, "Runtime error: Utf8FromCodepoints() argument must be an array of ints\n");
+      ValFree(&arrval);
+      return -1;
+    }
+    AKSArray *a = ValToArr(arrval);
+    size_t cap = a->count * 4 + 4;
+    unsigned char *buf = (unsigned char *)malloc(cap);
+    size_t len = 0;
+    if (buf) {
+      for (int k = 0; k < a->count; k++) {
+        AKSValue el = a->items[k];
+        if (ValKind(el) == VALINT) {
+          uint32_t cp = (uint32_t)ValToInt(el);
+          if (len + 4 >= cap) {
+            cap = cap * 2 + 16;
+            buf = (unsigned char *)realloc(buf, cap);
+          }
+          if (cp < 0x80) {
+            buf[len++] = (unsigned char)cp;
+          } else if (cp < 0x800) {
+            buf[len++] = (unsigned char)(0xC0 | (cp >> 6));
+            buf[len++] = (unsigned char)(0x80 | (cp & 0x3F));
+          } else if (cp < 0x10000) {
+            buf[len++] = (unsigned char)(0xE0 | (cp >> 12));
+            buf[len++] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F));
+            buf[len++] = (unsigned char)(0x80 | (cp & 0x3F));
+          } else if (cp < 0x110000) {
+            buf[len++] = (unsigned char)(0xF0 | (cp >> 18));
+            buf[len++] = (unsigned char)(0x80 | ((cp >> 12) & 0x3F));
+            buf[len++] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F));
+            buf[len++] = (unsigned char)(0x80 | (cp & 0x3F));
+          }
+        }
+      }
+      buf[len] = '\0';
+      PUSH(ValStrLen((char *)buf, (int)len));
+      free(buf);
+    } else {
+      PUSH(ValStr(""));
+    }
+    ValFree(&arrval);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "WeakRefNew") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: WeakRefNew() expects 1 argument\n");
+      return -1;
+    }
+    AKSValue target = POP();
+    int id = -1;
+    if (ValKind(target) == VALARR || ValKind(target) == VALSTRUCT) {
+      id = AksWeakNew(target);
+    }
+    ValFree(&target);
+    PUSH(ValInt(id));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "WeakRefAlive") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: WeakRefAlive() expects 1 argument\n");
+      return -1;
+    }
+    AKSValue idval = POP();
+    int alive = 0;
+    if (ValKind(idval) == VALINT) {
+      alive = AksWeakAlive((int)ValToInt(idval));
+    }
+    ValFree(&idval);
+    PUSH(ValBool(alive));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "WeakRefUpgrade") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: WeakRefUpgrade() expects 1 argument\n");
+      return -1;
+    }
+    AKSValue idval = POP();
+    AKSValue res = ValNull();
+    if (ValKind(idval) == VALINT) {
+      res = AksWeakRawUpgrade((int)ValToInt(idval));
+    }
+    ValFree(&idval);
+    PUSH(res);
     *stacktopptr = stacktop;
     return 1;
   }

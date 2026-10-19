@@ -385,6 +385,144 @@ AKSValue ValBoundmethod(AKSValue receiver, const char *name) {
 
 int gStaticSafeMode = 0;
 
+typedef struct {
+    void *ptr;
+    int kind; /* 1 = arr, 2 = struct */
+    int alive;
+} AksWeakSlot;
+
+static AksWeakSlot *g_weak_slots = NULL;
+static int g_weak_count = 0;
+static int g_weak_capacity = 0;
+
+#ifdef _WIN32
+static CRITICAL_SECTION g_weak_cs;
+static volatile LONG g_weak_cs_init = 0;
+static inline void WeakLock(void) {
+    if (g_weak_cs_init == 0) {
+        if (InterlockedCompareExchange(&g_weak_cs_init, 1, 0) == 0) {
+            InitializeCriticalSection(&g_weak_cs);
+            g_weak_cs_init = 2;
+        } else {
+            while (g_weak_cs_init != 2) Sleep(0);
+        }
+    }
+    EnterCriticalSection(&g_weak_cs);
+}
+static inline void WeakUnlock(void) {
+    LeaveCriticalSection(&g_weak_cs);
+}
+#else
+static pthread_mutex_t g_weak_mutex = PTHREAD_MUTEX_INITIALIZER;
+static inline void WeakLock(void) { pthread_mutex_lock(&g_weak_mutex); }
+static inline void WeakUnlock(void) { pthread_mutex_unlock(&g_weak_mutex); }
+#endif
+
+void AksNotifyWeakFreed(void *ptr) {
+    if (!ptr || g_weak_count == 0) return;
+    WeakLock();
+    for (int i = 0; i < g_weak_count; i++) {
+        if (g_weak_slots[i].ptr == ptr && g_weak_slots[i].alive) {
+            g_weak_slots[i].alive = 0;
+            g_weak_slots[i].ptr = NULL;
+        }
+    }
+    WeakUnlock();
+}
+
+int AksWeakNew(AKSValue target) {
+    void *ptr = NULL;
+    int kind = 0;
+    if (ValKind(target) == VALARR) {
+        ptr = (void*)ValToArr(target);
+        kind = 1;
+    } else if (ValKind(target) == VALSTRUCT) {
+        ptr = (void*)ValToObj(target);
+        kind = 2;
+    } else {
+        return -1;
+    }
+    if (!ptr) return -1;
+
+    WeakLock();
+    int slot_idx = -1;
+    for (int i = 0; i < g_weak_count; i++) {
+        if (!g_weak_slots[i].alive) {
+            slot_idx = i;
+            break;
+        }
+    }
+    if (slot_idx < 0) {
+        if (g_weak_count >= g_weak_capacity) {
+            int new_cap = g_weak_capacity == 0 ? 16 : g_weak_capacity * 2;
+            AksWeakSlot *new_slots = (AksWeakSlot*)realloc(g_weak_slots, new_cap * sizeof(AksWeakSlot));
+            if (!new_slots) {
+                WeakUnlock();
+                return -1;
+            }
+            g_weak_slots = new_slots;
+            g_weak_capacity = new_cap;
+        }
+        slot_idx = g_weak_count++;
+    }
+    g_weak_slots[slot_idx].ptr = ptr;
+    g_weak_slots[slot_idx].kind = kind;
+    g_weak_slots[slot_idx].alive = 1;
+    WeakUnlock();
+    return slot_idx;
+}
+
+int AksWeakAlive(int id) {
+    if (id < 0) return 0;
+    int alive = 0;
+    WeakLock();
+    if (id < g_weak_count && g_weak_slots[id].alive && g_weak_slots[id].ptr != NULL) {
+        if (g_weak_slots[id].kind == 1) {
+            AKSArray *arr = (AKSArray*)g_weak_slots[id].ptr;
+            if (!arr->invalidated) alive = 1;
+        } else if (g_weak_slots[id].kind == 2) {
+            AKSStruct *obj = (AKSStruct*)g_weak_slots[id].ptr;
+            if (!obj->invalidated) alive = 1;
+        }
+    }
+    WeakUnlock();
+    return alive;
+}
+
+AKSValue AksWeakRawUpgrade(int id) {
+    if (id < 0) return ValNull();
+    AKSValue res = ValNull();
+    WeakLock();
+    if (id < g_weak_count && g_weak_slots[id].alive && g_weak_slots[id].ptr != NULL) {
+        if (g_weak_slots[id].kind == 1) {
+            AKSArray *arr = (AKSArray*)g_weak_slots[id].ptr;
+            if (!arr->invalidated) {
+                AtomicIncrement(&arr->refcount);
+                res = ((uint64_t)0xFFF5 << 48) | ((uintptr_t)arr & 0x0000FFFFFFFFFFFFULL);
+            }
+        } else if (g_weak_slots[id].kind == 2) {
+            AKSStruct *obj = (AKSStruct*)g_weak_slots[id].ptr;
+            if (!obj->invalidated) {
+                AtomicIncrement(&obj->refcount);
+                res = ((uint64_t)0xFFF6 << 48) | ((uintptr_t)obj & 0x0000FFFFFFFFFFFFULL);
+            }
+        }
+    }
+    WeakUnlock();
+    return res;
+}
+
+void AksFreeWeakRegistry(void) {
+    WeakLock();
+    if (g_weak_slots) {
+        free(g_weak_slots);
+        g_weak_slots = NULL;
+    }
+    g_weak_count = 0;
+    g_weak_capacity = 0;
+    WeakUnlock();
+}
+
 void ValFreeFunc(AKSValue *v) {
     if (!v) return;
     ValType t = ValKind(*v);
@@ -428,6 +566,7 @@ void ValFreeFunc(AKSValue *v) {
             AKSArray *arr = ValToArr(*v);
             if (arr) {
                 if (AtomicDecrement(&arr->refcount) <= 0) {
+                    AksNotifyWeakFreed(arr);
                     if (arr->invalidated) {
                         // Arena-freed: items already freed in arena_free.
                         // Just free the header and update the counter.
@@ -459,6 +598,7 @@ void ValFreeFunc(AKSValue *v) {
             AKSStruct *obj = ValToObj(*v);
             if (obj) {
                 if (AtomicDecrement(&obj->refcount) <= 0) {
+                    AksNotifyWeakFreed(obj);
                     if (obj->invalidated) {
                         // Arena-freed: items and typename already freed in arena_free.
                         // Just free the header and update the counter.

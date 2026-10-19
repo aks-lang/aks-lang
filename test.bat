@@ -61,6 +61,8 @@ aks.exe run tests\TestPhase8Enhancements.aks || exit /b 1
 aks.exe run tests\TestSlicingAndRawStrings.aks || exit /b 1
 aks.exe run tests\TestLoopDestructuringAndPathPkg.aks || exit /b 1
 aks.exe test tests\TestLoopDestructuringAndPathPkg.aks || exit /b 1
+aks.exe run tests\TestLanguageImprovements.aks || exit /b 1
+aks.exe test tests\TestLanguageImprovements.aks || exit /b 1
 aks.exe compile-exe tests\TestComptimeExecution.aks -o test_standalone.exe || exit /b 1
 test_standalone.exe || exit /b 1
 del /f /q test_standalone.exe 2>nul

@@ -1,0 +1,240 @@
+// TestLanguageImprovements.aks - Comprehensive test suite for new language enhancements
+// Covers WeakRef, Set, Deque, PriorityQueue, ToJson, FromJson, String Utilities, and CancellationToken
+
+fn test_string_utilities() {
+    print("Testing string utilities...");
+
+    // split
+    let parts = split("apple,banana,orange,grape", ",");
+    assert(Length(parts) == 4, "split count should be 4");
+    assert(parts[0] == "apple", "split part 0");
+    assert(parts[1] == "banana", "split part 1");
+    assert(parts[2] == "orange", "split part 2");
+    assert(parts[3] == "grape", "split part 3");
+
+    // lines
+    let multi = "first\nsecond\r\nthird\nfourth";
+    let l = lines(multi);
+    assert(Length(l) == 4, "lines count should be 4");
+    assert(l[0] == "first", "line 0");
+    assert(l[1] == "second", "line 1");
+    assert(l[2] == "third", "line 2");
+    assert(l[3] == "fourth", "line 3");
+
+    // chars
+    let c = chars("hello");
+    assert(Length(c) == 5, "chars count should be 5");
+    assert(c[0] == "h", "char 0");
+    assert(c[4] == "o", "char 4");
+
+    // trim, trim_start, trim_end
+    let padded = "   aks language   ";
+    assert(trim(padded) == "aks language", "trim");
+    assert(trim_start(padded) == "aks language   ", "trim_start");
+    assert(trim_end(padded) == "   aks language", "trim_end");
+
+    // repeat_str
+    assert(repeat_str("aks", 3) == "aksaksaks", "repeat_str 3");
+    assert(repeat_str("aks", 0) == "", "repeat_str 0");
+
+    print("String utilities OK!");
+}
+
+fn test_weak_ref() {
+    print("Testing WeakRef...");
+
+    let orig = [10, 20, 30];
+    let w = weak(orig);
+    assert(w.Alive(), "WeakRef should be alive");
+
+    let up = w.Upgrade();
+    assert(up.IsSome(), "Upgraded WeakRef should be Some");
+    let val = up.Unwrap();
+    assert(Length(val) == 3, "Upgraded array length should be 3");
+    assert(val[0] == 10, "Upgraded array element 0");
+
+    // Test alive check
+    assert(w.Alive(), "WeakRef Alive check");
+
+    print("WeakRef OK!");
+}
+
+fn test_collections_set() {
+    print("Testing Set collection...");
+
+    let s = new Set();
+    assert(s.Size() == 0, "Set should be initially empty");
+
+    s.Add("alpha");
+    s.Add("beta");
+    s.Add("gamma");
+    assert(s.Size() == 3, "Set size after 3 additions");
+    assert(s.Has("alpha"), "Set has alpha");
+    assert(s.Has("beta"), "Set has beta");
+    assert(s.Has("gamma"), "Set has gamma");
+    assert(!s.Has("delta"), "Set should not have delta");
+
+    // Duplicate addition
+    s.Add("alpha");
+    assert(s.Size() == 3, "Duplicate addition should not increase size");
+
+    // Removal
+    let removed = s.Remove("beta");
+    assert(removed, "Remove beta should return true");
+    assert(s.Size() == 2, "Set size after removal");
+    assert(!s.Has("beta"), "Set should not have removed item");
+
+    let not_removed = s.Remove("nonexistent");
+    assert(!not_removed, "Removing nonexistent item should return false");
+
+    // Values list
+    let vals = s.Values();
+    assert(Length(vals) == 2, "Set values length should be 2");
+
+    print("Set collection OK!");
+}
+
+fn test_collections_deque() {
+    print("Testing Deque collection...");
+
+    let dq = new Deque();
+    assert(dq.Size() == 0, "Deque should be initially empty");
+    assert(dq.IsEmpty(), "Deque IsEmpty check");
+
+    dq.PushBack(100);
+    dq.PushBack(200);
+    dq.PushFront(50);
+    dq.PushFront(25);
+    // Sequence is now: 25, 50, 100, 200
+
+    assert(dq.Size() == 4, "Deque size should be 4");
+    assert(dq.PeekFront() == 25, "Deque PeekFront");
+    assert(dq.PeekBack() == 200, "Deque PeekBack");
+
+    assert(dq.PopFront() == 25, "Deque PopFront 1");
+    assert(dq.PopBack() == 200, "Deque PopBack 1");
+    assert(dq.Size() == 2, "Deque size after 2 pops");
+
+    assert(dq.PopFront() == 50, "Deque PopFront 2");
+    assert(dq.PopBack() == 100, "Deque PopBack 2");
+    assert(dq.Size() == 0, "Deque size after all pops");
+    assert(dq.IsEmpty(), "Deque should now be empty");
+
+    assert(dq.PopFront() == null, "Empty Deque PopFront should return null");
+    assert(dq.PopBack() == null, "Empty Deque PopBack should return null");
+
+    print("Deque collection OK!");
+}
+
+fn test_collections_priority_queue() {
+    print("Testing PriorityQueue collection...");
+
+    let pq = new PriorityQueue();
+    assert(pq.Size() == 0, "PQ initially empty");
+
+    pq.Push(42);
+    pq.Push(10);
+    pq.Push(99);
+    pq.Push(5);
+    pq.Push(73);
+
+    assert(pq.Size() == 5, "PQ size should be 5");
+    assert(pq.Peek() == 5, "PQ min element should be 5");
+
+    assert(pq.Pop() == 5, "Pop 1 should be 5");
+    assert(pq.Pop() == 10, "Pop 2 should be 10");
+    assert(pq.Pop() == 42, "Pop 3 should be 42");
+    assert(pq.Pop() == 73, "Pop 4 should be 73");
+    assert(pq.Pop() == 99, "Pop 5 should be 99");
+    assert(pq.Size() == 0, "PQ should now be empty");
+    assert(pq.Pop() == null, "Pop on empty PQ should return null");
+
+    // Custom comparator for max-heap
+    let cmp_desc = fn(a, b) { return b - a; };
+    let max_pq = PriorityQueue(cmp_desc);
+    max_pq.Push(15);
+    max_pq.Push(85);
+    max_pq.Push(40);
+    assert(max_pq.Pop() == 85, "Max-heap Pop 1 should be 85");
+    assert(max_pq.Pop() == 40, "Max-heap Pop 2 should be 40");
+    assert(max_pq.Pop() == 15, "Max-heap Pop 3 should be 15");
+
+    print("PriorityQueue collection OK!");
+}
+
+fn test_json_serialization() {
+    print("Testing JSON serialization...");
+
+    // Primitives
+    assert(ToJson(null) == "null", "ToJson null");
+    assert(ToJson(true) == "true", "ToJson true");
+    assert(ToJson(false) == "false", "ToJson false");
+    assert(ToJson(12345) == "12345", "ToJson int");
+    assert(ToJson("hello \"world\"") == "\"hello \\\"world\\\"\"", "ToJson string escape");
+
+    // Arrays
+    let arr = [1, 2, "three", true, null];
+    let j_arr = ToJson(arr);
+    assert(j_arr == "[1,2,\"three\",true,null]", "ToJson array");
+
+    // FromJson
+    let p_null = FromJson("null");
+    assert(p_null == null, "FromJson null");
+
+    let p_bool = FromJson("true");
+    assert(p_bool == true, "FromJson bool true");
+
+    let p_num = FromJson("9876");
+    assert(p_num == 9876, "FromJson int");
+
+    let p_str = FromJson("\"aks language\"");
+    assert(p_str == "aks language", "FromJson string");
+
+    let parsed_arr = FromJson("[10, 20, 30]");
+    assert(Length(parsed_arr) == 3, "FromJson array length");
+    assert(parsed_arr[0] == 10, "FromJson array item 0");
+    assert(parsed_arr[1] == 20, "FromJson array item 1");
+    assert(parsed_arr[2] == 30, "FromJson array item 2");
+
+    print("JSON serialization OK!");
+}
+
+let g_token_callback_called = false;
+fn on_token_cancelled() {
+    g_token_callback_called = true;
+}
+
+fn test_cancellation_token() {
+    print("Testing CancellationToken...");
+
+    let token = new CancellationToken();
+    assert(!token.IsCancellationRequested(), "Token should not be cancelled initially");
+
+    // Register callback
+    g_token_callback_called = false;
+    token.Register(on_token_cancelled);
+
+    token.Cancel();
+    assert(token.IsCancellationRequested(), "Token should be cancelled");
+    assert(g_token_callback_called, "Registered callback should have been invoked");
+
+    // Further cancel calls should be idempotent
+    token.Cancel();
+    assert(token.IsCancellationRequested(), "Token remains cancelled");
+
+    print("CancellationToken OK!");
+}
+
+fn main() {
+    print("Running Language Improvements Verification Suite...");
+    test_string_utilities();
+    test_weak_ref();
+    test_collections_set();
+    test_collections_deque();
+    test_collections_priority_queue();
+    test_json_serialization();
+    test_cancellation_token();
+    print("ALL LANGUAGE IMPROVEMENTS VERIFIED SUCCESSFULLY 100%!");
+}
+
+main();

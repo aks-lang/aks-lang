@@ -7396,6 +7396,13 @@ Compiler *CompNew(void) {
     NewFn(c, "split");
     NewFn(c, "replace");
     NewFn(c, "trim");
+    NewFn(c, "lines");
+    NewFn(c, "chars");
+    NewFn(c, "trim_start");
+    NewFn(c, "trim_end");
+    NewFn(c, "trim_left");
+    NewFn(c, "trim_right");
+    NewFn(c, "repeat_str");
     NewFn(c, "lower");
     NewFn(c, "upper");
     NewFn(c, "find");
@@ -7619,6 +7626,12 @@ Compiler *CompNew(void) {
     NewFn(c, "globals");
     NewFn(c, "Evaluate");
     NewFn(c, "CheckIntersect");
+    NewFn(c, "pop");
+    NewFn(c, "remove");
+    NewFn(c, "remove_at");
+    NewFn(c, "type");
+    NewFn(c, "TypeOf");
+    NewFn(c, "typeof");
 
     // Missing Networking and Huffman Builtins
     NewFn(c, "HuffmanDecode");
@@ -7821,6 +7834,9 @@ Compiler *CompNew(void) {
 
     NewFn(c, "UuidGenerate");
     NewFn(c, "UuidIsValid");
+    NewFn(c, "WeakRefNew");
+    NewFn(c, "WeakRefAlive");
+    NewFn(c, "WeakRefUpgrade");
 
     NewFn(c, "CpuPhysicalCores");
     NewFn(c, "CpuLogicalCores");
