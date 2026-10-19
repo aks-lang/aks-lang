@@ -193,29 +193,77 @@ fn divide_memory_pages(total_bytes, page_size) {
 }
 ```
 
-### 4.5.3 Algebraic Error Handling: `Option` & `Result`
+### 4.5.3 First-Class `Option` & `Result` Ergonomics
 
-In high-reliability systems and static mode, AKS encourages explicit error types using standard Result monads:
+AKS provides native algebraic data types for robust error handling without exceptions. `Option` represents optional presence, while `Result` represents either success or an error:
 
 ```aks
-struct Result {
-    is_ok: bool,
-    value: any,
-    error: str
-}
+// Top-level constructors
+let opt = Some(42);
+let empty = None; // Bare None identifier compiles to Option.None
 
-fn safe_divide(numerator: float, denominator: float) -> Result {
-    if (denominator == 0.0) {
-        return Result { is_ok: false, value: nil, error: "Division by zero" };
-    }
-    return Result { is_ok: true, value: numerator / denominator, error: nil };
-}
+let ok_res = Ok("data loaded");
+let err_res = Err("disk read failure");
 
-let res = safe_divide(100.0, 4.0);
-if (res.is_ok) {
-    print("Calculation result: " + String(res.value)); // 25.0
-} else {
-    print("Error encountered: " + res.error);
+// Boolean inspection methods
+assert(opt.IsSome());
+assert(empty.IsNone());
+assert(ok_res.IsOk());
+assert(err_res.IsErr());
+
+// Safe unwrapping and fallbacks
+let val = opt.Unwrap();               // 42 (panics if None)
+let fallback = empty.UnwrapOr(100);    // 100
+let ensured = opt.Expect("critical"); // 42
+
+// Transforming error payloads
+let mapped = err_res.MapErr(fn(e) { return "IO Error: " + e; });
+```
+
+### 4.5.4 The Postfix Try-Propagation Operator (`?`)
+
+The `?` operator unwraps successful values or early-returns failure from the enclosing function:
+
+```aks
+fn fetch_user_avatar(user_id: int) -> Result {
+    let user = find_user(user_id)?;     // Early-returns Err if user not found
+    let profile = user.profile?;        // Unwraps profile or early-returns Err/None
+    let url = profile.avatar_url?;
+    return Ok(url);
+}
+```
+
+### 4.5.5 Guaranteed Scope Cleanup: `defer`
+
+The `defer` statement schedules a statement or block to execute unconditionally when the enclosing function or block exits, regardless of whether exit occurs via normal return or error unwinding:
+
+```aks
+fn process_transaction(file_path: string) {
+    let file = FileOpen(file_path, "r");
+    defer FileClose(file); // Guaranteed to execute on function exit!
+
+    let lock = AcquireLock();
+    defer ReleaseLock(lock); // Multiple defers execute in LIFO (reverse) order!
+
+    // File and lock are deterministically released at scope exit
+    ReadPayload(file);
+}
+```
+
+### 4.5.6 Transactional Error Cleanup: `errdefer`
+
+The `errdefer` statement executes its cleanup block **only** if the function or block exits via an error, panic, or unhandled exception. If execution succeeds normally, `errdefer` actions are cancelled:
+
+```aks
+fn create_user_account(name: string) -> Result {
+    let tx = DatabaseBegin();
+    errdefer DatabaseRollback(tx); // Only runs if an error or early return occurs!
+
+    let user_id = InsertUser(tx, name)?;
+    InsertDefaultSettings(tx, user_id)?;
+
+    DatabaseCommit(tx);
+    return Ok(user_id);
 }
 ```
 

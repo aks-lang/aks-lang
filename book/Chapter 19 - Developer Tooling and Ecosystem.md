@@ -397,7 +397,79 @@ AKS employs Levenshtein string edit distance algorithms to propose accurate repl
 
 ---
 
-## 19.12 Summary & Next Steps
+## 19.12 Multi-Suite Benchmark Runner & Performance Tracking
+
+AKS includes an automated micro-benchmarking engine capable of targeting individual benchmark scripts or scanning entire directories:
+
+```cmd
+# Run a single benchmark suite
+aks.exe bench benchmarks/Fibonacci.aks
+
+# Run all benchmark suites in a directory
+aks.exe bench benchmarks/
+
+# Save execution baseline to JSON
+aks.exe bench benchmarks/ --save baseline.json
+
+# Compare current performance against saved baseline
+aks.exe bench benchmarks/ --compare baseline.json
+```
+
+- **Metrics Captured**: Iterations per second, mean execution latency, standard deviation, and throughput.
+- **Baseline Comparison**: Flags performance regressions or speedups with colorized percentage deltas.
+
+---
+
+## 19.13 Ahead-Of-Time (AOT) Bare-Metal Targets
+
+For production deployment and resource-constrained environments, AKS provides multiple static compilation targets:
+
+```cmd
+# Standalone native PE executable
+aks.exe compile-exe src/main.aks -o app.exe
+
+# Static C source code output (for embedded systems)
+aks.exe compile-aot src/main.aks -o out.c --target c-code
+
+# LLVM Bitcode / IR generation
+aks.exe compile-llvm src/main.aks -o out.bc
+
+# Bare-metal no-std binary (no standard library runtime)
+aks.exe compile-nostd src/kernel.aks -o kernel.bin
+
+# WebAssembly (Wasm) WAT emission
+aks.exe compile-aot src/main.aks -o app.wat --target wasm
+```
+
+---
+
+## 19.14 Built-in Documentation & Interactive Learning Engine
+
+AKS features an integrated developer education subsystem directly accessible from the CLI:
+
+```cmd
+# Interactive topic reference
+aks help
+aks help iterators
+aks help options
+aks help defer
+aks help memory
+aks help unsafe
+
+# Curated runnable examples
+aks examples
+aks examples show iterators
+aks examples copy iterators my_pipeline.aks
+
+# Interactive 12-lesson tutorial runner
+aks tutorial
+aks tutorial start
+aks tutorial verify
+```
+
+---
+
+## 19.15 Summary & Next Steps
 
 In this chapter, we explored:
 1. The Language Server Protocol (`aksls.exe`) JSON-RPC engine and IDE integration.
@@ -410,5 +482,8 @@ In this chapter, we explored:
 8. The module dependency graph, circular import detection, and parallel compilation scaling (`--parallel`, `-j`).
 9. Virtual machine subsystem modularization architecture.
 10. Parser statement synchronization (`ParseSynchronize`), caret context rendering (`^~~~`), and fuzzy symbol suggestions.
+11. Multi-suite benchmark runner (`aks bench [file | dir] --save --compare`).
+12. Ahead-of-time bare-metal static compilation targets (`compile-exe`, `compile-aot`, `compile-llvm`, `compile-nostd`, `wasm`).
+13. Interactive learning engine (`aks help`, `aks examples`, `aks tutorial`).
 
 Proceed to [Chapter 20: Practical Cookbook & Real-World Projects](Chapter%2020%20-%20Cookbook%20and%20Real-World%20Projects.md) to explore complete production-grade projects written in AKS.

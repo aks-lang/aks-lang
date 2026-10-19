@@ -192,7 +192,69 @@ print("Current CPU Utilization: " + String(cpu_load) + "%");
 
 ---
 
-## 16.9 Summary & Next Steps
+## 16.9 Systems Programming Primitives & `unsafe` Blocks
+
+For low-level kernel drivers, embedded development, and bare-metal performance, AKS provides first-class systems programming primitives:
+
+### 16.9.1 The `unsafe` Block
+
+Within an `unsafe` block, borrow checker rules and safety constraints are relaxed, allowing manual pointer operations, raw FFI, and hardware manipulation:
+
+```aks
+unsafe {
+    // Low-level pointer arithmetic and raw hardware access
+    let raw_addr = 0x00400000;
+    // Unrestricted memory operations...
+}
+```
+
+### 16.9.2 Memory Layout Introspection
+
+AKS provides exact compile-time and runtime introspection into struct memory layout, byte sizes, and alignment requirements matching the target C ABI:
+
+```aks
+struct NetworkPacket {
+    header: int;
+    length: int;
+    checksum: int;
+}
+
+// Compute byte sizes and alignment
+let packet_size = SizeOf("NetworkPacket");
+let packet_align = AlignOf("NetworkPacket");
+let payload_offset = OffsetOf("NetworkPacket", "checksum");
+
+print(f"Size: {packet_size} bytes, Align: {packet_align}, Checksum Offset: {payload_offset}");
+```
+
+### 16.9.3 Struct Memory Layout Control (`repr`)
+
+The `repr()` attribute configures struct field packing and ABI alignment:
+
+```aks
+repr("packed")
+struct PackedHeader {
+    flags: int;
+    seq: int;
+}
+```
+
+### 16.9.4 Concurrency Safety Trait Bounds (`IsSend`, `IsSync`)
+
+To guarantee data-race freedom across thread and fiber task boundaries, AKS enforces `Send` and `Sync` bounds:
+
+- `IsSend(val)`: Verifies that ownership of `val` can be transferred safely across `spawn` boundaries without shared mutable references.
+- `IsSync(val)`: Verifies that references to `val` can be concurrently accessed by multiple threads.
+
+```aks
+let data = [1, 2, 3];
+assert(IsSend(data) == true);
+assert(IsSync(data) == true);
+```
+
+---
+
+## 16.10 Summary & Next Steps
 
 In this chapter, we explored:
 1. Windows clipboard reads and writes (`OsClipboardSetC`, `OsClipboardGetC`).
@@ -203,5 +265,6 @@ In this chapter, we explored:
 6. Named cross-process synchronization events (`OsNamedEventCreateC`, `OsNamedEventSetC`, `OsNamedEventWaitC`).
 7. NTFS Alternate Data Streams (ADS).
 8. ETW event tracing and PDH performance counters.
+9. Systems programming primitives: `unsafe { ... }` blocks, memory layout introspection (`SizeOf`, `AlignOf`, `OffsetOf`), `repr()` packing, and `IsSend`/`IsSync` trait bounds.
 
 Proceed to [Chapter 17: Media, Graphics & Audio Subsystems](Chapter%2017%20-%20Media,%20Graphics%20and%20Audio%20Subsystems.md) to explore WAV audio parsing, GDI bitmap graphics, and WinMM low-latency PCM playback.

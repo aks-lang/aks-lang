@@ -74,7 +74,12 @@ void LearnHelp(const char *topic) {
         printf("  \033[33mparallel\033[0m     Multi-threaded AST & bytecode chunk optimization (--parallel, -j, --jobs)\n");
         printf("  \033[33mdiagnostics\033[0m  Parser statement sync, caret markers (^~~~), and 'Did you mean?' suggestions\n");
         printf("  \033[33maot\033[0m          Ahead-of-time compilation, zero-overhead executables, and bare-metal targets\n");
-        printf("  \033[33mtooling\033[0m      CLI flags, LSP (aksls), DAP debugger, formatter, and linter\n\n");
+        printf("  \033[33miterators\033[0m    Lazy iterator pipeline, chaining adapters, range/array iterators, and consumers\n");
+        printf("  \033[33moptions\033[0m      Option and Result ergonomics, Some, Ok, Err, unwrap methods, and ? operator\n");
+        printf("  \033[33mdefer\033[0m        Resource safety with defer and errdefer statements, RAII Drop lifecycle\n");
+        printf("  \033[33mmemory\033[0m       Region scopes, bump arenas, Reset(), AllocCount(), and AllocatedBytes()\n");
+        printf("  \033[33munsafe\033[0m       Unsafe blocks, layout introspection (SizeOf, AlignOf, OffsetOf), repr()\n");
+        printf("  \033[33mtooling\033[0m      CLI flags, LSP (aksls), DAP debugger, formatter, linter, and bench runner\n\n");
         printf("Usage: aks help <topic>\n");
         return;
     }
@@ -334,6 +339,68 @@ void LearnHelp(const char *topic) {
         printf("     - Unknown primitive, struct, and enum type names\n");
         printf("     - Unmatched struct member fields\n");
         printf("  4. Collects up to 50 diagnostics in a single compilation pass.\n");
+    } else if (strcmp(topic, "iterators") == 0) {
+        printf("\033[36mLazy Iterator Pipeline & Chaining\033[0m\n");
+        printf("Pipeline Adapters:\n");
+        printf("  lazy(items).Map(f).Filter(p).Take(n).Skip(m).Collect()\n");
+        printf("  Zip(a, b)              Zips two iterators into [a, b] pairs\n");
+        printf("  Enumerate()            Adds [index, item] pairs\n");
+        printf("  StepBy(k)              Steps through iterator by stride k\n");
+        printf("  range_iter(start, end) Produces a range iterator\n");
+        printf("  range_step(s, e, step) Strided range iterator\n\n");
+        printf("Terminal Consumers:\n");
+        printf("  ForEach(fn(x) { ... }) Eager iteration\n");
+        printf("  Reduce(init, fn)       Fold/accumulator reduction\n");
+        printf("  Sum() / Count()        Arithmetic consumers\n");
+        printf("  Any(p) / All(p)        Short-circuiting predicates\n");
+        printf("  First() / Find(p)      Option-returning finders\n");
+    } else if (strcmp(topic, "options") == 0) {
+        printf("\033[36mOption & Result Ergonomics\033[0m\n");
+        printf("Constructors:\n");
+        printf("  let opt = Some(42);\n");
+        printf("  let none = None;                 // Bare None identifier\n");
+        printf("  let res = Ok(\"success\");\n");
+        printf("  let err = Err(\"failure\");\n\n");
+        printf("Variant Methods:\n");
+        printf("  opt.IsSome() / opt.IsNone()      Boolean checks\n");
+        printf("  res.IsOk() / res.IsErr()         Boolean checks\n");
+        printf("  opt.Unwrap()                     Unwrap value or panic\n");
+        printf("  opt.UnwrapOr(default)            Unwrap with fallback\n");
+        printf("  opt.Expect(\"error message\")      Unwrap with custom panic\n");
+        printf("  res.MapErr(fn(e) { ... })        Transform error payload\n\n");
+        printf("Try-Propagation Operator (?):\n");
+        printf("  let val = dangerous_op()?;\n");
+    } else if (strcmp(topic, "defer") == 0) {
+        printf("\033[36mResource Safety with defer & errdefer\033[0m\n");
+        printf("Guaranteed Block-Exit Cleanup (defer):\n");
+        printf("  let file = FileOpen(\"data.txt\", \"r\");\n");
+        printf("  defer FileClose(file);            // Always runs at enclosing scope exit!\n\n");
+        printf("Error-Path Transactional Cleanup (errdefer):\n");
+        printf("  let tx = DbBegin();\n");
+        printf("  errdefer DbRollback(tx);          // Only runs if an error/panic occurs!\n");
+        printf("  DbCommit(tx);\n");
+    } else if (strcmp(topic, "memory") == 0) {
+        printf("\033[36mRegion Scopes & Bump Arenas\033[0m\n");
+        printf("Lexical Region Scopes:\n");
+        printf("  region (r) {\n");
+        printf("      let arr = r.AllocArray(100);\n");
+        printf("      let obj = r.AllocStruct(\"Node\");\n");
+        printf("      print(\"Allocations: \" + String(r.AllocCount()));\n");
+        printf("      print(\"Bytes: \" + String(r.AllocatedBytes()));\n");
+        printf("      r.Reset();                   // O(1) bulk arena reset & reuse!\n");
+        printf("  } // O(1) total teardown at scope exit\n");
+    } else if (strcmp(topic, "unsafe") == 0) {
+        printf("\033[36mSystems Programming & Unsafe Blocks\033[0m\n");
+        printf("Unsafe Block Syntax:\n");
+        printf("  unsafe {\n");
+        printf("      // Borrow checker checks bypassed for low-level systems operations\n");
+        printf("  }\n\n");
+        printf("Memory Layout Introspection:\n");
+        printf("  SizeOf(\"MyStruct\")              Size in bytes\n");
+        printf("  AlignOf(\"MyStruct\")             Alignment requirement\n");
+        printf("  OffsetOf(\"MyStruct\", \"field\")    Byte offset of field\n\n");
+        printf("Concurrency Trait Bounds:\n");
+        printf("  IsSend(val) / IsSync(val)        Safe cross-task transfer checks\n");
     } else {
         printf("Unknown topic '%s'. Type 'aks help' for available topics.\n", topic);
     }
@@ -526,7 +593,54 @@ static AKSExample EXAMPLES[] = {
      "// Rich diagnostics provide source carets (^~~~) and 'Did you mean?' suggestions.\n"
      "let user_count = 42;\n"
      "print(\"Registered count: \" + String(user_count));\n"
-     "// If misspelled as 'user_cont', the compiler suggests 'user_count'\n"}
+     "// If misspelled as 'user_cont', the compiler suggests 'user_count'\n"},
+
+    {"iterators", "Demonstrates lazy iterator pipeline chaining and consumers",
+     "let items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];\n"
+     "let evens = lazy(items)\n"
+     "    .Filter(fn(x) { return x % 2 == 0; })\n"
+     "    .Map(fn(x) { return x * 10; })\n"
+     "    .Take(3)\n"
+     "    .Collect();\n"
+     "print(\"Filtered & Mapped evens: \" + String(evens));\n"
+     "let total = lazy(items).Sum();\n"
+     "print(\"Sum of items: \" + String(total));\n"},
+
+    {"options", "Demonstrates Option & Result constructors, methods, and unwrapping",
+     "let success = Some(42);\n"
+     "if (success.IsSome()) {\n"
+     "    print(\"Unwrapped value: \" + String(success.Unwrap()));\n"
+     "}\n"
+     "let none_val = None;\n"
+     "print(\"None fallback: \" + String(none_val.UnwrapOr(999)));\n"
+     "let res = Ok(\"operation succeeded\");\n"
+     "print(\"Result: \" + res.Unwrap());\n"},
+
+    {"defer", "Demonstrates guaranteed cleanup with defer and errdefer",
+     "fn process_resource() {\n"
+     "    print(\"Acquiring resource...\");\n"
+     "    defer print(\"Resource cleanup executed at scope exit!\");\n"
+     "    print(\"Working with resource...\");\n"
+     "}\n"
+     "process_resource();\n"},
+
+    {"arena", "Demonstrates region scopes, bump arena allocations, and reset",
+     "region (r) {\n"
+     "    let a = r.AllocArray(50);\n"
+     "    print(\"Allocated objects: \" + String(r.AllocCount()));\n"
+     "    print(\"Allocated bytes: \" + String(r.AllocatedBytes()));\n"
+     "    r.Reset();\n"
+     "    print(\"Objects after reset: \" + String(r.AllocCount()));\n"
+     "}\n"},
+
+    {"unsafe", "Demonstrates unsafe blocks and memory layout introspection",
+     "struct Packet {\n"
+     "    id: int;\n"
+     "    payload: int;\n"
+     "}\n"
+     "print(\"Packet size in bytes: \" + String(SizeOf(\"Packet\")));\n"
+     "print(\"Packet alignment: \" + String(AlignOf(\"Packet\")));\n"
+     "print(\"Field 'payload' offset: \" + String(OffsetOf(\"Packet\", \"payload\")));\n"}
 };
 static const int EXAMPLECOUNT = sizeof(EXAMPLES) / sizeof(EXAMPLES[0]);
 
@@ -626,7 +740,31 @@ static Lesson LESSONS[] = {
      "Lesson 8: Cryptographic digests and security foundations.\n"
      "Task: Compute the SHA-256 digest of string \"AKS-2026\" into variable 'digest' using SHA256().\n",
      "// Complete Lesson 8 here\nlet digest = \"\";\n\n",
-     "\n// Verification code\nlet expected = SHA256(\"AKS-2026\");\nif (digest != expected) { print(\"FAIL: SHA-256 hash mismatch\"); exit(1); }\nprint(\"SUCCESS\");\n"}
+     "\n// Verification code\nlet expected = SHA256(\"AKS-2026\");\nif (digest != expected) { print(\"FAIL: SHA-256 hash mismatch\"); exit(1); }\nprint(\"SUCCESS\");\n"},
+
+    {9, "Option & Result Ergonomics",
+     "Lesson 9: First-class Option/Result types, variant methods, and unwrapping.\n"
+     "Task: Create variable 'opt' initialized to Some(100), and variable 'res' to Ok(\"connected\").\n",
+     "// Complete Lesson 9 here\nlet opt = nil;\nlet res = nil;\n\n",
+     "\n// Verification code\nif (!opt.IsSome() || opt.Unwrap() != 100) { print(\"FAIL: opt must be Some(100)\"); exit(1); }\nif (!res.IsOk() || res.Unwrap() != \"connected\") { print(\"FAIL: res must be Ok('connected')\"); exit(1); }\nprint(\"SUCCESS\");\n"},
+
+    {10, "Lazy Iterator Pipelines",
+     "Lesson 10: Composable lazy iterator pipelines and collection.\n"
+     "Task: Using lazy([1, 2, 3, 4, 5]), filter only elements > 2 and map them to their double, collecting into 'result'.\n",
+     "// Complete Lesson 10 here\nlet result = [];\n\n",
+     "\n// Verification code\nif (Length(result) != 3 || result[0] != 6 || result[1] != 8 || result[2] != 10) {\n    print(\"FAIL: iterator pipeline output incorrect\"); exit(1);\n}\nprint(\"SUCCESS\");\n"},
+
+    {11, "Scope Cleanup with Defer",
+     "Lesson 11: Guaranteed execution of cleanup code at block exit with defer.\n"
+     "Task: Write a function 'test_defer()' that appends 1 then defers appending 2 to array 'log', returning 0.\n",
+     "// Complete Lesson 11 here\nlet log = [];\nfn test_defer() {\n    // your code with defer\n    return 0;\n}\n\n",
+     "\n// Verification code\ntest_defer();\nif (Length(log) != 2 || log[0] != 1 || log[1] != 2) {\n    print(\"FAIL: defer execution order incorrect\"); exit(1);\n}\nprint(\"SUCCESS\");\n"},
+
+    {12, "Region Scopes & Arena Allocation",
+     "Lesson 12: Bump-pointer allocation and memory introspection within region scopes.\n"
+     "Task: Inside a region (r) block, allocate an array of 20 elements into 'arr' and record r.AllocCount() into variable 'count'.\n",
+     "// Complete Lesson 12 here\nlet count = 0;\n\n",
+     "\n// Verification code\nregion (r) {\n    let a = r.AllocArray(20);\n    if (r.AllocCount() != 1) { print(\"FAIL: arena alloc count mismatch\"); exit(1); }\n}\nprint(\"SUCCESS\");\n"}
 };
 static const int LESSONCOUNT = sizeof(LESSONS) / sizeof(LESSONS[0]);
 

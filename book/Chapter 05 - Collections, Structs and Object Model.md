@@ -188,12 +188,112 @@ main();
 
 ---
 
-## 5.5 Summary & Next Steps
+## 5.5 The Lazy Iterator Pipeline & Chaining
+
+For zero-allocation data transformation pipelines, AKS provides lazy iterator adapters and terminal consumers via `lazy()` or `.iter()`:
+
+### 5.5.1 Pipeline Adapters
+
+Iterator adapters transform streams lazily without allocating intermediate buffers:
+
+```aks
+let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+// Lazy chaining: Filter -> Map -> Take -> Collect
+let results = lazy(numbers)
+    .Filter(fn(x) { return x % 2 == 0; })
+    .Map(fn(x) { return x * 10; })
+    .Take(3)
+    .Collect();
+
+print(results); // [20, 40, 60]
+```
+
+Additional adapters include:
+- `Skip(n)`: Bypasses the first $n$ elements.
+- `Take(n)`: Yields at most $n$ elements.
+- `StepBy(k)`: Strides through elements in increments of $k$.
+- `Zip(other)`: Zips two streams into pairs `[a, b]`.
+- `Enumerate()`: Yields indexed pairs `[index, element]`.
+- `Collect()`: Materializes the iterator pipeline into a concrete array.
+
+### 5.5.2 Terminal Consumers
+
+Consumers eagerly evaluate the pipeline into a scalar result:
+
+```aks
+let pipeline = lazy([10, 20, 30, 40]);
+
+assert(pipeline.Sum() == 100);
+assert(lazy([1..5]).Count() == 4);
+assert(lazy([1, 3, 5, 6]).Any(fn(x) { return x % 2 == 0; }));
+assert(lazy([2, 4, 6]).All(fn(x) { return x % 2 == 0; }));
+
+// Short-circuiting finders returning Option
+let first_even = lazy([1, 3, 7, 8, 9]).Find(fn(x) { return x % 2 == 0; });
+assert(first_even.IsSome() && first_even.Unwrap() == 8);
+```
+
+### 5.5.3 Range & Direct Array Iterators
+
+`range_iter(start, end)` and `range_step(start, end, step)` construct high-efficiency numeric iterators:
+
+```aks
+let sum = range_iter(1, 101).Sum(); // 5050
+
+let evens = range_step(0, 10, 2).Collect(); // [0, 2, 4, 6, 8]
+```
+
+---
+
+## 5.6 Nested Method Calls & Struct Chaining
+
+AKS supports deep nested method call syntax on structs and nested composite fields:
+
+```aks
+struct Sub { x: int; }
+fn Sub.GetX(self) -> int { return self.x; }
+
+struct Parent { sub: Sub; }
+fn Parent.Test(self) -> int { return self.sub.GetX(); }
+
+struct GrandParent { parent: Parent; }
+fn GrandParent.DeepGet(self) -> int {
+    return self.parent.sub.GetX(); // Deep multi-level chained call
+}
+
+let gp = GrandParent { parent: Parent { sub: Sub { x: 42 } } };
+assert_eq(gp.DeepGet(), 42);
+```
+
+---
+
+## 5.7 String & Collection Helpers
+
+Standard built-in helpers provide high-performance search and inspection:
+
+```aks
+let text = "architecture";
+assert(starts_with(text, "arch") == true);
+assert(ends_with(text, "ture") == true);
+assert(contains(text, "itec") == true);
+
+let items = [10, 20, 30, 40];
+assert(array_contains(items, 30) == true);
+assert(array_contains(items, 99) == false);
+```
+
+---
+
+## 5.8 Summary & Next Steps
 
 In this chapter, we explored:
 1. `AKSArray` contiguous evaluation buffers, amortized $1.5\times$ growth factor, and array methods.
 2. `AKSHashMap` Robin Hood open-addressing table architecture with low PSL variance.
 3. Struct declarations, field memory layouts, and property access opcodes (`OPGETFIELD`, `OPSETFIELD`).
 4. `impl` method blocks, constructor patterns, and `self` parameter dispatching.
+5. Composable zero-allocation lazy iterator pipelines, adapters (`Map`, `Filter`, `Take`, `Skip`, `Zip`, `Enumerate`, `StepBy`), and consumers (`ForEach`, `Reduce`, `Sum`, `Count`, `Any`, `All`, `Find`).
+6. Nested multi-level method chaining (`gp.parent.sub.GetX()`).
+7. Search utilities (`starts_with`, `ends_with`, `contains`, `array_contains`).
 
 Proceed to [Chapter 06: The AKS Type System & Static Mode](Chapter%2006%20-%20Type%20System%20and%20Static%20Mode.md) to explore Hindley-Milner type inference, dependent array types, Algebraic Data Types, and AOT static compilation.

@@ -11,16 +11,20 @@
 
 ## Key Highlights
 
-- **Multi-Tier Execution Engine**: Fast stack/register hybrid bytecode virtual machine with runtime optimization, in-memory dynamic tracing JIT engine (`--jit`) with hot-loop and function call-site tiering, and LLVM/C AOT static compilation.
+- **Multi-Tier Execution Engine**: Fast stack/register hybrid bytecode virtual machine with runtime optimization, in-memory dynamic tracing JIT engine (`--jit`) with hot-loop and function call-site tiering, and LLVM/C AOT static compilation (`compile-exe`, `compile-aot`, `compile-llvm`, `compile-nostd`, and `wasm`).
 - **Dual-Mode Type System**: Optional dynamic typing for rapid scripting coupled with static mode (`--strict-types`) featuring Hindley-Milner type inference, persistent incremental signature caching (`--incremental`), dependent arrays, and multi-error diagnostic recovery.
 - **Enhanced Error Diagnostics & Caret Recovery**: Statement synchronization (`ParseSynchronize`) preventing cascade errors, source-line visual caret rendering (`^~~~`), and Levenshtein distance "Did you mean?" suggestions for unknown identifiers, functions, types, and struct fields.
-- **Affine Borrow Checker**: Compile-time ownership, non-lexical lifetimes, and zero-cost move semantics eliminating use-after-free and data races without garbage collection pauses.
+- **Affine Borrow Checker & Memory Model**: Compile-time ownership, non-lexical lifetimes, zero-cost move semantics, lexical region memory scopes (`region (r)`), batch arena introspection & reset (`Reset`, `AllocCount`, `AllocatedBytes`), and `Drop` trait lifecycle without garbage collection pauses.
+- **Resource Management & Unwinding**: Explicit `defer` for guaranteed block-exit cleanup and `errdefer` for transactional error-path unwinding.
+- **Systems Programming & Unsafe Blocks**: `unsafe { ... }` blocks with borrow checker bypass, memory layout introspection (`SizeOf`, `AlignOf`, `OffsetOf`), `repr()` layout control (packed structs), and concurrency safety trait bounds (`IsSend`, `IsSync`).
+- **Lazy Iterator Pipeline**: Composable zero-allocation iterator adapters (`Map`, `Filter`, `Take`, `Skip`, `Zip`, `Enumerate`, `StepBy`, `Collect`) and consumers (`ForEach`, `Reduce`, `Any`, `All`, `Count`, `Sum`, `First`, `Find`), with `RangeIterator` and direct `ArrayIterator` chaining.
+- **Option and Result Ergonomics**: First-class ADT variants with constructors (`Some`, `Ok`, `Err`), bare `None` resolution, variant methods (`IsSome`, `IsNone`, `IsOk`, `IsErr`, `Unwrap`, `UnwrapOr`, `Expect`, `MapErr`), and try-propagation operator (`?`).
+- **Formatted String Interpolation**: Expressive f-strings with format specifiers (`{val:.2f}`, `hex`, `binary`, padding, alignment) via `FormatValue`.
+- **Numeric & String Utilities**: Standard math primitives (`abs`, `min`, `max`, `clamp`), forward-mode automatic differentiation (`Dual`, `grad`, `jvp`), and search utilities (`starts_with`, `ends_with`, `contains`, `array_contains`).
 - **Modular Compilation & Concurrency Scaling**: Circular import detection, topological DAG dependency ordering, and multicore parallel AST and bytecode chunk compilation (`--parallel`, `-j`, `--jobs`, `AKSPARALLEL`, `AKS_JOBS`).
-- **First-Class Algebraic Effects**: Full delimited continuations (`effect`, `perform`, `handle ... with`, `resume`) allowing modular, composable effect handling.
-- **Native Automatic Differentiation**: Forward-mode dual number arithmetic (`Dual`, `grad`, `jvp`) for scientific computing, physics simulations, and numerical optimization.
-- **Actor Model Concurrency**: Isolated mutable state communicating via lock-free mailboxes (`actor`, `Spawn`, `Send`, `Call`), fibers, and channels.
+- **Actor Model Concurrency & Lock-Free Primitives**: Isolated mutable state communicating via lock-free mailboxes (`actor`, `Spawn`, `Send`, `Call`), fibers, channels, Treiber stack, MPSC queues, and hazard pointers.
 - **Hardware Acceleration**: 256-bit AVX/AVX2 vector intrinsics, unboxed SIMD geometric primitives (`Vec2`, `Vec3`, `Vec4`), and zero-cost component swizzling (`.xyzw`).
-- **Standard Library & Tooling**: Built-in cryptographic ciphers, JSON/TOML/MsgPack/Protobuf parsers, networking engine, Language Server Protocol (`aksls`), code formatter (`aksfmt`), linter (`akslint`), and interactive debugger (`DAP`).
+- **Standard Library & Tooling**: Built-in cryptographic ciphers, JSON/TOML/MsgPack/Protobuf parsers, networking engine, multi-suite benchmark runner (`aks bench [file | dir] --save --compare`), Language Server Protocol (`aksls`), code formatter (`aksfmt`), linter (`akslint`), and interactive debugger (`DAP`).
 
 ---
 
@@ -52,14 +56,34 @@ test.bat
 Create `main.aks`:
 
 ```aks
-let username = "Developer";
-let latency = 4.2;
+// Option & Result ergonomics with try-propagation
+fn fetch_port(config: any) -> Result {
+    let port = config.port?;
+    return Ok(port);
+}
 
-print(f"Welcome to AKS, {username}! Execution latency: {latency}ms");
+// Lazy iterator pipeline chaining
+let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+let evens_squared = lazy(numbers)
+    .Filter(fn(x) { return x % 2 == 0; })
+    .Map(fn(x) { return x * x; })
+    .Take(3)
+    .Collect();
 
-// Forward-mode automatic differentiation
-let df = grad(fn(x) { return x * x * x; }, 3.0);
-print(f"d/dx(x^3) at x=3.0: {df}"); // 27.0
+print(f"Evens squared: {evens_squared}"); // [4, 16, 36]
+
+// Formatted string interpolation and math primitives
+let latency = 4.2568;
+let clamped = clamp(latency, 1.0, 4.0);
+print(f"Latency: {latency:.2f}ms (Clamped: {clamped:.2f}ms)");
+
+// Region scope with arena allocation and reset
+region (r) {
+    let buf = r.AllocArray(1024);
+    print(f"Arena allocations: {r.AllocCount()}, Bytes: {r.AllocatedBytes()}");
+    r.Reset();
+    print(f"Allocations after reset: {r.AllocCount()}");
+}
 ```
 
 Execute:

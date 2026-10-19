@@ -243,6 +243,23 @@ let df_at_4 = grad(f, 4.0); // 11.0
 let j = jvp(fn(x) { return x * x; }, 3.0, 2.0); // 12.0
 ```
 
+### 11.7.4 Standard Numeric Primitives
+
+For common scalar arithmetic, AKS includes optimized numeric utilities directly in the standard prelude:
+
+```aks
+assert(abs(-42) == 42);
+assert(abs(-3.14) == 3.14);
+
+assert(min(10, 20) == 10);
+assert(max(10, 20) == 20);
+
+// Clamping values within inclusive [low, high] bounds
+assert(clamp(5, 10, 20) == 10);
+assert(clamp(15, 10, 20) == 15);
+assert(clamp(25, 10, 20) == 20);
+```
+
 ---
 
 ## 11.8 Summary & Next Steps
@@ -256,5 +273,6 @@ In this chapter, we explored:
 6. LU linear system solvers and Gauss-Legendre quadrature integration.
 7. Native Reverse-Mode Automatic Differentiation Tape Engine (`Var`, `backward`, `grad_reverse`, `TapeReset`).
 8. Forward-Mode Dual Numbers, `grad`, and Jacobian-Vector Products (`jvp`).
+9. Standard prelude numeric primitives (`abs`, `min`, `max`, `clamp`).
 
 Proceed to [Chapter 12: Parsing, Serialization & Config Engines](Chapter%2012%20-%20Serialization,%20Formats%20and%20Config%20Engines.md) to explore JSON, CSV, TOML, MsgPack, Protobuf, CBOR, and TAR archives.

@@ -349,8 +349,14 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `RegionNew` | `RegionNew(name: str)` | `RegionScope` | Creates region scope backed by linear arena bump allocator. |
 | `RegionScope.AllocArray` | `r.AllocArray(size: int)` | `array` | Allocates fast arena array tied to region lifetime. |
 | `RegionScope.AllocStruct` | `r.AllocStruct(tname: str)`| `struct` | Allocates fast arena struct tied to region lifetime. |
+| `RegionScope.Reset` | `r.Reset()` | `bool` | Resets arena allocation bump pointer in $O(1)$ time for buffer reuse. |
+| `RegionScope.AllocCount` | `r.AllocCount()` | `int` | Returns count of active objects allocated in the region arena. |
+| `RegionScope.AllocatedBytes` | `r.AllocatedBytes()` | `int` | Returns total bytes consumed by the arena buffer and headers. |
 | `RegionScope.Dispose` | `r.Dispose()` | `nil` | Frees entire region arena buffer in $O(1)$ time. |
 | `RegionExit` | `RegionExit(r)` | `nil` | Runtime auto-cleanup dispatcher emitted at region scope exit. |
+| `ArenaReset` | `ArenaReset(arena)` | `bool` | Native C stdlib: Resets arena allocations and active count to 0. |
+| `ArenaAllocCount` | `ArenaAllocCount(arena)` | `int` | Native C stdlib: Queries active object count within target arena. |
+| `ArenaAllocatedBytes` | `ArenaAllocatedBytes(arena)` | `int` | Native C stdlib: Queries total bytes consumed by target arena. |
 
 ---
 
@@ -389,3 +395,66 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `Vec2` | `Vec2(x: float, y: float)` | `struct` | 2D SIMD vector supporting component swizzles (`.yx`, `.xx`), `.Length()`, `.Normalize()`, `.Dot()`. |
 | `Vec3` | `Vec3(x: float, y: float, z: float)` | `struct` | 3D SIMD vector supporting swizzles (`.zyx`, `.xy`), `.Cross()`, `.Dot()`, `.Normalize()`. |
 | `Vec4` | `Vec4(x, y, z, w)` | `struct` | 4D SIMD vector supporting component swizzles (`.wzyx`, `.rgba`, `.xyz`). |
+
+---
+
+## A.12 Lazy Iterator Pipeline & Option / Result Ergonomics
+
+| Function / Type | Signature | Return Type | Description |
+| :--- | :--- | :--- | :--- |
+| `lazy` | `lazy(arr: array)` | `Iterator` | Constructs a lazy pipeline wrapper over an array. |
+| `range_iter` | `range_iter(start: int, end: int)` | `RangeIterator` | Constructs lazy range sequence iterator from start to end. |
+| `range_step` | `range_step(start, end, step)` | `RangeIterator` | Constructs strided lazy range iterator. |
+| `Iterator.Map` | `it.Map(fn(x) -> y)` | `Iterator` | Lazy element-wise transformation adapter. |
+| `Iterator.Filter` | `it.Filter(fn(x) -> bool)` | `Iterator` | Lazy element selection predicate adapter. |
+| `Iterator.Take` | `it.Take(n: int)` | `Iterator` | Yields at most $n$ items from stream. |
+| `Iterator.Skip` | `it.Skip(n: int)` | `Iterator` | Skips first $n$ items from stream. |
+| `Iterator.Zip` | `it.Zip(other: Iterator)` | `Iterator` | Combines two iterators into `[a, b]` pairs. |
+| `Iterator.Enumerate` | `it.Enumerate()` | `Iterator` | Yields indexed pairs `[index, item]`. |
+| `Iterator.StepBy` | `it.StepBy(step: int)` | `Iterator` | Strides through iterator elements by step size. |
+| `Iterator.Collect` | `it.Collect()` | `array` | Materializes the lazy pipeline into a concrete array. |
+| `Iterator.ForEach` | `it.ForEach(fn(x))` | `nil` | Eagerly consumes each element with a callback. |
+| `Iterator.Reduce` | `it.Reduce(init, fn(acc, x))` | `any` | Folds pipeline into a single accumulator value. |
+| `Iterator.Sum` | `it.Sum()` | `int \| float` | Computes arithmetic sum of all elements. |
+| `Iterator.Count` | `it.Count()` | `int` | Counts total elements in stream. |
+| `Iterator.Any` | `it.Any(predicate)` | `bool` | Returns true if any element satisfies predicate (short-circuits). |
+| `Iterator.All` | `it.All(predicate)` | `bool` | Returns true if all elements satisfy predicate (short-circuits). |
+| `Iterator.First` | `it.First()` | `Option` | Returns `Some(first)` or `None` if stream is empty. |
+| `Iterator.Find` | `it.Find(predicate)` | `Option` | Returns `Some(elem)` matching predicate or `None`. |
+| `Some` | `Some(val: any)` | `Option` | Constructs `Option.Some(val)` instance. |
+| `None` | `None` | `Option` | Bare identifier evaluating to `Option.None`. |
+| `Option.IsSome` | `opt.IsSome()` | `bool` | Returns true if variant is `Some`. |
+| `Option.IsNone` | `opt.IsNone()` | `bool` | Returns true if variant is `None`. |
+| `Option.Unwrap` | `opt.Unwrap()` | `any` | Unwraps payload value, panicking if `None`. |
+| `Option.UnwrapOr` | `opt.UnwrapOr(default)` | `any` | Unwraps value or returns fallback if `None`. |
+| `Option.Expect` | `opt.Expect(msg: str)` | `any` | Unwraps value, panicking with custom message if `None`. |
+| `Ok` | `Ok(val: any)` | `Result` | Constructs `Result.Ok(val)` instance. |
+| `Err` | `Err(err: any)` | `Result` | Constructs `Result.Err(err)` instance. |
+| `Result.IsOk` | `res.IsOk()` | `bool` | Returns true if variant is `Ok`. |
+| `Result.IsErr` | `res.IsErr()` | `bool` | Returns true if variant is `Err`. |
+| `Result.Unwrap` | `res.Unwrap()` | `any` | Unwraps value, panicking with error message if `Err`. |
+| `Result.UnwrapOr` | `res.UnwrapOr(default)` | `any` | Unwraps value or returns fallback if `Err`. |
+| `Result.Expect` | `res.Expect(msg: str)` | `any` | Unwraps value, panicking with custom error prefix if `Err`. |
+| `Result.MapErr` | `res.MapErr(fn(e))` | `Result` | Maps error payload through transform function if `Err`. |
+
+---
+
+## A.13 Systems Programming, Numeric Primitives & Introspection
+
+| Function / Keyword | Signature | Return Type | Description |
+| :--- | :--- | :--- | :--- |
+| `unsafe` | `unsafe { ... }` | `any` | Bypasses borrow checker rules for low-level memory and raw FFI operations. |
+| `SizeOf` | `SizeOf(typename: str)` | `int` | Returns byte size of struct type matching target C ABI. |
+| `AlignOf` | `AlignOf(typename: str)` | `int` | Returns memory alignment requirement in bytes. |
+| `OffsetOf` | `OffsetOf(typename, field)` | `int` | Returns byte offset of struct field. |
+| `IsSend` | `IsSend(val: any)` | `bool` | Concurrency check: verifies value has no unshared cross-task references. |
+| `IsSync` | `IsSync(val: any)` | `bool` | Concurrency check: verifies value can be safely referenced concurrently. |
+| `starts_with` / `StartsWith` | `starts_with(str, prefix)` | `bool` | Checks if string begins with specified prefix. |
+| `ends_with` / `EndsWith` | `ends_with(str, suffix)` | `bool` | Checks if string terminates with specified suffix. |
+| `contains` / `Contains` | `contains(str, substr)` | `bool` | Checks if substring exists in source string. |
+| `array_contains` | `array_contains(arr, val)` | `bool` | Checks if value exists in array. |
+| `abs` | `abs(x: num)` | `num` | Absolute value of integer or float. |
+| `min` | `min(a: num, b: num)` | `num` | Minimum of two numbers. |
+| `max` | `max(a: num, b: num)` | `num` | Maximum of two numbers. |
+| `clamp` | `clamp(val, low, high)` | `num` | Clamps numeric value to inclusive $[low, high]$ bounds. |
+

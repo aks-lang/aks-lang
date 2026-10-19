@@ -143,7 +143,64 @@ fn create_local_buffer() -> &[int] {
 
 ---
 
-## 7.5 Summary & Next Steps
+## 7.5 Lexical Region Scopes & Arena Allocation
+
+For high-throughput systems workloads that create thousands of short-lived objects, AKS provides bump-pointer **Region Scopes** (`region (r)`). Objects allocated within a region bypass standard heap allocation overhead and are reclaimed in bulk:
+
+```aks
+region (r) {
+    // Allocate high-speed bump-pointer collections
+    let buffer = r.AllocArray(1024);
+    let node = r.AllocStruct("TreeNode");
+
+    // Introspect active region memory usage
+    let object_count = r.AllocCount();       // Active object count (e.g. 2)
+    let memory_bytes = r.AllocatedBytes();   // Raw bytes consumed including headers
+
+    print(f"Allocations: {object_count}, Consumed: {memory_bytes} bytes");
+
+    // O(1) bulk reset: Invalidates all allocations and resets bump pointer for reuse
+    r.Reset();
+    assert(r.AllocCount() == 0);
+
+    // Reuse arena without incurring OS re-allocation overhead
+    let reused_buffer = r.AllocArray(512);
+    assert(r.AllocCount() == 1);
+} // Scope exit: Total O(1) teardown of all allocated memory
+```
+
+Standard library native functions `ArenaReset()`, `ArenaAllocCount()`, and `ArenaAllocatedBytes()` allow direct management of `AKSArena` handles.
+
+---
+
+## 7.6 Deterministic RAII & The `Drop` Trait
+
+When custom resources (file handles, network sockets, GPU buffers) must be deterministically released when their owner goes out of scope, types can implement the `Drop` trait:
+
+```aks
+trait Drop {
+    fn drop(self);
+}
+
+struct ManagedFile {
+    handle: int;
+}
+
+impl ManagedFile {
+    fn drop(self) {
+        if (self.handle != 0) {
+            CloseHandle(self.handle);
+            print(f"Handle {self.handle} closed via Drop trait.");
+        }
+    }
+}
+```
+
+When an instance of a type implementing `Drop` goes out of scope, the compiler automatically invokes `drop(self)` prior to deallocating the memory.
+
+---
+
+## 7.7 Summary & Next Steps
 
 In this chapter, we explored:
 1. The dual-tier memory model: deterministic refcounting vs static ownership.
@@ -151,5 +208,7 @@ In this chapter, we explored:
 3. Immutable (`&T`) vs mutable (`&mut T`) borrowing rules and Non-Lexical Lifetimes (NLL).
 4. Static reference count elimination.
 5. Diagnosing and resolving borrow checker error codes (`E0382`, `E0499`, `E0502`, `E0515`, `E0596`).
+6. Lexical region scopes (`region (r)`), bump-pointer arenas, allocation introspection (`AllocCount`, `AllocatedBytes`), and `Reset()` reuse.
+7. Deterministic RAII resource management via the `Drop` trait.
 
 Proceed to [Chapter 08: Concurrency, Async, Fibers & Parallelism](Chapter%2008%20-%20Concurrency,%20Async%20and%20Fibers.md) to explore asynchronous microtasks, Win32 Fibers, and thread synchronization.

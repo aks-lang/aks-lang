@@ -8,6 +8,10 @@
 
 ---
 
+
+
+---
+
 # Chapter 01: Introduction & Systems Architecture
 
 AKS is a general-purpose, high-performance systems and application programming language engineered from the ground up for modern x86-64 and AArch64 hardware architectures. It bridges the gap between dynamic scripting productivity and low-level bare-metal systems programming through a unified, dual-tier compilation and execution pipeline.
@@ -357,7 +361,6 @@ In this introductory chapter, we examined:
 
 Proceed to [Chapter 02: Language Basics, Lexical Structure & Primitive Types](Chapter%2002%20-%20Language%20Basics%20and%20Primitive%20Types.md) for an in-depth dive into variables, scoping rules, primitive representations, memory alignment, and operator semantics.
 
-
 ---
 
 # Chapter 02: Language Basics, Lexical Structure & Primitive Types
@@ -667,7 +670,6 @@ In this chapter, we covered:
 
 Proceed to [Chapter 03: Control Flow, Loops & Pattern Matching](Chapter%2003%20-%20Control%20Flow%20and%20Pattern%20Matching.md) to explore branches, loops, and pattern matching.
 
-
 ---
 
 # Chapter 03: Control Flow, Loops & Pattern Matching
@@ -895,19 +897,63 @@ match (status) {
 };
 ```
 
+### 3.4.5 Multiple Alternative Patterns (OR Patterns)
+
+Multiple discrete patterns can be combined on a single branch using the pipe `|` operator, avoiding repetitive arms:
+
+```aks
+let status_code = 404;
+
+let category = match (status_code) {
+    200 | 201 | 204 => "Success",
+    301 | 302 | 307 => "Redirection",
+    400 | 401 | 403 | 404 => "Client Error",
+    500 | 502 | 503 => "Server Error",
+    _ => "Unknown Status"
+};
+```
+
+### 3.4.6 Struct Pattern Matching
+
+Struct instances can be destructured directly in pattern arms, inspecting specific fields while extracting others:
+
+```aks
+struct Message { topic: string, priority: int, payload: any }
+
+let msg = Message { topic: "alerts", priority: 1, payload: "High CPU" };
+
+match (msg) {
+    Message { topic: "alerts", priority: 1, payload } => print("Critical alert: " + String(payload)),
+    Message { topic: "telemetry", payload }           => print("Telemetry data received"),
+    _ => print("Standard message")
+};
+```
+
 ---
 
 ## 3.5 Modern Syntactic Expressiveness
 
 AKS incorporates contemporary syntactic constructs designed to maximize ergonomics without sacrificing execution speed:
 
-### 3.5.1 String Interpolation
-Formatted string literals evaluate expressions directly inside `{...}` braces:
+### 3.5.1 Formatted String Interpolation & Specifiers
+Formatted string literals evaluate expressions directly inside `{...}` braces, with optional format specifiers for precision, base conversion, and alignment:
 
 ```aks
 let username = "AksDev";
-let latency = 4.2;
+let latency = 4.2568;
+let count = 255;
+
+// Basic interpolation
 print(f"User {username} ping response: {latency}ms (Status: {latency < 10.0})");
+
+// Precision specifiers: floating-point rounding
+print(f"Formatted latency: {latency:.2f}ms"); // 4.26ms
+
+// Numeric base formatting: hex and binary
+print(f"Hex: {count:x}, Binary: {count:b}"); // Hex: ff, Binary: 11111111
+
+// Width and padding
+print(f"Padded ID: {count:06d}"); // 000255
 ```
 
 ### 3.5.2 Range Literals & Iteration
@@ -952,6 +998,18 @@ let valid = filter_records(user_db) fn(user) {
 };
 ```
 
+### 3.5.6 The Try-Propagation Operator (`?`)
+For ergonomic error handling, postfix `?` unwraps `Result.Ok` or `Option.Some` values, immediately returning `Err` or `None` from the enclosing function upon failure:
+
+```aks
+fn parse_and_process(raw: string) -> Result {
+    let json = parse_json(raw)?;
+    let host = json.host?;
+    let port = json.port?;
+    return Ok(f"Connecting to {host}:{port}");
+}
+```
+
 ---
 
 ## 3.6 Summary & Next Steps
@@ -964,7 +1022,6 @@ In this chapter, we explored:
 5. Modern syntactic features: string interpolation, range literals, chained comparisons, struct updates, and trailing lambdas.
 
 Proceed to [Chapter 04: Functions, Closures, Stack Frames & Error Handling](Chapter%2004%20-%20Functions,%20Closures%20and%20Error%20Handling.md) to explore stack frames, algebraic effects, verified contracts, and error handling models.
-
 
 ---
 
@@ -1163,29 +1220,77 @@ fn divide_memory_pages(total_bytes, page_size) {
 }
 ```
 
-### 4.5.3 Algebraic Error Handling: `Option` & `Result`
+### 4.5.3 First-Class `Option` & `Result` Ergonomics
 
-In high-reliability systems and static mode, AKS encourages explicit error types using standard Result monads:
+AKS provides native algebraic data types for robust error handling without exceptions. `Option` represents optional presence, while `Result` represents either success or an error:
 
 ```aks
-struct Result {
-    is_ok: bool,
-    value: any,
-    error: str
-}
+// Top-level constructors
+let opt = Some(42);
+let empty = None; // Bare None identifier compiles to Option.None
 
-fn safe_divide(numerator: float, denominator: float) -> Result {
-    if (denominator == 0.0) {
-        return Result { is_ok: false, value: nil, error: "Division by zero" };
-    }
-    return Result { is_ok: true, value: numerator / denominator, error: nil };
-}
+let ok_res = Ok("data loaded");
+let err_res = Err("disk read failure");
 
-let res = safe_divide(100.0, 4.0);
-if (res.is_ok) {
-    print("Calculation result: " + String(res.value)); // 25.0
-} else {
-    print("Error encountered: " + res.error);
+// Boolean inspection methods
+assert(opt.IsSome());
+assert(empty.IsNone());
+assert(ok_res.IsOk());
+assert(err_res.IsErr());
+
+// Safe unwrapping and fallbacks
+let val = opt.Unwrap();               // 42 (panics if None)
+let fallback = empty.UnwrapOr(100);    // 100
+let ensured = opt.Expect("critical"); // 42
+
+// Transforming error payloads
+let mapped = err_res.MapErr(fn(e) { return "IO Error: " + e; });
+```
+
+### 4.5.4 The Postfix Try-Propagation Operator (`?`)
+
+The `?` operator unwraps successful values or early-returns failure from the enclosing function:
+
+```aks
+fn fetch_user_avatar(user_id: int) -> Result {
+    let user = find_user(user_id)?;     // Early-returns Err if user not found
+    let profile = user.profile?;        // Unwraps profile or early-returns Err/None
+    let url = profile.avatar_url?;
+    return Ok(url);
+}
+```
+
+### 4.5.5 Guaranteed Scope Cleanup: `defer`
+
+The `defer` statement schedules a statement or block to execute unconditionally when the enclosing function or block exits, regardless of whether exit occurs via normal return or error unwinding:
+
+```aks
+fn process_transaction(file_path: string) {
+    let file = FileOpen(file_path, "r");
+    defer FileClose(file); // Guaranteed to execute on function exit!
+
+    let lock = AcquireLock();
+    defer ReleaseLock(lock); // Multiple defers execute in LIFO (reverse) order!
+
+    // File and lock are deterministically released at scope exit
+    ReadPayload(file);
+}
+```
+
+### 4.5.6 Transactional Error Cleanup: `errdefer`
+
+The `errdefer` statement executes its cleanup block **only** if the function or block exits via an error, panic, or unhandled exception. If execution succeeds normally, `errdefer` actions are cancelled:
+
+```aks
+fn create_user_account(name: string) -> Result {
+    let tx = DatabaseBegin();
+    errdefer DatabaseRollback(tx); // Only runs if an error or early return occurs!
+
+    let user_id = InsertUser(tx, name)?;
+    InsertDefaultSettings(tx, user_id)?;
+
+    DatabaseCommit(tx);
+    return Ok(user_id);
 }
 ```
 
@@ -1289,7 +1394,6 @@ In this chapter, we covered:
 7. Verified function contracts (`requires`, `ensures`) with compile-time and runtime validation.
 
 Proceed to [Chapter 05: Collections, Structs & Object Architecture](Chapter%2005%20-%20Collections,%20Structs%20and%20Object%20Model.md) to explore dynamic arrays, Robin Hood hash maps, and struct object models.
-
 
 ---
 
@@ -1483,16 +1587,115 @@ main();
 
 ---
 
-## 5.5 Summary & Next Steps
+## 5.5 The Lazy Iterator Pipeline & Chaining
+
+For zero-allocation data transformation pipelines, AKS provides lazy iterator adapters and terminal consumers via `lazy()` or `.iter()`:
+
+### 5.5.1 Pipeline Adapters
+
+Iterator adapters transform streams lazily without allocating intermediate buffers:
+
+```aks
+let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+// Lazy chaining: Filter -> Map -> Take -> Collect
+let results = lazy(numbers)
+    .Filter(fn(x) { return x % 2 == 0; })
+    .Map(fn(x) { return x * 10; })
+    .Take(3)
+    .Collect();
+
+print(results); // [20, 40, 60]
+```
+
+Additional adapters include:
+- `Skip(n)`: Bypasses the first $n$ elements.
+- `Take(n)`: Yields at most $n$ elements.
+- `StepBy(k)`: Strides through elements in increments of $k$.
+- `Zip(other)`: Zips two streams into pairs `[a, b]`.
+- `Enumerate()`: Yields indexed pairs `[index, element]`.
+- `Collect()`: Materializes the iterator pipeline into a concrete array.
+
+### 5.5.2 Terminal Consumers
+
+Consumers eagerly evaluate the pipeline into a scalar result:
+
+```aks
+let pipeline = lazy([10, 20, 30, 40]);
+
+assert(pipeline.Sum() == 100);
+assert(lazy([1..5]).Count() == 4);
+assert(lazy([1, 3, 5, 6]).Any(fn(x) { return x % 2 == 0; }));
+assert(lazy([2, 4, 6]).All(fn(x) { return x % 2 == 0; }));
+
+// Short-circuiting finders returning Option
+let first_even = lazy([1, 3, 7, 8, 9]).Find(fn(x) { return x % 2 == 0; });
+assert(first_even.IsSome() && first_even.Unwrap() == 8);
+```
+
+### 5.5.3 Range & Direct Array Iterators
+
+`range_iter(start, end)` and `range_step(start, end, step)` construct high-efficiency numeric iterators:
+
+```aks
+let sum = range_iter(1, 101).Sum(); // 5050
+
+let evens = range_step(0, 10, 2).Collect(); // [0, 2, 4, 6, 8]
+```
+
+---
+
+## 5.6 Nested Method Calls & Struct Chaining
+
+AKS supports deep nested method call syntax on structs and nested composite fields:
+
+```aks
+struct Sub { x: int; }
+fn Sub.GetX(self) -> int { return self.x; }
+
+struct Parent { sub: Sub; }
+fn Parent.Test(self) -> int { return self.sub.GetX(); }
+
+struct GrandParent { parent: Parent; }
+fn GrandParent.DeepGet(self) -> int {
+    return self.parent.sub.GetX(); // Deep multi-level chained call
+}
+
+let gp = GrandParent { parent: Parent { sub: Sub { x: 42 } } };
+assert_eq(gp.DeepGet(), 42);
+```
+
+---
+
+## 5.7 String & Collection Helpers
+
+Standard built-in helpers provide high-performance search and inspection:
+
+```aks
+let text = "architecture";
+assert(starts_with(text, "arch") == true);
+assert(ends_with(text, "ture") == true);
+assert(contains(text, "itec") == true);
+
+let items = [10, 20, 30, 40];
+assert(array_contains(items, 30) == true);
+assert(array_contains(items, 99) == false);
+```
+
+---
+
+## 5.8 Summary & Next Steps
 
 In this chapter, we explored:
 1. `AKSArray` contiguous evaluation buffers, amortized $1.5\times$ growth factor, and array methods.
 2. `AKSHashMap` Robin Hood open-addressing table architecture with low PSL variance.
 3. Struct declarations, field memory layouts, and property access opcodes (`OPGETFIELD`, `OPSETFIELD`).
 4. `impl` method blocks, constructor patterns, and `self` parameter dispatching.
+5. Composable zero-allocation lazy iterator pipelines, adapters (`Map`, `Filter`, `Take`, `Skip`, `Zip`, `Enumerate`, `StepBy`), and consumers (`ForEach`, `Reduce`, `Sum`, `Count`, `Any`, `All`, `Find`).
+6. Nested multi-level method chaining (`gp.parent.sub.GetX()`).
+7. Search utilities (`starts_with`, `ends_with`, `contains`, `array_contains`).
 
 Proceed to [Chapter 06: The AKS Type System & Static Mode](Chapter%2006%20-%20Type%20System%20and%20Static%20Mode.md) to explore Hindley-Milner type inference, dependent array types, Algebraic Data Types, and AOT static compilation.
-
 
 ---
 
@@ -1950,7 +2153,64 @@ fn create_local_buffer() -> &[int] {
 
 ---
 
-## 7.5 Summary & Next Steps
+## 7.5 Lexical Region Scopes & Arena Allocation
+
+For high-throughput systems workloads that create thousands of short-lived objects, AKS provides bump-pointer **Region Scopes** (`region (r)`). Objects allocated within a region bypass standard heap allocation overhead and are reclaimed in bulk:
+
+```aks
+region (r) {
+    // Allocate high-speed bump-pointer collections
+    let buffer = r.AllocArray(1024);
+    let node = r.AllocStruct("TreeNode");
+
+    // Introspect active region memory usage
+    let object_count = r.AllocCount();       // Active object count (e.g. 2)
+    let memory_bytes = r.AllocatedBytes();   // Raw bytes consumed including headers
+
+    print(f"Allocations: {object_count}, Consumed: {memory_bytes} bytes");
+
+    // O(1) bulk reset: Invalidates all allocations and resets bump pointer for reuse
+    r.Reset();
+    assert(r.AllocCount() == 0);
+
+    // Reuse arena without incurring OS re-allocation overhead
+    let reused_buffer = r.AllocArray(512);
+    assert(r.AllocCount() == 1);
+} // Scope exit: Total O(1) teardown of all allocated memory
+```
+
+Standard library native functions `ArenaReset()`, `ArenaAllocCount()`, and `ArenaAllocatedBytes()` allow direct management of `AKSArena` handles.
+
+---
+
+## 7.6 Deterministic RAII & The `Drop` Trait
+
+When custom resources (file handles, network sockets, GPU buffers) must be deterministically released when their owner goes out of scope, types can implement the `Drop` trait:
+
+```aks
+trait Drop {
+    fn drop(self);
+}
+
+struct ManagedFile {
+    handle: int;
+}
+
+impl ManagedFile {
+    fn drop(self) {
+        if (self.handle != 0) {
+            CloseHandle(self.handle);
+            print(f"Handle {self.handle} closed via Drop trait.");
+        }
+    }
+}
+```
+
+When an instance of a type implementing `Drop` goes out of scope, the compiler automatically invokes `drop(self)` prior to deallocating the memory.
+
+---
+
+## 7.7 Summary & Next Steps
 
 In this chapter, we explored:
 1. The dual-tier memory model: deterministic refcounting vs static ownership.
@@ -1958,9 +2218,10 @@ In this chapter, we explored:
 3. Immutable (`&T`) vs mutable (`&mut T`) borrowing rules and Non-Lexical Lifetimes (NLL).
 4. Static reference count elimination.
 5. Diagnosing and resolving borrow checker error codes (`E0382`, `E0499`, `E0502`, `E0515`, `E0596`).
+6. Lexical region scopes (`region (r)`), bump-pointer arenas, allocation introspection (`AllocCount`, `AllocatedBytes`), and `Reset()` reuse.
+7. Deterministic RAII resource management via the `Drop` trait.
 
 Proceed to [Chapter 08: Concurrency, Async, Fibers & Parallelism](Chapter%2008%20-%20Concurrency,%20Async%20and%20Fibers.md) to explore asynchronous microtasks, Win32 Fibers, and thread synchronization.
-
 
 ---
 
@@ -2235,7 +2496,6 @@ In this chapter, we explored:
 
 Proceed to [Chapter 09: Lock-Free Concurrency, Data Structures & Memory Reclamation](Chapter%2009%20-%20Lock-Free%20Data%20Structures.md) to explore hardware atomic CAS instructions, lock-free queues, and Hazard Pointers.
 
-
 ---
 
 # Chapter 09: Lock-Free Concurrency, Data Structures & Memory Reclamation
@@ -2387,7 +2647,6 @@ In this chapter, we explored:
 5. Windows I/O Completion Ports (IOCP) kernel event queues.
 
 Proceed to [Chapter 10: Advanced Pure Data Structures](Chapter%2010%20-%20Advanced%20Pure%20Data%20Structures.md) to explore Fenwick Trees, Segment Trees, DSU, SkipLists, Treaps, and Wavelet Trees.
-
 
 ---
 
@@ -2579,7 +2838,6 @@ In this chapter, we explored:
 6. Persistent HAMTs, Suffix Arrays, Wavelet Trees, and Radix Trees.
 
 Proceed to [Chapter 11: Mathematics, Numerics & Scientific Computing](Chapter%2011%20-%20Mathematics,%20Numerics%20and%20Scientific%20Computing.md) to explore complex arithmetic, FFT, statistics, RNGs, and numerical linear algebra.
-
 
 ---
 
@@ -2828,6 +3086,23 @@ let df_at_4 = grad(f, 4.0); // 11.0
 let j = jvp(fn(x) { return x * x; }, 3.0, 2.0); // 12.0
 ```
 
+### 11.7.4 Standard Numeric Primitives
+
+For common scalar arithmetic, AKS includes optimized numeric utilities directly in the standard prelude:
+
+```aks
+assert(abs(-42) == 42);
+assert(abs(-3.14) == 3.14);
+
+assert(min(10, 20) == 10);
+assert(max(10, 20) == 20);
+
+// Clamping values within inclusive [low, high] bounds
+assert(clamp(5, 10, 20) == 10);
+assert(clamp(15, 10, 20) == 15);
+assert(clamp(25, 10, 20) == 20);
+```
+
 ---
 
 ## 11.8 Summary & Next Steps
@@ -2841,9 +3116,9 @@ In this chapter, we explored:
 6. LU linear system solvers and Gauss-Legendre quadrature integration.
 7. Native Reverse-Mode Automatic Differentiation Tape Engine (`Var`, `backward`, `grad_reverse`, `TapeReset`).
 8. Forward-Mode Dual Numbers, `grad`, and Jacobian-Vector Products (`jvp`).
+9. Standard prelude numeric primitives (`abs`, `min`, `max`, `clamp`).
 
 Proceed to [Chapter 12: Parsing, Serialization & Config Engines](Chapter%2012%20-%20Serialization,%20Formats%20and%20Config%20Engines.md) to explore JSON, CSV, TOML, MsgPack, Protobuf, CBOR, and TAR archives.
-
 
 ---
 
@@ -2986,7 +3261,6 @@ In this chapter, we explored:
 6. POSIX ustar TAR archive manipulation.
 
 Proceed to [Chapter 13: Cryptography & Security Engine](Chapter%2013%20-%20Cryptography%20and%20Security%20Engine.md) to explore cryptographic hashing, symmetric ciphers, key exchanges, and digital signatures.
-
 
 ---
 
@@ -3168,7 +3442,6 @@ In this chapter, we explored:
 6. RFC 6238 TOTP two-factor authentication tokens.
 
 Proceed to [Chapter 14: SIMD Hardware Acceleration & High-Performance Computing](Chapter%2014%20-%20SIMD%20and%20Hardware%20Acceleration.md) to explore AVX/AVX2 vector primitives, FMA dot products, and BMI2 bit manipulation.
-
 
 ---
 
@@ -3355,7 +3628,6 @@ In this chapter, we explored:
 
 Proceed to [Chapter 15: Networking, Sockets & Web Protocols](Chapter%2015%20-%20Networking,%20Sockets%20and%20Web%20Protocols.md) to explore TCP/UDP sockets, WebSockets, SOCKS5, HTTP/1.1, and DNS.
 
-
 ---
 
 # Chapter 15: Networking, Sockets & Web Protocols
@@ -3519,7 +3791,6 @@ In this chapter, we explored:
 6. NTP atomic time queries, raw DNS resolution, ICMP ping, and WinHTTP integration.
 
 Proceed to [Chapter 16: Windows OS Kernel & Low-Level Systems Integration](Chapter%2016%20-%20Windows%20OS%20Kernel%20and%20Systems%20Internals.md) to explore low-level Win32 kernel calls, virtual memory, process snapshots, and ETW.
-
 
 ---
 
@@ -3717,7 +3988,69 @@ print("Current CPU Utilization: " + String(cpu_load) + "%");
 
 ---
 
-## 16.9 Summary & Next Steps
+## 16.9 Systems Programming Primitives & `unsafe` Blocks
+
+For low-level kernel drivers, embedded development, and bare-metal performance, AKS provides first-class systems programming primitives:
+
+### 16.9.1 The `unsafe` Block
+
+Within an `unsafe` block, borrow checker rules and safety constraints are relaxed, allowing manual pointer operations, raw FFI, and hardware manipulation:
+
+```aks
+unsafe {
+    // Low-level pointer arithmetic and raw hardware access
+    let raw_addr = 0x00400000;
+    // Unrestricted memory operations...
+}
+```
+
+### 16.9.2 Memory Layout Introspection
+
+AKS provides exact compile-time and runtime introspection into struct memory layout, byte sizes, and alignment requirements matching the target C ABI:
+
+```aks
+struct NetworkPacket {
+    header: int;
+    length: int;
+    checksum: int;
+}
+
+// Compute byte sizes and alignment
+let packet_size = SizeOf("NetworkPacket");
+let packet_align = AlignOf("NetworkPacket");
+let payload_offset = OffsetOf("NetworkPacket", "checksum");
+
+print(f"Size: {packet_size} bytes, Align: {packet_align}, Checksum Offset: {payload_offset}");
+```
+
+### 16.9.3 Struct Memory Layout Control (`repr`)
+
+The `repr()` attribute configures struct field packing and ABI alignment:
+
+```aks
+repr("packed")
+struct PackedHeader {
+    flags: int;
+    seq: int;
+}
+```
+
+### 16.9.4 Concurrency Safety Trait Bounds (`IsSend`, `IsSync`)
+
+To guarantee data-race freedom across thread and fiber task boundaries, AKS enforces `Send` and `Sync` bounds:
+
+- `IsSend(val)`: Verifies that ownership of `val` can be transferred safely across `spawn` boundaries without shared mutable references.
+- `IsSync(val)`: Verifies that references to `val` can be concurrently accessed by multiple threads.
+
+```aks
+let data = [1, 2, 3];
+assert(IsSend(data) == true);
+assert(IsSync(data) == true);
+```
+
+---
+
+## 16.10 Summary & Next Steps
 
 In this chapter, we explored:
 1. Windows clipboard reads and writes (`OsClipboardSetC`, `OsClipboardGetC`).
@@ -3728,9 +4061,9 @@ In this chapter, we explored:
 6. Named cross-process synchronization events (`OsNamedEventCreateC`, `OsNamedEventSetC`, `OsNamedEventWaitC`).
 7. NTFS Alternate Data Streams (ADS).
 8. ETW event tracing and PDH performance counters.
+9. Systems programming primitives: `unsafe { ... }` blocks, memory layout introspection (`SizeOf`, `AlignOf`, `OffsetOf`), `repr()` packing, and `IsSend`/`IsSync` trait bounds.
 
 Proceed to [Chapter 17: Media, Graphics & Audio Subsystems](Chapter%2017%20-%20Media,%20Graphics%20and%20Audio%20Subsystems.md) to explore WAV audio parsing, GDI bitmap graphics, and WinMM low-latency PCM playback.
-
 
 ---
 
@@ -3846,7 +4179,6 @@ In this chapter, we explored:
 4. GDI 32-bit DIB section graphics rendering and saving images to disk.
 
 Proceed to [Chapter 18: Foreign Function Interface (FFI) & Native Interoperability](Chapter%2018%20-%20Foreign%20Function%20Interface%20and%20Interop.md) to explore calling C, Rust, Python, and COM components from AKS.
-
 
 ---
 
@@ -3989,7 +4321,6 @@ In this chapter, we explored:
 5. Windows COM automation using `IDispatch`.
 
 Proceed to [Chapter 19: Developer Tooling, Ecosystem & Internals](Chapter%2019%20-%20Developer%20Tooling%20and%20Ecosystem.md) to explore the Language Server Protocol (LSP), Debug Adapter Protocol (DAP), linter, formatter, package manager, and compiler backends.
-
 
 ---
 
@@ -4392,7 +4723,79 @@ AKS employs Levenshtein string edit distance algorithms to propose accurate repl
 
 ---
 
-## 19.12 Summary & Next Steps
+## 19.12 Multi-Suite Benchmark Runner & Performance Tracking
+
+AKS includes an automated micro-benchmarking engine capable of targeting individual benchmark scripts or scanning entire directories:
+
+```cmd
+# Run a single benchmark suite
+aks.exe bench benchmarks/Fibonacci.aks
+
+# Run all benchmark suites in a directory
+aks.exe bench benchmarks/
+
+# Save execution baseline to JSON
+aks.exe bench benchmarks/ --save baseline.json
+
+# Compare current performance against saved baseline
+aks.exe bench benchmarks/ --compare baseline.json
+```
+
+- **Metrics Captured**: Iterations per second, mean execution latency, standard deviation, and throughput.
+- **Baseline Comparison**: Flags performance regressions or speedups with colorized percentage deltas.
+
+---
+
+## 19.13 Ahead-Of-Time (AOT) Bare-Metal Targets
+
+For production deployment and resource-constrained environments, AKS provides multiple static compilation targets:
+
+```cmd
+# Standalone native PE executable
+aks.exe compile-exe src/main.aks -o app.exe
+
+# Static C source code output (for embedded systems)
+aks.exe compile-aot src/main.aks -o out.c --target c-code
+
+# LLVM Bitcode / IR generation
+aks.exe compile-llvm src/main.aks -o out.bc
+
+# Bare-metal no-std binary (no standard library runtime)
+aks.exe compile-nostd src/kernel.aks -o kernel.bin
+
+# WebAssembly (Wasm) WAT emission
+aks.exe compile-aot src/main.aks -o app.wat --target wasm
+```
+
+---
+
+## 19.14 Built-in Documentation & Interactive Learning Engine
+
+AKS features an integrated developer education subsystem directly accessible from the CLI:
+
+```cmd
+# Interactive topic reference
+aks help
+aks help iterators
+aks help options
+aks help defer
+aks help memory
+aks help unsafe
+
+# Curated runnable examples
+aks examples
+aks examples show iterators
+aks examples copy iterators my_pipeline.aks
+
+# Interactive 12-lesson tutorial runner
+aks tutorial
+aks tutorial start
+aks tutorial verify
+```
+
+---
+
+## 19.15 Summary & Next Steps
 
 In this chapter, we explored:
 1. The Language Server Protocol (`aksls.exe`) JSON-RPC engine and IDE integration.
@@ -4405,6 +4808,9 @@ In this chapter, we explored:
 8. The module dependency graph, circular import detection, and parallel compilation scaling (`--parallel`, `-j`).
 9. Virtual machine subsystem modularization architecture.
 10. Parser statement synchronization (`ParseSynchronize`), caret context rendering (`^~~~`), and fuzzy symbol suggestions.
+11. Multi-suite benchmark runner (`aks bench [file | dir] --save --compare`).
+12. Ahead-of-time bare-metal static compilation targets (`compile-exe`, `compile-aot`, `compile-llvm`, `compile-nostd`, `wasm`).
+13. Interactive learning engine (`aks help`, `aks examples`, `aks tutorial`).
 
 Proceed to [Chapter 20: Practical Cookbook & Real-World Projects](Chapter%2020%20-%20Cookbook%20and%20Real-World%20Projects.md) to explore complete production-grade projects written in AKS.
 
@@ -4629,7 +5035,6 @@ main();
 You have completed the comprehensive guide to the AKS programming language. You now possess the foundational and systems knowledge to build ultra-fast, safe, and maintainable software using AKS—from high-level web services to bare-metal OS kernels, high-performance cryptography, SIMD numeric computing, and distributed networks.
 
 Happy systems programming in AKS!
-
 
 ---
 
@@ -4972,17 +5377,50 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `ShmRingPopC` | `ShmRingPopC(ring)` | `str` | Dequeues frame from shared memory ring buffer. |
 | `ShmRingAvailableC` | `ShmRingAvailableC(ring)` | `int` | Queries byte payload count available to consume in ring. |
 | `ShmRingCloseC` | `ShmRingCloseC(ring)` | `bool` | Unmaps and closes shared memory ring buffer mapping. |
+| `nursery` | `nursery (n) { ... }` | `block` | Structured concurrency block with guaranteed scope-bounded auto-join at exit. |
+| `NurseryNew` | `NurseryNew()` | `Nursery` | Creates nursery instance managing child fiber lifecycles. |
+| `Nursery.Spawn` | `n.Spawn(worker)` | `task` | Spawns worker fiber tracked by nursery scope. |
+| `Nursery.SpawnArg` | `n.SpawnArg(worker, arg)` | `task` | Spawns parameterized worker fiber tracked by nursery scope. |
+| `Nursery.Track` | `n.Track(task)` | `task` | Registers existing fiber task into nursery tracking list. |
+| `Nursery.JoinAll` | `n.JoinAll()` | `array` | Awaits all child fibers and returns results array. |
+| `Nursery.CancelAll` | `n.CancelAll()` | `nil` | Proactively signals cancellation to all child fibers. |
+| `NurseryWaitAll` | `NurseryWaitAll(n)` | `array` | Runtime auto-join dispatcher emitted at nursery scope exit. |
+| `region` | `region (r) { ... }` | `block` | Lexical memory region block with guaranteed $O(1)$ batch cleanup at exit. |
+| `RegionNew` | `RegionNew(name: str)` | `RegionScope` | Creates region scope backed by linear arena bump allocator. |
+| `RegionScope.AllocArray` | `r.AllocArray(size: int)` | `array` | Allocates fast arena array tied to region lifetime. |
+| `RegionScope.AllocStruct` | `r.AllocStruct(tname: str)`| `struct` | Allocates fast arena struct tied to region lifetime. |
+| `RegionScope.Reset` | `r.Reset()` | `bool` | Resets arena allocation bump pointer in $O(1)$ time for buffer reuse. |
+| `RegionScope.AllocCount` | `r.AllocCount()` | `int` | Returns count of active objects allocated in the region arena. |
+| `RegionScope.AllocatedBytes` | `r.AllocatedBytes()` | `int` | Returns total bytes consumed by the arena buffer and headers. |
+| `RegionScope.Dispose` | `r.Dispose()` | `nil` | Frees entire region arena buffer in $O(1)$ time. |
+| `RegionExit` | `RegionExit(r)` | `nil` | Runtime auto-cleanup dispatcher emitted at region scope exit. |
+| `ArenaReset` | `ArenaReset(arena)` | `bool` | Native C stdlib: Resets arena allocations and active count to 0. |
+| `ArenaAllocCount` | `ArenaAllocCount(arena)` | `int` | Native C stdlib: Queries active object count within target arena. |
+| `ArenaAllocatedBytes` | `ArenaAllocatedBytes(arena)` | `int` | Native C stdlib: Queries total bytes consumed by target arena. |
 
 ---
 
-## A.9 Automatic Differentiation, Physical Units & Geometric Vectors
+## A.11 Automatic Differentiation, Physical Units & Geometric Vectors
 
 | Function / Type | Signature | Return Type | Description |
 | :--- | :--- | :--- | :--- |
+| `Var` | `Var(val: float, tape_id: int = 0)` | `AutoVar` | Creates leaf autodiff variable tracked on reverse-mode tape. |
+| `AutoVar` | `AutoVar` | `struct` | Autodiff node with `.val()`, `.grad()`, `.backward()`, `.Add()`, `.Sub()`, `.Mul()`, `.Div()`, `.Pow()`, `.Exp()`, `.Log()`, `.Sin()`, `.Cos()`, `.Tan()`, `.Relu()`, `.Sigmoid()`, `.Tanh()`, `.Sqrt()`. |
+| `backward` | `backward(loss: AutoVar)` | `float` | Executes $O(1)$ reverse topological backpropagation sweep from loss. |
+| `grad_reverse` | `grad_reverse(f: fn, ...args)` | `float \| arr` | High-level analytical gradient vector evaluator using reverse-mode tape. |
+| `TapeNew` | `TapeNew()` | `int` | Allocates new isolated computational graph tape slot. |
+| `TapeFree` | `TapeFree(tape_id: int)` | `nil` | Deallocates computational tape memory buffers. |
+| `TapeDefault` | `TapeDefault()` | `int` | Returns default computational tape ID (0). |
+| `TapeReset` | `TapeReset(tape_id: int)` | `nil` | Resets tape count to 0 without reallocating underlying buffers. |
+| `TapeVar` | `TapeVar(tape_id, val)` | `int` | Low-level C built-in: allocates leaf variable node on tape. |
+| `TapeOp` | `TapeOp(tape_id, op, lhs, rhs, aux)` | `int` | Low-level C built-in: allocates operator node and computes forward value. |
+| `TapeGetVal` | `TapeGetVal(tape_id, nid)` | `float` | Low-level C built-in: retrieves forward evaluation value of tape node. |
+| `TapeGetGrad` | `TapeGetGrad(tape_id, nid)` | `float` | Low-level C built-in: retrieves propagated adjoint gradient of tape node. |
+| `TapeBackward` | `TapeBackward(tape_id, loss_nid)` | `float` | Low-level C built-in: executes reverse topological gradient sweep. |
 | `Dual` | `Dual(val: float, grad: float)` | `struct` | Dual number forward-mode auto-diff wrapper with `.Add()`, `.Mul()`, `.val`, `.grad`. |
 | `DualNew` | `DualNew(val: float, deriv: float)` | `struct` | Allocates dual number carrying scalar value and derivative component. |
 | `DualSin` | `DualSin(d: struct)` | `struct` | Computes sine of dual number with automatic chain rule propagation ($\sin(x) + x' \cos(x) \epsilon$). |
-| `grad` | `grad(f: fn, x: float)` | `float` | Computes exact derivative $f'(x)$ using forward-mode automatic differentiation. |
+| `grad` | `grad(f: fn, x: float)` | `float` | Computes derivative $f'(x)$ using forward-mode automatic differentiation. |
 | `jvp` | `jvp(f: fn, x: float, v: float)` | `float` | Computes Jacobian-Vector Product $J_f(x) \cdot v$. |
 | `MatrixNew` | `MatrixNew(rows: int, cols: int)` | `struct` | Allocates zero-initialized 2D numeric matrix with `.Get(r, c)` and `.Set(r, c, v)`. |
 | `MatrixFrom`| `MatrixFrom(rows: int, cols: int, data: arr)` | `struct` | Allocates 2D matrix populated from row-major flattened array. |
@@ -4998,12 +5436,73 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `Vec3` | `Vec3(x: float, y: float, z: float)` | `struct` | 3D SIMD vector supporting swizzles (`.zyx`, `.xy`), `.Cross()`, `.Dot()`, `.Normalize()`. |
 | `Vec4` | `Vec4(x, y, z, w)` | `struct` | 4D SIMD vector supporting component swizzles (`.wzyx`, `.rgba`, `.xyz`). |
 
+---
+
+## A.12 Lazy Iterator Pipeline & Option / Result Ergonomics
+
+| Function / Type | Signature | Return Type | Description |
+| :--- | :--- | :--- | :--- |
+| `lazy` | `lazy(arr: array)` | `Iterator` | Constructs a lazy pipeline wrapper over an array. |
+| `range_iter` | `range_iter(start: int, end: int)` | `RangeIterator` | Constructs lazy range sequence iterator from start to end. |
+| `range_step` | `range_step(start, end, step)` | `RangeIterator` | Constructs strided lazy range iterator. |
+| `Iterator.Map` | `it.Map(fn(x) -> y)` | `Iterator` | Lazy element-wise transformation adapter. |
+| `Iterator.Filter` | `it.Filter(fn(x) -> bool)` | `Iterator` | Lazy element selection predicate adapter. |
+| `Iterator.Take` | `it.Take(n: int)` | `Iterator` | Yields at most $n$ items from stream. |
+| `Iterator.Skip` | `it.Skip(n: int)` | `Iterator` | Skips first $n$ items from stream. |
+| `Iterator.Zip` | `it.Zip(other: Iterator)` | `Iterator` | Combines two iterators into `[a, b]` pairs. |
+| `Iterator.Enumerate` | `it.Enumerate()` | `Iterator` | Yields indexed pairs `[index, item]`. |
+| `Iterator.StepBy` | `it.StepBy(step: int)` | `Iterator` | Strides through iterator elements by step size. |
+| `Iterator.Collect` | `it.Collect()` | `array` | Materializes the lazy pipeline into a concrete array. |
+| `Iterator.ForEach` | `it.ForEach(fn(x))` | `nil` | Eagerly consumes each element with a callback. |
+| `Iterator.Reduce` | `it.Reduce(init, fn(acc, x))` | `any` | Folds pipeline into a single accumulator value. |
+| `Iterator.Sum` | `it.Sum()` | `int \| float` | Computes arithmetic sum of all elements. |
+| `Iterator.Count` | `it.Count()` | `int` | Counts total elements in stream. |
+| `Iterator.Any` | `it.Any(predicate)` | `bool` | Returns true if any element satisfies predicate (short-circuits). |
+| `Iterator.All` | `it.All(predicate)` | `bool` | Returns true if all elements satisfy predicate (short-circuits). |
+| `Iterator.First` | `it.First()` | `Option` | Returns `Some(first)` or `None` if stream is empty. |
+| `Iterator.Find` | `it.Find(predicate)` | `Option` | Returns `Some(elem)` matching predicate or `None`. |
+| `Some` | `Some(val: any)` | `Option` | Constructs `Option.Some(val)` instance. |
+| `None` | `None` | `Option` | Bare identifier evaluating to `Option.None`. |
+| `Option.IsSome` | `opt.IsSome()` | `bool` | Returns true if variant is `Some`. |
+| `Option.IsNone` | `opt.IsNone()` | `bool` | Returns true if variant is `None`. |
+| `Option.Unwrap` | `opt.Unwrap()` | `any` | Unwraps payload value, panicking if `None`. |
+| `Option.UnwrapOr` | `opt.UnwrapOr(default)` | `any` | Unwraps value or returns fallback if `None`. |
+| `Option.Expect` | `opt.Expect(msg: str)` | `any` | Unwraps value, panicking with custom message if `None`. |
+| `Ok` | `Ok(val: any)` | `Result` | Constructs `Result.Ok(val)` instance. |
+| `Err` | `Err(err: any)` | `Result` | Constructs `Result.Err(err)` instance. |
+| `Result.IsOk` | `res.IsOk()` | `bool` | Returns true if variant is `Ok`. |
+| `Result.IsErr` | `res.IsErr()` | `bool` | Returns true if variant is `Err`. |
+| `Result.Unwrap` | `res.Unwrap()` | `any` | Unwraps value, panicking with error message if `Err`. |
+| `Result.UnwrapOr` | `res.UnwrapOr(default)` | `any` | Unwraps value or returns fallback if `Err`. |
+| `Result.Expect` | `res.Expect(msg: str)` | `any` | Unwraps value, panicking with custom error prefix if `Err`. |
+| `Result.MapErr` | `res.MapErr(fn(e))` | `Result` | Maps error payload through transform function if `Err`. |
+
+---
+
+## A.13 Systems Programming, Numeric Primitives & Introspection
+
+| Function / Keyword | Signature | Return Type | Description |
+| :--- | :--- | :--- | :--- |
+| `unsafe` | `unsafe { ... }` | `any` | Bypasses borrow checker rules for low-level memory and raw FFI operations. |
+| `SizeOf` | `SizeOf(typename: str)` | `int` | Returns byte size of struct type matching target C ABI. |
+| `AlignOf` | `AlignOf(typename: str)` | `int` | Returns memory alignment requirement in bytes. |
+| `OffsetOf` | `OffsetOf(typename, field)` | `int` | Returns byte offset of struct field. |
+| `IsSend` | `IsSend(val: any)` | `bool` | Concurrency check: verifies value has no unshared cross-task references. |
+| `IsSync` | `IsSync(val: any)` | `bool` | Concurrency check: verifies value can be safely referenced concurrently. |
+| `starts_with` / `StartsWith` | `starts_with(str, prefix)` | `bool` | Checks if string begins with specified prefix. |
+| `ends_with` / `EndsWith` | `ends_with(str, suffix)` | `bool` | Checks if string terminates with specified suffix. |
+| `contains` / `Contains` | `contains(str, substr)` | `bool` | Checks if substring exists in source string. |
+| `array_contains` | `array_contains(arr, val)` | `bool` | Checks if value exists in array. |
+| `abs` | `abs(x: num)` | `num` | Absolute value of integer or float. |
+| `min` | `min(a: num, b: num)` | `num` | Minimum of two numbers. |
+| `max` | `max(a: num, b: num)` | `num` | Maximum of two numbers. |
+| `clamp` | `clamp(val, low, high)` | `num` | Clamps numeric value to inclusive $[low, high]$ bounds. |
 
 ---
 
 # Appendix B: Virtual Machine Instruction Set & Opcode Reference
 
-This appendix details the complete Bytecode Instruction Set Architecture (ISA) implemented by the AKS stack/register-hybrid virtual machine (`src/vm.c`) and generated by the bytecode compiler (`src/compiler.c`).
+This appendix details the complete Bytecode Instruction Set Architecture (ISA) implemented by the AKS stack/register-hybrid virtual machine (`src/vm.c`) and generated by the bytecode compiler (`src/compiler.c`), defined in [`include/opcode.h`](file:///c:/Users/winsiderss/Downloads/aks-lang/include/opcode.h).
 
 ---
 
@@ -5175,7 +5674,6 @@ Bytecode Chunk: add_values
 0006    OPADD
 0007    OPRETURNVAL
 ```
-
 
 ---
 
@@ -5381,8 +5879,3 @@ Error in script.aks:8:14: Unknown identifier 'user_cont'. Did you mean 'user_cou
 - **Functions**: e.g., calling `SquareRot(16.0)` suggests `SquareRoot`.
 - **Types**: e.g., `floatt` suggests `float`.
 - **Struct Fields**: e.g., `point.x_cord` suggests `point.x`.
-
-
-
----
-

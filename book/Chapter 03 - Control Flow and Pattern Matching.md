@@ -223,19 +223,63 @@ match (status) {
 };
 ```
 
+### 3.4.5 Multiple Alternative Patterns (OR Patterns)
+
+Multiple discrete patterns can be combined on a single branch using the pipe `|` operator, avoiding repetitive arms:
+
+```aks
+let status_code = 404;
+
+let category = match (status_code) {
+    200 | 201 | 204 => "Success",
+    301 | 302 | 307 => "Redirection",
+    400 | 401 | 403 | 404 => "Client Error",
+    500 | 502 | 503 => "Server Error",
+    _ => "Unknown Status"
+};
+```
+
+### 3.4.6 Struct Pattern Matching
+
+Struct instances can be destructured directly in pattern arms, inspecting specific fields while extracting others:
+
+```aks
+struct Message { topic: string, priority: int, payload: any }
+
+let msg = Message { topic: "alerts", priority: 1, payload: "High CPU" };
+
+match (msg) {
+    Message { topic: "alerts", priority: 1, payload } => print("Critical alert: " + String(payload)),
+    Message { topic: "telemetry", payload }           => print("Telemetry data received"),
+    _ => print("Standard message")
+};
+```
+
 ---
 
 ## 3.5 Modern Syntactic Expressiveness
 
 AKS incorporates contemporary syntactic constructs designed to maximize ergonomics without sacrificing execution speed:
 
-### 3.5.1 String Interpolation
-Formatted string literals evaluate expressions directly inside `{...}` braces:
+### 3.5.1 Formatted String Interpolation & Specifiers
+Formatted string literals evaluate expressions directly inside `{...}` braces, with optional format specifiers for precision, base conversion, and alignment:
 
 ```aks
 let username = "AksDev";
-let latency = 4.2;
+let latency = 4.2568;
+let count = 255;
+
+// Basic interpolation
 print(f"User {username} ping response: {latency}ms (Status: {latency < 10.0})");
+
+// Precision specifiers: floating-point rounding
+print(f"Formatted latency: {latency:.2f}ms"); // 4.26ms
+
+// Numeric base formatting: hex and binary
+print(f"Hex: {count:x}, Binary: {count:b}"); // Hex: ff, Binary: 11111111
+
+// Width and padding
+print(f"Padded ID: {count:06d}"); // 000255
 ```
 
 ### 3.5.2 Range Literals & Iteration
@@ -278,6 +322,18 @@ fn filter_records(records, predicate) { ... }
 let valid = filter_records(user_db) fn(user) {
     return user.active && user.verified;
 };
+```
+
+### 3.5.6 The Try-Propagation Operator (`?`)
+For ergonomic error handling, postfix `?` unwraps `Result.Ok` or `Option.Some` values, immediately returning `Err` or `None` from the enclosing function upon failure:
+
+```aks
+fn parse_and_process(raw: string) -> Result {
+    let json = parse_json(raw)?;
+    let host = json.host?;
+    let port = json.port?;
+    return Ok(f"Connecting to {host}:{port}");
+}
 ```
 
 ---
