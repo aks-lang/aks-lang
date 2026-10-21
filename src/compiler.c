@@ -7819,6 +7819,11 @@ Compiler *CompNew(void) {
     NewFn(c, "FileSystemWriteText");
     NewFn(c, "FileSystemReadText");
     NewFn(c, "FileSystemDelete");
+    NewFn(c, "FileSystemExists");
+    NewFn(c, "FileSystemListDir");
+    NewFn(c, "FileSystemMakeDir");
+    NewFn(c, "FileSystemAppendText");
+    NewFn(c, "HttpFetch");
 
     NewFn(c, "AesGcmEncrypt");
     NewFn(c, "AesGcmDecrypt");

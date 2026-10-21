@@ -5138,6 +5138,20 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `Reverse` | `Reverse(arr)` | `nil` | In-place array element reversal. |
 | `Sort` | `Sort(arr)` | `nil` | In-place array quicksort. |
 | `Join` | `Join(arr, delimiter: str)` | `str` | Concatenates elements with delimiter. |
+| `Set` | `Set()` | `Set` | High-performance hash set (`.Add()`, `.Remove()`, `.Has()`, `.Size()`, `.Values()`). |
+| `Deque` | `Deque()` | `Deque` | Double-ended queue (`.PushFront()`, `.PushBack()`, `.PopFront()`, `.PopBack()`). |
+| `PriorityQueue` | `PriorityQueue()` | `PriorityQueue` | Binary heap priority queue (`.Push()`, `.Pop()`, `.Peek()`, `.Size()`). |
+| `weak` | `weak(target)` | `WeakRef` | Weak reference to struct or array (`.Alive()`, `.Upgrade() -> Option`). |
+| `split` | `split(s: str, delim: str)` | `[str]` | Splits string into array by delimiter string. |
+| `lines` | `lines(s: str)` | `[str]` | Splits string into lines handling `\n` and `\r\n`. |
+| `chars` | `chars(s: str)` | `[str]` | Splits string into individual character array. |
+| `trim` | `trim(s: str)` | `str` | Trims leading and trailing whitespace. |
+| `trim_start` | `trim_start(s: str)` | `str` | Trims leading whitespace. |
+| `trim_end` | `trim_end(s: str)` | `str` | Trims trailing whitespace. |
+| `repeat_str` | `repeat_str(s: str, count: int)` | `str` | Repeats string `count` times. |
+| `ToJson` | `ToJson(val: any)` | `str` | Serializes any primitive, struct, array, or map to JSON string. |
+| `FromJson` | `FromJson(json: str)` | `any` | Deserializes JSON string into native values/maps/arrays. |
+| `CancellationToken` | `CancellationToken()` | `CancellationToken` | Cooperative task cancellation token (`.Cancel()`, `.IsCancellationRequested()`, `.Register()`). |
 | `FenwickNewC` | `FenwickNewC(size: int)` | `handle` | Creates Binary Indexed Tree. |
 | `FenwickUpdateC` | `FenwickUpdateC(h, idx, val)` | `nil` | Point addition in $O(\log N)$. |
 | `FenwickQueryC` | `FenwickQueryC(h, idx)` | `int` | Prefix sum query in $O(\log N)$. |

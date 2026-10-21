@@ -79,7 +79,10 @@ void LearnHelp(const char *topic) {
         printf("  \033[33mdefer\033[0m        Resource safety with defer and errdefer statements, RAII Drop lifecycle\n");
         printf("  \033[33mmemory\033[0m       Region scopes, bump arenas, Reset(), AllocCount(), and AllocatedBytes()\n");
         printf("  \033[33munsafe\033[0m       Unsafe blocks, layout introspection (SizeOf, AlignOf, OffsetOf), repr()\n");
-        printf("  \033[33mtooling\033[0m      CLI flags, LSP (aksls), DAP debugger, formatter, linter, and bench runner\n\n");
+        printf("  \033[33mtooling\033[0m      CLI flags, LSP (aksls), DAP debugger, formatter, linter, and bench runner\n");
+        printf("  \033[33mcollections\033[0m  High-performance standard collections: Set, Deque, PriorityQueue\n");
+        printf("  \033[33mweakref\033[0m      Weak references (weak, Alive, Upgrade) to prevent cyclic leaks\n");
+        printf("  \033[33mhttp\033[0m         Lightweight async HTTP server & client (HttpServer, Response, Http)\n\n");
         printf("Usage: aks help <topic>\n");
         return;
     }
@@ -401,6 +404,46 @@ void LearnHelp(const char *topic) {
         printf("  OffsetOf(\"MyStruct\", \"field\")    Byte offset of field\n\n");
         printf("Concurrency Trait Bounds:\n");
         printf("  IsSend(val) / IsSync(val)        Safe cross-task transfer checks\n");
+    } else if (strcmp(topic, "collections") == 0) {
+        printf("\033[36mStandard Collections: Set, Deque, PriorityQueue\033[0m\n");
+        printf("Set:\n");
+        printf("  let s = Set();\n");
+        printf("  s.Add(\"item\");\n");
+        printf("  s.Contains(\"item\");     // true\n");
+        printf("  s.Remove(\"item\");\n");
+        printf("  s.Size();               // element count\n\n");
+        printf("Deque:\n");
+        printf("  let dq = Deque();\n");
+        printf("  dq.PushFront(1); dq.PushBack(2);\n");
+        printf("  dq.PopFront();          // 1\n");
+        printf("  dq.PopBack();           // 2\n\n");
+        printf("PriorityQueue (Min-Heap / Custom):\n");
+        printf("  let pq = PriorityQueue();\n");
+        printf("  pq.Push(30); pq.Push(10);\n");
+        printf("  pq.Pop();               // 10\n");
+    } else if (strcmp(topic, "weakref") == 0) {
+        printf("\033[36mNative Weak References & Cycle Breakers\033[0m\n");
+        printf("Create a weak reference:\n");
+        printf("  let strong = [1, 2, 3];\n");
+        printf("  let w = weak(strong);\n\n");
+        printf("Check vitality & upgrade:\n");
+        printf("  if (w.Alive()) {\n");
+        printf("      let opt = w.Upgrade();  // returns Option\n");
+        printf("      if (opt.IsSome()) {\n");
+        printf("          let val = opt.Unwrap();\n");
+        printf("      }\n");
+        printf("  }\n");
+    } else if (strcmp(topic, "http") == 0) {
+        printf("\033[36mLightweight Async HTTP Server & Client\033[0m\n");
+        printf("HttpServer:\n");
+        printf("  let server = HttpServer(8080);\n");
+        printf("  server.Handle(\"/api/hello\", fn(req) {\n");
+        printf("      return Response.Json(map);\n");
+        printf("  });\n");
+        printf("  server.Start(8080);\n\n");
+        printf("Http Client:\n");
+        printf("  let res = Http.Get(\"http://localhost:8080/api/hello\");\n");
+        printf("  print(res.status, res.body);\n");
     } else {
         printf("Unknown topic '%s'. Type 'aks help' for available topics.\n", topic);
     }
@@ -640,7 +683,28 @@ static AKSExample EXAMPLES[] = {
      "}\n"
      "print(\"Packet size in bytes: \" + String(SizeOf(\"Packet\")));\n"
      "print(\"Packet alignment: \" + String(AlignOf(\"Packet\")));\n"
-     "print(\"Field 'payload' offset: \" + String(OffsetOf(\"Packet\", \"payload\")));\n"}
+     "print(\"Field 'payload' offset: \" + String(OffsetOf(\"Packet\", \"payload\")));\n"},
+
+    {"collections", "Demonstrates high-performance Set, Deque, and PriorityQueue",
+     "let s = Set();\n"
+     "s.Add(\"alpha\"); s.Add(\"beta\");\n"
+     "print(\"Set contains alpha: \" + String(s.Contains(\"alpha\")));\n"
+     "let dq = Deque();\n"
+     "dq.PushFront(10); dq.PushBack(20);\n"
+     "print(\"Deque PopFront: \" + String(dq.PopFront()));\n"
+     "let pq = PriorityQueue();\n"
+     "pq.Push(50); pq.Push(10); pq.Push(30);\n"
+     "print(\"PQ Pop min: \" + String(pq.Pop()));\n"},
+
+    {"weakref", "Demonstrates cyclic reference breaking with WeakRef",
+     "let target = [10, 20, 30];\n"
+     "let w = weak(target);\n"
+     "print(\"WeakRef alive initially: \" + String(w.Alive()));\n"
+     "let upgraded = w.Upgrade();\n"
+     "print(\"Upgraded item 0: \" + String(upgraded.Unwrap()[0]));\n"
+     "target = null;\n"
+     "upgraded = null;\n"
+     "print(\"WeakRef alive after drop: \" + String(w.Alive()));\n"}
 };
 static const int EXAMPLECOUNT = sizeof(EXAMPLES) / sizeof(EXAMPLES[0]);
 

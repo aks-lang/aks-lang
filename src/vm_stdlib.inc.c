@@ -4415,7 +4415,16 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     AKSValue path_val = POP();
     int ok = 0;
     if (ValKind(path_val) == VALSTR) {
-      ok = (remove(ValToStrPtr(path_val)->data) == 0) ? 1 : 0;
+      const char *p = ValToStrPtr(path_val)->data;
+      if (remove(p) == 0) {
+        ok = 1;
+      } else {
+#ifdef _WIN32
+        ok = (RemoveDirectoryA(p) != 0) ? 1 : 0;
+#else
+        ok = (rmdir(p) == 0) ? 1 : 0;
+#endif
+      }
     }
     ValFree(&path_val);
     PUSH(ValBool(ok));
@@ -20914,6 +20923,209 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     }
     ValFree(&idval);
     PUSH(res);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileSystemExists") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: FileSystemExists() expects 1 argument (path)\n");
+      return -1;
+    }
+    AKSValue pval = POP();
+    int exists = 0;
+    if (ValKind(pval) == VALSTR && ValToStrPtr(pval)) {
+#ifdef _WIN32
+      DWORD attr = GetFileAttributesA(ValToStrPtr(pval)->data);
+      exists = (attr != INVALID_FILE_ATTRIBUTES);
+#else
+      exists = (access(ValToStrPtr(pval)->data, 0) == 0);
+#endif
+    }
+    ValFree(&pval);
+    PUSH(ValBool(exists));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileSystemListDir") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: FileSystemListDir() expects 1 argument (path)\n");
+      return -1;
+    }
+    AKSValue pval = POP();
+    AKSValue arrval = ValArr(4);
+    if (ValKind(pval) == VALSTR && ValToStrPtr(pval)) {
+      const char *dir = ValToStrPtr(pval)->data;
+#ifdef _WIN32
+      char pattern[MAX_PATH];
+      snprintf(pattern, sizeof(pattern), "%s\\*", dir);
+      WIN32_FIND_DATAA fd;
+      HANDLE hFind = FindFirstFileA(pattern, &fd);
+      if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+          if (strcmp(fd.cFileName, ".") != 0 && strcmp(fd.cFileName, "..") != 0) {
+            AKSValue item = ValStr(fd.cFileName);
+            AKSArray *a = ValToArr(arrval);
+            if (a->count >= a->capacity) {
+              a->capacity = a->capacity == 0 ? 4 : a->capacity * 2;
+              a->items = (AKSValue *)realloc(a->items, a->capacity * sizeof(AKSValue));
+            }
+            a->items[a->count++] = item;
+          }
+        } while (FindNextFileA(hFind, &fd));
+        FindClose(hFind);
+      }
+#endif
+    }
+    ValFree(&pval);
+    PUSH(arrval);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileSystemMakeDir") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: FileSystemMakeDir() expects 1 argument (path)\n");
+      return -1;
+    }
+    AKSValue pval = POP();
+    int ok = 0;
+    if (ValKind(pval) == VALSTR && ValToStrPtr(pval)) {
+#ifdef _WIN32
+      ok = CreateDirectoryA(ValToStrPtr(pval)->data, NULL) != 0;
+#endif
+    }
+    ValFree(&pval);
+    PUSH(ValBool(ok));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileSystemAppendText") == 0) {
+    if (argc != 2) {
+      fprintf(stderr, "Runtime error: FileSystemAppendText() expects 2 arguments (path, content)\n");
+      return -1;
+    }
+    AKSValue cval = POP();
+    AKSValue pval = POP();
+    int ok = 0;
+    if (ValKind(pval) == VALSTR && ValToStrPtr(pval) && ValKind(cval) == VALSTR && ValToStrPtr(cval)) {
+      FILE *f = fopen(ValToStrPtr(pval)->data, "ab");
+      if (f) {
+        fwrite(ValToStrPtr(cval)->data, 1, ValToStrPtr(cval)->len, f);
+        fclose(f);
+        ok = 1;
+      }
+    }
+    ValFree(&cval);
+    ValFree(&pval);
+    PUSH(ValBool(ok));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "HttpFetch") == 0) {
+    if (argc < 2) {
+      fprintf(stderr, "Runtime error: HttpFetch() expects at least 2 arguments (method, url)\n");
+      return -1;
+    }
+    AKSValue bodyval = (argc >= 4) ? POP() : ValStr("");
+    AKSValue hdrval = (argc >= 3) ? POP() : ValStr("");
+    AKSValue urlval = POP();
+    AKSValue methodval = POP();
+    int status_code = 0;
+    char *resp_body = NULL;
+    int resp_len = 0;
+    if (ValKind(urlval) == VALSTR && ValToStrPtr(urlval) && ValKind(methodval) == VALSTR && ValToStrPtr(methodval)) {
+#ifdef _WIN32
+      const char *url_str = ValToStrPtr(urlval)->data;
+      const char *method_str = ValToStrPtr(methodval)->data;
+      WCHAR wurl[2048];
+      MultiByteToWideChar(CP_UTF8, 0, url_str, -1, wurl, 2048);
+      URL_COMPONENTS urlComp;
+      ZeroMemory(&urlComp, sizeof(urlComp));
+      urlComp.dwStructSize = sizeof(urlComp);
+      WCHAR hostName[512] = {0};
+      WCHAR urlPath[1024] = {0};
+      urlComp.lpszHostName = hostName;
+      urlComp.dwHostNameLength = 512;
+      urlComp.lpszUrlPath = urlPath;
+      urlComp.dwUrlPathLength = 1024;
+      if (WinHttpCrackUrl(wurl, (DWORD)wcslen(wurl), 0, &urlComp)) {
+        HINTERNET hSession = WinHttpOpen(L"AKS-HttpClient/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        if (hSession) {
+          HINTERNET hConnect = WinHttpConnect(hSession, hostName, urlComp.nPort, 0);
+          if (hConnect) {
+            DWORD flags = (urlComp.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0;
+            WCHAR wmethod[32];
+            MultiByteToWideChar(CP_UTF8, 0, method_str, -1, wmethod, 32);
+            HINTERNET hRequest = WinHttpOpenRequest(hConnect, wmethod, urlPath, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
+            if (hRequest) {
+              LPCWSTR req_hdrs = WINHTTP_NO_ADDITIONAL_HEADERS;
+              DWORD req_hdrs_len = 0;
+              WCHAR whdrs[2048];
+              if (ValKind(hdrval) == VALSTR && ValToStrPtr(hdrval) && ValToStrPtr(hdrval)->len > 0) {
+                MultiByteToWideChar(CP_UTF8, 0, ValToStrPtr(hdrval)->data, -1, whdrs, 2048);
+                req_hdrs = whdrs;
+                req_hdrs_len = (DWORD)wcslen(whdrs);
+              }
+              LPVOID pdata = WINHTTP_NO_REQUEST_DATA;
+              DWORD data_len = 0;
+              if (ValKind(bodyval) == VALSTR && ValToStrPtr(bodyval)) {
+                pdata = (LPVOID)ValToStrPtr(bodyval)->data;
+                data_len = (DWORD)ValToStrPtr(bodyval)->len;
+              }
+              if (WinHttpSendRequest(hRequest, req_hdrs, req_hdrs_len, pdata, data_len, data_len, 0)) {
+                if (WinHttpReceiveResponse(hRequest, NULL)) {
+                  DWORD status = 0;
+                  DWORD statusSize = sizeof(status);
+                  if (WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize, WINHTTP_NO_HEADER_INDEX)) {
+                    status_code = (int)status;
+                  }
+                  DWORD dwSize = 0;
+                  DWORD dwDownloaded = 0;
+                  resp_body = (char *)malloc(1);
+                  if (resp_body) {
+                    resp_body[0] = '\0';
+                    resp_len = 0;
+                    do {
+                      dwSize = 0;
+                      if (!WinHttpQueryDataAvailable(hRequest, &dwSize)) break;
+                      if (dwSize == 0) break;
+                      char *buf = (char *)malloc(dwSize);
+                      if (buf) {
+                        if (WinHttpReadData(hRequest, buf, dwSize, &dwDownloaded)) {
+                          char *new_body = (char *)realloc(resp_body, resp_len + dwDownloaded + 1);
+                          if (new_body) {
+                            resp_body = new_body;
+                            memcpy(resp_body + resp_len, buf, dwDownloaded);
+                            resp_len += dwDownloaded;
+                            resp_body[resp_len] = '\0';
+                          }
+                        }
+                        free(buf);
+                      }
+                    } while (dwSize > 0);
+                  }
+                }
+              }
+              WinHttpCloseHandle(hRequest);
+            }
+            WinHttpCloseHandle(hConnect);
+          }
+          WinHttpCloseHandle(hSession);
+        }
+      }
+#endif
+    }
+    ValFree(&bodyval);
+    ValFree(&hdrval);
+    ValFree(&urlval);
+    ValFree(&methodval);
+    AKSValue res_obj = ValStruct("HttpResponse");
+    StructSetFieldNative(ValToObj(res_obj), "status", ValInt(status_code));
+    AKSValue body_val = resp_body ? ValStrLen(resp_body, resp_len) : ValStr("");
+    StructSetFieldNative(ValToObj(res_obj), "body", body_val);
+    ValFree(&body_val);
+    StructSetFieldNative(ValToObj(res_obj), "ok", ValBool(status_code >= 200 && status_code < 300));
+    if (resp_body) free(resp_body);
+    PUSH(res_obj);
     *stacktopptr = stacktop;
     return 1;
   }
