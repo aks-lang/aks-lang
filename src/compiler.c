@@ -7562,6 +7562,9 @@ Compiler *CompNew(void) {
 
     // date/Time Formatting
     NewFn(c, "date");
+    NewFn(c, "date_utc");
+    NewFn(c, "DateComponentsUtc");
+    NewFn(c, "DateComponentsLocal");
 
     // system Information
     NewFn(c, "platform");

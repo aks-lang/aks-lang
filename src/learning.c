@@ -82,7 +82,8 @@ void LearnHelp(const char *topic) {
         printf("  \033[33mtooling\033[0m      CLI flags, LSP (aksls), DAP debugger, formatter, linter, and bench runner\n");
         printf("  \033[33mcollections\033[0m  High-performance standard collections: Set, Deque, PriorityQueue\n");
         printf("  \033[33mweakref\033[0m      Weak references (weak, Alive, Upgrade) to prevent cyclic leaks\n");
-        printf("  \033[33mhttp\033[0m         Lightweight async HTTP server & client (HttpServer, Response, Http)\n\n");
+        printf("  \033[33mhttp\033[0m         Lightweight async HTTP server & client (HttpServer, Response, Http)\n");
+        printf("  \033[33mdatetime\033[0m     Date, time, ISO formatting, UTC timestamps, and DateTime struct\n\n");
         printf("Usage: aks help <topic>\n");
         return;
     }
@@ -444,6 +445,18 @@ void LearnHelp(const char *topic) {
         printf("Http Client:\n");
         printf("  let res = Http.Get(\"http://localhost:8080/api/hello\");\n");
         printf("  print(res.status, res.body);\n");
+    } else if (strcmp(topic, "datetime") == 0) {
+        printf("\033[36mDate, Time & ISO Formatting\033[0m\n");
+        printf("Formatting functions:\n");
+        printf("  date(time(), \"%%Y-%%m-%%d %%H:%%M:%%S\");     // Local timezone\n");
+        printf("  date_utc(time(), \"%%Y-%%m-%%d %%H:%%M:%%S\"); // UTC timezone\n\n");
+        printf("Components breakdown:\n");
+        printf("  let comps = DateComponentsUtc(time());\n");
+        printf("  print(comps.year, comps.month, comps.day);\n\n");
+        printf("DateTime struct:\n");
+        printf("  let dt = DateTimeNowUtc();\n");
+        printf("  print(dt.ToIsoString());\n");
+        printf("  print(dt.Year(), dt.Hour());\n");
     } else {
         printf("Unknown topic '%s'. Type 'aks help' for available topics.\n", topic);
     }

@@ -225,6 +225,40 @@ fn test_cancellation_token() {
     print("CancellationToken OK!");
 }
 
+fn test_datetime() {
+    print("Testing DateTime & UTC formatting...");
+
+    // Epoch timestamp 0 is 1970-01-01 00:00:00 UTC
+    let epoch_utc = date_utc(0, "%Y-%m-%d %H:%M:%S");
+    assert(epoch_utc == "1970-01-01 00:00:00", "date_utc epoch test");
+
+    let comps_utc = DateComponentsUtc(0);
+    assert(comps_utc.year == 1970, "DateComponentsUtc year");
+    assert(comps_utc.month == 1, "DateComponentsUtc month");
+    assert(comps_utc.day == 1, "DateComponentsUtc day");
+    assert(comps_utc.hour == 0, "DateComponentsUtc hour");
+    assert(comps_utc.minute == 0, "DateComponentsUtc minute");
+    assert(comps_utc.second == 0, "DateComponentsUtc second");
+
+    let comps_loc = DateComponentsLocal(0);
+    assert(comps_loc.year == 1969 || comps_loc.year == 1970, "DateComponentsLocal year valid");
+
+    // DateTime struct
+    let dt = DateTimeFromTimestampUtc(0);
+    assert(dt.Year() == 1970, "DateTime Year");
+    assert(dt.Month() == 1, "DateTime Month");
+    assert(dt.Day() == 1, "DateTime Day");
+    assert(dt.Hour() == 0, "DateTime Hour");
+    assert(dt.Minute() == 0, "DateTime Minute");
+    assert(dt.Second() == 0, "DateTime Second");
+    assert(dt.FormatUtc("%Y-%m-%d") == "1970-01-01", "DateTime FormatUtc");
+
+    let now_dt = DateTimeNowUtc();
+    assert(now_dt.Year() >= 2026, "DateTime NowUtc Year >= 2026");
+
+    print("DateTime OK!");
+}
+
 fn main() {
     print("Running Language Improvements Verification Suite...");
     test_string_utilities();
@@ -234,7 +268,9 @@ fn main() {
     test_collections_priority_queue();
     test_json_serialization();
     test_cancellation_token();
+    test_datetime();
     print("ALL LANGUAGE IMPROVEMENTS VERIFIED SUCCESSFULLY 100%!");
 }
 
 main();
+

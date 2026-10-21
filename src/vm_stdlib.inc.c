@@ -23853,6 +23853,70 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
+  if (strcmp(name, "date_utc") == 0) {
+    if (argc != 2) {
+      fprintf(stderr, "Runtime error: date_utc() expects 2 arguments, got %d\n",
+              argc);
+      return -1;
+    }
+    AKSValue fmtval = POP();
+    AKSValue tsval = POP();
+    if (ValKind(fmtval) != VALSTR) {
+      fprintf(stderr,
+              "Runtime error: date_utc() format argument must be a string\n");
+      ValFree(&fmtval);
+      ValFree(&tsval);
+      return -1;
+    }
+    double tsdouble = ValKind(tsval) == VALFLOAT ? ValToFloat(tsval)
+                                                 : (double)ValToInt(tsval);
+    time_t t = (time_t)tsdouble;
+    struct tm *timeinfo = gmtime(&t);
+    char buf[256];
+    if (timeinfo &&
+        strftime(buf, sizeof(buf), ValToStrPtr(fmtval)->data, timeinfo)) {
+      PUSH(ValStr(buf));
+    } else {
+      PUSH(ValStr(""));
+    }
+    ValFree(&fmtval);
+    ValFree(&tsval);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "DateComponentsUtc") == 0 || strcmp(name, "DateComponentsLocal") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: %s() expects 1 argument (timestamp)\n", name);
+      return -1;
+    }
+    AKSValue tsval = POP();
+    double tsdouble = ValKind(tsval) == VALFLOAT ? ValToFloat(tsval) : (double)ValToInt(tsval);
+    time_t t = (time_t)tsdouble;
+    struct tm *ti = (strcmp(name, "DateComponentsUtc") == 0) ? gmtime(&t) : localtime(&t);
+    AKSValue struct_val = ValStruct("DateParts");
+    AKSStruct *s = ValToObj(struct_val);
+    s->fieldcount = 7;
+    s->fieldnames = malloc(7 * sizeof(char *));
+    s->fieldvals = malloc(7 * sizeof(AKSValue));
+    s->fieldnames[0] = strdup("year");
+    s->fieldvals[0] = ValInt(ti ? ti->tm_year + 1900 : 1970);
+    s->fieldnames[1] = strdup("month");
+    s->fieldvals[1] = ValInt(ti ? ti->tm_mon + 1 : 1);
+    s->fieldnames[2] = strdup("day");
+    s->fieldvals[2] = ValInt(ti ? ti->tm_mday : 1);
+    s->fieldnames[3] = strdup("hour");
+    s->fieldvals[3] = ValInt(ti ? ti->tm_hour : 0);
+    s->fieldnames[4] = strdup("minute");
+    s->fieldvals[4] = ValInt(ti ? ti->tm_min : 0);
+    s->fieldnames[5] = strdup("second");
+    s->fieldvals[5] = ValInt(ti ? ti->tm_sec : 0);
+    s->fieldnames[6] = strdup("weekday");
+    s->fieldvals[6] = ValInt(ti ? ti->tm_wday : 0);
+    ValFree(&tsval);
+    PUSH(struct_val);
+    *stacktopptr = stacktop;
+    return 1;
+  }
   if (strcmp(name, "platform") == 0) {
     if (argc != 0) {
       fprintf(stderr, "Runtime error: platform() expects 0 arguments, got %d\n",
