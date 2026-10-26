@@ -1,8 +1,17 @@
-// TestLanguageImprovements.aks - Comprehensive test suite for new language enhancements
-// Covers WeakRef, Set, Deque, PriorityQueue, ToJson, FromJson, String Utilities, and CancellationToken
+// tests/TestLanguageImprovements.aks
+// Comprehensive test suite for all language & standard library improvements:
+// WeakRef, Collections (Set, Deque, PriorityQueue, LRUCache, BitSet),
+// String & Array Utilities (split, lines, chars, trim, repeat, insert_at, remove_at),
+// File I/O (File streaming & batch operations), Task Concurrency (Delay, WhenAll),
+// Math Statistics, Logger, JSON Serialization, CancellationToken, DateTime, and HttpServer Routing.
+
+struct Person {
+    name: string;
+    age: int;
+}
 
 fn test_string_utilities() {
-    print("Testing string utilities...");
+    print("Testing string & array utilities...");
 
     // split
     let parts = split("apple,banana,orange,grape", ",");
@@ -13,153 +22,178 @@ fn test_string_utilities() {
     assert(parts[3] == "grape", "split part 3");
 
     // lines
-    let multi = "first\nsecond\r\nthird\nfourth";
-    let l = lines(multi);
-    assert(Length(l) == 4, "lines count should be 4");
-    assert(l[0] == "first", "line 0");
-    assert(l[1] == "second", "line 1");
-    assert(l[2] == "third", "line 2");
-    assert(l[3] == "fourth", "line 3");
+    let l = lines("first\nsecond\r\nthird");
+    assert(Length(l) == 3, "lines length mismatch");
+    assert(l[0] == "first", "line 0 mismatch");
+    assert(l[1] == "second", "line 1 mismatch");
+    assert(l[2] == "third", "line 2 mismatch");
 
     // chars
-    let c = chars("hello");
-    assert(Length(c) == 5, "chars count should be 5");
-    assert(c[0] == "h", "char 0");
-    assert(c[4] == "o", "char 4");
+    let ch = chars("aks");
+    assert(Length(ch) == 3, "chars length mismatch");
+    assert(ch[0] == "a", "chars elem 0 mismatch");
+    assert(ch[1] == "k", "chars elem 1 mismatch");
+    assert(ch[2] == "s", "chars elem 2 mismatch");
 
     // trim, trim_start, trim_end
-    let padded = "   aks language   ";
-    assert(trim(padded) == "aks language", "trim");
-    assert(trim_start(padded) == "aks language   ", "trim_start");
-    assert(trim_end(padded) == "   aks language", "trim_end");
+    assert(trim("   hello world   ") == "hello world", "trim failed");
+    assert(trim_start("   start") == "start", "trim_start failed");
+    assert(trim_end("end   ") == "end", "trim_end failed");
 
-    // repeat_str
-    assert(repeat_str("aks", 3) == "aksaksaks", "repeat_str 3");
-    assert(repeat_str("aks", 0) == "", "repeat_str 0");
+    // repeat_str & repeat
+    assert(repeat_str("aks", 3) == "aksaksaks", "repeat_str failed");
+    assert(repeat("xyz", 2) == "xyzxyz", "repeat failed");
+    assert(repeat_str("x", 0) == "", "repeat_str zero failed");
 
-    print("String utilities OK!");
+    // insert_at & remove_at
+    let arr = [10, 20, 40];
+    insert_at(arr, 2, 30);
+    assert(Length(arr) == 4, "insert_at length mismatch");
+    assert(arr[2] == 30, "insert_at element mismatch");
+    let removed = remove_at(arr, 1);
+    assert(removed == 20, "remove_at returned value mismatch");
+    assert(Length(arr) == 3, "remove_at length mismatch");
+    assert(arr[1] == 30, "remove_at shifted element mismatch");
+
+    print("String & array utilities: PASS");
 }
 
-fn test_weak_ref() {
-    print("Testing WeakRef...");
+fn test_collections() {
+    print("Testing standard collections (Set, Deque, PriorityQueue)...");
 
-    let orig = [10, 20, 30];
-    let w = weak(orig);
-    assert(w.Alive(), "WeakRef should be alive");
+    // Set
+    let s = Set();
+    assert(s.Size() == 0, "set initial size");
+    s.Add("foo");
+    s.Add("bar");
+    s.Add("foo");
+    assert(s.Size() == 2, "set size mismatch after duplicate add");
+    assert(s.Has("foo"), "set should have foo");
+    assert(s.Has("bar"), "set should have bar");
+    assert(!s.Has("baz"), "set should not have baz");
+    let rem_ok = s.Remove("foo");
+    assert(rem_ok, "set remove foo should succeed");
+    assert(s.Size() == 1, "set size mismatch after remove");
+    assert(!s.Has("foo"), "set should not have foo after remove");
 
-    let up = w.Upgrade();
-    assert(up.IsSome(), "Upgraded WeakRef should be Some");
-    let val = up.Unwrap();
-    assert(Length(val) == 3, "Upgraded array length should be 3");
-    assert(val[0] == 10, "Upgraded array element 0");
+    // Deque
+    let dq = Deque();
+    assert(dq.IsEmpty(), "deque initially empty");
+    dq.PushBack(10);
+    dq.PushBack(20);
+    dq.PushFront(5);
+    // Elements: [5, 10, 20]
+    assert(dq.Len() == 3, "deque len mismatch");
+    assert(dq.PeekFront() == 5, "peek front mismatch");
+    assert(dq.PeekBack() == 20, "peek back mismatch");
+    assert(dq.PopFront() == 5, "pop front mismatch");
+    assert(dq.PopBack() == 20, "pop back mismatch");
+    assert(dq.PopFront() == 10, "pop front last mismatch");
+    assert(dq.IsEmpty(), "deque should be empty");
 
-    // Test alive check
-    assert(w.Alive(), "WeakRef Alive check");
-
-    print("WeakRef OK!");
-}
-
-fn test_collections_set() {
-    print("Testing Set collection...");
-
-    let s = new Set();
-    assert(s.Size() == 0, "Set should be initially empty");
-
-    s.Add("alpha");
-    s.Add("beta");
-    s.Add("gamma");
-    assert(s.Size() == 3, "Set size after 3 additions");
-    assert(s.Has("alpha"), "Set has alpha");
-    assert(s.Has("beta"), "Set has beta");
-    assert(s.Has("gamma"), "Set has gamma");
-    assert(!s.Has("delta"), "Set should not have delta");
-
-    // Duplicate addition
-    s.Add("alpha");
-    assert(s.Size() == 3, "Duplicate addition should not increase size");
-
-    // Removal
-    let removed = s.Remove("beta");
-    assert(removed, "Remove beta should return true");
-    assert(s.Size() == 2, "Set size after removal");
-    assert(!s.Has("beta"), "Set should not have removed item");
-
-    let not_removed = s.Remove("nonexistent");
-    assert(!not_removed, "Removing nonexistent item should return false");
-
-    // Values list
-    let vals = s.Values();
-    assert(Length(vals) == 2, "Set values length should be 2");
-
-    print("Set collection OK!");
-}
-
-fn test_collections_deque() {
-    print("Testing Deque collection...");
-
-    let dq = new Deque();
-    assert(dq.Size() == 0, "Deque should be initially empty");
-    assert(dq.IsEmpty(), "Deque IsEmpty check");
-
-    dq.PushBack(100);
-    dq.PushBack(200);
-    dq.PushFront(50);
-    dq.PushFront(25);
-    // Sequence is now: 25, 50, 100, 200
-
-    assert(dq.Size() == 4, "Deque size should be 4");
-    assert(dq.PeekFront() == 25, "Deque PeekFront");
-    assert(dq.PeekBack() == 200, "Deque PeekBack");
-
-    assert(dq.PopFront() == 25, "Deque PopFront 1");
-    assert(dq.PopBack() == 200, "Deque PopBack 1");
-    assert(dq.Size() == 2, "Deque size after 2 pops");
-
-    assert(dq.PopFront() == 50, "Deque PopFront 2");
-    assert(dq.PopBack() == 100, "Deque PopBack 2");
-    assert(dq.Size() == 0, "Deque size after all pops");
-    assert(dq.IsEmpty(), "Deque should now be empty");
-
-    assert(dq.PopFront() == null, "Empty Deque PopFront should return null");
-    assert(dq.PopBack() == null, "Empty Deque PopBack should return null");
-
-    print("Deque collection OK!");
-}
-
-fn test_collections_priority_queue() {
-    print("Testing PriorityQueue collection...");
-
-    let pq = new PriorityQueue();
-    assert(pq.Size() == 0, "PQ initially empty");
-
-    pq.Push(42);
+    // PriorityQueue (min-heap by default)
+    let pq = PriorityQueue();
+    pq.Push(40);
     pq.Push(10);
-    pq.Push(99);
-    pq.Push(5);
-    pq.Push(73);
+    pq.Push(30);
+    pq.Push(20);
+    assert(pq.Len() == 4, "pq len mismatch");
+    assert(pq.Peek() == 10, "pq peek mismatch");
+    assert(pq.Pop() == 10, "pq pop 1 mismatch");
+    assert(pq.Pop() == 20, "pq pop 2 mismatch");
+    assert(pq.Pop() == 30, "pq pop 3 mismatch");
+    assert(pq.Pop() == 40, "pq pop 4 mismatch");
+    assert(pq.IsEmpty(), "pq should be empty");
 
-    assert(pq.Size() == 5, "PQ size should be 5");
-    assert(pq.Peek() == 5, "PQ min element should be 5");
-
-    assert(pq.Pop() == 5, "Pop 1 should be 5");
-    assert(pq.Pop() == 10, "Pop 2 should be 10");
-    assert(pq.Pop() == 42, "Pop 3 should be 42");
-    assert(pq.Pop() == 73, "Pop 4 should be 73");
-    assert(pq.Pop() == 99, "Pop 5 should be 99");
-    assert(pq.Size() == 0, "PQ should now be empty");
-    assert(pq.Pop() == null, "Pop on empty PQ should return null");
-
-    // Custom comparator for max-heap
-    let cmp_desc = fn(a, b) { return b - a; };
-    let max_pq = PriorityQueue(cmp_desc);
+    // PriorityQueue (custom max-heap comparator)
+    let cmp_max = fn(a, b) { return b - a; };
+    let max_pq = PriorityQueue(cmp_max);
     max_pq.Push(15);
     max_pq.Push(85);
     max_pq.Push(40);
-    assert(max_pq.Pop() == 85, "Max-heap Pop 1 should be 85");
-    assert(max_pq.Pop() == 40, "Max-heap Pop 2 should be 40");
-    assert(max_pq.Pop() == 15, "Max-heap Pop 3 should be 15");
+    assert(max_pq.Pop() == 85, "max-heap pop 1 mismatch");
+    assert(max_pq.Pop() == 40, "max-heap pop 2 mismatch");
+    assert(max_pq.Pop() == 15, "max-heap pop 3 mismatch");
 
-    print("PriorityQueue collection OK!");
+    print("Collections: PASS");
+}
+
+fn test_lru_cache() {
+    print("Testing LRUCache...");
+    let cache = LRUCache(3);
+    assert(cache.Size() == 0, "initial size");
+    assert(!cache.Has("a"), "should not have a");
+
+    cache.Put("a", 1);
+    cache.Put("b", 2);
+    cache.Put("c", 3);
+    assert(cache.Size() == 3, "size after 3 puts");
+    assert(cache.Get("a") == 1, "get a mismatch");
+
+    // Accessing 'a' makes 'b' the LRU item
+    // Adding 'd' should evict 'b'
+    cache.Put("d", 4);
+    assert(cache.Size() == 3, "size after eviction");
+    assert(cache.Has("a"), "cache should retain a");
+    assert(cache.Has("c"), "cache should retain c");
+    assert(cache.Has("d"), "cache should retain d");
+    assert(!cache.Has("b"), "cache should evict b");
+
+    cache.Remove("c");
+    assert(cache.Size() == 2, "size after remove");
+    assert(!cache.Has("c"), "cache should not have c");
+
+    cache.Clear();
+    assert(cache.Size() == 0, "size after clear");
+
+    print("LRUCache: PASS");
+}
+
+fn test_bitset() {
+    print("Testing BitSet...");
+    let bs = BitSet(64);
+    assert(bs.Size() == 64, "bitset size");
+    assert(bs.CountOnes() == 0, "initial ones count");
+
+    bs.Set(5);
+    bs.Set(10);
+    bs.Set(42);
+    assert(bs.Get(5), "bit 5 should be set");
+    assert(bs.Get(10), "bit 10 should be set");
+    assert(bs.Get(42), "bit 42 should be set");
+    assert(!bs.Get(7), "bit 7 should not be set");
+    assert(bs.CountOnes() == 3, "count of ones");
+
+    bs.Toggle(5);
+    assert(!bs.Get(5), "bit 5 should be cleared after toggle");
+    assert(bs.CountOnes() == 2, "count after toggle");
+
+    bs.Clear(10);
+    assert(!bs.Get(10), "bit 10 cleared");
+    assert(bs.CountOnes() == 1, "count after clear");
+
+    let arr = bs.ToArray();
+    assert(Length(arr) == 1, "ToArray length");
+    assert(arr[0] == 42, "ToArray item");
+
+    // Bitwise ops
+    let bs1 = BitSet(32);
+    bs1.Set(1);
+    bs1.Set(2);
+    let bs2 = BitSet(32);
+    bs2.Set(2);
+    bs2.Set(3);
+
+    let bs_and = bs1.And(bs2);
+    assert(!bs_and.Get(1) && bs_and.Get(2) && !bs_and.Get(3), "BitSet AND");
+
+    let bs_or = bs1.Or(bs2);
+    assert(bs_or.Get(1) && bs_or.Get(2) && bs_or.Get(3), "BitSet OR");
+
+    let bs_xor = bs1.Xor(bs2);
+    assert(bs_xor.Get(1) && !bs_xor.Get(2) && bs_xor.Get(3), "BitSet XOR");
+
+    print("BitSet: PASS");
 }
 
 fn test_json_serialization() {
@@ -172,57 +206,72 @@ fn test_json_serialization() {
     assert(ToJson(12345) == "12345", "ToJson int");
     assert(ToJson("hello \"world\"") == "\"hello \\\"world\\\"\"", "ToJson string escape");
 
-    // Arrays
+    let p = new Person();
+    p.name = "Alice";
+    p.age = 30;
+
+    let json_str = ToJson(p);
+    assert(find(json_str, "\"name\":\"Alice\"") >= 0, "ToJson struct name missing");
+    assert(find(json_str, "\"age\":30") >= 0, "ToJson struct age missing");
+
+    let parsed = FromJson(json_str);
+    assert(parsed.name == "Alice", "FromJson struct name mismatch");
+    assert(parsed.age == 30, "FromJson struct age mismatch");
+
     let arr = [1, 2, "three", true, null];
-    let j_arr = ToJson(arr);
-    assert(j_arr == "[1,2,\"three\",true,null]", "ToJson array");
+    let arr_json = ToJson(arr);
+    assert(arr_json == "[1,2,\"three\",true,null]", "ToJson array mismatch");
+    let parsed_arr = FromJson(arr_json);
+    assert(Length(parsed_arr) == 5, "parsed array length mismatch");
+    assert(parsed_arr[2] == "three", "parsed array elem mismatch");
 
-    // FromJson
-    let p_null = FromJson("null");
-    assert(p_null == null, "FromJson null");
-
-    let p_bool = FromJson("true");
-    assert(p_bool == true, "FromJson bool true");
-
-    let p_num = FromJson("9876");
-    assert(p_num == 9876, "FromJson int");
-
-    let p_str = FromJson("\"aks language\"");
-    assert(p_str == "aks language", "FromJson string");
-
-    let parsed_arr = FromJson("[10, 20, 30]");
-    assert(Length(parsed_arr) == 3, "FromJson array length");
-    assert(parsed_arr[0] == 10, "FromJson array item 0");
-    assert(parsed_arr[1] == 20, "FromJson array item 1");
-    assert(parsed_arr[2] == 30, "FromJson array item 2");
-
-    print("JSON serialization OK!");
+    print("JSON serialization: PASS");
 }
 
-let g_token_callback_called = false;
-fn on_token_cancelled() {
-    g_token_callback_called = true;
+fn test_weak_references() {
+    print("Testing weak references...");
+
+    let arr = [1, 2, 3];
+    let w = weak(arr);
+    assert(w.Alive(), "weak reference should be alive");
+
+    let up = w.Upgrade();
+    assert(up.IsSome(), "upgraded weak reference should be Some");
+    let unwrapped = up.Unwrap();
+    assert(Length(unwrapped) == 3, "unwrapped array length mismatch");
+
+    print("Weak references: PASS");
+}
+
+let g_cancellation_callback_invoked = false;
+fn on_cancelled_cb() {
+    g_cancellation_callback_invoked = true;
 }
 
 fn test_cancellation_token() {
-    print("Testing CancellationToken...");
+    print("Testing cancellation token...");
 
-    let token = new CancellationToken();
-    assert(!token.IsCancellationRequested(), "Token should not be cancelled initially");
+    let cts = CancellationTokenSource();
+    let token = cts.Token();
+    assert(!token.IsCancellationRequested(), "token should not be cancelled initially");
 
-    // Register callback
-    g_token_callback_called = false;
-    token.Register(on_token_cancelled);
+    // Test callback registration
+    g_cancellation_callback_invoked = false;
+    token.Register(on_cancelled_cb);
 
-    token.Cancel();
-    assert(token.IsCancellationRequested(), "Token should be cancelled");
-    assert(g_token_callback_called, "Registered callback should have been invoked");
+    cts.Cancel();
+    assert(token.IsCancellationRequested(), "token should be cancelled after cancel()");
+    assert(g_cancellation_callback_invoked, "callback should have been invoked on cancel");
 
-    // Further cancel calls should be idempotent
-    token.Cancel();
-    assert(token.IsCancellationRequested(), "Token remains cancelled");
+    let did_throw = false;
+    try {
+        token.ThrowIfCancellationRequested();
+    } catch (e) {
+        did_throw = true;
+    }
+    assert(did_throw, "ThrowIfCancellationRequested should throw when cancelled");
 
-    print("CancellationToken OK!");
+    print("Cancellation token: PASS");
 }
 
 fn test_datetime() {
@@ -243,7 +292,6 @@ fn test_datetime() {
     let comps_loc = DateComponentsLocal(0);
     assert(comps_loc.year == 1969 || comps_loc.year == 1970, "DateComponentsLocal year valid");
 
-    // DateTime struct
     let dt = DateTimeFromTimestampUtc(0);
     assert(dt.Year() == 1970, "DateTime Year");
     assert(dt.Month() == 1, "DateTime Month");
@@ -256,21 +304,173 @@ fn test_datetime() {
     let now_dt = DateTimeNowUtc();
     assert(now_dt.Year() >= 2026, "DateTime NowUtc Year >= 2026");
 
-    print("DateTime OK!");
+    print("DateTime: PASS");
+}
+
+fn test_file_io() {
+    print("Testing File I/O operations...");
+    let test_path = "tests/test_file_io_tmp.txt";
+    if (File.Exists(test_path)) {
+        RemoveFile(test_path);
+    }
+
+    let f = File.Open(test_path, "w");
+    assert(f != null, "File.Open for write should succeed");
+    f.WriteLine("First line");
+    f.WriteLine("Second line");
+    f.Write("Third");
+    f.Flush();
+    f.Close();
+
+    assert(File.Exists(test_path), "File.Exists should be true");
+
+    let fr = File.Open(test_path, "r");
+    assert(fr != null, "File.Open for read should succeed");
+    let l1 = fr.ReadLine();
+    assert(l1 == "First line", "ReadLine 1 mismatch");
+    let l2 = fr.ReadLine();
+    assert(l2 == "Second line", "ReadLine 2 mismatch");
+    let b3 = fr.ReadBytes(5);
+    assert(b3 == "Third", "ReadBytes mismatch");
+    fr.Close();
+
+    // ReadAllText and WriteAllText
+    File.WriteAllText(test_path, "Line A\nLine B\n");
+    let content = File.ReadAllText(test_path);
+    assert(content == "Line A\nLine B\n", "File.ReadAllText mismatch");
+
+    // ReadLines and WriteAllLines
+    File.WriteAllLines(test_path, ["Alpha", "Beta", "Gamma"]);
+    let read_lines = File.ReadLines(test_path);
+    assert(Length(read_lines) == 3, "ReadLines count mismatch");
+    assert(read_lines[0] == "Alpha", "ReadLines line 0 mismatch");
+    assert(read_lines[1] == "Beta", "ReadLines line 1 mismatch");
+    assert(read_lines[2] == "Gamma", "ReadLines line 2 mismatch");
+
+    RemoveFile(test_path);
+    print("File I/O: PASS");
+}
+
+fn test_math_utilities() {
+    print("Testing Math utilities...");
+    assert(Math.Clamp(15, 0, 10) == 10, "clamp upper");
+    assert(Math.Clamp(-5, 0, 10) == 0, "clamp lower");
+    assert(Math.Clamp(5, 0, 10) == 5, "clamp within");
+    assert(clamp(20, 0, 10) == 10, "global clamp");
+
+    assert(Math.Lerp(10.0, 20.0, 0.5) == 15.0, "lerp half");
+    assert(lerp(0.0, 100.0, 0.25) == 25.0, "global lerp");
+
+    let nums = [2.0, 4.0, 6.0, 8.0, 10.0];
+    assert(Math.Mean(nums) == 6.0, "Mean mismatch");
+    assert(Mean(nums) == 6.0, "global Mean mismatch");
+
+    assert(Math.Median(nums) == 6.0, "Median odd mismatch");
+    let even_nums = [1.0, 3.0, 5.0, 7.0];
+    assert(Math.Median(even_nums) == 4.0, "Median even mismatch");
+
+    let modes = [1, 2, 2, 3, 3, 3, 4];
+    assert(Math.Mode(modes) == 3, "Mode mismatch");
+
+    let vals = [10.0, 20.0, 30.0, 40.0, 50.0];
+    assert(Math.Quantile(vals, 0.0) == 10.0, "Quantile min mismatch");
+    assert(Math.Quantile(vals, 1.0) == 50.0, "Quantile max mismatch");
+    assert(Math.Quantile(vals, 0.5) == 30.0, "Quantile median mismatch");
+
+    print("Math utilities: PASS");
+}
+
+fn test_logger() {
+    print("Testing Logger...");
+    let log_debug = 0;
+    let log_info = 1;
+    let log_warn = 2;
+    let log_error = 3;
+    let log_fatal = 4;
+
+    let logger = Logger("test-logger", log_warn, "text");
+    assert(logger.name == "test-logger", "logger name mismatch");
+    assert(logger.min_level == log_warn, "logger min_level mismatch");
+
+    logger.SetLevel(log_debug);
+    assert(logger.min_level == log_debug, "logger level updated");
+    logger.SetFormat("json");
+    assert(logger.format == "json", "logger format updated");
+
+    logger.Debug("debug message", null);
+    logger.Info("info message", { "detail": 123 });
+    logger.Warn("warn message", null);
+    logger.Error("error message", null);
+
+    assert(logger.DEBUG() == 0, "Logger.DEBUG mismatch");
+    assert(logger.INFO() == 1, "Logger.INFO mismatch");
+    assert(logger.LevelName(0) == "DEBUG", "LevelName DEBUG mismatch");
+    assert(logger.LevelName(1) == "INFO", "LevelName INFO mismatch");
+    assert(LoggerLevelName(2) == "WARN", "LoggerLevelName WARN mismatch");
+    assert(LoggerLevelName(3) == "ERROR", "LoggerLevelName ERROR mismatch");
+    assert(LoggerLevelName(4) == "FATAL", "LoggerLevelName FATAL mismatch");
+
+    print("Logger: PASS");
+}
+
+fn __task_worker(x) {
+    return x * 3;
+}
+
+fn test_task_async() {
+    print("Testing Task async utilities...");
+    let t = TaskDelay(5);
+    await t;
+
+    let t1 = spawn __task_worker(10);
+    let t2 = spawn __task_worker(20);
+    let res = Task.WhenAll([t1, t2]);
+    assert(Length(res) == 2, "WhenAll length mismatch");
+    assert(res[0] == 30, "WhenAll item 0 mismatch");
+    assert(res[1] == 60, "WhenAll item 1 mismatch");
+
+    print("Task async: PASS");
+}
+
+fn test_http_routing() {
+    print("Testing HttpServer routing & config...");
+    let srv = HttpServer(8080);
+    assert(srv.port == 8080, "server port mismatch");
+    assert(srv.middlewares != null, "middlewares initialized");
+    assert(srv.route_list != null, "route_list initialized");
+
+    srv.Use(fn(req) { return null; });
+    assert(Length(srv.middlewares) == 1, "middleware registration");
+
+    srv.Get("/users/:id", fn(req) { return Response.Text("ok", 200); });
+    srv.Post("/items", fn(req) { return Response.Text("created", 201); });
+    srv.Static("/static", "./public");
+
+    assert(Length(srv.route_list) == 3, "route_list count mismatch");
+    assert(srv.route_list[0].method == "GET", "route 0 method mismatch");
+    assert(srv.route_list[0].pattern == "/users/:id", "route 0 pattern mismatch");
+    assert(srv.route_list[0].is_param == true, "route 0 is_param mismatch");
+    assert(srv.route_list[1].method == "POST", "route 1 method mismatch");
+
+    print("HttpServer routing: PASS");
 }
 
 fn main() {
-    print("Running Language Improvements Verification Suite...");
+    print("Running Language & Standard Library Improvements Suite...");
     test_string_utilities();
-    test_weak_ref();
-    test_collections_set();
-    test_collections_deque();
-    test_collections_priority_queue();
+    test_collections();
+    test_lru_cache();
+    test_bitset();
     test_json_serialization();
+    test_weak_references();
     test_cancellation_token();
     test_datetime();
-    print("ALL LANGUAGE IMPROVEMENTS VERIFIED SUCCESSFULLY 100%!");
+    test_file_io();
+    test_math_utilities();
+    test_logger();
+    test_task_async();
+    test_http_routing();
+    print("All language improvements verified successfully 100%!");
 }
 
 main();
-

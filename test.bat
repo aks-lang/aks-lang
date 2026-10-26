@@ -61,6 +61,10 @@ aks.exe run tests\TestPhase8Enhancements.aks || exit /b 1
 aks.exe run tests\TestSlicingAndRawStrings.aks || exit /b 1
 aks.exe run tests\TestLoopDestructuringAndPathPkg.aks || exit /b 1
 aks.exe test tests\TestLoopDestructuringAndPathPkg.aks || exit /b 1
+aks.exe run tests\TestFastBmi2.aks || exit /b 1
+aks.exe run tests\TestSimdStringMatch.aks || exit /b 1
+aks.exe run tests\TestSparseFile.aks || exit /b 1
+aks.exe run tests\TestHardLink.aks || exit /b 1
 aks.exe run tests\TestLanguageImprovements.aks || exit /b 1
 aks.exe test tests\TestLanguageImprovements.aks || exit /b 1
 aks.exe compile-exe tests\TestComptimeExecution.aks -o test_standalone.exe || exit /b 1

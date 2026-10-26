@@ -461,6 +461,237 @@ static void PhysExtractUnit(AKSValue u, double *out_val, int *out_m, int *out_kg
   *out_s = s;
 }
 
+#define AKS_MAX_FILE_HANDLES 256
+static FILE *g_aks_file_handles[AKS_MAX_FILE_HANDLES] = {0};
+
+#ifdef _WIN32
+static CRITICAL_SECTION g_aks_file_cs;
+static int g_aks_file_cs_init = 0;
+static void AksFileTableLock(void) {
+  if (!g_aks_file_cs_init) {
+    InitializeCriticalSection(&g_aks_file_cs);
+    g_aks_file_cs_init = 1;
+  }
+  EnterCriticalSection(&g_aks_file_cs);
+}
+static void AksFileTableUnlock(void) {
+  LeaveCriticalSection(&g_aks_file_cs);
+}
+#else
+static pthread_mutex_t g_aks_file_mtx = PTHREAD_MUTEX_INITIALIZER;
+static void AksFileTableLock(void) {
+  pthread_mutex_lock(&g_aks_file_mtx);
+}
+static void AksFileTableUnlock(void) {
+  pthread_mutex_unlock(&g_aks_file_mtx);
+}
+#endif
+
+static int AksFileOpen(const char *path, const char *mode) {
+  if (!path || !mode) return -1;
+  AksFileTableLock();
+  int slot = -1;
+  for (int i = 0; i < AKS_MAX_FILE_HANDLES; i++) {
+    if (g_aks_file_handles[i] == NULL) {
+      slot = i;
+      break;
+    }
+  }
+  if (slot < 0) {
+    AksFileTableUnlock();
+    return -1;
+  }
+  FILE *f = fopen(path, mode);
+  if (!f) {
+    AksFileTableUnlock();
+    return -1;
+  }
+  g_aks_file_handles[slot] = f;
+  AksFileTableUnlock();
+  return slot;
+}
+
+static int AksFileClose(int handle_id) {
+  if (handle_id < 0 || handle_id >= AKS_MAX_FILE_HANDLES) return 0;
+  AksFileTableLock();
+  if (!g_aks_file_handles[handle_id]) {
+    AksFileTableUnlock();
+    return 0;
+  }
+  fclose(g_aks_file_handles[handle_id]);
+  g_aks_file_handles[handle_id] = NULL;
+  AksFileTableUnlock();
+  return 1;
+}
+
+void AksCloseAllFileHandles(void) {
+  AksFileTableLock();
+  for (int i = 0; i < AKS_MAX_FILE_HANDLES; i++) {
+    if (g_aks_file_handles[i]) {
+      fclose(g_aks_file_handles[i]);
+      g_aks_file_handles[i] = NULL;
+    }
+  }
+  AksFileTableUnlock();
+}
+
+static char *AksFileReadLine(int handle_id) {
+  if (handle_id < 0 || handle_id >= AKS_MAX_FILE_HANDLES) return NULL;
+  AksFileTableLock();
+  FILE *f = g_aks_file_handles[handle_id];
+  if (!f) {
+    AksFileTableUnlock();
+    return NULL;
+  }
+  size_t cap = 256;
+  size_t len = 0;
+  char *buf = (char *)malloc(cap);
+  if (!buf) {
+    AksFileTableUnlock();
+    return NULL;
+  }
+  buf[0] = '\0';
+  while (fgets(buf + len, (int)(cap - len), f)) {
+    size_t chunk_len = strlen(buf + len);
+    len += chunk_len;
+    if (len > 0 && buf[len - 1] == '\n') {
+      break;
+    }
+    if (len + 1 >= cap) {
+      cap *= 2;
+      char *new_buf = (char *)realloc(buf, cap);
+      if (!new_buf) {
+        free(buf);
+        AksFileTableUnlock();
+        return NULL;
+      }
+      buf = new_buf;
+    }
+  }
+  if (len == 0 && feof(f)) {
+    free(buf);
+    AksFileTableUnlock();
+    return NULL;
+  }
+  while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r')) {
+    buf[--len] = '\0';
+  }
+  AksFileTableUnlock();
+  return buf;
+}
+
+static char *AksFileReadBytes(int handle_id, size_t count, size_t *out_len) {
+  if (handle_id < 0 || handle_id >= AKS_MAX_FILE_HANDLES || count == 0) {
+    if (out_len) *out_len = 0;
+    return NULL;
+  }
+  AksFileTableLock();
+  FILE *f = g_aks_file_handles[handle_id];
+  if (!f) {
+    if (out_len) *out_len = 0;
+    AksFileTableUnlock();
+    return NULL;
+  }
+  char *buf = (char *)malloc(count + 1);
+  if (!buf) {
+    if (out_len) *out_len = 0;
+    AksFileTableUnlock();
+    return NULL;
+  }
+  size_t rb = fread(buf, 1, count, f);
+  buf[rb] = '\0';
+  if (out_len) *out_len = rb;
+  if (rb == 0 && feof(f)) {
+    free(buf);
+    AksFileTableUnlock();
+    return NULL;
+  }
+  AksFileTableUnlock();
+  return buf;
+}
+
+static int AksFileWrite(int handle_id, const char *data, size_t len) {
+  if (handle_id < 0 || handle_id >= AKS_MAX_FILE_HANDLES || !data) return 0;
+  AksFileTableLock();
+  FILE *f = g_aks_file_handles[handle_id];
+  if (!f) {
+    AksFileTableUnlock();
+    return 0;
+  }
+  size_t wb = fwrite(data, 1, len, f);
+  AksFileTableUnlock();
+  return (wb == len) ? 1 : 0;
+}
+
+static int AksFileWriteLine(int handle_id, const char *data, size_t len) {
+  if (handle_id < 0 || handle_id >= AKS_MAX_FILE_HANDLES || !data) return 0;
+  AksFileTableLock();
+  FILE *f = g_aks_file_handles[handle_id];
+  if (!f) {
+    AksFileTableUnlock();
+    return 0;
+  }
+  fwrite(data, 1, len, f);
+  fputc('\n', f);
+  AksFileTableUnlock();
+  return 1;
+}
+
+static int AksFileSeek(int handle_id, long offset, int whence) {
+  if (handle_id < 0 || handle_id >= AKS_MAX_FILE_HANDLES) return 0;
+  AksFileTableLock();
+  FILE *f = g_aks_file_handles[handle_id];
+  if (!f) {
+    AksFileTableUnlock();
+    return 0;
+  }
+  int c_whence = SEEK_SET;
+  if (whence == 1) c_whence = SEEK_CUR;
+  else if (whence == 2) c_whence = SEEK_END;
+  int res = fseek(f, offset, c_whence);
+  AksFileTableUnlock();
+  return (res == 0) ? 1 : 0;
+}
+
+static long AksFileTell(int handle_id) {
+  if (handle_id < 0 || handle_id >= AKS_MAX_FILE_HANDLES) return -1;
+  AksFileTableLock();
+  FILE *f = g_aks_file_handles[handle_id];
+  if (!f) {
+    AksFileTableUnlock();
+    return -1;
+  }
+  long pos = ftell(f);
+  AksFileTableUnlock();
+  return pos;
+}
+
+static int AksFileFlush(int handle_id) {
+  if (handle_id < 0 || handle_id >= AKS_MAX_FILE_HANDLES) return 0;
+  AksFileTableLock();
+  FILE *f = g_aks_file_handles[handle_id];
+  if (!f) {
+    AksFileTableUnlock();
+    return 0;
+  }
+  int res = fflush(f);
+  AksFileTableUnlock();
+  return (res == 0) ? 1 : 0;
+}
+
+static int AksFileEof(int handle_id) {
+  if (handle_id < 0 || handle_id >= AKS_MAX_FILE_HANDLES) return 1;
+  AksFileTableLock();
+  FILE *f = g_aks_file_handles[handle_id];
+  if (!f) {
+    AksFileTableUnlock();
+    return 1;
+  }
+  int is_eof = feof(f);
+  AksFileTableUnlock();
+  return is_eof ? 1 : 0;
+}
+
 #if defined(_MSC_VER)
 #pragma optimize("", off)
 #elif defined(__clang__)
@@ -18524,17 +18755,17 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
-  if (strcmp(name, "insert") == 0) {
+  if (strcmp(name, "insert") == 0 || strcmp(name, "insert_at") == 0) {
     if (argc != 3) {
-      fprintf(stderr, "Runtime error: insert() expects 3 arguments, got %d\n",
-              argc);
+      fprintf(stderr, "Runtime error: %s() expects 3 arguments, got %d\n",
+              name, argc);
       return -1;
     }
     AKSValue val = POP();
     AKSValue idxval = POP();
     AKSValue arr = POP();
     if (ValKind(arr) != VALARR || ValKind(idxval) != VALINT) {
-      fprintf(stderr, "Runtime error: insert() invalid argument types\n");
+      fprintf(stderr, "Runtime error: %s() invalid argument types\n", name);
       ValFree(&val);
       ValFree(&idxval);
       ValFree(&arr);
@@ -18543,8 +18774,8 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     int64_t idx = ValToInt(idxval);
     AKSArray *a = ValToArr(arr);
     if (idx < 0 || idx > a->count) {
-      fprintf(stderr, "Runtime error: insert() index out of bounds: %lld\n",
-              (long long)idx);
+      fprintf(stderr, "Runtime error: %s() index out of bounds: %lld\n",
+              name, (long long)idx);
       ValFree(&val);
       ValFree(&idxval);
       ValFree(&arr);
@@ -18563,16 +18794,16 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
-  if (strcmp(name, "remove") == 0) {
+  if (strcmp(name, "remove") == 0 || strcmp(name, "remove_at") == 0) {
     if (argc != 2) {
-      fprintf(stderr, "Runtime error: remove() expects 2 arguments, got %d\n",
-              argc);
+      fprintf(stderr, "Runtime error: %s() expects 2 arguments, got %d\n",
+              name, argc);
       return -1;
     }
     AKSValue idxval = POP();
     AKSValue arr = POP();
     if (ValKind(arr) != VALARR || ValKind(idxval) != VALINT) {
-      fprintf(stderr, "Runtime error: remove() invalid argument types\n");
+      fprintf(stderr, "Runtime error: %s() invalid argument types\n", name);
       ValFree(&idxval);
       ValFree(&arr);
       return -1;
@@ -20673,9 +20904,9 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
-  if (strcmp(name, "repeat_str") == 0) {
+  if (strcmp(name, "repeat_str") == 0 || strcmp(name, "repeat") == 0) {
     if (argc != 2) {
-      fprintf(stderr, "Runtime error: repeat_str() expects 2 arguments, got %d\n", argc);
+      fprintf(stderr, "Runtime error: %s() expects 2 arguments, got %d\n", name, argc);
       return -1;
     }
     AKSValue countval = POP();
@@ -20758,7 +20989,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     int blen = ValToStrPtr(strval)->len;
     int cur_idx = 0;
     int i = 0;
-    AKSValue res = ValStr("");
+    AKSValue res = ValNull();
     while (i < blen) {
       int step = 1;
       unsigned char c = s[i];
@@ -20773,6 +21004,9 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
       }
       i += step;
       cur_idx++;
+    }
+    if (ValKind(res) == VALNULL) {
+      res = ValStr("");
     }
     PUSH(res);
     ValFree(&idxval);
@@ -20923,6 +21157,181 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     }
     ValFree(&idval);
     PUSH(res);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileOpen") == 0) {
+    if (argc != 2) {
+      fprintf(stderr, "Runtime error: FileOpen() expects 2 arguments (path, mode)\n");
+      return -1;
+    }
+    AKSValue modeval = POP();
+    AKSValue pathval = POP();
+    int slot = -1;
+    if (ValKind(pathval) == VALSTR && ValToStrPtr(pathval) &&
+        ValKind(modeval) == VALSTR && ValToStrPtr(modeval)) {
+      slot = AksFileOpen(ValToStrPtr(pathval)->data, ValToStrPtr(modeval)->data);
+    }
+    ValFree(&modeval);
+    ValFree(&pathval);
+    PUSH(ValInt(slot));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileClose") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: FileClose() expects 1 argument (id)\n");
+      return -1;
+    }
+    AKSValue idval = POP();
+    int ok = 0;
+    if (ValKind(idval) == VALINT) {
+      ok = AksFileClose((int)ValToInt(idval));
+    }
+    ValFree(&idval);
+    PUSH(ValBool(ok));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileReadLine") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: FileReadLine() expects 1 argument (id)\n");
+      return -1;
+    }
+    AKSValue idval = POP();
+    AKSValue res = ValNull();
+    if (ValKind(idval) == VALINT) {
+      char *line = AksFileReadLine((int)ValToInt(idval));
+      if (line) {
+        res = ValStr(line);
+        free(line);
+      }
+    }
+    ValFree(&idval);
+    PUSH(res);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileReadBytes") == 0) {
+    if (argc != 2) {
+      fprintf(stderr, "Runtime error: FileReadBytes() expects 2 arguments (id, count)\n");
+      return -1;
+    }
+    AKSValue countval = POP();
+    AKSValue idval = POP();
+    AKSValue res = ValNull();
+    if (ValKind(idval) == VALINT && ValKind(countval) == VALINT) {
+      size_t count = (size_t)ValToInt(countval);
+      size_t out_len = 0;
+      char *data = AksFileReadBytes((int)ValToInt(idval), count, &out_len);
+      if (data) {
+        res = ValStrLen(data, (int)out_len);
+        free(data);
+      }
+    }
+    ValFree(&countval);
+    ValFree(&idval);
+    PUSH(res);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileWrite") == 0) {
+    if (argc != 2) {
+      fprintf(stderr, "Runtime error: FileWrite() expects 2 arguments (id, str)\n");
+      return -1;
+    }
+    AKSValue strval = POP();
+    AKSValue idval = POP();
+    int ok = 0;
+    if (ValKind(idval) == VALINT && ValKind(strval) == VALSTR && ValToStrPtr(strval)) {
+      AKSString *s = ValToStrPtr(strval);
+      ok = AksFileWrite((int)ValToInt(idval), s->data, s->len);
+    }
+    ValFree(&strval);
+    ValFree(&idval);
+    PUSH(ValBool(ok));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileWriteLine") == 0) {
+    if (argc != 2) {
+      fprintf(stderr, "Runtime error: FileWriteLine() expects 2 arguments (id, str)\n");
+      return -1;
+    }
+    AKSValue strval = POP();
+    AKSValue idval = POP();
+    int ok = 0;
+    if (ValKind(idval) == VALINT && ValKind(strval) == VALSTR && ValToStrPtr(strval)) {
+      AKSString *s = ValToStrPtr(strval);
+      ok = AksFileWriteLine((int)ValToInt(idval), s->data, s->len);
+    }
+    ValFree(&strval);
+    ValFree(&idval);
+    PUSH(ValBool(ok));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileSeek") == 0) {
+    if (argc != 3) {
+      fprintf(stderr, "Runtime error: FileSeek() expects 3 arguments (id, offset, whence)\n");
+      return -1;
+    }
+    AKSValue whenceval = POP();
+    AKSValue offsetval = POP();
+    AKSValue idval = POP();
+    int ok = 0;
+    if (ValKind(idval) == VALINT && ValKind(offsetval) == VALINT && ValKind(whenceval) == VALINT) {
+      ok = AksFileSeek((int)ValToInt(idval), (long)ValToInt(offsetval), (int)ValToInt(whenceval));
+    }
+    ValFree(&whenceval);
+    ValFree(&offsetval);
+    ValFree(&idval);
+    PUSH(ValBool(ok));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileTell") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: FileTell() expects 1 argument (id)\n");
+      return -1;
+    }
+    AKSValue idval = POP();
+    long pos = -1;
+    if (ValKind(idval) == VALINT) {
+      pos = AksFileTell((int)ValToInt(idval));
+    }
+    ValFree(&idval);
+    PUSH(ValInt((int64_t)pos));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileFlush") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: FileFlush() expects 1 argument (id)\n");
+      return -1;
+    }
+    AKSValue idval = POP();
+    int ok = 0;
+    if (ValKind(idval) == VALINT) {
+      ok = AksFileFlush((int)ValToInt(idval));
+    }
+    ValFree(&idval);
+    PUSH(ValBool(ok));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+  if (strcmp(name, "FileEof") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: FileEof() expects 1 argument (id)\n");
+      return -1;
+    }
+    AKSValue idval = POP();
+    int is_eof = 1;
+    if (ValKind(idval) == VALINT) {
+      is_eof = AksFileEof((int)ValToInt(idval));
+    }
+    ValFree(&idval);
+    PUSH(ValBool(is_eof));
     *stacktopptr = stacktop;
     return 1;
   }

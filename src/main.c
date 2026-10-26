@@ -1084,9 +1084,9 @@ static int ExecuteRunTest(const char *sourcepath, int coverage) {
             
             VMTask *task = TaskNew(aksVM, fn, 0);
             aksVM->maintask = task;
-            
+            VMPushTask(aksVM, task);
             while (task->state != 3 && !aksVM->shouldterminate) {
-                RunTaskSlice(aksVM, task, 100);
+                SleepMs(1);
             }
             
             if (task->haserror) {
@@ -1112,8 +1112,9 @@ static int ExecuteRunTest(const char *sourcepath, int coverage) {
                 printf("Running %s (main)... ", sourcepath);
                 VMTask *task = TaskNew(aksVM, fn, 0);
                 aksVM->maintask = task;
+                VMPushTask(aksVM, task);
                 while (task->state != 3 && !aksVM->shouldterminate) {
-                    RunTaskSlice(aksVM, task, 100);
+                    SleepMs(1);
                 }
                 if (task->haserror) {
                     const char *errmsg = "Assertion failed";

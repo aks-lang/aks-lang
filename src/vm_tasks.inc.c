@@ -188,6 +188,13 @@ static void WorkerPushTail(VMWorker *w, VMTask *t) {
   w->tail++;
   MutexUnlockNative(w->lock);
 }
+
+void VMPushTask(VM *vm, VMTask *t) {
+  if (vm && t) {
+    WorkerPushTail(&vm->workers[0], t);
+  }
+}
+
 static VMTask *WorkerPopTail(VMWorker *w) {
   VMTask *t = NULL;
   MutexLockNative(w->lock);

@@ -80,10 +80,12 @@ void LearnHelp(const char *topic) {
         printf("  \033[33mmemory\033[0m       Region scopes, bump arenas, Reset(), AllocCount(), and AllocatedBytes()\n");
         printf("  \033[33munsafe\033[0m       Unsafe blocks, layout introspection (SizeOf, AlignOf, OffsetOf), repr()\n");
         printf("  \033[33mtooling\033[0m      CLI flags, LSP (aksls), DAP debugger, formatter, linter, and bench runner\n");
-        printf("  \033[33mcollections\033[0m  High-performance standard collections: Set, Deque, PriorityQueue\n");
+        printf("  \033[33mcollections\033[0m  Standard collections: Set, Deque, PriorityQueue, LRUCache, BitSet\n");
         printf("  \033[33mweakref\033[0m      Weak references (weak, Alive, Upgrade) to prevent cyclic leaks\n");
         printf("  \033[33mhttp\033[0m         Lightweight async HTTP server & client (HttpServer, Response, Http)\n");
-        printf("  \033[33mdatetime\033[0m     Date, time, ISO formatting, UTC timestamps, and DateTime struct\n\n");
+        printf("  \033[33mdatetime\033[0m     Date, time, ISO formatting, UTC timestamps, and DateTime struct\n");
+        printf("  \033[33mfile\033[0m         File streaming, line-by-line reading, and atomic operations (File struct)\n");
+        printf("  \033[33mlogger\033[0m       Configurable multi-level diagnostic logging (Logger, Log, JSON/text)\n\n");
         printf("Usage: aks help <topic>\n");
         return;
     }
@@ -406,11 +408,11 @@ void LearnHelp(const char *topic) {
         printf("Concurrency Trait Bounds:\n");
         printf("  IsSend(val) / IsSync(val)        Safe cross-task transfer checks\n");
     } else if (strcmp(topic, "collections") == 0) {
-        printf("\033[36mStandard Collections: Set, Deque, PriorityQueue\033[0m\n");
+        printf("\033[36mStandard Collections: Set, Deque, PriorityQueue, LRUCache, BitSet\033[0m\n");
         printf("Set:\n");
         printf("  let s = Set();\n");
         printf("  s.Add(\"item\");\n");
-        printf("  s.Contains(\"item\");     // true\n");
+        printf("  s.Has(\"item\");         // true\n");
         printf("  s.Remove(\"item\");\n");
         printf("  s.Size();               // element count\n\n");
         printf("Deque:\n");
@@ -421,7 +423,14 @@ void LearnHelp(const char *topic) {
         printf("PriorityQueue (Min-Heap / Custom):\n");
         printf("  let pq = PriorityQueue();\n");
         printf("  pq.Push(30); pq.Push(10);\n");
-        printf("  pq.Pop();               // 10\n");
+        printf("  pq.Pop();               // 10\n\n");
+        printf("LRUCache:\n");
+        printf("  let cache = LRUCache(128);\n");
+        printf("  cache.Put(\"key\", value);\n");
+        printf("  cache.Get(\"key\");\n\n");
+        printf("BitSet:\n");
+        printf("  let bs = BitSet(64);\n");
+        printf("  bs.Set(5); bs.Get(5); bs.CountOnes();\n");
     } else if (strcmp(topic, "weakref") == 0) {
         printf("\033[36mNative Weak References & Cycle Breakers\033[0m\n");
         printf("Create a weak reference:\n");
@@ -436,14 +445,17 @@ void LearnHelp(const char *topic) {
         printf("  }\n");
     } else if (strcmp(topic, "http") == 0) {
         printf("\033[36mLightweight Async HTTP Server & Client\033[0m\n");
-        printf("HttpServer:\n");
+        printf("HttpServer with Routing & Middlewares:\n");
         printf("  let server = HttpServer(8080);\n");
-        printf("  server.Handle(\"/api/hello\", fn(req) {\n");
-        printf("      return Response.Json(map);\n");
+        printf("  server.Use(fn(req) { return null; }); // Middleware pipeline\n");
+        printf("  server.Get(\"/users/:id\", fn(req) {\n");
+        printf("      let uid = req.params.Get(\"id\");\n");
+        printf("      return Response.Text(\"User: \" + uid, 200);\n");
         printf("  });\n");
+        printf("  server.Static(\"/public\", \"./static\");\n");
         printf("  server.Start(8080);\n\n");
         printf("Http Client:\n");
-        printf("  let res = Http.Get(\"http://localhost:8080/api/hello\");\n");
+        printf("  let res = Http.Get(\"http://localhost:8080/users/42\");\n");
         printf("  print(res.status, res.body);\n");
     } else if (strcmp(topic, "datetime") == 0) {
         printf("\033[36mDate, Time & ISO Formatting\033[0m\n");
@@ -457,6 +469,32 @@ void LearnHelp(const char *topic) {
         printf("  let dt = DateTimeNowUtc();\n");
         printf("  print(dt.ToIsoString());\n");
         printf("  print(dt.Year(), dt.Hour());\n");
+    } else if (strcmp(topic, "file") == 0) {
+        printf("\033[36mFile I/O & Streaming Subsystem (File Struct)\033[0m\n");
+        printf("File Opening & Streaming:\n");
+        printf("  let f = File.Open(\"data.txt\", \"r\");\n");
+        printf("  while (!f.IsEof()) {\n");
+        printf("      let line = f.ReadLine();\n");
+        printf("      if (line == null) { break; }\n");
+        printf("      print(line);\n");
+        printf("  }\n");
+        printf("  f.Close();\n\n");
+        printf("Atomic Batch Helpers:\n");
+        printf("  File.ReadAllText(\"input.txt\");\n");
+        printf("  File.WriteAllText(\"out.txt\", content);\n");
+        printf("  File.ReadLines(\"config.env\");\n");
+        printf("  File.WriteAllLines(\"log.txt\", lines_arr);\n");
+        printf("  File.Exists(\"file.txt\");\n");
+    } else if (strcmp(topic, "logger") == 0) {
+        printf("\033[36mMulti-Level Diagnostic Logging (Logger Struct)\033[0m\n");
+        printf("Logging Instance:\n");
+        printf("  let log = Logger(\"service\", LOG_INFO, \"text\"); // or format: \"json\"\n");
+        printf("  log.Debug(\"Verbose debug info\", null);\n");
+        printf("  log.Info(\"Server listening on port 8080\", { \"port\": 8080 });\n");
+        printf("  log.Warn(\"High memory usage\", { \"usage\": 87.5 });\n");
+        printf("  log.Error(\"Database query timed out\", null);\n\n");
+        printf("Global Logger:\n");
+        printf("  Log.Info(\"Global message\");\n");
     } else {
         printf("Unknown topic '%s'. Type 'aks help' for available topics.\n", topic);
     }

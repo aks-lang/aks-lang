@@ -530,4 +530,7 @@ static inline void AksArrayEnsureCapacity(AKSArray *a, int needed) {
     }
 }
 
+void AksCloseAllFileHandles(void);
+
 #endif // Valh
+

@@ -1050,6 +1050,7 @@ void VMFree(VM *vm) {
   FreeHuffmanTree(huff_tree_root);
   huff_tree_root = NULL;
   AksFreeWeakRegistry();
+  AksCloseAllFileHandles();
   free(vm);
   if (gActiveStrs != 0 || gactivearrs != 0 || gactivestructs != 0) {
     fprintf(stderr,

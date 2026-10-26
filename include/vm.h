@@ -362,6 +362,7 @@ void VMSync(VM *vm, Compiler *c, int syncmain);
 VMTask *TaskNew(VM *vm, FnProto *fn, int startipoffset);
 void TaskFree(VMTask *t);
 void TaskReLease(VM *vm, VMTask *t);
+void VMPushTask(VM *vm, VMTask *task);
 void *AllocStackArenaWithGuard(size_t size, size_t *allocated_size);
 void FreeStackArenaWithGuard(void *ptr, size_t size);
 void ChanFree(VMChannel *c);

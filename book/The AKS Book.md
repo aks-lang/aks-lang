@@ -1,4 +1,4 @@
-# The AKS Programming Language Book
+﻿# The AKS Programming Language Book
 
 **Complete Developer Guide, Language Specification, Systems Manual & Standard Library Reference**
 
@@ -483,7 +483,7 @@ print(dec_val == hex_val && hex_val == bin_val); // true
 
 ### 2.3.2 Floating-Point Numbers (`float`)
 
-Floating-point numbers are 64-bit IEEE 754 double-precision floats (`double` in C), providing 53 bits of precision (~15–17 significant decimal digits).
+Floating-point numbers are 64-bit IEEE 754 double-precision floats (`double` in C), providing 53 bits of precision (~15â€“17 significant decimal digits).
 
 ```aks
 let standard_float = 3.14159;
@@ -498,7 +498,7 @@ print(scientific_notation);
 
 Booleans represent binary truth values (`true` and `false`).
 
-- **Truthiness in Conditionals**: In AKS conditional expressions (`if`, `while`), only `false` and `nil` are considered **falsy**. All other values—including the integer `0`, the float `0.0`, empty strings `""`, and empty arrays `[]`—evaluate to **truthy**.
+- **Truthiness in Conditionals**: In AKS conditional expressions (`if`, `while`), only `false` and `nil` are considered **falsy**. All other valuesâ€”including the integer `0`, the float `0.0`, empty strings `""`, and empty arrays `[]`â€”evaluate to **truthy**.
 
 ```aks
 let is_valid = true;
@@ -1958,7 +1958,7 @@ flowchart TD
    When function $A$ calls function $B$, $A$ depends transitively on $B$'s signature. If $B$'s return type or parameter list changes, $A$'s cache entry is automatically invalidated and re-typed, preventing subtle signature drift.
 
 3. **Performance Impact**:
-   Reduces iterative re-checking overhead from 800ms down to under 20ms—delivering a **50–80% speedup** on everyday development edit cycles.
+   Reduces iterative re-checking overhead from 800ms down to under 20msâ€”delivering a **50â€“80% speedup** on everyday development edit cycles.
 
 ---
 
@@ -4641,7 +4641,7 @@ flowchart TD
    - The native machine code runs directly on the CPU, and upon return, the VM synchronizes caller frame state (`task->framecount--`), restores instruction pointers (`ip`), and stores the result directly into caller destination slots (`task->stack[task->stacktop - 1]`).
 3. **Zero Linker Overhead & Executable Memory**:
    - Native code is emitted directly into memory pages allocated with `VirtualAlloc(..., PAGE_EXECUTE_READWRITE)` on Windows and `mprotect(..., PROT_READ | PROT_WRITE | PROT_EXEC)` on POSIX.
-   - Yields a **3–10x execution speedup** on numeric computing, vector transforms, and recursion.
+   - Yields a **3â€“10x execution speedup** on numeric computing, vector transforms, and recursion.
 
 ---
 
@@ -4675,7 +4675,7 @@ AKS parallel compilation distributes heavy compiler pipelines across worker thre
    ```
    Alternatively, set `AKSPARALLEL=1` or `AKS_JOBS=N` in the environment to enforce parallel compilation system-wide.
 4. **Scalability**:
-   Delivers a **2–4x compilation speedup** on multi-core developer workstations and CI runners.
+   Delivers a **2â€“4x compilation speedup** on multi-core developer workstations and CI runners.
 
 ---
 
@@ -4685,10 +4685,10 @@ To ensure high maintainability, rapid incremental compiler builds, and optimal C
 
 ```text
 src/
-├── vm.c              (12,786 LOC) Core VM state, stack manipulation, opcode loop
-├── vm_tasks.inc.c    (1,372 LOC)  Fiber scheduler, work-stealing deque, channels, mutexes
-├── vm_stdlib.inc.c   (23,357 LOC) Standard library dispatcher (ExecuteStdlib), SIMD, crypto
-└── vm_jit.inc.c      (1,335 LOC)  Tracing JIT trace synthesis, hot loops, native x64
+â”œâ”€â”€ vm.c              (12,786 LOC) Core VM state, stack manipulation, opcode loop
+â”œâ”€â”€ vm_tasks.inc.c    (1,372 LOC)  Fiber scheduler, work-stealing deque, channels, mutexes
+â”œâ”€â”€ vm_stdlib.inc.c   (23,357 LOC) Standard library dispatcher (ExecuteStdlib), SIMD, crypto
+â””â”€â”€ vm_jit.inc.c      (1,335 LOC)  Tracing JIT trace synthesis, hot loops, native x64
 ```
 
 - **Separation of Concerns**: Task scheduling, standard library execution, and dynamic JIT paths can be optimized and maintained without altering the core opcode dispatch loop.
@@ -5032,7 +5032,7 @@ main();
 
 ## 20.5 Conclusion & Next Steps
 
-You have completed the comprehensive guide to the AKS programming language. You now possess the foundational and systems knowledge to build ultra-fast, safe, and maintainable software using AKS—from high-level web services to bare-metal OS kernels, high-performance cryptography, SIMD numeric computing, and distributed networks.
+You have completed the comprehensive guide to the AKS programming language. You now possess the foundational and systems knowledge to build ultra-fast, safe, and maintainable software using AKSâ€”from high-level web services to bare-metal OS kernels, high-performance cryptography, SIMD numeric computing, and distributed networks.
 
 Happy systems programming in AKS!
 
@@ -5122,6 +5122,14 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `MatrixLuRaw` | `MatrixLuRaw(A, n: int)` | `struct` | In-place LU factorization with permutation vector. |
 | `MatrixCholeskyRaw`| `MatrixCholeskyRaw(A, n: int)` | `[float]` | Cholesky decomposition $L L^T$ for positive-definite matrices. |
 | `MatrixInverseRaw` | `MatrixInverseRaw(A, n: int)` | `[float]` | Computes matrix inverse $A^{-1}$. |
+| `Math.Clamp` / `clamp` | `Math.Clamp(val, min, max)` | `any` | Restricts value within `[min, max]` interval. |
+| `Math.Lerp` / `lerp` | `Math.Lerp(a, b, t: float)` | `float` | Linear interpolation between $a$ and $b$ by weight $t$. |
+| `Math.Mean` / `Mean` | `Math.Mean(arr: [float])` | `float` | Computes arithmetic mean of dataset. |
+| `Math.Median` / `Median` | `Math.Median(arr: [float])` | `float` | Returns median value of dataset. |
+| `Math.Variance` / `Variance` | `Math.Variance(arr: [float])` | `float` | Computes sample variance of dataset. |
+| `Math.StdDev` / `StdDev` | `Math.StdDev(arr: [float])` | `float` | Computes standard deviation $\sigma$. |
+| `Math.Quantile` / `Quantile` | `Math.Quantile(arr, q: float)` | `float` | Computes $q$-quantile ($0.0 \le q \le 1.0$) with linear interpolation. |
+| `Math.Mode` / `Mode` | `Math.Mode(arr: [any])` | `any` | Returns most frequently occurring element in collection. |
 
 ---
 
@@ -5148,7 +5156,12 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `trim` | `trim(s: str)` | `str` | Trims leading and trailing whitespace. |
 | `trim_start` | `trim_start(s: str)` | `str` | Trims leading whitespace. |
 | `trim_end` | `trim_end(s: str)` | `str` | Trims trailing whitespace. |
-| `repeat_str` | `repeat_str(s: str, count: int)` | `str` | Repeats string `count` times. |
+| `repeat_str` / `repeat` | `repeat_str(s: str, count: int)` | `str` | Repeats string `count` times. |
+| `insert_at` | `insert_at(arr, idx, item)` | `nil` | Inserts element at index `idx` (alias for `insert`). |
+| `remove_at` | `remove_at(arr, idx)` | `any` | Removes and returns element at index `idx` (alias for `remove`). |
+| `LRUCache` | `LRUCache(capacity: int)` | `LRUCache` | Least Recently Used cache (`.Put(k, v)`, `.Get(k)`, `.Has(k)`, `.Remove(k)`, `.Keys()`, `.Size()`, `.Clear()`). |
+| `BitSet` | `BitSet(size: int)` | `BitSet` | Dynamic bitset (`.Set(b)`, `.Clear(b)`, `.Get(b)`, `.Toggle(b)`, `.CountOnes()`, `.ToArray()`, `.And()`, `.Or()`, `.Xor()`, `.Not()`). |
+| `Logger` | `Logger(name, min_lvl, fmt)` | `Logger` | Multi-level diagnostic logger (`.Debug()`, `.Info()`, `.Warn()`, `.Error()`, `.Fatal()`, `.SetLevel()`, `.SetFormat()`). |
 | `ToJson` | `ToJson(val: any)` | `str` | Serializes any primitive, struct, array, or map to JSON string. |
 | `FromJson` | `FromJson(json: str)` | `any` | Deserializes JSON string into native values/maps/arrays. |
 | `CancellationToken` | `CancellationToken()` | `CancellationToken` | Cooperative task cancellation token (`.Cancel()`, `.IsCancellationRequested()`, `.Register()`). |
@@ -5278,8 +5291,10 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `IcmpPingSendC` | `IcmpPingSendC(ip_str, timeout_ms)`| `bool` | Sends ICMP IPv4 Echo Request ping. |
 | `Icmp6PingSendC` | `Icmp6PingSendC(ipv6_str, timeout_ms)`| `bool` | Sends ICMP IPv6 Echo Request ping. |
 | `WinHttpOpenC` | `WinHttpOpenC(user_agent)` | `handle` | Opens Windows WinHTTP session handle. |
-| `WinHttpConnectC` | `WinHttpConnectC(sess, host, port)`| `handle` | Establishes WinHTTP connection. |
 | `WinHttpSendRequestC`| `WinHttpSendRequestC(conn, verb, path, body)`| `struct` | Sends HTTPS request and reads response body. |
+| `HttpServer` | `HttpServer(port: int)` | `HttpServer` | Async HTTP server with routing (`.Get()`, `.Post()`, `.Put()`, `.Delete()`, `.Use()`, `.Static()`). |
+| `Response` | `Response.Text() / .Json() / .Html()` | `HttpResponseObj` | Standard HTTP response builder with status code and headers. |
+| `HttpClient` / `Http` | `Http.Get(url) / Http.Post(url, h, b)` | `HttpResponseObj` | Async HTTP client (`.get(url)`, `.post(url, headers, body)`). |
 
 ---
 
@@ -5332,6 +5347,17 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `ZipArchiveCreateC` | `ZipArchiveCreateC(zip_path, files)` | `bool` | Creates PKZIP standard archive containing listed files or struct records. |
 | `ZipArchiveListC` | `ZipArchiveListC(zip_path)` | `[str]` | Lists file entry paths stored within a ZIP archive. |
 | `ZipArchiveExtractC` | `ZipArchiveExtractC(zip_path, dest_dir)` | `int` | Extracts all member files from ZIP archive to target directory. |
+| `File.Open` | `File.Open(path, mode)` | `File` | Opens file stream (`.ReadLine()`, `.ReadBytes()`, `.Write()`, `.Seek()`, `.Close()`). |
+| `File.ReadAllText` | `File.ReadAllText(path)` | `str` | Reads entire file into string. |
+| `File.WriteAllText` | `File.WriteAllText(path, text)` | `bool` | Atomically writes text string to file. |
+| `File.ReadLines` | `File.ReadLines(path)` | `[str]` | Reads file into array of lines. |
+| `File.WriteAllLines` | `File.WriteAllLines(path, lines)` | `bool` | Writes array of lines to file. |
+| `File.Exists` | `File.Exists(path)` | `bool` | Returns true if file exists on disk. |
+| `date_utc` | `date_utc(ts, fmt: str)` | `str` | Formats timestamp according to strftime format in UTC. |
+| `DateComponentsUtc` | `DateComponentsUtc(ts)` | `DateParts` | Returns UTC struct with `.year`, `.month`, `.day`, `.hour`, `.minute`, `.second`. |
+| `DateComponentsLocal` | `DateComponentsLocal(ts)` | `DateParts` | Returns local timezone struct with date and time components. |
+| `DateTime` | `DateTime(ts, is_utc: bool)` | `DateTime` | Datetime struct (`.Year()`, `.Month()`, `.Day()`, `.Format()`, `.ToIsoString()`). |
+| `DateTimeNowUtc` | `DateTimeNowUtc()` | `DateTime` | Returns current UTC datetime object. |
 
 ---
 
@@ -5411,6 +5437,9 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `ArenaReset` | `ArenaReset(arena)` | `bool` | Native C stdlib: Resets arena allocations and active count to 0. |
 | `ArenaAllocCount` | `ArenaAllocCount(arena)` | `int` | Native C stdlib: Queries active object count within target arena. |
 | `ArenaAllocatedBytes` | `ArenaAllocatedBytes(arena)` | `int` | Native C stdlib: Queries total bytes consumed by target arena. |
+| `Task.Delay` / `TaskDelay` | `Task.Delay(ms: int)` | `task` | Spawns background timer task completing after `ms` milliseconds. |
+| `Task.WhenAll` / `TaskWhenAll` | `Task.WhenAll(tasks: [task])` | `[any]` | Synchronously waits for all tasks in array and returns array of results. |
+| `Task.WhenAny` / `TaskWhenAny` | `Task.WhenAny(tasks: [task])` | `{index, value}` | Returns `{index, value}` of the first completed task from tasks array. |
 
 ---
 
@@ -5513,7 +5542,6 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `clamp` | `clamp(val, low, high)` | `num` | Clamps numeric value to inclusive $[low, high]$ bounds. |
 
 ---
-
 # Appendix B: Virtual Machine Instruction Set & Opcode Reference
 
 This appendix details the complete Bytecode Instruction Set Architecture (ISA) implemented by the AKS stack/register-hybrid virtual machine (`src/vm.c`) and generated by the bytecode compiler (`src/compiler.c`), defined in [`include/opcode.h`](file:///c:/Users/winsiderss/Downloads/aks-lang/include/opcode.h).

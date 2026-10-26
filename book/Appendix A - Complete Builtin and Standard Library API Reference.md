@@ -82,6 +82,14 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `MatrixLuRaw` | `MatrixLuRaw(A, n: int)` | `struct` | In-place LU factorization with permutation vector. |
 | `MatrixCholeskyRaw`| `MatrixCholeskyRaw(A, n: int)` | `[float]` | Cholesky decomposition $L L^T$ for positive-definite matrices. |
 | `MatrixInverseRaw` | `MatrixInverseRaw(A, n: int)` | `[float]` | Computes matrix inverse $A^{-1}$. |
+| `Math.Clamp` / `clamp` | `Math.Clamp(val, min, max)` | `any` | Restricts value within `[min, max]` interval. |
+| `Math.Lerp` / `lerp` | `Math.Lerp(a, b, t: float)` | `float` | Linear interpolation between $a$ and $b$ by weight $t$. |
+| `Math.Mean` / `Mean` | `Math.Mean(arr: [float])` | `float` | Computes arithmetic mean of dataset. |
+| `Math.Median` / `Median` | `Math.Median(arr: [float])` | `float` | Returns median value of dataset. |
+| `Math.Variance` / `Variance` | `Math.Variance(arr: [float])` | `float` | Computes sample variance of dataset. |
+| `Math.StdDev` / `StdDev` | `Math.StdDev(arr: [float])` | `float` | Computes standard deviation $\sigma$. |
+| `Math.Quantile` / `Quantile` | `Math.Quantile(arr, q: float)` | `float` | Computes $q$-quantile ($0.0 \le q \le 1.0$) with linear interpolation. |
+| `Math.Mode` / `Mode` | `Math.Mode(arr: [any])` | `any` | Returns most frequently occurring element in collection. |
 
 ---
 
@@ -108,7 +116,12 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `trim` | `trim(s: str)` | `str` | Trims leading and trailing whitespace. |
 | `trim_start` | `trim_start(s: str)` | `str` | Trims leading whitespace. |
 | `trim_end` | `trim_end(s: str)` | `str` | Trims trailing whitespace. |
-| `repeat_str` | `repeat_str(s: str, count: int)` | `str` | Repeats string `count` times. |
+| `repeat_str` / `repeat` | `repeat_str(s: str, count: int)` | `str` | Repeats string `count` times. |
+| `insert_at` | `insert_at(arr, idx, item)` | `nil` | Inserts element at index `idx` (alias for `insert`). |
+| `remove_at` | `remove_at(arr, idx)` | `any` | Removes and returns element at index `idx` (alias for `remove`). |
+| `LRUCache` | `LRUCache(capacity: int)` | `LRUCache` | Least Recently Used cache (`.Put(k, v)`, `.Get(k)`, `.Has(k)`, `.Remove(k)`, `.Keys()`, `.Size()`, `.Clear()`). |
+| `BitSet` | `BitSet(size: int)` | `BitSet` | Dynamic bitset (`.Set(b)`, `.Clear(b)`, `.Get(b)`, `.Toggle(b)`, `.CountOnes()`, `.ToArray()`, `.And()`, `.Or()`, `.Xor()`, `.Not()`). |
+| `Logger` | `Logger(name, min_lvl, fmt)` | `Logger` | Multi-level diagnostic logger (`.Debug()`, `.Info()`, `.Warn()`, `.Error()`, `.Fatal()`, `.SetLevel()`, `.SetFormat()`). |
 | `ToJson` | `ToJson(val: any)` | `str` | Serializes any primitive, struct, array, or map to JSON string. |
 | `FromJson` | `FromJson(json: str)` | `any` | Deserializes JSON string into native values/maps/arrays. |
 | `CancellationToken` | `CancellationToken()` | `CancellationToken` | Cooperative task cancellation token (`.Cancel()`, `.IsCancellationRequested()`, `.Register()`). |
@@ -238,8 +251,10 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `IcmpPingSendC` | `IcmpPingSendC(ip_str, timeout_ms)`| `bool` | Sends ICMP IPv4 Echo Request ping. |
 | `Icmp6PingSendC` | `Icmp6PingSendC(ipv6_str, timeout_ms)`| `bool` | Sends ICMP IPv6 Echo Request ping. |
 | `WinHttpOpenC` | `WinHttpOpenC(user_agent)` | `handle` | Opens Windows WinHTTP session handle. |
-| `WinHttpConnectC` | `WinHttpConnectC(sess, host, port)`| `handle` | Establishes WinHTTP connection. |
 | `WinHttpSendRequestC`| `WinHttpSendRequestC(conn, verb, path, body)`| `struct` | Sends HTTPS request and reads response body. |
+| `HttpServer` | `HttpServer(port: int)` | `HttpServer` | Async HTTP server with routing (`.Get()`, `.Post()`, `.Put()`, `.Delete()`, `.Use()`, `.Static()`). |
+| `Response` | `Response.Text() / .Json() / .Html()` | `HttpResponseObj` | Standard HTTP response builder with status code and headers. |
+| `HttpClient` / `Http` | `Http.Get(url) / Http.Post(url, h, b)` | `HttpResponseObj` | Async HTTP client (`.get(url)`, `.post(url, headers, body)`). |
 
 ---
 
@@ -292,6 +307,17 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `ZipArchiveCreateC` | `ZipArchiveCreateC(zip_path, files)` | `bool` | Creates PKZIP standard archive containing listed files or struct records. |
 | `ZipArchiveListC` | `ZipArchiveListC(zip_path)` | `[str]` | Lists file entry paths stored within a ZIP archive. |
 | `ZipArchiveExtractC` | `ZipArchiveExtractC(zip_path, dest_dir)` | `int` | Extracts all member files from ZIP archive to target directory. |
+| `File.Open` | `File.Open(path, mode)` | `File` | Opens file stream (`.ReadLine()`, `.ReadBytes()`, `.Write()`, `.Seek()`, `.Close()`). |
+| `File.ReadAllText` | `File.ReadAllText(path)` | `str` | Reads entire file into string. |
+| `File.WriteAllText` | `File.WriteAllText(path, text)` | `bool` | Atomically writes text string to file. |
+| `File.ReadLines` | `File.ReadLines(path)` | `[str]` | Reads file into array of lines. |
+| `File.WriteAllLines` | `File.WriteAllLines(path, lines)` | `bool` | Writes array of lines to file. |
+| `File.Exists` | `File.Exists(path)` | `bool` | Returns true if file exists on disk. |
+| `date_utc` | `date_utc(ts, fmt: str)` | `str` | Formats timestamp according to strftime format in UTC. |
+| `DateComponentsUtc` | `DateComponentsUtc(ts)` | `DateParts` | Returns UTC struct with `.year`, `.month`, `.day`, `.hour`, `.minute`, `.second`. |
+| `DateComponentsLocal` | `DateComponentsLocal(ts)` | `DateParts` | Returns local timezone struct with date and time components. |
+| `DateTime` | `DateTime(ts, is_utc: bool)` | `DateTime` | Datetime struct (`.Year()`, `.Month()`, `.Day()`, `.Format()`, `.ToIsoString()`). |
+| `DateTimeNowUtc` | `DateTimeNowUtc()` | `DateTime` | Returns current UTC datetime object. |
 
 ---
 
@@ -371,6 +397,9 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `ArenaReset` | `ArenaReset(arena)` | `bool` | Native C stdlib: Resets arena allocations and active count to 0. |
 | `ArenaAllocCount` | `ArenaAllocCount(arena)` | `int` | Native C stdlib: Queries active object count within target arena. |
 | `ArenaAllocatedBytes` | `ArenaAllocatedBytes(arena)` | `int` | Native C stdlib: Queries total bytes consumed by target arena. |
+| `Task.Delay` / `TaskDelay` | `Task.Delay(ms: int)` | `task` | Spawns background timer task completing after `ms` milliseconds. |
+| `Task.WhenAll` / `TaskWhenAll` | `Task.WhenAll(tasks: [task])` | `[any]` | Synchronously waits for all tasks in array and returns array of results. |
+| `Task.WhenAny` / `TaskWhenAny` | `Task.WhenAny(tasks: [task])` | `{index, value}` | Returns `{index, value}` of the first completed task from tasks array. |
 
 ---
 
