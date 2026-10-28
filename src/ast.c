@@ -3420,6 +3420,10 @@ Node *NodeDceOpt(Node *n) {
                     continue;
                 }
                 if (stmt->type == NVARDECL || stmt->type == NCONSTDECL) {
+                    if (n->type == NPROGRAM) {
+                        n->block.stmts[newcount++] = stmt;
+                        continue;
+                    }
                     const char *varname = stmt->decl.name;
                     int refs = 0;
                     for (int j = i + 1; j < n->block.count; j++) {

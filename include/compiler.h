@@ -332,8 +332,14 @@ typedef struct {
     int parallel_compilation;
     int contract_check;
     int debug_build;
-    /* Const variable tracking for immutability enforcement */
+    /* Const variable tracking for immutability enforcement and constant folding */
     char const_globals[512][128];
+    struct {
+        int kind; // 0=none, 1=int, 2=float, 3=str, 4=bool, 5=null
+        int64_t ival;
+        double fval;
+        char sval[128];
+    } const_vals[512];
     int  const_global_count;
 } Compiler;
 

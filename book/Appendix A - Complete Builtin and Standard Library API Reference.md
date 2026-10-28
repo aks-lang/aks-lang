@@ -498,6 +498,18 @@ This appendix provides an exhaustive, categorized reference for all built-in fun
 | `array_contains` | `array_contains(arr, val)` | `bool` | Checks if value exists in array. |
 | `abs` | `abs(x: num)` | `num` | Absolute value of integer or float. |
 | `min` | `min(a: num, b: num)` | `num` | Minimum of two numbers. |
-| `max` | `max(a: num, b: num)` | `num` | Maximum of two numbers. |
 | `clamp` | `clamp(val, low, high)` | `num` | Clamps numeric value to inclusive $[low, high]$ bounds. |
+
+---
+
+## A.14 Modern Language Ergonomics & Tooling
+
+| Feature / Syntax | Example | Description |
+| :--- | :--- | :--- |
+| **Top-Level `const`** | `const MAX_RETRIES = 5;` | Module-level immutable constant, accessible across all functions, inlined at compile time with zero runtime overhead. |
+| **Namespace Operator (`::`)** | `Math::Clamp(val, 0, 10)` | Resolves static functions and namespaced methods across types and modules (`Type::Method(...)`). |
+| **Error Propagation (`?`)** | `let val = result?;` | Postfix unwrapping operator for `Result` and `Option`; unwraps `Ok`/`Some` or early-returns `Err`/`None`. |
+| **Pattern Matching (`match`)** | `match (val) { case 1 => { ... } default => { ... } }` | Native branching over scalar values, strings, and enum discriminants with clean syntax. |
+| **HTML Doc Generator** | `aks doc source.aks output.html` | Generates a dark-mode styled HTML documentation page for functions, structs, enums, and constants. |
+
 

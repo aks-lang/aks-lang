@@ -1298,6 +1298,31 @@ static int ResolveGlobal(Compiler *c, const char *name, int line) {
             return i;
         }
     }
+    if (strstr(resolved_name, "::")) {
+        char dot_name[256];
+        size_t len = strlen(resolved_name);
+        if (len < sizeof(dot_name)) {
+            char *d = dot_name;
+            for (size_t s = 0; s < len; s++) {
+                if (resolved_name[s] == ':' && s + 1 < len && resolved_name[s+1] == ':') {
+                    *d++ = '.';
+                    s++;
+                } else {
+                    *d++ = resolved_name[s];
+                }
+            }
+            *d = '\0';
+            for (int i = 0; i < c->fncount; i++) {
+                if (c->fns[i] && strcmp(c->fns[i]->name, dot_name) == 0) {
+                    if (c->fns[i]->is_lazy_stub) {
+                        LoadLazyModule(c, c->fns[i]->file_name);
+                    }
+                    if (line > 0) CheckSymbolVisibility(c, dot_name, line);
+                    return i;
+                }
+            }
+        }
+    }
     return -1;
 }
 
@@ -2732,10 +2757,48 @@ static void EmitExpr(Compiler *c, Node *n) {
                     ChunkWrite(ch,OPPUSHFN,n->line);
                     ChunkWriteU16(ch,(uint16_t)fnid,n->line);
                 } else {
-                    // resolve as global variable
-                    ChunkWrite(ch,OPLOADGLOBAL,n->line);
-                    int gsid=AddStr(c,n->sval);
-                    ChunkWriteU16(ch,(uint16_t)gsid,n->line);
+                    int is_const_folded = 0;
+                    for (int gi = 0; gi < c->const_global_count; gi++) {
+                        if (strcmp(c->const_globals[gi], n->sval) == 0 && c->const_vals[gi].kind != 0) {
+                            switch (c->const_vals[gi].kind) {
+                                case 1: // int
+                                    ChunkWrite(ch, OPPUSHINT, n->line);
+                                    ChunkWriteI64(ch, c->const_vals[gi].ival, n->line);
+                                    is_const_folded = 1;
+                                    break;
+                                case 2: // float
+                                    ChunkWrite(ch, OPPUSHFLOAT, n->line);
+                                    ChunkWriteF64(ch, c->const_vals[gi].fval, n->line);
+                                    is_const_folded = 1;
+                                    break;
+                                case 3: { // str
+                                    int sid = AddStr(c, c->const_vals[gi].sval);
+                                    ChunkWrite(ch, OPPUSHSTR, n->line);
+                                    ChunkWriteU16(ch, (uint16_t)sid, n->line);
+                                    is_const_folded = 1;
+                                    break;
+                                }
+                                case 4: // bool
+                                    ChunkWrite(ch, OPPUSHBOOL, n->line);
+                                    ChunkWrite(ch, c->const_vals[gi].ival ? 1 : 0, n->line);
+                                    is_const_folded = 1;
+                                    break;
+                                case 5: // null
+                                    ChunkWrite(ch, OPPUSHNULL, n->line);
+                                    is_const_folded = 1;
+                                    break;
+                                default:
+                                    break;
+                            }
+                            if (is_const_folded) break;
+                        }
+                    }
+                    if (!is_const_folded) {
+                        // resolve as global variable
+                        ChunkWrite(ch,OPLOADGLOBAL,n->line);
+                        int gsid=AddStr(c,n->sval);
+                        ChunkWriteU16(ch,(uint16_t)gsid,n->line);
+                    }
                 }
             }
             break;
@@ -3161,7 +3224,7 @@ static void EmitExpr(Compiler *c, Node *n) {
                             }
                         }
                         if (fnid >= 0) {
-                            if (slot >= 0) {
+                            if (slot >= 0 && c->fns[fnid]->paramcount == n->call.argc + 1) {
                                 EmitExpr(c, n->call.callee->member.obj);
                                 for (int a = 0; a < n->call.argc; a++) {
                                     EmitExpr(c, n->call.args[a]);
@@ -5209,8 +5272,31 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                 isconst = 1;
             }
             if (isconst && n->decl.name && c->const_global_count < 512) {
-                strncpy(c->const_globals[c->const_global_count], n->decl.name, 127);
-                c->const_globals[c->const_global_count][127] = '\0';
+                int cgi = c->const_global_count;
+                strncpy(c->const_globals[cgi], n->decl.name, 127);
+                c->const_globals[cgi][127] = '\0';
+                c->const_vals[cgi].kind = 0;
+                c->const_vals[cgi].ival = 0;
+                c->const_vals[cgi].fval = 0.0;
+                c->const_vals[cgi].sval[0] = '\0';
+                if (n->decl.init) {
+                    if (n->decl.init->type == NINT) {
+                        c->const_vals[cgi].kind = 1;
+                        c->const_vals[cgi].ival = n->decl.init->ival;
+                    } else if (n->decl.init->type == NFLOAT) {
+                        c->const_vals[cgi].kind = 2;
+                        c->const_vals[cgi].fval = n->decl.init->fval;
+                    } else if (n->decl.init->type == NSTR && n->decl.init->sval) {
+                        c->const_vals[cgi].kind = 3;
+                        strncpy(c->const_vals[cgi].sval, n->decl.init->sval, 127);
+                        c->const_vals[cgi].sval[127] = '\0';
+                    } else if (n->decl.init->type == NBOOL && n->decl.init->sval) {
+                        c->const_vals[cgi].kind = 4;
+                        c->const_vals[cgi].ival = (strcmp(n->decl.init->sval, "true") == 0) ? 1 : 0;
+                    } else if (n->decl.init->type == NNULL) {
+                        c->const_vals[cgi].kind = 5;
+                    }
+                }
                 c->const_global_count++;
             }
             const char *expectedtype = n->decl.tname ? n->decl.tname : "any";
@@ -5264,6 +5350,13 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             }
             ChunkWrite(ch,OPSTORE,n->line);
             ChunkWriteU16(ch,(uint16_t)slot,n->line);
+            if (c->current == c->fns[0] && c->current->scopedepth == 0 && n->decl.name) {
+                ChunkWrite(ch, OPLOAD, n->line);
+                ChunkWriteU16(ch, (uint16_t)slot, n->line);
+                ChunkWrite(ch, OPSTOREGLOBAL, n->line);
+                int gsid = AddStr(c, n->decl.name);
+                ChunkWriteU16(ch, (uint16_t)gsid, n->line);
+            }
             break;
         }
         case NASSIGN:

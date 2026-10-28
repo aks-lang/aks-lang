@@ -976,7 +976,26 @@ void LearnDoc(const char *inputpath, const char *outputpath) {
         }
     }
 
-    fprintf(out, "# API Documentation: %s\n\n", inputpath);
+    int is_html = (outputpath && (strstr(outputpath, ".html") || strstr(outputpath, ".htm")));
+
+    if (is_html) {
+        fprintf(out, "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
+                     "  <meta charset=\"UTF-8\">\n"
+                     "  <title>API Documentation - %s</title>\n"
+                     "  <link href=\"https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Fira+Code:wght@400;500&display=swap\" rel=\"stylesheet\">\n"
+                     "  <style>\n"
+                     "    * { box-sizing: border-box; margin: 0; padding: 0; }\n"
+                     "    body { font-family: 'Outfit', sans-serif; background: #0b0f19; color: #f1f5f9; padding: 40px; line-height: 1.6; }\n"
+                     "    .container { max-width: 960px; margin: 0 auto; }\n"
+                     "    h1 { font-size: 32px; font-weight: 700; margin-bottom: 24px; background: linear-gradient(135deg, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }\n"
+                     "    .doc-card { background: #131d35; border: 1px solid #1e293b; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }\n"
+                     "    .decl { font-family: 'Fira Code', monospace; font-size: 16px; color: #38bdf8; font-weight: 600; margin-bottom: 12px; }\n"
+                     "    .doc { color: #cbd5e1; font-size: 14px; white-space: pre-wrap; }\n"
+                     "  </style>\n</head>\n<body>\n<div class=\"container\">\n"
+                     "<h1>API Documentation: %s</h1>\n", inputpath, inputpath);
+    } else {
+        fprintf(out, "# API Documentation: %s\n\n", inputpath);
+    }
 
     char *line = strtok(src, "\n");
     char docbuffer[2048] = "";
@@ -990,17 +1009,25 @@ void LearnDoc(const char *inputpath, const char *outputpath) {
         if (strncmp(line, "///", 3) == 0) {
             strcat(docbuffer, line + 3);
             strcat(docbuffer, "\n");
-        } else if (strncmp(line, "fn", 2) == 0 || strncmp(line, "struct", 6) == 0 || strncmp(line, "enum", 4) == 0 || strncmp(line, "trait", 5) == 0) {
+        } else if (strncmp(line, "fn", 2) == 0 || strncmp(line, "struct", 6) == 0 || strncmp(line, "enum", 4) == 0 || strncmp(line, "trait", 5) == 0 || strncmp(line, "const", 5) == 0) {
             if (strlen(docbuffer) > 0) {
-                fprintf(out, "### `%s`\n", line);
-                fprintf(out, "%s\n", docbuffer);
-                fprintf(out, "---\n\n");
+                if (is_html) {
+                    fprintf(out, "<div class=\"doc-card\">\n  <div class=\"decl\">%s</div>\n  <div class=\"doc\">%s</div>\n</div>\n", line, docbuffer);
+                } else {
+                    fprintf(out, "### `%s`\n", line);
+                    fprintf(out, "%s\n", docbuffer);
+                    fprintf(out, "---\n\n");
+                }
                 docbuffer[0] = '\0';
             }
         } else {
             docbuffer[0] = '\0';
         }
         line = strtok(NULL, "\n");
+    }
+
+    if (is_html) {
+        fprintf(out, "</div>\n</body>\n</html>\n");
     }
 
     if (outputpath) {

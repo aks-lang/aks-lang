@@ -382,18 +382,12 @@ fn test_math_utilities() {
 
 fn test_logger() {
     print("Testing Logger...");
-    let log_debug = 0;
-    let log_info = 1;
-    let log_warn = 2;
-    let log_error = 3;
-    let log_fatal = 4;
-
-    let logger = Logger("test-logger", log_warn, "text");
+    let logger = Logger("test-logger", LOG_WARN, "text");
     assert(logger.name == "test-logger", "logger name mismatch");
-    assert(logger.min_level == log_warn, "logger min_level mismatch");
+    assert(logger.min_level == LOG_WARN, "logger min_level mismatch");
 
-    logger.SetLevel(log_debug);
-    assert(logger.min_level == log_debug, "logger level updated");
+    logger.SetLevel(LOG_DEBUG);
+    assert(logger.min_level == LOG_DEBUG, "logger level updated");
     logger.SetFormat("json");
     assert(logger.format == "json", "logger format updated");
 
@@ -402,8 +396,10 @@ fn test_logger() {
     logger.Warn("warn message", null);
     logger.Error("error message", null);
 
-    assert(logger.DEBUG() == 0, "Logger.DEBUG mismatch");
-    assert(logger.INFO() == 1, "Logger.INFO mismatch");
+    assert(logger.DEBUG() == 0, "logger.DEBUG mismatch");
+    assert(logger.INFO() == 1, "logger.INFO mismatch");
+    assert(Logger.DEBUG() == 0, "Logger.DEBUG static mismatch");
+    assert(Logger::DEBUG() == 0, "Logger::DEBUG namespace mismatch");
     assert(logger.LevelName(0) == "DEBUG", "LevelName DEBUG mismatch");
     assert(logger.LevelName(1) == "INFO", "LevelName INFO mismatch");
     assert(LoggerLevelName(2) == "WARN", "LoggerLevelName WARN mismatch");
@@ -455,6 +451,81 @@ fn test_http_routing() {
     print("HttpServer routing: PASS");
 }
 
+const TEST_GLOBAL_CONST = 9999;
+const TEST_STRING_CONST = "aks_lang_v1";
+
+fn __helper_try_ok() {
+    let r = Result.Ok(42);
+    let val = r?;
+    return val * 2;
+}
+
+fn __helper_try_err() {
+    let r = Result.Err("something went wrong");
+    let val = r?;
+    return 100;
+}
+
+fn __helper_try_none() {
+    let o = Option.None();
+    let val = o?;
+    return 200;
+}
+
+fn __helper_try_some() {
+    let o = Option.Some(50);
+    let val = o?;
+    return val + 5;
+}
+
+fn test_error_propagation_and_match() {
+    print("Testing Error Propagation (?) and Pattern Matching (match)...");
+    
+    // Top-level const access inside functions
+    assert(TEST_GLOBAL_CONST == 9999, "Top-level const integer");
+    assert(TEST_STRING_CONST == "aks_lang_v1", "Top-level const string");
+    assert(LOG_DEBUG == 0, "Prelude LOG_DEBUG const");
+    assert(LOG_INFO == 1, "Prelude LOG_INFO const");
+    assert(LOG_WARN == 2, "Prelude LOG_WARN const");
+
+    // Static and :: namespace resolution
+    assert(Logger.DEBUG() == 0, "Logger.DEBUG() static method");
+    assert(Logger::DEBUG() == 0, "Logger::DEBUG() namespace syntax");
+    assert(Logger::INFO() == 1, "Logger::INFO() namespace syntax");
+    assert(Math::Clamp(15, 0, 10) == 10, "Math::Clamp namespace call");
+    assert(Math::Lerp(10.0, 20.0, 0.5) == 15.0, "Math::Lerp namespace call");
+    assert(Math::Mean([2.0, 4.0, 6.0]) == 4.0, "Math::Mean namespace call");
+
+    // ? error propagation operator
+    assert(__helper_try_ok() == 84, "try operator unwraps Ok");
+    let err_res = __helper_try_err();
+    assert(err_res != 100, "try operator early returns Err");
+    assert(__helper_try_some() == 55, "try operator unwraps Some");
+    let none_res = __helper_try_none();
+    assert(none_res != 200, "try operator early returns None");
+
+    // match pattern matching
+    let val = 2;
+    let matched_str = "";
+    match (val) {
+        case 1 => { matched_str = "one"; }
+        case 2 => { matched_str = "two"; }
+        default => { matched_str = "other"; }
+    }
+    assert(matched_str == "two", "match statement integer");
+
+    let status = "ready";
+    let status_code = 0;
+    match (status) {
+        case "init" => { status_code = 1; }
+        case "ready" => { status_code = 2; }
+        default => { status_code = -1; }
+    }
+    assert(status_code == 2, "match statement string");
+
+    print("Error Propagation & Match: PASS");
+}
+
 fn main() {
     print("Running Language & Standard Library Improvements Suite...");
     test_string_utilities();
@@ -470,6 +541,7 @@ fn main() {
     test_logger();
     test_task_async();
     test_http_routing();
+    test_error_propagation_and_match();
     print("All language improvements verified successfully 100%!");
 }
 
