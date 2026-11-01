@@ -27984,7 +27984,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
-  if (strcmp(name, "MmioWrite64") == 0) {
+  if (strcmp(name, "MmioWrite64") == 0 || strcmp(name, "VolatileWrite") == 0) {
     if (argc < 2) return -1;
     uint64_t val = (uint64_t)ValToInt(POP());
     uintptr_t addr = (uintptr_t)ValToInt(POP());
@@ -27993,7 +27993,7 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
-  if (strcmp(name, "MmioRead64") == 0) {
+  if (strcmp(name, "MmioRead64") == 0 || strcmp(name, "VolatileRead") == 0) {
     if (argc < 1) return -1;
     uintptr_t addr = (uintptr_t)ValToInt(POP());
     uint64_t val = *(volatile uint64_t *)addr;
@@ -28074,14 +28074,14 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
-  if (strcmp(name, "InPort8") == 0 || strcmp(name, "InPort16") == 0 || strcmp(name, "InPort32") == 0) {
+  if (strcmp(name, "InPort8") == 0 || strcmp(name, "InPortByte") == 0 || strcmp(name, "InPort16") == 0 || strcmp(name, "InPort32") == 0) {
     if (argc < 1) return -1;
     (void)POP();
     PUSH(ValInt(0));
     *stacktopptr = stacktop;
     return 1;
   }
-  if (strcmp(name, "OutPort8") == 0 || strcmp(name, "OutPort16") == 0 || strcmp(name, "OutPort32") == 0) {
+  if (strcmp(name, "OutPort8") == 0 || strcmp(name, "OutPortByte") == 0 || strcmp(name, "OutPort16") == 0 || strcmp(name, "OutPort32") == 0) {
     if (argc < 2) return -1;
     (void)POP();
     (void)POP();

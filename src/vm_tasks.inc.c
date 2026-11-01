@@ -1182,6 +1182,7 @@ void TranslateToRegister(VM *vm, FnProto *fn) {
       insts[count].src1 = reg;
       insts[count].targetip = target_offset;
       count++;
+      SIMSPOP();
       break;
     }
     case OPRANGE: {

@@ -1121,9 +1121,10 @@ const char *ValTypeName(ValType t) {
 AKSValue ValTypeof(AKSValue v) {
     if (ValKind(v) == VALSTRUCT) {
         const char *tname = ValToObj(v)->typename;
-        const char *dot = strchr(tname, '.');
-        if (dot) {
-            size_t len = dot - tname;
+        const char *sep = strstr(tname, "::");
+        if (!sep) sep = strchr(tname, '.');
+        if (sep) {
+            size_t len = sep - tname;
             char *buf = malloc(len + 1);
             memcpy(buf, tname, len);
             buf[len] = '\0';

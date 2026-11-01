@@ -137,6 +137,61 @@ static int AksRxMatchLen(const char *p, const char *t, int *out_len) {
     if (AksRxMatchLen(p + 5, t + 1, &sub)) { *out_len = sub + 1; return 1; }
     return 0;
   }
+  if (p[0] == '\\' && p[1] == 'd' && p[2] == '+') {
+    int count = 0;
+    const char *cur = t;
+    while (*cur >= '0' && *cur <= '9') { cur++; count++; }
+    if (count == 0) return 0;
+    int sub = 0;
+    if (AksRxMatchLen(p + 3, cur, &sub)) { *out_len = count + sub; return 1; }
+    return 0;
+  }
+  if (p[0] == '\\' && p[1] == 'd' && p[2] == '*') {
+    int count = 0;
+    const char *cur = t;
+    while (*cur >= '0' && *cur <= '9') { cur++; count++; }
+    for (const char *cand = cur; cand >= t; cand--) {
+      int sub = 0;
+      if (AksRxMatchLen(p + 3, cand, &sub)) { *out_len = (int)(cand - t) + sub; return 1; }
+    }
+    return 0;
+  }
+  if (p[0] == '\\' && p[1] == 'd') {
+    if (*t < '0' || *t > '9') return 0;
+    int sub = 0;
+    if (AksRxMatchLen(p + 2, t + 1, &sub)) { *out_len = sub + 1; return 1; }
+    return 0;
+  }
+  if (p[0] == '\\' && p[1] == 's' && p[2] == '+') {
+    int count = 0;
+    const char *cur = t;
+    while (*cur == ' ' || *cur == '\t' || *cur == '\n' || *cur == '\r') { cur++; count++; }
+    if (count == 0) return 0;
+    int sub = 0;
+    if (AksRxMatchLen(p + 3, cur, &sub)) { *out_len = count + sub; return 1; }
+    return 0;
+  }
+  if (p[0] == '\\' && p[1] == 's') {
+    if (*t != ' ' && *t != '\t' && *t != '\n' && *t != '\r') return 0;
+    int sub = 0;
+    if (AksRxMatchLen(p + 2, t + 1, &sub)) { *out_len = sub + 1; return 1; }
+    return 0;
+  }
+  if (p[0] == '\\' && p[1] == 'w' && p[2] == '+') {
+    int count = 0;
+    const char *cur = t;
+    while ((*cur >= 'a' && *cur <= 'z') || (*cur >= 'A' && *cur <= 'Z') || (*cur >= '0' && *cur <= '9') || *cur == '_') { cur++; count++; }
+    if (count == 0) return 0;
+    int sub = 0;
+    if (AksRxMatchLen(p + 3, cur, &sub)) { *out_len = count + sub; return 1; }
+    return 0;
+  }
+  if (p[0] == '\\' && p[1] == 'w') {
+    if (!((*t >= 'a' && *t <= 'z') || (*t >= 'A' && *t <= 'Z') || (*t >= '0' && *t <= '9') || *t == '_')) return 0;
+    int sub = 0;
+    if (AksRxMatchLen(p + 2, t + 1, &sub)) { *out_len = sub + 1; return 1; }
+    return 0;
+  }
   if (p[1] == '+') {
     char ch = p[0];
     if (*t == 0 || (ch != '.' && *t != ch)) return 0;

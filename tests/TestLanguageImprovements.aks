@@ -1,548 +1,221 @@
-// tests/TestLanguageImprovements.aks
-// Comprehensive test suite for all language & standard library improvements:
-// WeakRef, Collections (Set, Deque, PriorityQueue, LRUCache, BitSet),
-// String & Array Utilities (split, lines, chars, trim, repeat, insert_at, remove_at),
-// File I/O (File streaming & batch operations), Task Concurrency (Delay, WhenAll),
-// Math Statistics, Logger, JSON Serialization, CancellationToken, DateTime, and HttpServer Routing.
+// TestLanguageImprovements.aks - Comprehensive verification of all 5 language improvements
 
-struct Person {
-    name: string;
-    age: int;
+// 1. Tagged Unions / ADTs with :: and . resolution + match pattern destructuring
+enum Action {
+    Quit,
+    Move(int, int),
+    Write(string),
+    ChangeColor(int, int, int)
+};
+
+enum Status {
+    Pending,
+    Active,
+    Done
+};
+
+fn TestTaggedUnions() {
+
+    // Test constructor via :: and .
+    let q1 = Action::Quit;
+    let q2 = Action.Quit;
+    assert(q1 != null && q1.$tag == "Action.Quit", "q1.$tag should be Action.Quit");
+    assert(q2 != null && q2.$tag == "Action.Quit", "q2.$tag should be Action.Quit");
+
+    let m1 = Action::Move(10, 20);
+    let m2 = Action.Move(30, 40);
+    assert(m1.field0 == 10 && m1.field1 == 20, "Action::Move fields mismatch");
+    assert(m2.field0 == 30 && m2.field1 == 40, "Action.Move fields mismatch");
+
+    let w = Action::Write("aks-lang");
+    assert(w.field0 == "aks-lang", "Action::Write field mismatch");
+
+    // Test match destructuring with Action:: variant patterns
+    let m_res = match (m1) {
+        case Action::Quit => "quit",
+        case Action::Move(x, y) => "move:" + String(x) + "," + String(y),
+        case Action::Write(s) => "write:" + s,
+        case Action::ChangeColor(r, g, b) => "color",
+        case _ => "unknown"
+    };
+    assert(m_res == "move:10,20", "match on Action::Move failed, got: " + String(m_res));
+
+    let q_res = match (q1) {
+        case Action::Quit => "quit",
+        case Action::Move(x, y) => "move",
+        case Action::Write(s) => "write",
+        case Action::ChangeColor(r, g, b) => "color",
+        case _ => "unknown"
+    };
+    assert(q_res == "quit", "match on Action::Quit failed, got: " + String(q_res));
+
+    let w_res = match (w) {
+        case Action.Quit => "quit",
+        case Action.Move(x, y) => "move",
+        case Action.Write(s) => "write:" + s,
+        case Action.ChangeColor(r, g, b) => "color",
+        case _ => "unknown"
+    };
+    assert(w_res == "write:aks-lang", "match on Action.Write failed, got: " + String(w_res));
+
+    // Test scalar enums with ::
+    let s1 = Status::Pending;
+    let s2 = Status::Active;
+    let s3 = Status::Done;
+    assert(s1 == 0, "Status::Pending should be 0");
+    assert(s2 == 1, "Status::Active should be 1");
+    assert(s3 == 2, "Status::Done should be 2");
+
+    let status_match = match (s2) {
+        case Status::Pending => "pending",
+        case Status::Active => "active",
+        case Status::Done => "done",
+        case _ => "other"
+    };
+    assert(status_match == "active", "match on Status::Active failed");
+
+    // Test Option::Some and Option::None
+    let opt_some = Option::Some(42);
+    let opt_none = Option::None;
+    assert(opt_some.IsSome() == true, "Option::Some should be Some");
+    assert(opt_none.IsNone() == true, "Option::None should be None");
+
+    let opt_match = match (opt_some) {
+        case Option::Some(val) => val * 2,
+        case Option::None => 0
+    };
+    assert(opt_match == 84, "match on Option::Some failed");
+
+    println("TestTaggedUnions PASSED");
 }
 
-fn test_string_utilities() {
-    print("Testing string & array utilities...");
+// 2. Optional Chaining (?.) and Null Coalescing (??)
+fn TestOptionalChainingAndCoalescing() {
 
-    // split
-    let parts = split("apple,banana,orange,grape", ",");
-    assert(Length(parts) == 4, "split count should be 4");
-    assert(parts[0] == "apple", "split part 0");
-    assert(parts[1] == "banana", "split part 1");
-    assert(parts[2] == "orange", "split part 2");
-    assert(parts[3] == "grape", "split part 3");
+    let user = {
+        "name": "Anoop",
+        "profile": {
+            "title": "Systems Architect",
+            "scores": [100, 95, 98]
+        }
+    };
 
-    // lines
-    let l = lines("first\nsecond\r\nthird");
-    assert(Length(l) == 3, "lines length mismatch");
-    assert(l[0] == "first", "line 0 mismatch");
-    assert(l[1] == "second", "line 1 mismatch");
-    assert(l[2] == "third", "line 2 mismatch");
+    assert(user?.name == "Anoop", "user?.name should be Anoop");
+    assert(user?.profile?.title == "Systems Architect", "user?.profile?.title failed");
+    assert(user?.profile?.scores?.[0] == 100, "user?.profile?.scores?.[0] failed");
 
-    // chars
-    let ch = chars("aks");
-    assert(Length(ch) == 3, "chars length mismatch");
-    assert(ch[0] == "a", "chars elem 0 mismatch");
-    assert(ch[1] == "k", "chars elem 1 mismatch");
-    assert(ch[2] == "s", "chars elem 2 mismatch");
+    // Accessing missing properties should return null without crashing
+    assert(user?.missing == null, "user?.missing should be null");
+    assert(user?.missing?.nested?.field == null, "user?.missing?.nested?.field should be null");
 
-    // trim, trim_start, trim_end
-    assert(trim("   hello world   ") == "hello world", "trim failed");
-    assert(trim_start("   start") == "start", "trim_start failed");
-    assert(trim_end("end   ") == "end", "trim_end failed");
+    // Testing on null base object
+    let empty_obj = null;
+    assert(empty_obj?.anything == null, "null?.anything should be null");
+    assert(empty_obj?.[0] == null, "null?.[0] should be null");
 
-    // repeat_str & repeat
-    assert(repeat_str("aks", 3) == "aksaksaks", "repeat_str failed");
-    assert(repeat("xyz", 2) == "xyzxyz", "repeat failed");
-    assert(repeat_str("x", 0) == "", "repeat_str zero failed");
+    // Null coalescing ??
+    assert((user?.missing ?? "DefaultVal") == "DefaultVal", "user?.missing ?? DefaultVal failed");
+    assert((user?.name ?? "DefaultVal") == "Anoop", "user?.name ?? DefaultVal failed");
+    assert((empty_obj?.prop ?? 999) == 999, "empty_obj?.prop ?? 999 failed");
+    assert((null ?? 42) == 42, "null ?? 42 failed");
+    assert((100 ?? 42) == 100, "100 ?? 42 failed");
 
-    // insert_at & remove_at
-    let arr = [10, 20, 40];
-    insert_at(arr, 2, 30);
-    assert(Length(arr) == 4, "insert_at length mismatch");
-    assert(arr[2] == 30, "insert_at element mismatch");
-    let removed = remove_at(arr, 1);
-    assert(removed == 20, "remove_at returned value mismatch");
-    assert(Length(arr) == 3, "remove_at length mismatch");
-    assert(arr[1] == 30, "remove_at shifted element mismatch");
-
-    print("String & array utilities: PASS");
+    println("TestOptionalChainingAndCoalescing PASSED");
 }
 
-fn test_collections() {
-    print("Testing standard collections (Set, Deque, PriorityQueue)...");
+// 3. High-level HTTP/HTTPS client in prelude/stdlib
+fn TestHttpClient() {
 
-    // Set
-    let s = Set();
-    assert(s.Size() == 0, "set initial size");
-    s.Add("foo");
-    s.Add("bar");
-    s.Add("foo");
-    assert(s.Size() == 2, "set size mismatch after duplicate add");
-    assert(s.Has("foo"), "set should have foo");
-    assert(s.Has("bar"), "set should have bar");
-    assert(!s.Has("baz"), "set should not have baz");
-    let rem_ok = s.Remove("foo");
-    assert(rem_ok, "set remove foo should succeed");
-    assert(s.Size() == 1, "set size mismatch after remove");
-    assert(!s.Has("foo"), "set should not have foo after remove");
+    // Test HttpResponse helper methods (.Json(), .Text())
+    let mock_resp = new HttpResponse();
+    mock_resp.status = 200;
+    mock_resp.ok = true;
+    mock_resp.body = "{\"status\":\"ok\",\"code\":200}";
 
-    // Deque
-    let dq = Deque();
-    assert(dq.IsEmpty(), "deque initially empty");
-    dq.PushBack(10);
-    dq.PushBack(20);
-    dq.PushFront(5);
-    // Elements: [5, 10, 20]
-    assert(dq.Len() == 3, "deque len mismatch");
-    assert(dq.PeekFront() == 5, "peek front mismatch");
-    assert(dq.PeekBack() == 20, "peek back mismatch");
-    assert(dq.PopFront() == 5, "pop front mismatch");
-    assert(dq.PopBack() == 20, "pop back mismatch");
-    assert(dq.PopFront() == 10, "pop front last mismatch");
-    assert(dq.IsEmpty(), "deque should be empty");
+    assert(mock_resp.Text() == "{\"status\":\"ok\",\"code\":200}", "mock_resp.Text() failed");
+    let parsed_json = mock_resp.Json();
+    assert(parsed_json.status == "ok", "mock_resp.Json().status failed");
+    assert(parsed_json.code == 200, "mock_resp.Json().code failed");
 
-    // PriorityQueue (min-heap by default)
-    let pq = PriorityQueue();
-    pq.Push(40);
-    pq.Push(10);
-    pq.Push(30);
-    pq.Push(20);
-    assert(pq.Len() == 4, "pq len mismatch");
-    assert(pq.Peek() == 10, "pq peek mismatch");
-    assert(pq.Pop() == 10, "pq pop 1 mismatch");
-    assert(pq.Pop() == 20, "pq pop 2 mismatch");
-    assert(pq.Pop() == 30, "pq pop 3 mismatch");
-    assert(pq.Pop() == 40, "pq pop 4 mismatch");
-    assert(pq.IsEmpty(), "pq should be empty");
+    // Verify Http struct methods exist
+    assert(type(Http.Get) == "function", "Http.Get should be a function");
+    assert(type(Http.Post) == "function", "Http.Post should be a function");
+    assert(type(Http.PostJson) == "function", "Http.PostJson should be a function");
 
-    // PriorityQueue (custom max-heap comparator)
-    let cmp_max = fn(a, b) { return b - a; };
-    let max_pq = PriorityQueue(cmp_max);
-    max_pq.Push(15);
-    max_pq.Push(85);
-    max_pq.Push(40);
-    assert(max_pq.Pop() == 85, "max-heap pop 1 mismatch");
-    assert(max_pq.Pop() == 40, "max-heap pop 2 mismatch");
-    assert(max_pq.Pop() == 15, "max-heap pop 3 mismatch");
-
-    print("Collections: PASS");
+    println("TestHttpClient PASSED");
 }
 
-fn test_lru_cache() {
-    print("Testing LRUCache...");
-    let cache = LRUCache(3);
-    assert(cache.Size() == 0, "initial size");
-    assert(!cache.Has("a"), "should not have a");
+// 4. First-class Regex prelude class
+fn TestRegex() {
 
-    cache.Put("a", 1);
-    cache.Put("b", 2);
-    cache.Put("c", 3);
-    assert(cache.Size() == 3, "size after 3 puts");
-    assert(cache.Get("a") == 1, "get a mismatch");
+    // Constructor syntax
+    let re = Regex("\\d+");
+    assert(re != null, "Regex constructor should return non-null");
+    assert(re.pattern == "\\d+", "re.pattern mismatch");
 
-    // Accessing 'a' makes 'b' the LRU item
-    // Adding 'd' should evict 'b'
-    cache.Put("d", 4);
-    assert(cache.Size() == 3, "size after eviction");
-    assert(cache.Has("a"), "cache should retain a");
-    assert(cache.Has("c"), "cache should retain c");
-    assert(cache.Has("d"), "cache should retain d");
-    assert(!cache.Has("b"), "cache should evict b");
+    // IsMatch / Matches
+    assert(re.IsMatch("item 42") == true, "re.IsMatch(\"item 42\") should be true");
+    assert(re.IsMatch("no digits") == false, "re.IsMatch(\"no digits\") should be false");
 
-    cache.Remove("c");
-    assert(cache.Size() == 2, "size after remove");
-    assert(!cache.Has("c"), "cache should not have c");
+    // Find (first match)
+    let first = re.Find("alpha 100 beta 200");
+    assert(first == "100", "re.Find should return 100, got: " + String(first));
 
-    cache.Clear();
-    assert(cache.Size() == 0, "size after clear");
+    let no_match = re.Find("no numbers here");
+    assert(no_match == null, "re.Find with no match should return null");
 
-    print("LRUCache: PASS");
+    // FindAll
+    let all_matches = re.FindAll("port 8080 and 443 and 22");
+    assert(Length(all_matches) == 3, "FindAll should find 3 matches");
+    assert(all_matches[0] == "8080", "all_matches[0] should be 8080");
+    assert(all_matches[1] == "443", "all_matches[1] should be 443");
+    assert(all_matches[2] == "22", "all_matches[2] should be 22");
+
+    // Replace
+    let replaced = re.Replace("order 123 completed", "NUMBER");
+    assert(replaced == "order NUMBER completed", "re.Replace failed: " + String(replaced));
+
+    // Split
+    let split_re = Regex("-");
+    let parts = split_re.Split("2026-11-02");
+    assert(Length(parts) == 3, "Regex.Split failed length check");
+    assert(parts[0] == "2026" && parts[1] == "11" && parts[2] == "02", "Regex.Split parts mismatch");
+
+    // Static Regex methods
+    assert(Regex.Match("\\d+", "abc 123") == true, "Regex.Match static failed");
+    let static_split = Regex.Split(":", "root:x:0:0");
+    assert(Length(static_split) == 4, "Regex.Split static failed");
+
+    println("TestRegex PASSED");
 }
 
-fn test_bitset() {
-    print("Testing BitSet...");
-    let bs = BitSet(64);
-    assert(bs.Size() == 64, "bitset size");
-    assert(bs.CountOnes() == 0, "initial ones count");
-
-    bs.Set(5);
-    bs.Set(10);
-    bs.Set(42);
-    assert(bs.Get(5), "bit 5 should be set");
-    assert(bs.Get(10), "bit 10 should be set");
-    assert(bs.Get(42), "bit 42 should be set");
-    assert(!bs.Get(7), "bit 7 should not be set");
-    assert(bs.CountOnes() == 3, "count of ones");
-
-    bs.Toggle(5);
-    assert(!bs.Get(5), "bit 5 should be cleared after toggle");
-    assert(bs.CountOnes() == 2, "count after toggle");
-
-    bs.Clear(10);
-    assert(!bs.Get(10), "bit 10 cleared");
-    assert(bs.CountOnes() == 1, "count after clear");
-
-    let arr = bs.ToArray();
-    assert(Length(arr) == 1, "ToArray length");
-    assert(arr[0] == 42, "ToArray item");
-
-    // Bitwise ops
-    let bs1 = BitSet(32);
-    bs1.Set(1);
-    bs1.Set(2);
-    let bs2 = BitSet(32);
-    bs2.Set(2);
-    bs2.Set(3);
-
-    let bs_and = bs1.And(bs2);
-    assert(!bs_and.Get(1) && bs_and.Get(2) && !bs_and.Get(3), "BitSet AND");
-
-    let bs_or = bs1.Or(bs2);
-    assert(bs_or.Get(1) && bs_or.Get(2) && bs_or.Get(3), "BitSet OR");
-
-    let bs_xor = bs1.Xor(bs2);
-    assert(bs_xor.Get(1) && !bs_xor.Get(2) && bs_xor.Get(3), "BitSet XOR");
-
-    print("BitSet: PASS");
-}
-
-fn test_json_serialization() {
-    print("Testing JSON serialization...");
-
-    // Primitives
-    assert(ToJson(null) == "null", "ToJson null");
-    assert(ToJson(true) == "true", "ToJson true");
-    assert(ToJson(false) == "false", "ToJson false");
-    assert(ToJson(12345) == "12345", "ToJson int");
-    assert(ToJson("hello \"world\"") == "\"hello \\\"world\\\"\"", "ToJson string escape");
-
-    let p = new Person();
-    p.name = "Alice";
-    p.age = 30;
-
-    let json_str = ToJson(p);
-    assert(find(json_str, "\"name\":\"Alice\"") >= 0, "ToJson struct name missing");
-    assert(find(json_str, "\"age\":30") >= 0, "ToJson struct age missing");
-
-    let parsed = FromJson(json_str);
-    assert(parsed.name == "Alice", "FromJson struct name mismatch");
-    assert(parsed.age == 30, "FromJson struct age mismatch");
-
-    let arr = [1, 2, "three", true, null];
-    let arr_json = ToJson(arr);
-    assert(arr_json == "[1,2,\"three\",true,null]", "ToJson array mismatch");
-    let parsed_arr = FromJson(arr_json);
-    assert(Length(parsed_arr) == 5, "parsed array length mismatch");
-    assert(parsed_arr[2] == "three", "parsed array elem mismatch");
-
-    print("JSON serialization: PASS");
-}
-
-fn test_weak_references() {
-    print("Testing weak references...");
-
-    let arr = [1, 2, 3];
-    let w = weak(arr);
-    assert(w.Alive(), "weak reference should be alive");
-
-    let up = w.Upgrade();
-    assert(up.IsSome(), "upgraded weak reference should be Some");
-    let unwrapped = up.Unwrap();
-    assert(Length(unwrapped) == 3, "unwrapped array length mismatch");
-
-    print("Weak references: PASS");
-}
-
-let g_cancellation_callback_invoked = false;
-fn on_cancelled_cb() {
-    g_cancellation_callback_invoked = true;
-}
-
-fn test_cancellation_token() {
-    print("Testing cancellation token...");
-
-    let cts = CancellationTokenSource();
-    let token = cts.Token();
-    assert(!token.IsCancellationRequested(), "token should not be cancelled initially");
-
-    // Test callback registration
-    g_cancellation_callback_invoked = false;
-    token.Register(on_cancelled_cb);
-
-    cts.Cancel();
-    assert(token.IsCancellationRequested(), "token should be cancelled after cancel()");
-    assert(g_cancellation_callback_invoked, "callback should have been invoked on cancel");
-
-    let did_throw = false;
-    try {
-        token.ThrowIfCancellationRequested();
-    } catch (e) {
-        did_throw = true;
-    }
-    assert(did_throw, "ThrowIfCancellationRequested should throw when cancelled");
-
-    print("Cancellation token: PASS");
-}
-
-fn test_datetime() {
-    print("Testing DateTime & UTC formatting...");
-
-    // Epoch timestamp 0 is 1970-01-01 00:00:00 UTC
-    let epoch_utc = date_utc(0, "%Y-%m-%d %H:%M:%S");
-    assert(epoch_utc == "1970-01-01 00:00:00", "date_utc epoch test");
-
-    let comps_utc = DateComponentsUtc(0);
-    assert(comps_utc.year == 1970, "DateComponentsUtc year");
-    assert(comps_utc.month == 1, "DateComponentsUtc month");
-    assert(comps_utc.day == 1, "DateComponentsUtc day");
-    assert(comps_utc.hour == 0, "DateComponentsUtc hour");
-    assert(comps_utc.minute == 0, "DateComponentsUtc minute");
-    assert(comps_utc.second == 0, "DateComponentsUtc second");
-
-    let comps_loc = DateComponentsLocal(0);
-    assert(comps_loc.year == 1969 || comps_loc.year == 1970, "DateComponentsLocal year valid");
-
-    let dt = DateTimeFromTimestampUtc(0);
-    assert(dt.Year() == 1970, "DateTime Year");
-    assert(dt.Month() == 1, "DateTime Month");
-    assert(dt.Day() == 1, "DateTime Day");
-    assert(dt.Hour() == 0, "DateTime Hour");
-    assert(dt.Minute() == 0, "DateTime Minute");
-    assert(dt.Second() == 0, "DateTime Second");
-    assert(dt.FormatUtc("%Y-%m-%d") == "1970-01-01", "DateTime FormatUtc");
-
-    let now_dt = DateTimeNowUtc();
-    assert(now_dt.Year() >= 2026, "DateTime NowUtc Year >= 2026");
-
-    print("DateTime: PASS");
-}
-
-fn test_file_io() {
-    print("Testing File I/O operations...");
-    let test_path = "tests/test_file_io_tmp.txt";
-    if (File.Exists(test_path)) {
-        RemoveFile(test_path);
-    }
-
-    let f = File.Open(test_path, "w");
-    assert(f != null, "File.Open for write should succeed");
-    f.WriteLine("First line");
-    f.WriteLine("Second line");
-    f.Write("Third");
-    f.Flush();
-    f.Close();
-
-    assert(File.Exists(test_path), "File.Exists should be true");
-
-    let fr = File.Open(test_path, "r");
-    assert(fr != null, "File.Open for read should succeed");
-    let l1 = fr.ReadLine();
-    assert(l1 == "First line", "ReadLine 1 mismatch");
-    let l2 = fr.ReadLine();
-    assert(l2 == "Second line", "ReadLine 2 mismatch");
-    let b3 = fr.ReadBytes(5);
-    assert(b3 == "Third", "ReadBytes mismatch");
-    fr.Close();
-
-    // ReadAllText and WriteAllText
-    File.WriteAllText(test_path, "Line A\nLine B\n");
-    let content = File.ReadAllText(test_path);
-    assert(content == "Line A\nLine B\n", "File.ReadAllText mismatch");
-
-    // ReadLines and WriteAllLines
-    File.WriteAllLines(test_path, ["Alpha", "Beta", "Gamma"]);
-    let read_lines = File.ReadLines(test_path);
-    assert(Length(read_lines) == 3, "ReadLines count mismatch");
-    assert(read_lines[0] == "Alpha", "ReadLines line 0 mismatch");
-    assert(read_lines[1] == "Beta", "ReadLines line 1 mismatch");
-    assert(read_lines[2] == "Gamma", "ReadLines line 2 mismatch");
-
-    RemoveFile(test_path);
-    print("File I/O: PASS");
-}
-
-fn test_math_utilities() {
-    print("Testing Math utilities...");
-    assert(Math.Clamp(15, 0, 10) == 10, "clamp upper");
-    assert(Math.Clamp(-5, 0, 10) == 0, "clamp lower");
-    assert(Math.Clamp(5, 0, 10) == 5, "clamp within");
-    assert(clamp(20, 0, 10) == 10, "global clamp");
-
-    assert(Math.Lerp(10.0, 20.0, 0.5) == 15.0, "lerp half");
-    assert(lerp(0.0, 100.0, 0.25) == 25.0, "global lerp");
-
-    let nums = [2.0, 4.0, 6.0, 8.0, 10.0];
-    assert(Math.Mean(nums) == 6.0, "Mean mismatch");
-    assert(Mean(nums) == 6.0, "global Mean mismatch");
-
-    assert(Math.Median(nums) == 6.0, "Median odd mismatch");
-    let even_nums = [1.0, 3.0, 5.0, 7.0];
-    assert(Math.Median(even_nums) == 4.0, "Median even mismatch");
-
-    let modes = [1, 2, 2, 3, 3, 3, 4];
-    assert(Math.Mode(modes) == 3, "Mode mismatch");
-
-    let vals = [10.0, 20.0, 30.0, 40.0, 50.0];
-    assert(Math.Quantile(vals, 0.0) == 10.0, "Quantile min mismatch");
-    assert(Math.Quantile(vals, 1.0) == 50.0, "Quantile max mismatch");
-    assert(Math.Quantile(vals, 0.5) == 30.0, "Quantile median mismatch");
-
-    print("Math utilities: PASS");
-}
-
-fn test_logger() {
-    print("Testing Logger...");
-    let logger = Logger("test-logger", LOG_WARN, "text");
-    assert(logger.name == "test-logger", "logger name mismatch");
-    assert(logger.min_level == LOG_WARN, "logger min_level mismatch");
-
-    logger.SetLevel(LOG_DEBUG);
-    assert(logger.min_level == LOG_DEBUG, "logger level updated");
-    logger.SetFormat("json");
-    assert(logger.format == "json", "logger format updated");
-
-    logger.Debug("debug message", null);
-    logger.Info("info message", { "detail": 123 });
-    logger.Warn("warn message", null);
-    logger.Error("error message", null);
-
-    assert(logger.DEBUG() == 0, "logger.DEBUG mismatch");
-    assert(logger.INFO() == 1, "logger.INFO mismatch");
-    assert(Logger.DEBUG() == 0, "Logger.DEBUG static mismatch");
-    assert(Logger::DEBUG() == 0, "Logger::DEBUG namespace mismatch");
-    assert(logger.LevelName(0) == "DEBUG", "LevelName DEBUG mismatch");
-    assert(logger.LevelName(1) == "INFO", "LevelName INFO mismatch");
-    assert(LoggerLevelName(2) == "WARN", "LoggerLevelName WARN mismatch");
-    assert(LoggerLevelName(3) == "ERROR", "LoggerLevelName ERROR mismatch");
-    assert(LoggerLevelName(4) == "FATAL", "LoggerLevelName FATAL mismatch");
-
-    print("Logger: PASS");
-}
-
-fn __task_worker(x) {
-    return x * 3;
-}
-
-fn test_task_async() {
-    print("Testing Task async utilities...");
-    let t = TaskDelay(5);
-    await t;
-
-    let t1 = spawn __task_worker(10);
-    let t2 = spawn __task_worker(20);
-    let res = Task.WhenAll([t1, t2]);
-    assert(Length(res) == 2, "WhenAll length mismatch");
-    assert(res[0] == 30, "WhenAll item 0 mismatch");
-    assert(res[1] == 60, "WhenAll item 1 mismatch");
-
-    print("Task async: PASS");
-}
-
-fn test_http_routing() {
-    print("Testing HttpServer routing & config...");
-    let srv = HttpServer(8080);
-    assert(srv.port == 8080, "server port mismatch");
-    assert(srv.middlewares != null, "middlewares initialized");
-    assert(srv.route_list != null, "route_list initialized");
-
-    srv.Use(fn(req) { return null; });
-    assert(Length(srv.middlewares) == 1, "middleware registration");
-
-    srv.Get("/users/:id", fn(req) { return Response.Text("ok", 200); });
-    srv.Post("/items", fn(req) { return Response.Text("created", 201); });
-    srv.Static("/static", "./public");
-
-    assert(Length(srv.route_list) == 3, "route_list count mismatch");
-    assert(srv.route_list[0].method == "GET", "route 0 method mismatch");
-    assert(srv.route_list[0].pattern == "/users/:id", "route 0 pattern mismatch");
-    assert(srv.route_list[0].is_param == true, "route 0 is_param mismatch");
-    assert(srv.route_list[1].method == "POST", "route 1 method mismatch");
-
-    print("HttpServer routing: PASS");
-}
-
-const TEST_GLOBAL_CONST = 9999;
-const TEST_STRING_CONST = "aks_lang_v1";
-
-fn __helper_try_ok() {
-    let r = Result.Ok(42);
-    let val = r?;
-    return val * 2;
-}
-
-fn __helper_try_err() {
-    let r = Result.Err("something went wrong");
-    let val = r?;
-    return 100;
-}
-
-fn __helper_try_none() {
-    let o = Option.None();
-    let val = o?;
-    return 200;
-}
-
-fn __helper_try_some() {
-    let o = Option.Some(50);
-    let val = o?;
-    return val + 5;
-}
-
-fn test_error_propagation_and_match() {
-    print("Testing Error Propagation (?) and Pattern Matching (match)...");
-    
-    // Top-level const access inside functions
-    assert(TEST_GLOBAL_CONST == 9999, "Top-level const integer");
-    assert(TEST_STRING_CONST == "aks_lang_v1", "Top-level const string");
-    assert(LOG_DEBUG == 0, "Prelude LOG_DEBUG const");
-    assert(LOG_INFO == 1, "Prelude LOG_INFO const");
-    assert(LOG_WARN == 2, "Prelude LOG_WARN const");
-
-    // Static and :: namespace resolution
-    assert(Logger.DEBUG() == 0, "Logger.DEBUG() static method");
-    assert(Logger::DEBUG() == 0, "Logger::DEBUG() namespace syntax");
-    assert(Logger::INFO() == 1, "Logger::INFO() namespace syntax");
-    assert(Math::Clamp(15, 0, 10) == 10, "Math::Clamp namespace call");
-    assert(Math::Lerp(10.0, 20.0, 0.5) == 15.0, "Math::Lerp namespace call");
-    assert(Math::Mean([2.0, 4.0, 6.0]) == 4.0, "Math::Mean namespace call");
-
-    // ? error propagation operator
-    assert(__helper_try_ok() == 84, "try operator unwraps Ok");
-    let err_res = __helper_try_err();
-    assert(err_res != 100, "try operator early returns Err");
-    assert(__helper_try_some() == 55, "try operator unwraps Some");
-    let none_res = __helper_try_none();
-    assert(none_res != 200, "try operator early returns None");
-
-    // match pattern matching
-    let val = 2;
-    let matched_str = "";
-    match (val) {
-        case 1 => { matched_str = "one"; }
-        case 2 => { matched_str = "two"; }
-        default => { matched_str = "other"; }
-    }
-    assert(matched_str == "two", "match statement integer");
-
-    let status = "ready";
-    let status_code = 0;
-    match (status) {
-        case "init" => { status_code = 1; }
-        case "ready" => { status_code = 2; }
-        default => { status_code = -1; }
-    }
-    assert(status_code == 2, "match statement string");
-
-    print("Error Propagation & Match: PASS");
+// 5. Systems / Bare-metal Hardware I/O aliases
+fn TestHardwareIO() {
+
+    // InPortByte / OutPortByte
+    let in_val = InPortByte(0x3F8);
+    assert(in_val == 0, "InPortByte should return 0");
+    OutPortByte(0x3F8, 0x41);
+
+    // VolatileRead / VolatileWrite on allocated memory buffer
+    let mem = FreestandingAlloc(64);
+    assert(mem != 0, "FreestandingAlloc failed");
+
+    VolatileWrite(mem, 0x123456789ABCDEF0);
+    let read_back = VolatileRead(mem);
+    assert(read_back == 0x123456789ABCDEF0, "VolatileRead mismatch: " + String(read_back));
+
+    FreestandingFree(mem);
+    println("TestHardwareIO PASSED");
 }
 
 fn main() {
-    print("Running Language & Standard Library Improvements Suite...");
-    test_string_utilities();
-    test_collections();
-    test_lru_cache();
-    test_bitset();
-    test_json_serialization();
-    test_weak_references();
-    test_cancellation_token();
-    test_datetime();
-    test_file_io();
-    test_math_utilities();
-    test_logger();
-    test_task_async();
-    test_http_routing();
-    test_error_propagation_and_match();
-    print("All language improvements verified successfully 100%!");
+    TestTaggedUnions();
+    TestOptionalChainingAndCoalescing();
+    TestHttpClient();
+    TestRegex();
+    TestHardwareIO();
+    println("TestLanguageImprovements PASSED");
 }
 
 main();

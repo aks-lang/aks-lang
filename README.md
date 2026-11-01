@@ -369,6 +369,46 @@ region (r) {
     // Scratch buffer operations...
     r.Reset(); // Instant O(1) bulk reset
 }
+
+// 11. Tagged Unions / ADTs & Pattern Destructuring (:: and .)
+enum Action {
+    Quit,
+    Move(int, int),
+    Write(string)
+};
+let act = Action::Move(10, 25);
+let summary = match (act) {
+    case Action::Move(x, y) => f"Move to ({x}, {y})",
+    case Action.Write(text) => f"Write: {text}",
+    case Action::Quit       => "Quit"
+};
+
+// 12. Optional Chaining (?.) & Null Coalescing (??)
+let user = { "profile": { "settings": { "theme": "dark" } } };
+let theme = user?.profile?.settings?.theme ?? "light"; // "dark"
+let missing = user?.profile?.avatar?.url ?? "default.png"; // "default.png"
+
+// 13. High-Level HTTP/HTTPS Client
+let res = Http.Get("http://httpbin.org/get");
+if (res.status == 200) {
+    let body_text = res.Text();
+    let json_data = res.Json();
+}
+let post_res = Http.PostJson("http://httpbin.org/post", { "user": "aks", "id": 42 });
+
+// 14. First-Class Regular Expressions
+let rx = Regex("^[a-zA-Z0-9_]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+let is_valid = rx.IsMatch("user@example.com"); // true
+let digits = Regex("\\d+");
+let all_nums = digits.FindAll("order 102 items in batch 5"); // ["102", "5"]
+let sanitized = digits.Replace("port 8080", "XXXX"); // "port XXXX"
+let tokens = Regex("[\\s,]+").Split("one, two   three"); // ["one", "two", "three"]
+
+// 15. Bare-Metal & Systems Hardware I/O Aliases
+VolatileWrite(0x1000, 0xCAFEBABE);
+let val = VolatileRead(0x1000);
+OutPortByte(0x3F8, 0x41); // Serial COM1 UART output
+let status = InPortByte(0x3FD);
 ```
 
 ---

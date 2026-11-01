@@ -1437,6 +1437,30 @@ static const char *InferExprType(Compiler *c, Node *expr) {
             if (slot >= 0) {
                 return c->current->locals[slot].typename;
             }
+            const char *sep = strstr(expr->sval, "::");
+            if (!sep) sep = strchr(expr->sval, '.');
+            if (sep) {
+                char pre[128];
+                size_t plen = (size_t)(sep - expr->sval);
+                if (plen >= sizeof(pre)) plen = sizeof(pre) - 1;
+                strncpy(pre, expr->sval, plen);
+                pre[plen] = '\0';
+                for (int i = 0; i < c->enumcount; i++) {
+                    if (strcmp(c->enums[i].name, pre) == 0) {
+                        return c->enums[i].name;
+                    }
+                }
+            } else if (strcmp(expr->sval, "None") == 0) {
+                return "Option";
+            } else {
+                for (int i = 0; i < c->enumcount; i++) {
+                    for (int m = 0; m < c->enums[i].count; m++) {
+                        if (strcmp(c->enums[i].members[m], expr->sval) == 0) {
+                            return c->enums[i].name;
+                        }
+                    }
+                }
+            }
             return "any";
         }
         case NCAST: {
@@ -1470,7 +1494,49 @@ static const char *InferExprType(Compiler *c, Node *expr) {
         }
         case NCALL: {
             if (expr->call.callee->type == NIDENT) {
+                const char *csval = expr->call.callee->sval;
+                const char *sep = strstr(csval, "::");
+                if (!sep) sep = strchr(csval, '.');
+                if (sep) {
+                    char pre[128];
+                    size_t plen = (size_t)(sep - csval);
+                    if (plen >= sizeof(pre)) plen = sizeof(pre) - 1;
+                    strncpy(pre, csval, plen);
+                    pre[plen] = '\0';
+                    const char *post = (*sep == ':') ? (sep + 2) : (sep + 1);
+                    for (int i = 0; i < c->enumcount; i++) {
+                        if (strcmp(c->enums[i].name, pre) == 0) {
+                            for (int m = 0; m < c->enums[i].count; m++) {
+                                if (strcmp(c->enums[i].members[m], post) == 0) {
+                                    return c->enums[i].name;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (strcmp(csval, "Some") == 0) {
+                    return "Option";
+                }
+                if (strcmp(csval, "Ok") == 0 || strcmp(csval, "Err") == 0) {
+                    return "Result";
+                }
                 int fnid = ResolveGlobal(c, expr->call.callee->sval, 0);
+                if (fnid >= 0) {
+                    return c->fns[fnid]->rettype;
+                }
+            } else if (expr->call.callee->type == NMEMBER && expr->call.callee->member.obj->type == NIDENT) {
+                for (int i = 0; i < c->enumcount; i++) {
+                    if (strcmp(c->enums[i].name, expr->call.callee->member.obj->sval) == 0) {
+                        for (int m = 0; m < c->enums[i].count; m++) {
+                            if (strcmp(c->enums[i].members[m], expr->call.callee->member.field) == 0) {
+                                return c->enums[i].name;
+                            }
+                        }
+                    }
+                }
+                char fullname[256];
+                snprintf(fullname, sizeof(fullname), "%s.%s", expr->call.callee->member.obj->sval, expr->call.callee->member.field);
+                int fnid = ResolveGlobal(c, fullname, 0);
                 if (fnid >= 0) {
                     return c->fns[fnid]->rettype;
                 }
@@ -1478,6 +1544,17 @@ static const char *InferExprType(Compiler *c, Node *expr) {
             return "any";
         }
         case NMEMBER: {
+            if (expr->member.obj->type == NIDENT) {
+                for (int i = 0; i < c->enumcount; i++) {
+                    if (strcmp(c->enums[i].name, expr->member.obj->sval) == 0) {
+                        for (int m = 0; m < c->enums[i].count; m++) {
+                            if (strcmp(c->enums[i].members[m], expr->member.field) == 0) {
+                                return c->enums[i].name;
+                            }
+                        }
+                    }
+                }
+            }
             const char *objtype = InferExprType(c, expr->member.obj);
             if (objtype) {
                 char cleantype[128];
@@ -2014,6 +2091,28 @@ static int TypesCompatibleInternal(Compiler *c, const char *expected, const char
     if ((expected[0] == '[' || !strncmp(expected, "Array<", 6) || !strcmp(expected, "array")) &&
         (actual[0] == '[' || !strncmp(actual, "Array<", 6) || !strcmp(actual, "array"))) return 1;
 
+    if (!strchr(expected, '|') && !strchr(actual, '|') && !strchr(expected, '&') && !strchr(actual, '&')) {
+        const char *exp_ang = strchr(expected, '<');
+        const char *act_ang = strchr(actual, '<');
+        if (exp_ang && !act_ang) {
+            char base[128];
+            size_t blen = (size_t)(exp_ang - expected);
+            while (blen > 0 && (expected[blen - 1] == ' ' || expected[blen - 1] == '\t')) blen--;
+            if (blen >= sizeof(base)) blen = sizeof(base) - 1;
+            strncpy(base, expected, blen);
+            base[blen] = '\0';
+            if (TypeNameMatches(base, actual)) return 1;
+        } else if (act_ang && !exp_ang) {
+            char base[128];
+            size_t blen = (size_t)(act_ang - actual);
+            while (blen > 0 && (actual[blen - 1] == ' ' || actual[blen - 1] == '\t')) blen--;
+            if (blen >= sizeof(base)) blen = sizeof(base) - 1;
+            strncpy(base, actual, blen);
+            base[blen] = '\0';
+            if (TypeNameMatches(expected, base)) return 1;
+        }
+    }
+
     if (expected[0] == '(' && expected[strlen(expected) - 1] == ')' &&
         actual[0] == '(' && actual[strlen(actual) - 1] == ')') {
         char expinner[256];
@@ -2101,6 +2200,20 @@ static int TypesCompatibleInternal(Compiler *c, const char *expected, const char
     MangleTypeName(actclean, actmangled, sizeof(actmangled));
     
     if (TypeNameMatches(expmangled, actmangled)) return 1;
+
+    for (int i = 0; i < c->enumcount; i++) {
+        size_t elen = strlen(c->enums[i].name);
+        if (strncmp(expmangled, c->enums[i].name, elen) == 0 &&
+            (expmangled[elen] == '_' || expmangled[elen] == '\0') &&
+            strcmp(actmangled, c->enums[i].name) == 0) {
+            return 1;
+        }
+        if (strncmp(actmangled, c->enums[i].name, elen) == 0 &&
+            (actmangled[elen] == '_' || actmangled[elen] == '\0') &&
+            strcmp(expmangled, c->enums[i].name) == 0) {
+            return 1;
+        }
+    }
     
     if (strchr(expmangled, '|')) {
         char **parts = NULL;
@@ -2752,11 +2865,45 @@ static void EmitExpr(Compiler *c, Node *n) {
                     ChunkWriteU16(ch,(uint16_t)gsid,n->line);
                 }
             } else {
-                int fnid=ResolveGlobal(c, n->sval, n->line);
-                if(fnid>=0){
-                    ChunkWrite(ch,OPPUSHFN,n->line);
-                    ChunkWriteU16(ch,(uint16_t)fnid,n->line);
+                int fnid = ResolveGlobal(c, n->sval, n->line);
+                if (fnid >= 0) {
+                    if (c->fns[fnid]->paramcount == 0 && (strstr(n->sval, "::") || strchr(n->sval, '.'))) {
+                        ChunkWrite(ch, OPCALL, n->line);
+                        ChunkWriteU16(ch, (uint16_t)fnid, n->line);
+                        ChunkWrite(ch, 0, n->line);
+                    } else {
+                        ChunkWrite(ch, OPPUSHFN, n->line);
+                        ChunkWriteU16(ch, (uint16_t)fnid, n->line);
+                    }
                 } else {
+                    const char *sep = strstr(n->sval, "::");
+                    if (!sep) sep = strchr(n->sval, '.');
+                    int is_enum_val = 0;
+                    if (sep) {
+                        char pre[128];
+                        size_t plen = (size_t)(sep - n->sval);
+                        if (plen >= sizeof(pre)) plen = sizeof(pre) - 1;
+                        strncpy(pre, n->sval, plen);
+                        pre[plen] = '\0';
+                        const char *post = (*sep == ':') ? (sep + 2) : (sep + 1);
+                        for (int i = 0; i < c->enumcount; i++) {
+                            if (strcmp(c->enums[i].name, pre) == 0 && !c->enums[i].isadt) {
+                                for (int m = 0; m < c->enums[i].count; m++) {
+                                    if (strcmp(c->enums[i].members[m], post) == 0) {
+                                        int64_t val = c->enums[i].values[m];
+                                        ChunkWrite(ch, OPPUSHINT, n->line);
+                                        ChunkWriteI64(ch, val, n->line);
+                                        is_enum_val = 1;
+                                        break;
+                                    }
+                                }
+                                if (is_enum_val) break;
+                            }
+                        }
+                    }
+                    if (is_enum_val) {
+                        break;
+                    }
                     int is_const_folded = 0;
                     for (int gi = 0; gi < c->const_global_count; gi++) {
                         if (strcmp(c->const_globals[gi], n->sval) == 0 && c->const_vals[gi].kind != 0) {
@@ -4455,24 +4602,71 @@ static void EmitPatternCheck(Compiler *c, Node *pat, int valslot, int *failjumps
                 break;
             }
             int is_zero_variant = 0;
+            int is_scalar_variant = 0;
+            int64_t scalar_variant_val = 0;
             char z_enumname[128] = "";
             char z_variantname[256] = "";
-            for (int i = 0; i < c->enumcount; i++) {
-                if (c->enums[i].isadt) {
+            const char *sep = strstr(pat->sval, "::");
+            if (!sep) sep = strchr(pat->sval, '.');
+            if (sep) {
+                char pre[128];
+                size_t plen = (size_t)(sep - pat->sval);
+                if (plen >= sizeof(pre)) plen = sizeof(pre) - 1;
+                strncpy(pre, pat->sval, plen);
+                pre[plen] = '\0';
+                const char *post = (*sep == ':') ? (sep + 2) : (sep + 1);
+                for (int i = 0; i < c->enumcount; i++) {
+                    if (strcmp(c->enums[i].name, pre) == 0) {
+                        for (int m = 0; m < c->enums[i].count; m++) {
+                            if (strcmp(c->enums[i].members[m], post) == 0) {
+                                if (c->enums[i].isadt) {
+                                    char checkname[256];
+                                    snprintf(checkname, sizeof(checkname), "%s.%s", c->enums[i].name, c->enums[i].members[m]);
+                                    int fnid = ResolveGlobal(c, checkname, 0);
+                                    if (fnid >= 0 && c->fns[fnid]->paramcount == 0) {
+                                        is_zero_variant = 1;
+                                        strncpy(z_enumname, c->enums[i].name, sizeof(z_enumname) - 1);
+                                        snprintf(z_variantname, sizeof(z_variantname), "%s", checkname);
+                                    }
+                                } else {
+                                    is_scalar_variant = 1;
+                                    scalar_variant_val = c->enums[i].values[m];
+                                }
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+            } else if (strcmp(pat->sval, "None") == 0) {
+                int fnid = ResolveGlobal(c, "Option.None", 0);
+                if (fnid >= 0 && c->fns[fnid]->paramcount == 0) {
+                    is_zero_variant = 1;
+                    strcpy(z_enumname, "Option");
+                    strcpy(z_variantname, "Option.None");
+                }
+            } else {
+                for (int i = 0; i < c->enumcount; i++) {
                     for (int m = 0; m < c->enums[i].count; m++) {
                         if (strcmp(c->enums[i].members[m], pat->sval) == 0) {
-                            char checkname[256];
-                            snprintf(checkname, sizeof(checkname), "%s.%s", c->enums[i].name, c->enums[i].members[m]);
-                            int fnid = ResolveGlobal(c, checkname, 0);
-                            if (fnid >= 0 && c->fns[fnid]->paramcount == 0) {
-                                is_zero_variant = 1;
-                                strncpy(z_enumname, c->enums[i].name, sizeof(z_enumname) - 1);
-                                snprintf(z_variantname, sizeof(z_variantname), "%s", checkname);
+                            if (c->enums[i].isadt) {
+                                char checkname[256];
+                                snprintf(checkname, sizeof(checkname), "%s.%s", c->enums[i].name, c->enums[i].members[m]);
+                                int fnid = ResolveGlobal(c, checkname, 0);
+                                if (fnid >= 0 && c->fns[fnid]->paramcount == 0) {
+                                    is_zero_variant = 1;
+                                    strncpy(z_enumname, c->enums[i].name, sizeof(z_enumname) - 1);
+                                    snprintf(z_variantname, sizeof(z_variantname), "%s", checkname);
+                                    break;
+                                }
+                            } else {
+                                is_scalar_variant = 1;
+                                scalar_variant_val = c->enums[i].values[m];
                                 break;
                             }
                         }
                     }
-                    if (is_zero_variant) break;
+                    if (is_zero_variant || is_scalar_variant) break;
                 }
             }
             if (is_zero_variant) {
@@ -4494,6 +4688,15 @@ static void EmitPatternCheck(Compiler *c, Node *pat, int valslot, int *failjumps
                 int varstrid = AddStr(c, z_variantname);
                 ChunkWrite(ch, OPPUSHSTR, line);
                 ChunkWriteU16(ch, (uint16_t)varstrid, line);
+                ChunkWrite(ch, OPEQ, line);
+                failjumps[(*failcount)++] = ChunkEmitJump(ch, OPJUMPIFFALSE, line);
+                break;
+            }
+            if (is_scalar_variant) {
+                ChunkWrite(ch, OPLOAD, line);
+                ChunkWriteU16(ch, (uint16_t)valslot, line);
+                ChunkWrite(ch, OPPUSHINT, line);
+                ChunkWriteI64(ch, scalar_variant_val, line);
                 ChunkWrite(ch, OPEQ, line);
                 failjumps[(*failcount)++] = ChunkEmitJump(ch, OPJUMPIFFALSE, line);
                 break;
@@ -4759,25 +4962,59 @@ static void EmitPatternCheck(Compiler *c, Node *pat, int valslot, int *failjumps
                 for (int i = 0; i < c->enumcount; i++) {
                     if (strcmp(c->enums[i].name, pat->call.callee->member.obj->sval) == 0) {
                         if (c->enums[i].isadt) {
-                            isadt = 1;
-                            strncpy(enumname, c->enums[i].name, sizeof(enumname) - 1);
-                            snprintf(variantname, sizeof(variantname), "%s.%s", pat->call.callee->member.obj->sval, pat->call.callee->member.field);
+                            for (int m = 0; m < c->enums[i].count; m++) {
+                                if (strcmp(c->enums[i].members[m], pat->call.callee->member.field) == 0) {
+                                    isadt = 1;
+                                    strncpy(enumname, c->enums[i].name, sizeof(enumname) - 1);
+                                    snprintf(variantname, sizeof(variantname), "%s.%s", c->enums[i].name, c->enums[i].members[m]);
+                                    break;
+                                }
+                            }
                         }
                         break;
                     }
                 }
             } else if (pat->call.callee->type == NIDENT) {
-                for (int i = 0; i < c->enumcount; i++) {
-                    if (c->enums[i].isadt) {
-                        for (int m = 0; m < c->enums[i].count; m++) {
-                            if (strcmp(c->enums[i].members[m], pat->call.callee->sval) == 0) {
-                                isadt = 1;
-                                strncpy(enumname, c->enums[i].name, sizeof(enumname) - 1);
-                                snprintf(variantname, sizeof(variantname), "%s.%s", c->enums[i].name, c->enums[i].members[m]);
-                                break;
+                const char *csval = pat->call.callee->sval;
+                const char *sep = strstr(csval, "::");
+                if (!sep) sep = strchr(csval, '.');
+                if (sep) {
+                    char pre[128];
+                    size_t plen = (size_t)(sep - csval);
+                    if (plen >= sizeof(pre)) plen = sizeof(pre) - 1;
+                    strncpy(pre, csval, plen);
+                    pre[plen] = '\0';
+                    const char *post = (*sep == ':') ? (sep + 2) : (sep + 1);
+                    for (int i = 0; i < c->enumcount; i++) {
+                        if (strcmp(c->enums[i].name, pre) == 0 && c->enums[i].isadt) {
+                            for (int m = 0; m < c->enums[i].count; m++) {
+                                if (strcmp(c->enums[i].members[m], post) == 0) {
+                                    isadt = 1;
+                                    strncpy(enumname, c->enums[i].name, sizeof(enumname) - 1);
+                                    snprintf(variantname, sizeof(variantname), "%s.%s", c->enums[i].name, c->enums[i].members[m]);
+                                    break;
+                                }
                             }
+                            if (isadt) break;
                         }
-                        if (isadt) break;
+                    }
+                } else if (strcmp(csval, "Some") == 0) {
+                    isadt = 1;
+                    strcpy(enumname, "Option");
+                    strcpy(variantname, "Option.Some");
+                } else {
+                    for (int i = 0; i < c->enumcount; i++) {
+                        if (c->enums[i].isadt) {
+                            for (int m = 0; m < c->enums[i].count; m++) {
+                                if (strcmp(c->enums[i].members[m], csval) == 0) {
+                                    isadt = 1;
+                                    strncpy(enumname, c->enums[i].name, sizeof(enumname) - 1);
+                                    snprintf(variantname, sizeof(variantname), "%s.%s", c->enums[i].name, c->enums[i].members[m]);
+                                    break;
+                                }
+                            }
+                            if (isadt) break;
+                        }
                     }
                 }
             }
@@ -4854,17 +5091,31 @@ static void EmitStructMetadata(Compiler *c, Node *n) {
     (void)c; (void)n;
 }
 
+static int MatchStrMatchesVariant(const char *name, const char *variant) {
+    if (!name || !variant) return 0;
+    if (strcmp(name, variant) == 0) return 1;
+    size_t nlen = strlen(name);
+    size_t vlen = strlen(variant);
+    if (nlen > vlen + 1 && strcmp(name + (nlen - vlen), variant) == 0) {
+        if (name[nlen - vlen - 1] == '.' ||
+            (nlen > vlen + 2 && name[nlen - vlen - 1] == ':' && name[nlen - vlen - 2] == ':')) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int MatchPatternMatchesVariant(Node *pat, const char *variant) {
     if (!pat) return 0;
     if (pat->type == NCALL) {
-        if (pat->call.callee->type == NMEMBER && strcmp(pat->call.callee->member.field, variant) == 0) return 1;
-        if (pat->call.callee->type == NIDENT && strcmp(pat->call.callee->sval, variant) == 0) return 1;
+        if (pat->call.callee->type == NMEMBER) return MatchStrMatchesVariant(pat->call.callee->member.field, variant);
+        if (pat->call.callee->type == NIDENT) return MatchStrMatchesVariant(pat->call.callee->sval, variant);
     } else if (pat->type == NMEMBER) {
-        if (strcmp(pat->member.field, variant) == 0) return 1;
+        return MatchStrMatchesVariant(pat->member.field, variant);
     } else if (pat->type == NIDENT) {
-        if (strcmp(pat->sval, variant) == 0) return 1;
+        return MatchStrMatchesVariant(pat->sval, variant);
     } else if (pat->type == NSTRUCTPAT) {
-        if (pat->structpat.name && strcmp(pat->structpat.name, variant) == 0) return 1;
+        if (pat->structpat.name) return MatchStrMatchesVariant(pat->structpat.name, variant);
     } else if (pat->type == NORPAT) {
         return MatchPatternMatchesVariant(pat->orpat.left, variant) || MatchPatternMatchesVariant(pat->orpat.right, variant);
     }
@@ -8566,6 +8817,8 @@ Compiler *CompNew(void) {
     NewFn(c, "MmioWrite32");
     NewFn(c, "MmioRead64");
     NewFn(c, "MmioWrite64");
+    NewFn(c, "VolatileRead");
+    NewFn(c, "VolatileWrite");
     NewFn(c, "FreestandingMemSet");
     NewFn(c, "FreestandingMemCopy");
     NewFn(c, "FreestandingAlloc");
@@ -8574,9 +8827,11 @@ Compiler *CompNew(void) {
     NewFn(c, "CpuPause");
     NewFn(c, "CpuHalt");
     NewFn(c, "InPort8");
+    NewFn(c, "InPortByte");
     NewFn(c, "InPort16");
     NewFn(c, "InPort32");
     NewFn(c, "OutPort8");
+    NewFn(c, "OutPortByte");
     NewFn(c, "OutPort16");
     NewFn(c, "OutPort32");
     NewFn(c, "CpuCli");
