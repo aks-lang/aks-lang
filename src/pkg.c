@@ -533,7 +533,11 @@ int PkgAdd(const char *pkgspec) {
             strncpy(pkgname, "pathpkg", sizeof(pkgname) - 1);
         }
         snprintf(pkgversion, sizeof(pkgversion), "path:%s", cleanpath);
-    } else if (strncmp(pkgspec, "git+", 4) == 0 || strstr(pkgspec, ".git") != NULL) {
+    } else if (strncmp(pkgspec, "git+", 4) == 0 ||
+               strncmp(pkgspec, "git@", 4) == 0 ||
+               strncmp(pkgspec, "http://", 7) == 0 ||
+               strncmp(pkgspec, "https://", 8) == 0 ||
+               strstr(pkgspec, ".git") != NULL) {
         const char *src = pkgspec;
         if (strncmp(src, "git+", 4) == 0) src += 4;
         const char *hashp = strchr(src, '#');
@@ -694,7 +698,11 @@ static int ResolvePackage(const char *name, const char *constraint) {
         return 1;
     }
     
-    if (strncmp(constraint, "git+", 4) == 0 || strstr(constraint, ".git") != NULL) {
+    if (strncmp(constraint, "git+", 4) == 0 ||
+        strncmp(constraint, "git@", 4) == 0 ||
+        strncmp(constraint, "http://", 7) == 0 ||
+        strncmp(constraint, "https://", 8) == 0 ||
+        strstr(constraint, ".git") != NULL) {
         char giturl[512] = "";
         char gitref[128] = "";
         const char *src = constraint;

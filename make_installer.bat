@@ -18,7 +18,7 @@ if %errorlevel% neq 0 (
     )
 )
 
-set CFLAGS=/O2 /W3 /EHsc /D_CRT_SECURE_NO_WARNINGS /DNDEBUG /nologo
+set CFLAGS=/O2 /W3 /EHsc /D_CRT_SECURE_NO_WARNINGS /DNDEBUG /nologo /utf-8
 set GUI_LIBS=user32.lib gdi32.lib comctl32.lib shell32.lib advapi32.lib ole32.lib gdiplus.lib
 
 set RES_FILE=
@@ -28,7 +28,7 @@ if exist src\installer\installer.rc (
 )
 
 echo [1/4] Compiling native GUI installer engine (src\installer\gui_installer.cpp)...
-cl.exe %CFLAGS% /Isrc\installer /Fe:gui_installer_stub.exe src\installer\gui_installer.cpp %RES_FILE% %GUI_LIBS% /link /SUBSYSTEM:WINDOWS
+cl.exe %CFLAGS% /Isrc\installer /Iinclude /Fe:gui_installer_stub.exe src\installer\gui_installer.cpp %RES_FILE% %GUI_LIBS% /link /SUBSYSTEM:WINDOWS
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to compile GUI installer stub.
     exit /b 1
@@ -41,7 +41,9 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-set INSTALLER_OUT=aks-installer-v1.0.0.exe
+set AKS_VER=1.1.0
+if exist VERSION set /p AKS_VER=<VERSION
+set INSTALLER_OUT=aks-installer-v%AKS_VER%.exe
 if not "%~1"=="" set INSTALLER_OUT=%~1
 
 echo [3/4] Packaging distribution components into %INSTALLER_OUT%...

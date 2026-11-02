@@ -692,6 +692,172 @@ static int AksFileEof(int handle_id) {
   return is_eof ? 1 : 0;
 }
 
+
+typedef struct {
+  char *buf;
+  int len;
+  int cap;
+} AksJsonBuf;
+
+static void AksJsonBufInit(AksJsonBuf *b) {
+  b->cap = 256;
+  b->len = 0;
+  b->buf = (char *)malloc(b->cap);
+  if (b->buf) b->buf[0] = '\0';
+}
+
+static void AksJsonBufEnsure(AksJsonBuf *b, int additional) {
+  if (b->len + additional + 1 >= b->cap) {
+    int new_cap = (b->cap * 2) + additional + 64;
+    char *nb = (char *)realloc(b->buf, new_cap);
+    if (nb) {
+      b->buf = nb;
+      b->cap = new_cap;
+    }
+  }
+}
+
+static void AksJsonBufAppendStr(AksJsonBuf *b, const char *str) {
+  if (!str) return;
+  int slen = (int)strlen(str);
+  AksJsonBufEnsure(b, slen);
+  memcpy(b->buf + b->len, str, slen);
+  b->len += slen;
+  b->buf[b->len] = '\0';
+}
+
+static void AksJsonBufAppendChar(AksJsonBuf *b, char c) {
+  AksJsonBufEnsure(b, 1);
+  b->buf[b->len++] = c;
+  b->buf[b->len] = '\0';
+}
+
+static void AksJsonEscapeString(AksJsonBuf *b, const char *s, int len) {
+  AksJsonBufAppendChar(b, '"');
+  for (int i = 0; i < len; i++) {
+    unsigned char c = (unsigned char)s[i];
+    switch (c) {
+      case '"': AksJsonBufAppendStr(b, "\\\""); break;
+      case '\\': AksJsonBufAppendStr(b, "\\\\"); break;
+      case '\b': AksJsonBufAppendStr(b, "\\b"); break;
+      case '\f': AksJsonBufAppendStr(b, "\\f"); break;
+      case '\n': AksJsonBufAppendStr(b, "\\n"); break;
+      case '\r': AksJsonBufAppendStr(b, "\\r"); break;
+      case '\t': AksJsonBufAppendStr(b, "\\t"); break;
+      default:
+        if (c < 32) {
+          char uhex[8];
+          snprintf(uhex, sizeof(uhex), "\\u%04x", c);
+          AksJsonBufAppendStr(b, uhex);
+        } else {
+          AksJsonBufAppendChar(b, (char)c);
+        }
+        break;
+    }
+  }
+  AksJsonBufAppendChar(b, '"');
+}
+
+static void AksJsonIndent(AksJsonBuf *b, int indent) {
+  for (int i = 0; i < indent * 2; i++) {
+    AksJsonBufAppendChar(b, ' ');
+  }
+}
+
+static void AksJsonStringifyValue(AksJsonBuf *b, AKSValue v, int pretty, int indent) {
+  if (indent > 128) {
+    AksJsonBufAppendStr(b, "null");
+    return;
+  }
+  ValType vt = ValKind(v);
+  switch (vt) {
+    case VALNULL:
+      AksJsonBufAppendStr(b, "null");
+      break;
+    case VALBOOL:
+      AksJsonBufAppendStr(b, ValToBool(v) ? "true" : "false");
+      break;
+    case VALINT: {
+      char numbuf[64];
+      snprintf(numbuf, sizeof(numbuf), "%lld", (long long)ValToInt(v));
+      AksJsonBufAppendStr(b, numbuf);
+      break;
+    }
+    case VALFLOAT: {
+      char numbuf[64];
+      double d = ValToFloat(v);
+      if (isnan(d) || isinf(d)) {
+        AksJsonBufAppendStr(b, "null");
+      } else {
+        snprintf(numbuf, sizeof(numbuf), "%.14g", d);
+        if (strchr(numbuf, '.') == NULL && strchr(numbuf, 'e') == NULL && strchr(numbuf, 'E') == NULL) {
+          strcat(numbuf, ".0");
+        }
+        AksJsonBufAppendStr(b, numbuf);
+      }
+      break;
+    }
+    case VALSTR: {
+      AKSString *s = ValToStrPtr(v);
+      if (!s || !s->data) AksJsonBufAppendStr(b, "\"\"");
+      else AksJsonEscapeString(b, s->data, s->len);
+      break;
+    }
+    case VALARR:
+    case VALTUPLE: {
+      AKSArray *arr = ValToArr(v);
+      if (!arr || arr->count == 0) {
+        AksJsonBufAppendStr(b, "[]");
+        break;
+      }
+      AksJsonBufAppendChar(b, '[');
+      for (int i = 0; i < arr->count; i++) {
+        if (i > 0) AksJsonBufAppendChar(b, ',');
+        if (pretty) {
+          AksJsonBufAppendChar(b, '\n');
+          AksJsonIndent(b, indent + 1);
+        }
+        AksJsonStringifyValue(b, arr->items[i], pretty, indent + 1);
+      }
+      if (pretty) {
+        AksJsonBufAppendChar(b, '\n');
+        AksJsonIndent(b, indent);
+      }
+      AksJsonBufAppendChar(b, ']');
+      break;
+    }
+    case VALSTRUCT: {
+      AKSStruct *st = ValToObj(v);
+      if (!st || st->fieldcount == 0) {
+        AksJsonBufAppendStr(b, "{}");
+        break;
+      }
+      AksJsonBufAppendChar(b, '{');
+      for (int i = 0; i < st->fieldcount; i++) {
+        if (i > 0) AksJsonBufAppendChar(b, ',');
+        if (pretty) {
+          AksJsonBufAppendChar(b, '\n');
+          AksJsonIndent(b, indent + 1);
+        }
+        const char *fname = (st->fieldnames && st->fieldnames[i]) ? st->fieldnames[i] : "";
+        AksJsonEscapeString(b, fname, (int)strlen(fname));
+        AksJsonBufAppendChar(b, ':');
+        if (pretty) AksJsonBufAppendChar(b, ' ');
+        AksJsonStringifyValue(b, st->fieldvals[i], pretty, indent + 1);
+      }
+      if (pretty) {
+        AksJsonBufAppendChar(b, '\n');
+        AksJsonIndent(b, indent);
+      }
+      AksJsonBufAppendChar(b, '}');
+      break;
+    }
+    default:
+      AksJsonBufAppendStr(b, "null");
+      break;
+  }
+}
+
 #if defined(_MSC_VER)
 #pragma optimize("", off)
 #elif defined(__clang__)
@@ -1990,6 +2156,225 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
 #endif
+  }
+
+  
+  // Run process synchronously and capture stdout, stderr, and exit code
+  if (strcmp(name, "ProcessRunC") == 0) {
+    if (argc != 1) {
+      fprintf(stderr, "Runtime error: ProcessRunC() expects 1 argument\n");
+      return -1;
+    }
+    AKSValue cmd_val = POP();
+    if (ValKind(cmd_val) != VALSTR) {
+      ValFree(&cmd_val);
+      PUSH(ValNull());
+      *stacktopptr = stacktop;
+      return 1;
+    }
+    const char *cmd = ValToStrPtr(cmd_val)->data;
+#ifdef _WIN32
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+    sa.bInheritHandle = TRUE;
+    sa.lpSecurityDescriptor = NULL;
+
+    HANDLE hStdoutRead = NULL, hStdoutWrite = NULL;
+    HANDLE hStderrRead = NULL, hStderrWrite = NULL;
+    CreatePipe(&hStdoutRead, &hStdoutWrite, &sa, 0);
+    SetHandleInformation(hStdoutRead, HANDLE_FLAG_INHERIT, 0);
+    CreatePipe(&hStderrRead, &hStderrWrite, &sa, 0);
+    SetHandleInformation(hStderrRead, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOA si;
+    ZeroMemory(&si, sizeof(STARTUPINFOA));
+    si.cb = sizeof(STARTUPINFOA);
+    si.hStdOutput = hStdoutWrite;
+    si.hStdError = hStderrWrite;
+    si.dwFlags |= STARTF_USESTDHANDLES;
+
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&pi, sizeof(PROCESS_INFORMATION));
+
+    char *cmd_buf = strdup(cmd);
+    BOOL success = CreateProcessA(NULL, cmd_buf, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
+    free(cmd_buf);
+
+    CloseHandle(hStdoutWrite);
+    CloseHandle(hStderrWrite);
+
+    char *out_buf = (char *)malloc(1024);
+    int out_len = 0, out_cap = 1024;
+    out_buf[0] = '\0';
+
+    char *err_buf = (char *)malloc(1024);
+    int err_len = 0, err_cap = 1024;
+    err_buf[0] = '\0';
+
+    DWORD exit_code = 1;
+    int is_ok = 0;
+
+    if (success) {
+      char temp[4096];
+      DWORD bytesRead = 0;
+      while (1) {
+        int had_data = 0;
+        DWORD avail = 0;
+        if (PeekNamedPipe(hStdoutRead, NULL, 0, NULL, &avail, NULL) && avail > 0) {
+          DWORD to_read = (DWORD)(avail < sizeof(temp) - 1 ? avail : sizeof(temp) - 1);
+          if (ReadFile(hStdoutRead, temp, to_read, &bytesRead, NULL) && bytesRead > 0) {
+            if (out_len + (int)bytesRead + 1 >= out_cap) {
+              out_cap = (out_cap * 2) + bytesRead + 128;
+              out_buf = (char *)realloc(out_buf, out_cap);
+            }
+            memcpy(out_buf + out_len, temp, bytesRead);
+            out_len += (int)bytesRead;
+            out_buf[out_len] = '\0';
+            had_data = 1;
+          }
+        }
+        if (PeekNamedPipe(hStderrRead, NULL, 0, NULL, &avail, NULL) && avail > 0) {
+          DWORD to_read = (DWORD)(avail < sizeof(temp) - 1 ? avail : sizeof(temp) - 1);
+          if (ReadFile(hStderrRead, temp, to_read, &bytesRead, NULL) && bytesRead > 0) {
+            if (err_len + (int)bytesRead + 1 >= err_cap) {
+              err_cap = (err_cap * 2) + bytesRead + 128;
+              err_buf = (char *)realloc(err_buf, err_cap);
+            }
+            memcpy(err_buf + err_len, temp, bytesRead);
+            err_len += (int)bytesRead;
+            err_buf[err_len] = '\0';
+            had_data = 1;
+          }
+        }
+        if (!had_data) {
+          DWORD wait_res = WaitForSingleObject(pi.hProcess, 10);
+          if (wait_res == WAIT_OBJECT_0) {
+            while (PeekNamedPipe(hStdoutRead, NULL, 0, NULL, &avail, NULL) && avail > 0) {
+              DWORD to_read = (DWORD)(avail < sizeof(temp) - 1 ? avail : sizeof(temp) - 1);
+              if (ReadFile(hStdoutRead, temp, to_read, &bytesRead, NULL) && bytesRead > 0) {
+                if (out_len + (int)bytesRead + 1 >= out_cap) {
+                  out_cap = (out_cap * 2) + bytesRead + 128;
+                  out_buf = (char *)realloc(out_buf, out_cap);
+                }
+                memcpy(out_buf + out_len, temp, bytesRead);
+                out_len += (int)bytesRead;
+                out_buf[out_len] = '\0';
+              } else break;
+            }
+            while (PeekNamedPipe(hStderrRead, NULL, 0, NULL, &avail, NULL) && avail > 0) {
+              DWORD to_read = (DWORD)(avail < sizeof(temp) - 1 ? avail : sizeof(temp) - 1);
+              if (ReadFile(hStderrRead, temp, to_read, &bytesRead, NULL) && bytesRead > 0) {
+                if (err_len + (int)bytesRead + 1 >= err_cap) {
+                  err_cap = (err_cap * 2) + bytesRead + 128;
+                  err_buf = (char *)realloc(err_buf, err_cap);
+                }
+                memcpy(err_buf + err_len, temp, bytesRead);
+                err_len += (int)bytesRead;
+                err_buf[err_len] = '\0';
+              } else break;
+            }
+            break;
+          }
+        }
+      }
+      WaitForSingleObject(pi.hProcess, INFINITE);
+      GetExitCodeProcess(pi.hProcess, &exit_code);
+      is_ok = (exit_code == 0) ? 1 : 0;
+      CloseHandle(pi.hProcess);
+      CloseHandle(pi.hThread);
+    } else {
+      exit_code = 1;
+      is_ok = 0;
+      const char *fail_msg = "Failed to launch process";
+      size_t fmlen = strlen(fail_msg);
+      if (err_len + (int)fmlen + 1 >= err_cap) {
+        err_cap = (int)fmlen + 64;
+        err_buf = (char *)realloc(err_buf, err_cap);
+      }
+      memcpy(err_buf, fail_msg, fmlen + 1);
+      err_len = (int)fmlen;
+    }
+    CloseHandle(hStdoutRead);
+    CloseHandle(hStderrRead);
+#else
+    int out_pipe[2];
+    int err_pipe[2];
+    if (pipe(out_pipe) < 0 || pipe(err_pipe) < 0) {
+      ValFree(&cmd_val);
+      PUSH(ValNull());
+      *stacktopptr = stacktop;
+      return 1;
+    }
+    pid_t pid = fork();
+    char *out_buf = (char *)malloc(1024);
+    int out_len = 0, out_cap = 1024;
+    out_buf[0] = '\0';
+    char *err_buf = (char *)malloc(1024);
+    int err_len = 0, err_cap = 1024;
+    err_buf[0] = '\0';
+    int exit_code = 1;
+    int is_ok = 0;
+
+    if (pid == 0) {
+      dup2(out_pipe[1], STDOUT_FILENO);
+      dup2(err_pipe[1], STDERR_FILENO);
+      close(out_pipe[0]); close(out_pipe[1]);
+      close(err_pipe[0]); close(err_pipe[1]);
+      execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+      _exit(127);
+    } else if (pid > 0) {
+      close(out_pipe[1]);
+      close(err_pipe[1]);
+      char temp[4096];
+      ssize_t n;
+      while ((n = read(out_pipe[0], temp, sizeof(temp) - 1)) > 0) {
+        if (out_len + (int)n + 1 >= out_cap) {
+          out_cap = (out_cap * 2) + (int)n + 128;
+          out_buf = (char *)realloc(out_buf, out_cap);
+        }
+        memcpy(out_buf + out_len, temp, n);
+        out_len += (int)n;
+        out_buf[out_len] = '\0';
+      }
+      while ((n = read(err_pipe[0], temp, sizeof(temp) - 1)) > 0) {
+        if (err_len + (int)n + 1 >= err_cap) {
+          err_cap = (err_cap * 2) + (int)n + 128;
+          err_buf = (char *)realloc(err_buf, err_cap);
+        }
+        memcpy(err_buf + err_len, temp, n);
+        err_len += (int)n;
+        err_buf[err_len] = '\0';
+      }
+      close(out_pipe[0]);
+      close(err_pipe[0]);
+      int status = 0;
+      waitpid(pid, &status, 0);
+      if (WIFEXITED(status)) {
+        exit_code = WEXITSTATUS(status);
+        is_ok = (exit_code == 0) ? 1 : 0;
+      }
+    }
+#endif
+    AKSValue res = ValStruct("ProcessResult");
+    AKSStruct *rs = ValToObj(res);
+    rs->fieldcount = 4;
+    rs->fieldnames = malloc(4 * sizeof(char *));
+    rs->fieldvals = malloc(4 * sizeof(AKSValue));
+    rs->fieldnames[0] = strdup("stdout");
+    rs->fieldvals[0] = ValStrLen(out_buf, out_len);
+    rs->fieldnames[1] = strdup("stderr");
+    rs->fieldvals[1] = ValStrLen(err_buf, err_len);
+    rs->fieldnames[2] = strdup("exit_code");
+    rs->fieldvals[2] = ValInt((int64_t)exit_code);
+    rs->fieldnames[3] = strdup("ok");
+    rs->fieldvals[3] = ValBool(is_ok);
+
+    free(out_buf);
+    free(err_buf);
+    ValFree(&cmd_val);
+    PUSH(res);
+    *stacktopptr = stacktop;
+    return 1;
   }
 
   if (strcmp(name, "ProcessWriteStdin") == 0) {
@@ -13839,6 +14224,30 @@ static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
     AksJP jp; jp.s = ValToStrPtr(SV)->data; jp.pos = 0;
     AKSValue result = AksJPParseValue(&jp);
     ValFree(&SV); PUSH(result); *stacktopptr = stacktop; return 1;
+  }
+
+  if (strcmp(name, "JSONStringifyC") == 0) {
+    if (argc < 1 || argc > 2) {
+      fprintf(stderr, "Runtime error: JSONStringifyC() expects 1 or 2 args\n");
+      return -1;
+    }
+    int pretty = 0;
+    if (argc == 2) {
+      AKSValue PV = POP();
+      if (ValKind(PV) == VALBOOL) pretty = ValToBool(PV);
+      else if (ValKind(PV) == VALINT) pretty = (ValToInt(PV) > 0);
+      ValFree(&PV);
+    }
+    AKSValue SV = POP();
+    AksJsonBuf jb;
+    AksJsonBufInit(&jb);
+    AksJsonStringifyValue(&jb, SV, pretty, 0);
+    AKSValue res = ValStrLen(jb.buf, jb.len);
+    free(jb.buf);
+    ValFree(&SV);
+    PUSH(res);
+    *stacktopptr = stacktop;
+    return 1;
   }
 
   if (strcmp(name, "CSVParseC") == 0) {

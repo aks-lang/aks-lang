@@ -8081,6 +8081,7 @@ Compiler *CompNew(void) {
     NewFn(c, "AtomicFence");
 
     NewFn(c, "ProcessSpawn");
+    NewFn(c, "ProcessRunC");
     NewFn(c, "ProcessWriteStdin");
     NewFn(c, "ProcessReadStdout");
     NewFn(c, "ProcessReadStderr");
@@ -8649,6 +8650,7 @@ Compiler *CompNew(void) {
     NewFn(c, "GdiBitmapSetPixelC");
     NewFn(c, "IniParseC");
     NewFn(c, "JSONParseC");
+    NewFn(c, "JSONStringifyC");
     NewFn(c, "LagrangeInterpC");
     NewFn(c, "LinearSolveC");
     NewFn(c, "LockFreeStackNewC");

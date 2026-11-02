@@ -1,0 +1,106 @@
+// Verification test suite for AKS language enhancements
+
+println("Running TestNewImprovements suite...");
+
+// 1. JSON Stringify & Parse Roundtrip
+struct Person {
+    name: string;
+    age: int;
+    active: bool;
+}
+
+let p = new Person();
+p.name = "Anoop";
+p.age = 30;
+p.active = true;
+
+let json_str = JSON.Stringify(p, false);
+println("JSON.Stringify compact: " + json_str);
+if (json_str == null || Length(json_str) == 0) {
+    println("FAIL: JSON.Stringify produced empty output");
+    exit(1);
+}
+
+let pretty_str = JSON.Stringify(p, true);
+println("JSON.Stringify pretty:\n" + pretty_str);
+
+let parsed = JSON.Parse(json_str);
+if (parsed.name != "Anoop" || parsed.age != 30 || parsed.active != true) {
+    println("FAIL: JSON roundtrip mismatch");
+    exit(1);
+}
+
+// Test Json alias
+let arr_json = Json.Stringify([1, 2, 3, "test"], false);
+println("Json.Stringify array: " + arr_json);
+let arr_back = Json.Parse(arr_json);
+if (Length(arr_back) != 4 || arr_back[0] != 1 || arr_back[3] != "test") {
+    println("FAIL: Array JSON serialization failed");
+    exit(1);
+}
+println("PASS: JSON.Stringify and Json aliases verified");
+
+// 2. Path Ergonomics: Ext and Stem
+let p1 = "projects/aks/src/compiler.c";
+let ext1 = Path.Ext(p1);
+let stem1 = Path.Stem(p1);
+println("Path.Ext: " + ext1 + ", Path.Stem: " + stem1);
+if (ext1 != ".c" || stem1 != "compiler") {
+    println("FAIL: Path.Ext or Path.Stem failed on compiler.c");
+    exit(1);
+}
+
+let p_obj = Path("archive/backup.tar.gz");
+if (p_obj.Ext() != ".gz" || p_obj.Stem() != "backup.tar") {
+    println("FAIL: Path instance methods failed");
+    exit(1);
+}
+println("PASS: Path.Ext and Path.Stem verified");
+
+// 3. High-Level Process.Run
+println("Testing Process.Run...");
+let proc_res = Process.Run("cmd.exe /c echo AKS_PROCESS_OK");
+println("Process exit_code: " + String(proc_res.exit_code) + ", ok: " + String(proc_res.ok));
+println("Process stdout: " + proc_res.stdout);
+if (!proc_res.ok || proc_res.exit_code != 0) {
+    println("FAIL: Process.Run command failed");
+    exit(1);
+}
+println("PASS: Process.Run verified");
+
+// 4. Concurrency TaskGroup / Nursery
+println("Testing TaskGroup / Nursery Nursery.WaitAll...");
+let counter = 0;
+fn worker_tg() {
+    sleep(10);
+    return 42;
+}
+
+let tg = TaskGroup();
+let t1 = tg.Spawn(worker_tg);
+let results = tg.WaitAll();
+println("TaskGroup results count: " + String(Length(results)));
+if (Length(results) != 1 || results[0] != 42) {
+    println("FAIL: TaskGroup did not return task result");
+    exit(1);
+}
+println("PASS: TaskGroup verified");
+
+// 5. Pattern Matching Guards
+let score = 85;
+let grade = "";
+match (score) {
+    case s if s >= 90 => { grade = "A"; },
+    case s if s >= 80 => { grade = "B"; },
+    case s if s >= 70 => { grade = "C"; },
+    case _ => { grade = "F"; }
+}
+println("Match guard grade: " + grade);
+if (grade != "B") {
+    println("FAIL: Pattern guard produced wrong grade: " + grade);
+    exit(1);
+}
+println("PASS: Pattern matching guards verified");
+
+println("\nALL NEW IMPROVEMENTS PASSED SUCCESSFULLY!");
+

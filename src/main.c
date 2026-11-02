@@ -30,6 +30,7 @@
 #include "nostdcodegen.h"
 #include "direct_linker.h"
 #include "mlircodegen.inc.c"
+#include "version.h"
 
 #include <time.h>
 static int ExecuteRunBinary(const char *binarypath);
@@ -149,6 +150,8 @@ static void ShowReplHistory(void) {
 
 static void RunRepl(void) {
 #ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD dwMode = 0;
     if (hOut != INVALID_HANDLE_VALUE && GetConsoleMode(hOut, &dwMode)) {
@@ -156,10 +159,12 @@ static void RunRepl(void) {
     }
 #endif
 
-    printf("\033[1;36m       _  ______ \033[0m\n");
-    printf("\033[1;36m      / |/ / __/ \033[0m  \033[1;32mAKS Programming Language v3.0\033[0m\n");
-    printf("\033[1;36m     /    /\\ \\   \033[0m  High-Performance Systems & AI Engine\n");
-    printf("\033[1;36m    /_/|_/___/   \033[0m  Type \033[1;33m:help\033[0m or \033[1;33m:quit\033[0m to exit\n\n");
+    printf("\033[1;36m    █████╗ ██╗  ██╗███████╗\033[0m\n");
+    printf("\033[1;36m   ██╔══██╗██║ ██╔╝██╔════╝\033[0m   \033[1;32mAKS Programming Language v%s\033[0m\n", AKS_VERSION_STRING);
+    printf("\033[1;36m   ███████║█████╔╝ ███████╗\033[0m   High-Performance Systems Language\n");
+    printf("\033[1;36m   ██╔══██║██╔═██╗ ╚════██║\033[0m   Type \033[1;33m:help\033[0m or \033[1;33m:quit\033[0m to exit\n");
+    printf("\033[1;36m   ██║  ██║██║  ██╗███████║\033[0m   https://github.com/aks-lang/aks-lang\n");
+    printf("\033[1;36m   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝\033[0m\n\n");
 
     Compiler *c = CompNew();
     c->isrepl = 1;
@@ -555,6 +560,7 @@ static void PrintUsage(const char *programname) {
     printf("Usage:\n");
     printf("  %s                                              Start interactive REPL\n", programname);
     printf("  %s repl                                         Start interactive REPL\n", programname);
+    printf("  %s -e \"<code>\"                                            Evaluate code expression directly\n", programname);
     printf("  %s run <file.aks>                               Compile in memory and execute script\n", programname);
     printf("  %s watch <file.aks>                             Watch file and live hot-reload on change\n", programname);
     printf("  %s compile <file.aks> -o <file.aksb>            Compile source to binary bytecode\n", programname);
@@ -1862,6 +1868,88 @@ static int ExecuteRunFuzz(const char *sourcepath) {
     return crashed ? 1 : 0;
 }
 
+
+static int ExecuteEval(const char *code) {
+    if (!code) return 1;
+    Compiler *aksCompiler = CompNew();
+
+    int savedImmutable = gImmutableByDefault;
+    int savedType = gTypeCheckingEnabled;
+    int savedBorrow = gBorrowCheckerEnabled;
+    gImmutableByDefault = 0;
+    gTypeCheckingEnabled = 0;
+    gBorrowCheckerEnabled = 0;
+
+    int parseError = 0;
+    Node *preludeAst = Parse(AKSPRELUDE, &parseError);
+    if (parseError || !preludeAst) {
+        fprintf(stderr, "Compiler error: Prelude syntax analysis failed.\n");
+        if (preludeAst) NodeFree(preludeAst);
+        CompFree(aksCompiler);
+        return 1;
+    }
+    if (!CompCompile(aksCompiler, preludeAst)) {
+        fprintf(stderr, "Compiler error: Prelude compilation failed.\n");
+        NodeFree(preludeAst);
+        CompFree(aksCompiler);
+        return 1;
+    }
+    NodeFree(preludeAst);
+
+    if (aksCompiler->fns[0]->chunk.count > 0 && aksCompiler->fns[0]->chunk.code[aksCompiler->fns[0]->chunk.count - 1] == OPHALT) {
+        aksCompiler->fns[0]->chunk.count--;
+    }
+
+    gImmutableByDefault = savedImmutable;
+    gTypeCheckingEnabled = savedType;
+    gBorrowCheckerEnabled = savedBorrow;
+
+    char *eval_buf = (char *)malloc(strlen(code) + 8);
+    strcpy(eval_buf, code);
+    size_t elen = strlen(eval_buf);
+    while (elen > 0 && (eval_buf[elen - 1] == ' ' || eval_buf[elen - 1] == '\t' || eval_buf[elen - 1] == '\r' || eval_buf[elen - 1] == '\n')) {
+        eval_buf[--elen] = '\0';
+    }
+    if (elen > 0 && eval_buf[elen - 1] != ';' && eval_buf[elen - 1] != '}') {
+        eval_buf[elen++] = ';';
+        eval_buf[elen] = '\0';
+    }
+
+    Node *programast = Parse(eval_buf, &parseError);
+    free(eval_buf);
+    if (parseError || !programast) {
+        fprintf(stderr, "Compiler error: Syntax analysis failed.\n");
+        if (programast) NodeFree(programast);
+        CompFree(aksCompiler);
+        return 1;
+    }
+
+    if (!CompCompile(aksCompiler, programast)) {
+        fprintf(stderr, "Compiler error: Code generation failed.\n");
+        NodeFree(programast);
+        CompFree(aksCompiler);
+        return 1;
+    }
+    NodeFree(programast);
+
+    VM *aksVM = VMNew();
+    aksVM->jitmode = gJitMode;
+    aksVM->jitcacheenabled = gJitCacheEnabled;
+    aksVM->pgoprofile = gPgoProfile;
+    aksVM->pgouse = gPgoUse;
+    if (!VMLoadMem(aksVM, aksCompiler)) {
+        fprintf(stderr, "Runtime error: VM bytecode load failed.\n");
+        CompFree(aksCompiler);
+        VMFree(aksVM);
+        return 1;
+    }
+    CompFree(aksCompiler);
+
+    int vmresult = VMRun(aksVM);
+    VMFree(aksVM);
+    return vmresult ? 0 : 1;
+}
+
 static int ExecuteRun(const char *sourcepath) {
     if (!gBorrowCheckerEnabled && !gTypeCheckingEnabled) {
         char *cached = PkgGetBytecodeCache(sourcepath);
@@ -2574,7 +2662,7 @@ int main(int argc, char **argv) {
 
         if (strcmp(command, "--version") == 0 || strcmp(command, "-v") == 0 ||
             strcmp(command, "-V") == 0 || strcmp(command, "version") == 0) {
-            printf("aks 1.0.0 (x86_64-pc-windows-msvc)\n");
+            printf("aks %s (x86_64-pc-windows-msvc)\n", AKS_VERSION_STRING);
             return 0;
         }
         if (strcmp(command, "--help") == 0 || strcmp(command, "-h") == 0) {
@@ -2686,7 +2774,13 @@ int main(int argc, char **argv) {
                 return 1;
             }
             return ExecuteRunFuzz(file_path);
-        } else if (strcmp(command, "run") == 0) {
+                } else if (strcmp(command, "-e") == 0 || strcmp(command, "--eval") == 0 || strcmp(command, "eval") == 0) {
+            if (argc < 3) {
+                fprintf(stderr, "Usage: %s -e \"<code>\"\n", argv[0]);
+                return 1;
+            }
+            return ExecuteEval(argv[2]);
+} else if (strcmp(command, "run") == 0) {
             if (argc < 3) {
                 PrintUsage(argv[0]);
                 return 1;

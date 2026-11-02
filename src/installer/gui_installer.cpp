@@ -51,7 +51,8 @@ static Gdiplus::Bitmap *LoadPngFromMemory(const uint8_t *data, size_t size) {
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
-#define AKS_VERSION "1.0.0"
+#include "version.h"
+#define AKS_VERSION AKS_VERSION_STRING
 #define AKS_MAGIC "AKSPKG10"
 #define DEFAULT_APP_NAME "aks"
 
@@ -1314,7 +1315,9 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
                 if (g_currentPage == PAGE_MAINTENANCE) {
                     g.DrawString(L"Modify Installation", -1, g_pFontTitle, Gdiplus::PointF(40.0f, 20.0f), &titleBrush);
-                    g.DrawString(L"AKS Programming Language 1.0.0 is currently installed.", -1, g_pFontSub, Gdiplus::PointF(40.0f, 48.0f), &mutedBrush);
+                    wchar_t wMaintSub[128];
+                    swprintf_s(wMaintSub, L"AKS Programming Language %s is currently installed.", AKS_VERSION_WIDE);
+                    g.DrawString(wMaintSub, -1, g_pFontSub, Gdiplus::PointF(40.0f, 48.0f), &mutedBrush);
                 } else if (g_currentPage == PAGE_INSTALLING) {
                     g.DrawString(g_isRepairMode ? L"Repairing AKS Programming Language" : L"Installing AKS Programming Language", -1, g_pFontTitle, Gdiplus::PointF(40.0f, 20.0f), &titleBrush);
                     g.DrawString(L"Please wait while files and toolchain components are configured.", -1, g_pFontSub, Gdiplus::PointF(40.0f, 48.0f), &mutedBrush);
@@ -1332,7 +1335,9 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                     g.DrawString(L"AKS Programming Language has been cleanly removed from your computer.", -1, g_pFontSub, Gdiplus::PointF(40.0f, 48.0f), &mutedBrush);
                 } else {
                     g.DrawString(L"Install AKS Programming Language", -1, g_pFontTitle, Gdiplus::PointF(40.0f, 20.0f), &titleBrush);
-                    g.DrawString(L"Version 1.0.0 (64-bit)", -1, g_pFontSub, Gdiplus::PointF(40.0f, 48.0f), &mutedBrush);
+                    wchar_t wVerSub[128];
+                    swprintf_s(wVerSub, L"Version %s (64-bit)", AKS_VERSION_WIDE);
+                    g.DrawString(wVerSub, -1, g_pFontSub, Gdiplus::PointF(40.0f, 48.0f), &mutedBrush);
                 }
 
                 // Header separator line

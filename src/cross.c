@@ -545,6 +545,8 @@ int RunWasmBinary(const char *wasmpath) {
 
 void SysEnableAnsi(void) {
 #ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
     HANDLE hout = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hout != INVALID_HANDLE_VALUE) {
         DWORD dwmode = 0;
