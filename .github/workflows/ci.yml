@@ -1,0 +1,66 @@
+name: AKS Matrix CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test-windows:
+    name: Windows x64 (MSVC Native)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build pure native runtime and tools
+        shell: cmd
+        run: build.bat
+
+      - name: Run full test suite
+        shell: cmd
+        run: test.bat
+
+      - name: Verify CLI Version & Scaffolding
+        shell: cmd
+        run: |
+          aks.exe --version
+          aks.exe new my_aks_app
+          aks.exe run my_aks_app\src\main.aks
+          aks.exe test my_aks_app\tests\main_test.aks
+
+      - name: Verify Standalone WebAssembly Binary (.wasm)
+        shell: cmd
+        run: |
+          aks.exe wasm tests\TestWasmInput.aks -o test_module.wasm
+          node -e "const fs=require('fs'); WebAssembly.instantiate(fs.readFileSync('test_module.wasm')).then(m => { console.log('WASM add(20, 22) =', m.instance.exports.add(20n, 22n)); if (m.instance.exports.add(20n, 22n) !== 42n) process.exit(1); });"
+
+  build-and-verify-linux:
+    name: Linux Ubuntu (Syntax & Source Verification)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build essentials
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc clang make
+
+      - name: Validate C source compilation syntax
+        run: |
+          gcc -Iinclude -fsyntax-only src/ast.c src/compiler.c src/typer.c src/lexer.c src/parser.c src/wasmcodegen.c
+

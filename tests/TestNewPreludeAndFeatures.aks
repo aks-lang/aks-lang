@@ -1,0 +1,68 @@
+// Verify String additions in Prelude
+let parts = Split("foo,bar,baz", ",");
+assert_eq(Length(parts), 3);
+assert_eq(parts[0], "foo");
+assert_eq(parts[1], "bar");
+assert_eq(parts[2], "baz");
+
+let joined = Join(parts, " -> ");
+assert_eq(joined, "foo -> bar -> baz");
+
+assert_eq(Trim("   aks language   \r\n"), "aks language");
+assert_eq(ToLower("AKS 2026"), "aks 2026");
+assert_eq(ToUpper("hello world"), "HELLO WORLD");
+assert_eq(ReplaceAll("cats and dogs and cats", "cats", "birds"), "birds and dogs and birds");
+
+// Verify String namespace helpers
+assert_eq(String.Join(String.Split("1:2:3", ":"), "-"), "1-2-3");
+assert_eq(String.Trim("  clean  "), "clean");
+assert_eq(String.ToLower("HELLO"), "hello");
+assert_eq(String.ToUpper("hello"), "HELLO");
+assert_eq(String.ReplaceAll("abc", "b", "z"), "azc");
+
+// Verify Cli.Parser
+let parser = Cli.Parser("demo_cli", "1.0.0", "A sample CLI app");
+parser.Flag("config", "default.json", "Config path");
+parser.Int("threads", 4, "Number of worker threads");
+parser.Bool("dry_run", false, "Simulate without execution");
+
+parser.Parse(["--config=prod.json", "--threads", "8", "-dry_run", "input1.aks", "input2.aks"]);
+
+assert_eq(parser.Get("config"), "prod.json");
+assert_eq(parser.Get("threads"), 8);
+assert_eq(parser.Get("dry_run"), true);
+let pos_args = parser.Args();
+assert_eq(Length(pos_args), 2);
+assert_eq(pos_args[0], "input1.aks");
+assert_eq(pos_args[1], "input2.aks");
+
+// Verify KvStore
+let db_file = "test_features_kv.db";
+let kv = KvStore.Open(db_file);
+kv.Set("site", "aks-lang.org");
+kv.Set("version", "1.2.0");
+kv.Set("active", true);
+
+assert_eq(kv.Get("site"), "aks-lang.org");
+assert_eq(kv.Get("version"), "1.2.0");
+assert_eq(kv.Get("active"), true);
+assert_eq(kv.Has("site"), true);
+assert_eq(kv.Has("nonexistent"), false);
+assert_eq(kv.Count(), 3);
+
+kv.Delete("site");
+assert_eq(kv.Has("site"), false);
+assert_eq(kv.Count(), 2);
+kv.Close();
+
+// Reopen and verify persistence
+let kv2 = KvStore.Open(db_file);
+assert_eq(kv2.Get("version"), "1.2.0");
+assert_eq(kv2.Get("active"), true);
+assert_eq(kv2.Has("site"), false);
+kv2.Close();
+
+RemoveFile(db_file);
+
+print("SUCCESS: All new Prelude features (String, Cli.Parser, KvStore) verified 100%!");
+

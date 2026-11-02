@@ -426,38 +426,160 @@ static char *ReadFileContent(const char *path) {
 
 // package manager commands
 int PkgInit(const char *name) {
-    printf("Initializing package '%s'\n", name);
-    
+    char proj_name[256];
+    char target_dir[512] = "";
+    int is_current_dir = 0;
+
+    if (!name || strcmp(name, ".") == 0 || strlen(name) == 0) {
+        is_current_dir = 1;
+        char cwd[512];
+#ifdef _WIN32
+        if (GetCurrentDirectoryA(sizeof(cwd), cwd)) {
+            char *last_slash = strrchr(cwd, '\\');
+            if (!last_slash) last_slash = strrchr(cwd, '/');
+            if (last_slash && *(last_slash + 1)) {
+                snprintf(proj_name, sizeof(proj_name), "%s", last_slash + 1);
+            } else {
+                snprintf(proj_name, sizeof(proj_name), "aks_app");
+            }
+        } else {
+            snprintf(proj_name, sizeof(proj_name), "aks_app");
+        }
+#else
+        if (getcwd(cwd, sizeof(cwd))) {
+            char *last_slash = strrchr(cwd, '/');
+            if (!last_slash) last_slash = strrchr(cwd, '/');
+            if (last_slash && *(last_slash + 1)) {
+                snprintf(proj_name, sizeof(proj_name), "%s", last_slash + 1);
+            } else {
+                snprintf(proj_name, sizeof(proj_name), "aks_app");
+            }
+        } else {
+            snprintf(proj_name, sizeof(proj_name), "aks_app");
+        }
+#endif
+    } else {
+        snprintf(proj_name, sizeof(proj_name), "%s", name);
+        snprintf(target_dir, sizeof(target_dir), "%s", name);
+        MkDirp(target_dir);
+    }
+
+    printf("[init] Scaffolding AKS project '%s'...\n", proj_name);
+
     char srcdir[512];
-    snprintf(srcdir, sizeof(srcdir), "%s\\src", name);
+    char testdir[512];
+    if (is_current_dir) {
+        snprintf(srcdir, sizeof(srcdir), "src");
+        snprintf(testdir, sizeof(testdir), "tests");
+    } else {
+        snprintf(srcdir, sizeof(srcdir), "%s\\src", target_dir);
+        snprintf(testdir, sizeof(testdir), "%s\\tests", target_dir);
+    }
     MkDirp(srcdir);
-    
+    MkDirp(testdir);
+
     char manifestpath[512];
-    snprintf(manifestpath, sizeof(manifestpath), "%s\\aks.json", name);
-    
+    if (is_current_dir) {
+        snprintf(manifestpath, sizeof(manifestpath), "aks.json");
+    } else {
+        snprintf(manifestpath, sizeof(manifestpath), "%s\\aks.json", target_dir);
+    }
+
     FILE *f = fopen(manifestpath, "w");
     if (!f) {
         fprintf(stderr, "Error: Could not create %s\n", manifestpath);
         return 1;
     }
     fprintf(f, "{\n");
-    fprintf(f, "  \"name\": \"%s\",\n", name);
+    fprintf(f, "  \"name\": \"%s\",\n", proj_name);
     fprintf(f, "  \"version\": \"1.0.0\",\n");
+    fprintf(f, "  \"description\": \"A new AKS application\",\n");
     fprintf(f, "  \"entrypoint\": \"src/main.aks\",\n");
     fprintf(f, "  \"dependencies\": {}\n");
     fprintf(f, "}\n");
     fclose(f);
-    
+
     char mainpath[512];
-    snprintf(mainpath, sizeof(mainpath), "%s\\src\\main.aks", name);
+    if (is_current_dir) {
+        snprintf(mainpath, sizeof(mainpath), "src\\main.aks");
+    } else {
+        snprintf(mainpath, sizeof(mainpath), "%s\\src\\main.aks", target_dir);
+    }
     FILE *mainf = fopen(mainpath, "w");
     if (mainf) {
-        fprintf(mainf, "// Main entrypoint for package %s\n", name);
-        fprintf(mainf, "print(\"Hello from %s!\");\n", name);
+        fprintf(mainf, "// Main entrypoint for %s\n", proj_name);
+        fprintf(mainf, "fn main() {\n");
+        fprintf(mainf, "    print(\"Hello from %s!\");\n", proj_name);
+        fprintf(mainf, "}\n\n");
+        fprintf(mainf, "main();\n");
         fclose(mainf);
     }
-    
-    printf("Package initialized successfully.\n");
+
+    char testpath[512];
+    if (is_current_dir) {
+        snprintf(testpath, sizeof(testpath), "tests\\main_test.aks");
+    } else {
+        snprintf(testpath, sizeof(testpath), "%s\\tests\\main_test.aks", target_dir);
+    }
+    FILE *testf = fopen(testpath, "w");
+    if (testf) {
+        fprintf(testf, "// Unit tests for %s\n", proj_name);
+        fprintf(testf, "fn test_basic() {\n");
+        fprintf(testf, "    assert_eq(1 + 1, 2);\n");
+        fprintf(testf, "}\n\n");
+        fprintf(testf, "test_basic();\n");
+        fprintf(testf, "print(\"All tests passed!\");\n");
+        fclose(testf);
+    }
+
+    char gitignorepath[512];
+    if (is_current_dir) {
+        snprintf(gitignorepath, sizeof(gitignorepath), ".gitignore");
+    } else {
+        snprintf(gitignorepath, sizeof(gitignorepath), "%s\\.gitignore", target_dir);
+    }
+    FILE *check_gi = fopen(gitignorepath, "r");
+    if (check_gi) {
+        fclose(check_gi);
+    } else {
+        FILE *gif = fopen(gitignorepath, "w");
+        if (gif) {
+            fprintf(gif, "# AKS build artifacts and binaries\n");
+            fprintf(gif, "build/\n");
+            fprintf(gif, "dist/\n");
+            fprintf(gif, "*.exe\n");
+            fprintf(gif, "*.wasm\n");
+            fprintf(gif, "*.wat\n");
+            fprintf(gif, "*.aksb\n");
+            fprintf(gif, "*.o\n");
+            fprintf(gif, "*.obj\n");
+            fprintf(gif, "*.pdb\n");
+            fprintf(gif, "*.db\n");
+            fclose(gif);
+        }
+    }
+
+    printf("[init] Project '%s' scaffolded successfully!\n", proj_name);
+    if (is_current_dir) {
+        printf("  Created:\n");
+        printf("    - aks.json\n");
+        printf("    - src/main.aks\n");
+        printf("    - tests/main_test.aks\n");
+        printf("    - .gitignore\n");
+        printf("  Next:\n");
+        printf("    aks run src/main.aks\n");
+        printf("    aks test tests/main_test.aks\n");
+    } else {
+        printf("  Created in %s/:\n", target_dir);
+        printf("    - %s/aks.json\n", target_dir);
+        printf("    - %s/src/main.aks\n", target_dir);
+        printf("    - %s/tests/main_test.aks\n", target_dir);
+        printf("    - %s/.gitignore\n", target_dir);
+        printf("  Next:\n");
+        printf("    cd %s\n", target_dir);
+        printf("    aks run src/main.aks\n");
+        printf("    aks test tests/main_test.aks\n");
+    }
     return 0;
 }
 

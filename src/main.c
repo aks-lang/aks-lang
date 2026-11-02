@@ -568,7 +568,8 @@ static void PrintUsage(const char *programname) {
     printf("  %s compile-exe <file.aks> [-o <out.exe>]        Compile source to standalone executable directly\n", programname);
     printf("  %s compile-aot <file.aks> <out.exe|out.c>       Compile source to standalone native executable or C\n", programname);
     printf("  %s static <build|run> <file.aks> [-o <out>]     Compile directly to LLVM IR and native binary\n", programname);
-    printf("  %s wasm <file.aks> [-o <output.wat>]            Compile source to WebAssembly text format (WAT)\n", programname);
+    printf("  %s wasm <file.aks> [-o <output.wasm|wat>]       Compile source to WebAssembly binary (.wasm) or text (.wat)\n", programname);
+    printf("  %s compile-wasm <file.aks> [-o <out.wasm>]      Compile source directly to standalone WebAssembly binary (.wasm)\n", programname);
     printf("  %s compile-nostd <file.aks> [-o <out.c>]        Compile source to freestanding bare-metal C\n", programname);
     printf("  %s profile <file.aks>                           Execute script with instruction profiling\n", programname);
     printf("\nQuality & Testing Tools:\n");
@@ -592,7 +593,9 @@ static void PrintUsage(const char *programname) {
     printf("  %s migrate <input.aks>                          Refactor legacy source code to modern syntax\n", programname);
     printf("  %s cheatsheet [output.md]                       Display or export language syntax cheatsheet\n", programname);
     printf("\nPackage & Security Commands:\n");
-    printf("  %s pkg init <name>                              Initialize a new package project\n", programname);
+    printf("  %s init [name]                                 Scaffold a new AKS project in current or named directory\n", programname);
+    printf("  %s new <name>                                   Create and scaffold a new AKS project directory\n", programname);
+    printf("  %s pkg init [name]                              Initialize a new package project\n", programname);
     printf("  %s pkg add <pkg>@<version>                      Add a dependency constraint to aks.json\n", programname);
     printf("  %s pkg install                                  Resolve and install package dependencies\n", programname);
     printf("  %s pkg run                                      Run the package entrypoint\n", programname);
@@ -2670,7 +2673,55 @@ int main(int argc, char **argv) {
             return 0;
         }
 
-        if (strcmp(command, "repl") == 0) {
+        if (strcmp(command, "init") == 0) {
+            const char *proj_name = (argc >= 3) ? argv[2] : NULL;
+            return PkgInit(proj_name);
+        } else if (strcmp(command, "new") == 0) {
+            if (argc < 3) {
+                fprintf(stderr, "Usage: %s new <project-name>\n", argv[0]);
+                return 1;
+            }
+            return PkgInit(argv[2]);
+        } else if (strcmp(command, "compile-wasm") == 0) {
+            if (argc < 3) {
+                fprintf(stderr, "Usage: %s compile-wasm <file.aks> [-o output.wasm]\n", argv[0]);
+                return 1;
+            }
+            const char *srcfile = argv[2];
+            const char *outfile = "output.wasm";
+            for (int i = 3; i < argc; i++) {
+                if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+                    outfile = argv[i+1];
+                    i++;
+                } else if (argv[i][0] != '-') {
+                    outfile = argv[i];
+                }
+            }
+            char *rawsource = ReadFileToStr(srcfile);
+            if (!rawsource) {
+                fprintf(stderr, "Error: Could not read '%s'\n", srcfile);
+                return 1;
+            }
+            int parseError = 0;
+            Node *ast = Parse(rawsource, &parseError);
+            free(rawsource);
+            if (parseError || !ast) {
+                if (ast) NodeFree(ast);
+                fprintf(stderr, "Error: Parse failed for '%s'\n", srcfile);
+                return 1;
+            }
+            Compiler *sc = CompNew();
+            int ok = EmitWasmModule(sc, ast, outfile);
+            NodeFree(ast);
+            CompFree(sc);
+            if (ok) {
+                printf("[wasm] WebAssembly module emitted to: %s\n", outfile);
+                return 0;
+            } else {
+                fprintf(stderr, "Error: WASM codegen failed for '%s'\n", srcfile);
+                return 1;
+            }
+        } else if (strcmp(command, "repl") == 0) {
             RunRepl();
             return 0;
         } else if (strcmp(command, "test") == 0) {
@@ -3265,11 +3316,8 @@ int main(int argc, char **argv) {
             }
             const char *subcmd = argv[2];
             if (strcmp(subcmd, "init") == 0) {
-                if (argc < 4) {
-                    fprintf(stderr, "Error: Missing package name. Example: %s pkg init <name>\n", argv[0]);
-                    return 1;
-                }
-                return PkgInit(argv[3]);
+                const char *pname = (argc >= 4) ? argv[3] : NULL;
+                return PkgInit(pname);
             } else if (strcmp(subcmd, "add") == 0) {
                 if (argc < 4) {
                     fprintf(stderr, "Error: Missing package spec. Example: %s pkg add <pkgspec>\n", argv[0]);

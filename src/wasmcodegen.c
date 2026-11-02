@@ -232,7 +232,459 @@ static void CollectWasmCalls(Node *n, char **calls, int *count, int max) {
     }
 }
 
+
+// Binary WASM Byte Buffer helpers
+typedef struct {
+    uint8_t *data;
+    size_t size;
+    size_t capacity;
+} WasmBinBuf;
+
+static void WbbInit(WasmBinBuf *b) {
+    b->size = 0;
+    b->capacity = 256;
+    b->data = (uint8_t*)malloc(b->capacity);
+}
+
+static void WbbFree(WasmBinBuf *b) {
+    if (b->data) free(b->data);
+    b->data = NULL;
+    b->size = b->capacity = 0;
+}
+
+static void WbbWriteByte(WasmBinBuf *b, uint8_t byte) {
+    if (b->size >= b->capacity) {
+        b->capacity = b->capacity ? b->capacity * 2 : 256;
+        b->data = (uint8_t*)realloc(b->data, b->capacity);
+    }
+    b->data[b->size++] = byte;
+}
+
+static void WbbWriteBytes(WasmBinBuf *b, const uint8_t *bytes, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        WbbWriteByte(b, bytes[i]);
+    }
+}
+
+static void WbbWriteU32(WasmBinBuf *b, uint32_t val) {
+    do {
+        uint8_t byte = (uint8_t)(val & 0x7F);
+        val >>= 7;
+        if (val != 0) byte |= 0x80;
+        WbbWriteByte(b, byte);
+    } while (val != 0);
+}
+
+static void WbbWriteI64(WasmBinBuf *b, int64_t val) {
+    int more = 1;
+    while (more) {
+        uint8_t byte = (uint8_t)(val & 0x7F);
+        val >>= 7;
+        if ((val == 0 && (byte & 0x40) == 0) || (val == -1 && (byte & 0x40) != 0)) {
+            more = 0;
+        } else {
+            byte |= 0x80;
+        }
+        WbbWriteByte(b, byte);
+    }
+}
+
+static void WbbWriteI32(WasmBinBuf *b, int32_t val) {
+    int more = 1;
+    while (more) {
+        uint8_t byte = (uint8_t)(val & 0x7F);
+        val >>= 7;
+        if ((val == 0 && (byte & 0x40) == 0) || (val == -1 && (byte & 0x40) != 0)) {
+            more = 0;
+        } else {
+            byte |= 0x80;
+        }
+        WbbWriteByte(b, byte);
+    }
+}
+
+static void WbbWriteF64(WasmBinBuf *b, double val) {
+    uint8_t bytes[8];
+    memcpy(bytes, &val, 8);
+    WbbWriteBytes(b, bytes, 8);
+}
+
+static void WbbWriteString(WasmBinBuf *b, const char *s) {
+    uint32_t len = (uint32_t)strlen(s);
+    WbbWriteU32(b, len);
+    WbbWriteBytes(b, (const uint8_t*)s, len);
+}
+
+static void WbbWriteSection(FILE *f, uint8_t sec_id, WasmBinBuf *payload) {
+    fputc(sec_id, f);
+    WasmBinBuf len_buf;
+    WbbInit(&len_buf);
+    WbbWriteU32(&len_buf, (uint32_t)payload->size);
+    fwrite(len_buf.data, 1, len_buf.size, f);
+    WbbFree(&len_buf);
+    if (payload->size > 0) {
+        fwrite(payload->data, 1, payload->size, f);
+    }
+}
+
+typedef struct {
+    char name[128];
+    int pc;
+    char pnames[32][64];
+    char locals[64][64];
+    int local_count;
+    Node *body;
+    int is_main;
+} WasmBinFn;
+
+static int WbbFindLocal(WasmBinFn *fn, const char *name) {
+    if (!name) return -1;
+    for (int i = 0; i < fn->pc; i++) {
+        if (strcmp(fn->pnames[i], name) == 0) return i;
+    }
+    for (int i = 0; i < fn->local_count; i++) {
+        if (strcmp(fn->locals[i], name) == 0) return fn->pc + i;
+    }
+    return -1;
+}
+
+static int WbbFindFunc(WasmBinFn *fns, int fn_count, const char *name) {
+    if (!name) return -1;
+    for (int i = 0; i < fn_count; i++) {
+        if (strcmp(fns[i].name, name) == 0) return i;
+    }
+    return -1;
+}
+
+static void EmitWasmBinNode(WasmBinBuf *bb, Node *node, WasmBinFn *cur_fn, WasmBinFn *all_fns, int fn_count) {
+    if (!node) return;
+    switch (node->type) {
+    case NINT:
+        WbbWriteByte(bb, 0x42); // i64.const
+        WbbWriteI64(bb, (int64_t)node->ival);
+        break;
+    case NFLOAT:
+        WbbWriteByte(bb, 0x44); // f64.const
+        WbbWriteF64(bb, node->fval);
+        break;
+    case NBOOL:
+        WbbWriteByte(bb, 0x41); // i32.const
+        WbbWriteI32(bb, node->ival ? 1 : 0);
+        break;
+    case NIDENT: {
+        const char *id = node->sval ? node->sval : "v";
+        int idx = WbbFindLocal(cur_fn, id);
+        if (idx >= 0) {
+            WbbWriteByte(bb, 0x20); // local.get
+            WbbWriteU32(bb, (uint32_t)idx);
+        } else {
+            WbbWriteByte(bb, 0x42); // i64.const 0
+            WbbWriteI64(bb, 0);
+        }
+        break;
+    }
+    case NVARDECL:
+    case NCONSTDECL:
+        if (node->decl.init) {
+            EmitWasmBinNode(bb, node->decl.init, cur_fn, all_fns, fn_count);
+            int idx = WbbFindLocal(cur_fn, node->decl.name);
+            if (idx >= 0) {
+                WbbWriteByte(bb, 0x21); // local.set
+                WbbWriteU32(bb, (uint32_t)idx);
+            }
+        }
+        break;
+    case NASSIGN:
+        if (node->assign.value) {
+            EmitWasmBinNode(bb, node->assign.value, cur_fn, all_fns, fn_count);
+            if (node->assign.target && node->assign.target->type == NIDENT) {
+                const char *id = node->assign.target->sval ? node->assign.target->sval : "v";
+                int idx = WbbFindLocal(cur_fn, id);
+                if (idx >= 0) {
+                    WbbWriteByte(bb, 0x21); // local.set
+                    WbbWriteU32(bb, (uint32_t)idx);
+                }
+            }
+        }
+        break;
+    case NBINOP:
+        EmitWasmBinNode(bb, node->binop.left, cur_fn, all_fns, fn_count);
+        EmitWasmBinNode(bb, node->binop.right, cur_fn, all_fns, fn_count);
+        if (strcmp(node->binop.op, "+") == 0) WbbWriteByte(bb, 0x7C);
+        else if (strcmp(node->binop.op, "-") == 0) WbbWriteByte(bb, 0x7D);
+        else if (strcmp(node->binop.op, "*") == 0) WbbWriteByte(bb, 0x7E);
+        else if (strcmp(node->binop.op, "/") == 0) WbbWriteByte(bb, 0x7F);
+        else if (strcmp(node->binop.op, "%") == 0) WbbWriteByte(bb, 0x81);
+        else if (strcmp(node->binop.op, "<") == 0) { WbbWriteByte(bb, 0x53); WbbWriteByte(bb, 0xAD); }
+        else if (strcmp(node->binop.op, "<=") == 0) { WbbWriteByte(bb, 0x57); WbbWriteByte(bb, 0xAD); }
+        else if (strcmp(node->binop.op, ">") == 0) { WbbWriteByte(bb, 0x55); WbbWriteByte(bb, 0xAD); }
+        else if (strcmp(node->binop.op, ">=") == 0) { WbbWriteByte(bb, 0x59); WbbWriteByte(bb, 0xAD); }
+        else if (strcmp(node->binop.op, "==") == 0) { WbbWriteByte(bb, 0x51); WbbWriteByte(bb, 0xAD); }
+        else if (strcmp(node->binop.op, "!=") == 0) { WbbWriteByte(bb, 0x52); WbbWriteByte(bb, 0xAD); }
+        else if (strcmp(node->binop.op, "&") == 0) WbbWriteByte(bb, 0x83);
+        else if (strcmp(node->binop.op, "|") == 0) WbbWriteByte(bb, 0x84);
+        else if (strcmp(node->binop.op, "^") == 0) WbbWriteByte(bb, 0x85);
+        else if (strcmp(node->binop.op, "<<") == 0) WbbWriteByte(bb, 0x86);
+        else if (strcmp(node->binop.op, ">>") == 0) WbbWriteByte(bb, 0x87);
+        break;
+    case NIF:
+        EmitWasmBinNode(bb, node->ifn.cond, cur_fn, all_fns, fn_count);
+        WbbWriteByte(bb, 0x42); WbbWriteI64(bb, 0); // i64.const 0
+        WbbWriteByte(bb, 0x52); // i64.ne (produces i32 bool)
+        WbbWriteByte(bb, 0x04); // if
+        WbbWriteByte(bb, 0x7E); // result i64
+        if (node->ifn.then) EmitWasmBinNode(bb, node->ifn.then, cur_fn, all_fns, fn_count);
+        WbbWriteByte(bb, 0x05); // else
+        if (node->ifn.els) {
+            EmitWasmBinNode(bb, node->ifn.els, cur_fn, all_fns, fn_count);
+        } else {
+            WbbWriteByte(bb, 0x42); // i64.const 0
+            WbbWriteI64(bb, 0);
+        }
+        WbbWriteByte(bb, 0x0B); // end
+        break;
+    case NWHILE:
+        WbbWriteByte(bb, 0x02); WbbWriteByte(bb, 0x40); // block
+        WbbWriteByte(bb, 0x03); WbbWriteByte(bb, 0x40); // loop
+        if (node->whilen.cond) {
+            EmitWasmBinNode(bb, node->whilen.cond, cur_fn, all_fns, fn_count);
+            WbbWriteByte(bb, 0x50); // i64.eqz
+            WbbWriteByte(bb, 0x0D); WbbWriteU32(bb, 1); // br_if 1
+        }
+        if (node->whilen.body) EmitWasmBinNode(bb, node->whilen.body, cur_fn, all_fns, fn_count);
+        WbbWriteByte(bb, 0x0C); WbbWriteU32(bb, 0); // br 0
+        WbbWriteByte(bb, 0x0B); // end loop
+        WbbWriteByte(bb, 0x0B); // end block
+        break;
+    case NFOR:
+        if (node->forn.init) EmitWasmBinNode(bb, node->forn.init, cur_fn, all_fns, fn_count);
+        WbbWriteByte(bb, 0x02); WbbWriteByte(bb, 0x40); // block
+        WbbWriteByte(bb, 0x03); WbbWriteByte(bb, 0x40); // loop
+        if (node->forn.cond) {
+            EmitWasmBinNode(bb, node->forn.cond, cur_fn, all_fns, fn_count);
+            WbbWriteByte(bb, 0x50); // i64.eqz
+            WbbWriteByte(bb, 0x0D); WbbWriteU32(bb, 1); // br_if 1
+        }
+        if (node->forn.body) EmitWasmBinNode(bb, node->forn.body, cur_fn, all_fns, fn_count);
+        if (node->forn.post) {
+            EmitWasmBinNode(bb, node->forn.post, cur_fn, all_fns, fn_count);
+            if (node->forn.post->type != NASSIGN && node->forn.post->type != NVARDECL) {
+                WbbWriteByte(bb, 0x1A); // drop
+            }
+        }
+        WbbWriteByte(bb, 0x0C); WbbWriteU32(bb, 0); // br 0
+        WbbWriteByte(bb, 0x0B); // end loop
+        WbbWriteByte(bb, 0x0B); // end block
+        break;
+    case NCALL: {
+        for (int i = 0; i < node->call.argc; i++) {
+            EmitWasmBinNode(bb, node->call.args[i], cur_fn, all_fns, fn_count);
+        }
+        const char *target_name = NULL;
+        if (node->call.callee && node->call.callee->type == NIDENT) {
+            target_name = node->call.callee->decl.name ? node->call.callee->decl.name : node->call.callee->sval;
+        }
+        int fidx = WbbFindFunc(all_fns, fn_count, target_name);
+        if (fidx >= 0) {
+            WbbWriteByte(bb, 0x10); // call
+            WbbWriteU32(bb, (uint32_t)fidx);
+        } else {
+            WbbWriteByte(bb, 0x42); // i64.const 0
+            WbbWriteI64(bb, 0);
+        }
+        break;
+    }
+    case NRETURN:
+        if (node->single.expr) EmitWasmBinNode(bb, node->single.expr, cur_fn, all_fns, fn_count);
+        else if (node->binop.left) EmitWasmBinNode(bb, node->binop.left, cur_fn, all_fns, fn_count);
+        else {
+            WbbWriteByte(bb, 0x42); // i64.const 0
+            WbbWriteI64(bb, 0);
+        }
+        WbbWriteByte(bb, 0x0F); // return
+        break;
+    case NEXPRSTMT:
+        if (node->single.expr) {
+            EmitWasmBinNode(bb, node->single.expr, cur_fn, all_fns, fn_count);
+            if (node->single.expr->type != NASSIGN && node->single.expr->type != NVARDECL && node->single.expr->type != NCONSTDECL) {
+                WbbWriteByte(bb, 0x1A); // drop
+            }
+        }
+        break;
+    case NBLOCK:
+    case NPROGRAM:
+        for (int i = 0; i < node->block.count; i++) {
+            if (node->block.stmts[i]->type != NFNDECL) {
+                EmitWasmBinNode(bb, node->block.stmts[i], cur_fn, all_fns, fn_count);
+            }
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+static int EmitWasmBinaryModule(Compiler *comp, Node *ast_root, const char *out_filepath) {
+    (void)comp;
+    FILE *f = fopen(out_filepath, "wb");
+    if (!f) return 0;
+
+    // Magic number: \0asm
+    const uint8_t magic[4] = { 0x00, 0x61, 0x73, 0x6D };
+    fwrite(magic, 1, 4, f);
+    // Version: 1
+    const uint8_t ver[4] = { 0x01, 0x00, 0x00, 0x00 };
+    fwrite(ver, 1, 4, f);
+
+    // Collect functions
+    static WasmBinFn fns[128];
+    int fn_count = 0;
+    memset(fns, 0, sizeof(fns));
+
+    int has_main_stmts = 0;
+    if (ast_root && (ast_root->type == NPROGRAM || ast_root->type == NBLOCK)) {
+        for (int i = 0; i < ast_root->block.count; i++) {
+            if (ast_root->block.stmts[i]->type != NFNDECL) {
+                has_main_stmts++;
+            }
+        }
+    }
+
+    if (ast_root && (ast_root->type == NPROGRAM || ast_root->type == NBLOCK)) {
+        for (int i = 0; i < ast_root->block.count && fn_count < 120; i++) {
+            Node *st = ast_root->block.stmts[i];
+            if (st->type == NFNDECL && st->fn.name) {
+                WasmBinFn *wfn = &fns[fn_count++];
+                snprintf(wfn->name, sizeof(wfn->name), "%s", st->fn.name);
+                wfn->pc = st->fn.pc;
+                for (int p = 0; p < st->fn.pc && p < 32; p++) {
+                    snprintf(wfn->pnames[p], sizeof(wfn->pnames[p]), "%s", st->fn.pnames[p]);
+                }
+                char *raw_locals[64];
+                int lcount = 0;
+                CollectWasmLocals(st->fn.body, raw_locals, &lcount, 64);
+                wfn->local_count = 0;
+                for (int l = 0; l < lcount && wfn->local_count < 64; l++) {
+                    int is_param = 0;
+                    for (int p = 0; p < st->fn.pc; p++) {
+                        if (strcmp(st->fn.pnames[p], raw_locals[l]) == 0) { is_param = 1; break; }
+                    }
+                    if (!is_param) {
+                        snprintf(wfn->locals[wfn->local_count++], 64, "%s", raw_locals[l]);
+                    }
+                }
+                wfn->body = st->fn.body;
+                wfn->is_main = 0;
+            }
+        }
+    }
+
+    if (has_main_stmts && fn_count < 128) {
+        WasmBinFn *wfn = &fns[fn_count++];
+        snprintf(wfn->name, sizeof(wfn->name), "main");
+        wfn->pc = 0;
+        char *raw_locals[64];
+        int lcount = 0;
+        CollectWasmLocals(ast_root, raw_locals, &lcount, 64);
+        wfn->local_count = 0;
+        for (int l = 0; l < lcount && wfn->local_count < 64; l++) {
+            snprintf(wfn->locals[wfn->local_count++], 64, "%s", raw_locals[l]);
+        }
+        wfn->body = ast_root;
+        wfn->is_main = 1;
+    }
+
+    // Section 1: Type Section
+    WasmBinBuf type_sec;
+    WbbInit(&type_sec);
+    WbbWriteU32(&type_sec, (uint32_t)fn_count);
+    for (int i = 0; i < fn_count; i++) {
+        WbbWriteByte(&type_sec, 0x60); // func type
+        WbbWriteU32(&type_sec, (uint32_t)fns[i].pc);
+        for (int p = 0; p < fns[i].pc; p++) {
+            WbbWriteByte(&type_sec, 0x7E); // i64
+        }
+        WbbWriteU32(&type_sec, 1); // 1 result
+        WbbWriteByte(&type_sec, 0x7E); // i64
+    }
+    WbbWriteSection(f, 1, &type_sec);
+    WbbFree(&type_sec);
+
+    // Section 3: Function Section
+    WasmBinBuf func_sec;
+    WbbInit(&func_sec);
+    WbbWriteU32(&func_sec, (uint32_t)fn_count);
+    for (int i = 0; i < fn_count; i++) {
+        WbbWriteU32(&func_sec, (uint32_t)i); // type index i
+    }
+    WbbWriteSection(f, 3, &func_sec);
+    WbbFree(&func_sec);
+
+    // Section 5: Memory Section
+    WasmBinBuf mem_sec;
+    WbbInit(&mem_sec);
+    WbbWriteU32(&mem_sec, 1); // 1 memory
+    WbbWriteByte(&mem_sec, 0x00); // min only
+    WbbWriteU32(&mem_sec, 1); // min 1 page
+    WbbWriteSection(f, 5, &mem_sec);
+    WbbFree(&mem_sec);
+
+    // Section 7: Export Section
+    WasmBinBuf exp_sec;
+    WbbInit(&exp_sec);
+    WbbWriteU32(&exp_sec, (uint32_t)(fn_count + 1)); // fns + memory
+    for (int i = 0; i < fn_count; i++) {
+        WbbWriteString(&exp_sec, fns[i].name);
+        WbbWriteByte(&exp_sec, 0x00); // func
+        WbbWriteU32(&exp_sec, (uint32_t)i);
+    }
+    WbbWriteString(&exp_sec, "memory");
+    WbbWriteByte(&exp_sec, 0x02); // memory
+    WbbWriteU32(&exp_sec, 0);
+    WbbWriteSection(f, 7, &exp_sec);
+    WbbFree(&exp_sec);
+
+    // Section 10: Code Section
+    WasmBinBuf code_sec;
+    WbbInit(&code_sec);
+    WbbWriteU32(&code_sec, (uint32_t)fn_count);
+    for (int i = 0; i < fn_count; i++) {
+        WasmBinBuf body;
+        WbbInit(&body);
+        if (fns[i].local_count > 0) {
+            WbbWriteU32(&body, 1); // 1 local group
+            WbbWriteU32(&body, (uint32_t)fns[i].local_count);
+            WbbWriteByte(&body, 0x7E); // i64
+        } else {
+            WbbWriteU32(&body, 0);
+        }
+        if (fns[i].body) {
+            EmitWasmBinNode(&body, fns[i].body, &fns[i], fns, fn_count);
+        }
+        // Ensure stack has return value
+        WbbWriteByte(&body, 0x42); // i64.const 0
+        WbbWriteI64(&body, 0);
+        WbbWriteByte(&body, 0x0B); // end
+
+        // Write func size + body into code_sec
+        WbbWriteU32(&code_sec, (uint32_t)body.size);
+        WbbWriteBytes(&code_sec, body.data, body.size);
+        WbbFree(&body);
+    }
+    WbbWriteSection(f, 10, &code_sec);
+    WbbFree(&code_sec);
+
+    fclose(f);
+    return 1;
+}
+
 int EmitWasmModule(Compiler *comp, Node *ast_root, const char *out_filepath) {
+    if (!out_filepath) return 0;
+    size_t outlen = strlen(out_filepath);
+    if (outlen >= 5 && (strcmp(out_filepath + outlen - 5, ".wasm") == 0 ||
+                        strcmp(out_filepath + outlen - 5, ".WASM") == 0)) {
+        return EmitWasmBinaryModule(comp, ast_root, out_filepath);
+    }
     FILE *f = fopen(out_filepath, "w");
     if (!f) return 0;
 
