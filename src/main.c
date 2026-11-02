@@ -2572,6 +2572,16 @@ int main(int argc, char **argv) {
 
         const char *command = argv[1];
 
+        if (strcmp(command, "--version") == 0 || strcmp(command, "-v") == 0 ||
+            strcmp(command, "-V") == 0 || strcmp(command, "version") == 0) {
+            printf("aks 1.0.0 (x86_64-pc-windows-msvc)\n");
+            return 0;
+        }
+        if (strcmp(command, "--help") == 0 || strcmp(command, "-h") == 0) {
+            PrintUsage(argv[0]);
+            return 0;
+        }
+
         if (strcmp(command, "repl") == 0) {
             RunRepl();
             return 0;

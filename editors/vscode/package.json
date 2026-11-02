@@ -42,8 +42,14 @@
     "languages": [
       {
         "id": "aks",
-        "aliases": ["AKS", "aks"],
-        "extensions": [".aks", ".aksb"],
+        "aliases": [
+          "AKS",
+          "aks"
+        ],
+        "extensions": [
+          ".aks",
+          ".aksb"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -107,10 +113,14 @@
       {
         "type": "aks-dap",
         "label": "AKS Debugger",
-        "languages": ["aks"],
+        "languages": [
+          "aks"
+        ],
         "configurationAttributes": {
           "launch": {
-            "required": ["program"],
+            "required": [
+              "program"
+            ],
             "properties": {
               "program": {
                 "type": "string",
@@ -120,7 +130,9 @@
               "args": {
                 "type": "array",
                 "description": "Command line arguments passed to the program.",
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "default": []
               },
               "stopOnEntry": {
@@ -157,7 +169,11 @@
         },
         "aks.trace.server": {
           "type": "string",
-          "enum": ["off", "messages", "verbose"],
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
           "default": "off",
           "description": "Trace communication between VS Code and the AKS Language Server."
         }
