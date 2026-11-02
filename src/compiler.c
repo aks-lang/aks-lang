@@ -200,7 +200,11 @@ static void VerifyFnContracts(Compiler *c, Node *n) {
         fputs(query, tmp);
         fclose(tmp);
         
+#ifdef _WIN32
         FILE *z3_run = _popen("z3 temp_query.smt2 2>nul", "r");
+#else
+        FILE *z3_run = _popen("z3 temp_query.smt2 2>/dev/null", "r");
+#endif
         if (!z3_run) {
             z3_run = _popen("z3 temp_query.smt2", "r");
         }
@@ -11927,7 +11931,7 @@ static void ApplyNarrowing(Compiler *c, Node *cond, SymbolEnv *env, int istrue) 
                     if (strcmp(curr, "any") == 0) {
                         // keep any
                     } else {
-                        char *p = strstr(curr, "|null");
+                        const char *p = strstr(curr, "|null");
                         if (p) {
                             int len = (int)(p - curr);
                             strncpy(narrow, curr, len);

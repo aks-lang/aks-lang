@@ -12,6 +12,14 @@
 #include <process.h>
 #define SleepMs(ms) Sleep((DWORD)(ms))
 #else
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
+#endif
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <stdio.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/time.h>
@@ -24,6 +32,13 @@
 #include <errno.h>
 #include <sys/wait.h>
 #include <signal.h>
+
+#ifndef _popen
+#define _popen(cmd, mode) popen(cmd, mode)
+#endif
+#ifndef _pclose
+#define _pclose(stream) pclose(stream)
+#endif
 
 #define SleepMs(ms) usleep((ms) * 1000)
 #define Sleep(ms) usleep((ms) * 1000)
