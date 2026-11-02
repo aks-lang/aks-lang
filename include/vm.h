@@ -7,8 +7,12 @@
 #include "aks_plat.h"
 
 #if defined(__linux__) && !defined(AKS_DISABLE_IO_URING)
+#if defined(__has_include)
+#if __has_include(<liburing.h>)
 #define AKS_USE_IO_URING 1
 #include <liburing.h>
+#endif
+#endif
 #endif
 
 #define MAXSTACK 65536

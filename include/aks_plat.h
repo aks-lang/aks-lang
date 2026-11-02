@@ -88,6 +88,7 @@ static inline int LnxSleepConditionVariableCS(pthread_cond_t *cond, pthread_mute
 #define INFINITE 0xFFFFFFFFUL
 #define WAIT_OBJECT_0 0
 #define WAIT_TIMEOUT 258
+#define WAIT_FAILED 0xFFFFFFFFUL
 #define CreateEvent(attr, manual, initial, name) LnxCreateEvent(manual, initial)
 #define CreateEventA(attr, manual, initial, name) LnxCreateEvent(manual, initial)
 #define SetEvent(h) LnxSetEvent(h)

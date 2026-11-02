@@ -58,7 +58,7 @@ jobs:
       - name: Install build essentials
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc clang make
+          sudo apt-get install -y gcc clang make liburing-dev
 
       - name: Validate C source compilation syntax
         run: |
