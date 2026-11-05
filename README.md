@@ -409,6 +409,32 @@ VolatileWrite(0x1000, 0xCAFEBABE);
 let val = VolatileRead(0x1000);
 OutPortByte(0x3F8, 0x41); // Serial COM1 UART output
 let status = InPortByte(0x3FD);
+
+// 16. Scoped Memory Arenas & Zero-Overhead Lifecycle
+Arena.Scoped(fn(arena) {
+    let buf = arena.Alloc(4096);
+    // Work with contiguous high-speed scratch buffer
+    // Memory automatically reclaimed upon function exit
+}, 65536);
+
+// 17. CSP Channel Concurrency (Go-style message passing)
+let ch = Channel.New(10);
+ch.Send("ping");
+let msg = ch.Recv(); // "ping"
+ch.Close();
+
+// 18. Dynamic Functional Vectors
+let vec = Vector.New();
+vec.Push(10);
+vec.Push(20);
+vec.Push(30);
+let doubled = vec.Map(fn(x) { return x * 2; }); // [20, 40, 60]
+let evens = vec.Filter(fn(x) { return x % 20 == 0; }); // [20]
+
+// 19. Object-Oriented Native FFI Interop
+let lib = Ffi.Open("kernel32.dll");
+let tick = lib.Call("GetTickCount");
+lib.Close();
 ```
 
 ---
@@ -421,7 +447,7 @@ AKS is self-contained with minimal external dependencies. On Windows x64 with MS
 
 ```cmd
 # Clone repository
-git clone https://github.com/anoop/aks-lang.git
+git clone https://github.com/aks-lang/aks-lang.git
 cd aks-lang
 
 # Build compiler, VM, LSP daemon, formatter, and linter
@@ -449,11 +475,15 @@ AKS ships with a complete toolchain out of the box:
 
 | Command | Usage | Description |
 | :--- | :--- | :--- |
+| **`init`** | `aks init [name]` | Scaffolds a complete AKS project in current directory or target. |
+| **`new`** | `aks new <name>` | Creates a new project directory with manifest, starter code, and tests. |
+| **`build`** | `aks build [file.aks] [-o <out>] [--static]` | Compiles a standalone native executable or package bundle. |
+| **`sbom`** | `aks sbom [output.json]` | Generates a CycloneDX 1.4 Software Bill of Materials with SHA-256 hashes. |
 | **`run`** | `aks run <file.aks>` | Compiles and executes in memory via VM and JIT. |
 | **`watch`** | `aks watch <file.aks>` | Watches source file and hot-reloads on modification. |
 | **`compile-exe`**| `aks compile-exe <file.aks> -o <out.exe>` | Generates a standalone native Windows executable. |
 | **`static`** | `aks static build <file.aks> -o <out.exe>` | Direct LLVM IR compilation with zero VM overhead. |
-| **`wasm`** | `aks wasm <file.aks> -o <out.wat>` | Compiles source to WebAssembly text format. |
+| **`wasm`** | `aks wasm <file.aks> [-o <out.wasm>]` | Emits direct WebAssembly 1.0 binary bytecode or WAT. |
 | **`test`** | `aks test [file.aks] [--coverage]` | Discovers and executes `test_*` functions with reporting. |
 | **`check`** | `aks check [file.aks]` | Static type checking and safety verification without execution. |
 | **`bench`** | `aks bench [file.aks \| dir] --save <out>` | Runs benchmark functions and saves performance profiles. |
