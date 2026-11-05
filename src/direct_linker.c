@@ -93,7 +93,12 @@ int CheckAndRunEmbeddedPayload(int argc, char **argv) {
     fclose(f);
 
     VM *aksVM = VMNew();
-    aksVM->jitmode = 1;
+    aksVM->jitmode = 0;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--jit") == 0) {
+            aksVM->jitmode = 1;
+        }
+    }
     if (!VMLoadBuffer(aksVM, payload, (size_t)trailer.payload_size)) {
         free(payload);
         VMFree(aksVM);

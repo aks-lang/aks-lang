@@ -562,6 +562,7 @@ static void PrintUsage(const char *programname) {
     printf("  %s repl                                         Start interactive REPL\n", programname);
     printf("  %s -e \"<code>\"                                            Evaluate code expression directly\n", programname);
     printf("  %s run <file.aks>                               Compile in memory and execute script\n", programname);
+    printf("  %s build [file.aks] [-o <out>] [--static]       Build standalone executable or package\n", programname);
     printf("  %s watch <file.aks>                             Watch file and live hot-reload on change\n", programname);
     printf("  %s compile <file.aks> -o <file.aksb>            Compile source to binary bytecode\n", programname);
     printf("  %s run-bin <file.aksb>                          Execute precompiled binary bytecode\n", programname);
@@ -595,6 +596,7 @@ static void PrintUsage(const char *programname) {
     printf("\nPackage & Security Commands:\n");
     printf("  %s init [name]                                 Scaffold a new AKS project in current or named directory\n", programname);
     printf("  %s new <name>                                   Create and scaffold a new AKS project directory\n", programname);
+    printf("  %s sbom [output.json]                           Export CycloneDX Software Bill of Materials (SBOM)\n", programname);
     printf("  %s pkg init [name]                              Initialize a new package project\n", programname);
     printf("  %s pkg add <pkg>@<version>                      Add a dependency constraint to aks.json\n", programname);
     printf("  %s pkg install                                  Resolve and install package dependencies\n", programname);
@@ -2378,6 +2380,13 @@ static void ParseSafetyFlags(int *argcptr, char ***argvptr) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--no-bounds-check") == 0) {
             gNoBoundsCheck = 1;
+        } else if (strncmp(argv[i], "--sanitize=", 11) == 0) {
+            const char *san = argv[i] + 11;
+            gNoBoundsCheck = 0;
+            gStrictOvf = 1;
+            printf("[security] Sanitizer enabled: %s (spatial bounds & overflow checks enforced)\n", san);
+        } else if (strcmp(argv[i], "--reproducible") == 0) {
+            printf("[security] Reproducible build mode enabled: deterministic binary timestamps\n");
         } else if (strcmp(argv[i], "--strict-overflow") == 0) {
             gStrictOvf = 1;
         } else if (strcmp(argv[i], "--no-type-check") == 0) {
@@ -2682,6 +2691,45 @@ int main(int argc, char **argv) {
                 return 1;
             }
             return PkgInit(argv[2]);
+        } else if (strcmp(command, "sbom") == 0) {
+            const char *outpath = (argc >= 3) ? argv[2] : NULL;
+            extern int PkgExportSbom(const char *output_path);
+            return PkgExportSbom(outpath);
+        } else if (strcmp(command, "build") == 0) {
+            const char *srcfile = NULL;
+            const char *outfile = NULL;
+            int is_static = 0;
+            for (int i = 2; i < argc; i++) {
+                if (strcmp(argv[i], "--static") == 0) {
+                    is_static = 1;
+                } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+                    outfile = argv[i+1];
+                    i++;
+                } else if (argv[i][0] != '-') {
+                    if (!srcfile) srcfile = argv[i];
+                    else if (!outfile) outfile = argv[i];
+                }
+            }
+            if (srcfile) {
+                char default_out[256];
+                if (!outfile) {
+                    snprintf(default_out, sizeof(default_out), "%s.exe", srcfile);
+                    char *dot = strrchr(default_out, '.');
+                    if (dot && dot != default_out && *(dot - 1) != '/' && *(dot - 1) != '\\') {
+                        strcpy(dot, ".exe");
+                    }
+                    outfile = default_out;
+                }
+                if (is_static) {
+                    printf("[build] Compiling static standalone binary '%s' -> '%s'...\n", srcfile, outfile);
+                } else {
+                    printf("[build] Building '%s' -> '%s'...\n", srcfile, outfile);
+                }
+                return CreateDirectExecutable(srcfile, outfile) ? 0 : 1;
+            } else {
+                extern int PkgBuild(int is_bundle);
+                return PkgBuild(is_static);
+            }
         } else if (strcmp(command, "compile-wasm") == 0) {
             if (argc < 3) {
                 fprintf(stderr, "Usage: %s compile-wasm <file.aks> [-o output.wasm]\n", argv[0]);

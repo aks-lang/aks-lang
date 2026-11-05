@@ -47,6 +47,13 @@ jobs:
           aks.exe wasm tests\TestWasmInput.aks -o test_module.wasm
           node -e "const fs=require('fs'); WebAssembly.instantiate(fs.readFileSync('test_module.wasm')).then(m => { console.log('WASM add(20, 22) =', m.instance.exports.add(20n, 22n)); if (m.instance.exports.add(20n, 22n) !== 42n) process.exit(1); });"
 
+      - name: Verify Systems Features & Standalone Executable Build
+        shell: cmd
+        run: |
+          aks.exe run tests\TestNewSystemsFeatures.aks
+          aks.exe build tests\TestNewSystemsFeatures.aks -o standalone_test.exe
+          standalone_test.exe
+
   build-and-verify-linux:
     name: Linux Ubuntu (Syntax & Source Verification)
     runs-on: ubuntu-latest

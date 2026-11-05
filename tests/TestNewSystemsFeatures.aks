@@ -1,0 +1,103 @@
+// TestNewSystemsFeatures.aks
+// Verifies Ffi, Arena.Scoped, Channel, Vector, and Defer features in AKS
+
+let defer_order = [];
+
+fn test_defer_lifo() {
+    defer append(defer_order, 3);
+    defer append(defer_order, 2);
+    defer append(defer_order, 1);
+    append(defer_order, 0);
+}
+
+// 1. Defer LIFO Verification
+test_defer_lifo();
+assert_eq(Length(defer_order), 4);
+assert_eq(defer_order[0], 0);
+assert_eq(defer_order[1], 1);
+assert_eq(defer_order[2], 2);
+assert_eq(defer_order[3], 3);
+print("[PASS] defer statement execution in LIFO order verified.");
+
+// 2. Arena Namespace & Scoped Lifecycle
+let scoped_res = Arena.Scoped(fn(a) {
+    let block = a.Alloc(128);
+    return 42;
+});
+assert_eq(scoped_res, 42);
+
+let custom_arena = Arena.New(32768);
+assert_ne(custom_arena, null);
+let ptr = custom_arena.Alloc(64);
+assert_ne(ptr, null);
+custom_arena.Reset();
+custom_arena.Free();
+print("[PASS] Arena.New and Arena.Scoped memory management verified.");
+
+// 3. Channel (CSP Concurrency)
+let ch = Channel.New(3);
+assert_eq(ch.IsEmpty(), true);
+assert_eq(ch.Count(), 0);
+
+assert_eq(ch.Send("event_1"), true);
+assert_eq(ch.Send("event_2"), true);
+assert_eq(ch.Count(), 2);
+assert_eq(ch.IsEmpty(), false);
+
+assert_eq(ch.Recv(), "event_1");
+assert_eq(ch.Recv(), "event_2");
+assert_eq(ch.Recv(), null);
+assert_eq(ch.TryRecv(), null);
+
+ch.Send("pending");
+assert_eq(ch.Close(), true);
+assert_eq(ch.IsClosed(), true);
+assert_eq(ch.Send("dropped"), false);
+assert_eq(ch.Recv(), "pending");
+
+let ch2 = Chan.New(10);
+assert_eq(ch2.Count(), 0);
+print("[PASS] Channel and Chan CSP message passing verified.");
+
+// 4. Vector Container with Functional Methods
+let v = Vector.New([1, 2, 3]);
+assert_eq(v.Length(), 3);
+assert_eq(v.Get(0), 1);
+assert_eq(v.Get(2), 3);
+
+v.Push(4);
+v.Push(5);
+assert_eq(v.Length(), 5);
+assert_eq(v.Pop(), 5);
+assert_eq(v.Length(), 4);
+
+v.Set(0, 10);
+assert_eq(v.Get(0), 10);
+assert_eq(v.Contains(10), true);
+assert_eq(v.Contains(999), false);
+assert_eq(v.Join("-"), "10-2-3-4");
+
+let mapped = v.Map(fn(x) { return x * 2; });
+assert_eq(mapped.Length(), 4);
+assert_eq(mapped.Get(0), 20);
+assert_eq(mapped.Get(1), 4);
+
+let filtered = v.Filter(fn(x) { return x > 2; });
+assert_eq(filtered.Length(), 3);
+assert_eq(filtered.Get(0), 10);
+assert_eq(filtered.Get(1), 3);
+assert_eq(filtered.Get(2), 4);
+
+v.Clear();
+assert_eq(v.Length(), 0);
+print("[PASS] Vector container methods (Push, Pop, Map, Filter, Join) verified.");
+
+// 5. Ffi Namespace availability
+assert_ne(Ffi, null);
+assert_ne(Ffi.Open, null);
+assert_ne(Ffi.Load, null);
+assert_ne(Ffi.Call, null);
+assert_ne(Ffi.Free, null);
+print("[PASS] Ffi namespace helpers verified.");
+
+print("SUCCESS: All new systems features (Defer, Arena, Channel, Vector, Ffi) passed 100%!");
