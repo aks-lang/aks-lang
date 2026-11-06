@@ -1,0 +1,87 @@
+// Type-level reflection and generative metaprogramming tests
+// Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
+
+struct User {
+    id: int;
+    username: string;
+    email: string;
+    is_active: bool;
+}
+
+struct Product {
+    sku: string;
+    price: float;
+    stock: int;
+}
+
+fn BuildSchema(instance) {
+    let flds = fields(instance);
+    let schema = [];
+    let i = 0;
+    while (i < Length(flds)) {
+        let fName = flds[i];
+        let val = get(instance, fName);
+        let valType = type(val);
+        append(schema, fName + ":" + valType);
+        i = i + 1;
+    }
+    return schema;
+}
+
+fn TestComptimeReflection() {
+    let u = new User();
+    u.id = 101;
+    u.username = "anoop";
+    u.email = "anoop@aks-lang.org";
+    u.is_active = true;
+
+    let flds = fields(u);
+    assert(Length(flds) == 4, "User struct must have 4 fields");
+    assert(flds[0] == "id", "First field must be id");
+    assert(flds[1] == "username", "Second field must be username");
+    assert(flds[2] == "email", "Third field must be email");
+    assert(flds[3] == "is_active", "Fourth field must be is_active");
+
+    let p = new Product();
+    p.sku = "AKS-PRO-001";
+    p.price = 199.99;
+    p.stock = 50;
+
+    let pFlds = fields(p);
+    assert(Length(pFlds) == 3, "Product struct must have 3 fields");
+
+    // Dynamic field extraction and mutation
+    assert(get(p, "sku") == "AKS-PRO-001", "get(sku) mismatch");
+    set(p, "stock", 75);
+    assert(get(p, "stock") == 75, "set(stock) mismatch");
+
+    // Schema generation
+    let schema = BuildSchema(p);
+    assert(Length(schema) == 3, "Schema size mismatch");
+    println("Generated schema: " + JsonStringify(schema));
+}
+
+fn TestComptimeConstantEvaluation() {
+    let power2Table = comptime {
+        let tbl = [];
+        let cur = 1;
+        for (let i = 0; i <= 8; i = i + 1) {
+            append(tbl, cur);
+            cur = cur * 2;
+        }
+        return tbl;
+    };
+
+    assert(Length(power2Table) == 9, "Power of 2 table length mismatch");
+    assert(power2Table[0] == 1, "2^0 must be 1");
+    assert(power2Table[4] == 16, "2^4 must be 16");
+    assert(power2Table[8] == 256, "2^8 must be 256");
+}
+
+fn main() {
+    TestComptimeReflection();
+    TestComptimeConstantEvaluation();
+    println("All comptime type-level metaprogramming tests passed!");
+}
+
+main();

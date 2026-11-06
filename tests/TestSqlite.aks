@@ -1,0 +1,55 @@
+// Database & SQL Standard Library Unit Tests
+// Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
+
+fn TestDatabaseLifecycle() {
+    let db = Db.Open(":memory:");
+    assert(db != null, "Db.Open must succeed");
+    assert(db.is_open == true, "db must be open");
+
+    db.Exec("CREATE TABLE IF NOT EXISTS users (id, username, email)");
+    
+    // Insert rows
+    let c1 = db.Exec("INSERT INTO users (id, username, email) VALUES (?, ?, ?)", [1, "alice", "alice@example.com"]);
+    assert(c1 == 1, "First insert should affect 1 row");
+
+    let c2 = db.Exec("INSERT INTO users (id, username, email) VALUES (?, ?, ?)", [2, "bob", "bob@example.com"]);
+    assert(c2 == 1, "Second insert should affect 1 row");
+
+    // Query rows
+    let rows = db.Query("SELECT * FROM users");
+    assert(Length(rows) == 2, "Expected 2 rows from SELECT");
+    assert(get(rows[0], "username") == "alice", "Row 0 username mismatch");
+    assert(get(rows[1], "username") == "bob", "Row 1 username mismatch");
+
+    // Query single row
+    let first = db.QueryRow("SELECT * FROM users");
+    assert(first != null, "QueryRow should return first row");
+    assert(get(first, "email") == "alice@example.com", "First row email mismatch");
+
+    // Transaction
+    let txResult = db.Transaction(fn(tx) {
+        tx.Exec("INSERT INTO users (id, username, email) VALUES (?, ?, ?)", [3, "charlie", "charlie@example.com"]);
+        return "tx_committed";
+    });
+    assert(txResult == "tx_committed", "Transaction return mismatch");
+
+    let updatedRows = db.Query("SELECT * FROM users");
+    assert(Length(updatedRows) == 3, "Expected 3 rows after transaction");
+
+    // Delete
+    let deleted = db.Exec("DELETE FROM users");
+    assert(deleted == 3, "Expected 3 rows deleted");
+
+    let emptyRows = db.Query("SELECT * FROM users");
+    assert(Length(emptyRows) == 0, "Table should be empty after delete");
+
+    db.Close();
+    assert(db.is_open == false, "db must be closed");
+}
+
+fn main() {
+    TestDatabaseLifecycle();
+    println("All Database / SQL tests passed!");
+}
+
+main();
