@@ -42,4 +42,34 @@ int RunWasmBinary(const char *wasmpath);
 // Enable ANSI escape sequence processing on Windows
 void SysEnableAnsi(void);
 
+// Cross-compilation target descriptor
+typedef struct {
+    const char *triple;        // LLVM/GCC target triple
+    const char *alias;         // Short friendly alias
+    const char *os;            // "linux", "macos", "windows", "none"
+    const char *arch;          // "x86_64", "aarch64", "riscv64", "wasm32", etc.
+    const char *abi;           // "gnu", "musl", "msvc", "eabi"
+    int pointer_size;          // Pointer size in bytes (4 or 8)
+    int big_endian;            // 1 = big-endian, 0 = little-endian
+    const char *cc_flags;      // Extra C compiler flags for this target
+    const char *linker_flags;  // Extra linker flags for this target
+} CrossTarget;
+
+// Return the full table of supported cross-compilation targets (NULL-terminated)
+const CrossTarget *CrossGetTargets(void);
+
+// Look up a target by triple or alias; returns NULL if not found
+const CrossTarget *CrossFindTarget(const char *name);
+
+// Print a formatted table of all supported targets to stdout
+void CrossListTargets(void);
+
+// Resolve a friendly alias or partial triple to the canonical triple string.
+// Returns name unchanged if no alias matches.
+const char *CrossResolveTriple(const char *name);
+
+// Generate a cross-compilation command-line flag string for the given target.
+// outbuf must be at least 256 bytes.
+void CrossBuildFlags(const CrossTarget *tgt, char *outbuf, int bufsize);
+
 #endif // Crossh

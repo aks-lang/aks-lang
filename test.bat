@@ -67,6 +67,12 @@ aks.exe run tests\TestSparseFile.aks || exit /b 1
 aks.exe run tests\TestHardLink.aks || exit /b 1
 aks.exe run tests\TestLanguageImprovements.aks || exit /b 1
 aks.exe test tests\TestLanguageImprovements.aks || exit /b 1
+aks.exe run tests\TestGenerics.aks || exit /b 1
+aks.exe test tests\TestGenerics.aks || exit /b 1
+aks.exe run tests\TestComptimeTypelevel.aks || exit /b 1
+aks.exe test tests\TestComptimeTypelevel.aks || exit /b 1
+aks.exe run tests\TestSqlite.aks || exit /b 1
+aks.exe test tests\TestSqlite.aks || exit /b 1
 aks.exe compile-exe tests\TestComptimeExecution.aks -o test_standalone.exe || exit /b 1
 test_standalone.exe || exit /b 1
 del /f /q test_standalone.exe 2>nul

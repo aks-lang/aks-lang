@@ -1227,7 +1227,16 @@ void LearnPlayground(int port) {
             }
         }
 
-        if (strncmp(requestbuffer, "GET /", 5) == 0) {
+        if (strncmp(requestbuffer, "OPTIONS", 7) == 0) {
+            const char *opt_resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nConnection: close\r\n\r\n";
+            send(clientfd, opt_resp, (int)strlen(opt_resp), 0);
+        } else if (strncmp(requestbuffer, "GET /health", 11) == 0) {
+            const char *hresp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"status\":\"ok\",\"service\":\"aks-playground\",\"version\":\"1.3.0\"}\r\n";
+            send(clientfd, hresp, (int)strlen(hresp), 0);
+        } else if (strncmp(requestbuffer, "GET /", 5) == 0) {
+            char hdr[256];
+            sprintf(hdr, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", (int)strlen(PLAYGROUNDHTML));
+            send(clientfd, hdr, (int)strlen(hdr), 0);
             send(clientfd, PLAYGROUNDHTML, (int)strlen(PLAYGROUNDHTML), 0);
         } else if (strncmp(requestbuffer, "POST /run", 9) == 0) {
             char *body = strstr(requestbuffer, "\r\n\r\n");
@@ -1241,7 +1250,7 @@ void LearnPlayground(int port) {
                 if (!output) output = strdup("No output produced.");
 
                 char response[16384];
-                sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", (int)strlen(output), output);
+                sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", (int)strlen(output), output);
                 send(clientfd, response, (int)strlen(response), 0);
                 
                 free(output);

@@ -1,0 +1,73 @@
+// Parametric Generics Test Suite for AKS
+// Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
+
+type Pair<T> = (T, T);
+type Triplet<T> = (T, T, T);
+
+struct Box<T> {
+    value: T;
+}
+
+fn Identity<T>(x: T) -> T {
+    return x;
+}
+
+fn MakeBox<T>(val: T) {
+    let b = new Box<T>();
+    b.value = val;
+    return b;
+}
+
+fn TestGenericAliases() {
+    let p = (10, 20);
+    assert(p[0] == 10, "Pair first item mismatch");
+    assert(p[1] == 20, "Pair second item mismatch");
+
+    let t = ("a", "b", "c");
+    assert(t[0] == "a", "Triplet first item mismatch");
+    assert(t[2] == "c", "Triplet third item mismatch");
+}
+
+fn TestGenericStruct() {
+    let intBox = MakeBox<int>(42);
+    assert(intBox.value == 42, "intBox value mismatch");
+
+    let strBox = MakeBox<string>("hello generics");
+    assert(strBox.value == "hello generics", "strBox value mismatch");
+}
+
+fn TestGenericIdentity() {
+    let a = Identity<int>(100);
+    assert(a == 100, "Identity<int> mismatch");
+
+    let s = Identity<string>("parametric");
+    assert(s == "parametric", "Identity<string> mismatch");
+}
+
+fn TestBuiltinGenerics() {
+    let optSome = Option.Some(999);
+    let optVal = 0;
+    match (optSome) {
+        Option.Some(v) => { optVal = v; },
+        Option.None => { optVal = -1; }
+    }
+    assert(optVal == 999, "Option.Some value mismatch");
+
+    let resOk = Result.Ok("success");
+    let resVal = "";
+    match (resOk) {
+        Result.Ok(v) => { resVal = v; },
+        Result.Err(e) => { resVal = "failed"; }
+    }
+    assert(resVal == "success", "Result.Ok value mismatch");
+}
+
+fn main() {
+    TestGenericAliases();
+    TestGenericStruct();
+    TestGenericIdentity();
+    TestBuiltinGenerics();
+    println("All parametric generics tests passed!");
+}
+
+main();

@@ -484,15 +484,22 @@ AKS ships with a complete toolchain out of the box:
 | **`compile-exe`**| `aks compile-exe <file.aks> -o <out.exe>` | Generates a standalone native Windows executable. |
 | **`static`** | `aks static build <file.aks> -o <out.exe>` | Direct LLVM IR compilation with zero VM overhead. |
 | **`wasm`** | `aks wasm <file.aks> [-o <out.wasm>]` | Emits direct WebAssembly 1.0 binary bytecode or WAT. |
-| **`test`** | `aks test [file.aks] [--coverage]` | Discovers and executes `test_*` functions with reporting. |
+| **`targets`** | `aks targets` | Displays supported cross-compilation target triples and CPU architectures. |
+| **`profile`** | `aks profile <file.aks> [-o <out.svg>]` | Instruction profiling and interactive SVG execution flamegraph generation. |
+| **`test`** | `aks test [file.aks] [--coverage[=lcov\|html]]` | Discovers and executes tests with text, LCOV, or HTML coverage reporting. |
 | **`check`** | `aks check [file.aks]` | Static type checking and safety verification without execution. |
 | **`bench`** | `aks bench [file.aks \| dir] --save <out>` | Runs benchmark functions and saves performance profiles. |
 | **`fuzz`** | `aks fuzz [file.aks]` | Automated coverage-guided fuzz testing loop. |
 | **`fmt`** | `aks fmt <file.aks>` | Formats source files to idiomatic styling conventions. |
 | **`lint`** | `aks lint <file.aks>` | Enforces best practices, style rules, and safety checks. |
 | **`dap`** | `aks dap <file.aks> [port]` | Starts Debug Adapter Protocol server for visual debugging. |
-| **`pkg`** | `aks pkg <init\|add\|install\|run\|bundle>` | Built-in package manager with cryptographic signing. |
+| **`pkg`** | `aks pkg <init\|add\|install\|run\|publish\|search>` | Built-in package manager with local and remote registry support. |
 | **`bind`** | `aks bind <header.h> <output.aks>` | Auto-generates type-safe FFI bindings from C/C++ headers. |
+
+### Editor Integrations
+
+- **Visual Studio Code**: Extension located in [`editors/vscode/`](editors/vscode/) with syntax highlighting, language server protocol (`aksls`), and snippets.
+- **Neovim**: First-class Lua plugin located in [`editors/neovim/`](editors/neovim/) providing syntax highlighting, filetype detection, LSP integration, health checks (`:checkhealth aks`), and built-in `:AksRun`, `:AksTest`, `:AksFmt`, and `:AksLint` commands.
 
 ---
 

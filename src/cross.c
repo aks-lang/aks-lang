@@ -565,3 +565,97 @@ void SysEnableAnsi(void) {
     }
 #endif
 }
+
+// Cross-compilation target registry
+static const CrossTarget g_cross_targets[] = {
+    // triple                            alias                  os         arch       abi     ptr  be  cc_flags                                    linker_flags
+    { "x86_64-unknown-linux-gnu",        "x86_64-linux",        "linux",   "x86_64",  "gnu",  8,  0,  "-march=x86-64 -mtune=generic",             "-lm -lpthread" },
+    { "x86_64-unknown-linux-gnu",        "x86_64-linux-gnu",    "linux",   "x86_64",  "gnu",  8,  0,  "-march=x86-64 -mtune=generic",             "-lm -lpthread" },
+    { "x86_64-unknown-linux-musl",       "x86_64-linux-musl",   "linux",   "x86_64",  "musl", 8,  0,  "-march=x86-64 --sysroot=/usr/x86_64-linux-musl-cross", "-static" },
+    { "aarch64-unknown-linux-gnu",       "aarch64-linux",       "linux",   "aarch64", "gnu",  8,  0,  "-march=armv8-a",                           "-lm -lpthread" },
+    { "aarch64-unknown-linux-gnu",       "aarch64-linux-gnu",   "linux",   "aarch64", "gnu",  8,  0,  "-march=armv8-a",                           "-lm -lpthread" },
+    { "aarch64-unknown-linux-gnu",       "arm64-linux",         "linux",   "aarch64", "gnu",  8,  0,  "-march=armv8-a",                           "-lm -lpthread" },
+    { "aarch64-unknown-linux-musl",      "aarch64-linux-musl",  "linux",   "aarch64", "musl", 8,  0,  "-march=armv8-a",                           "-static" },
+    { "arm-unknown-linux-gnueabihf",     "arm-linux",           "linux",   "arm",     "gnu",  4,  0,  "-march=armv7-a -mfpu=vfpv3-d16 -mfloat-abi=hard", "-lm" },
+    { "arm-unknown-linux-gnueabihf",     "arm32-linux",         "linux",   "arm",     "gnu",  4,  0,  "-march=armv7-a -mfpu=vfpv3-d16 -mfloat-abi=hard", "-lm" },
+    { "riscv64-unknown-linux-gnu",       "riscv64-linux",       "linux",   "riscv64", "gnu",  8,  0,  "-march=rv64gc -mabi=lp64d",                "-lm -lpthread" },
+    { "riscv32-unknown-linux-gnu",       "riscv32-linux",       "linux",   "riscv32", "gnu",  4,  0,  "-march=rv32imc -mabi=ilp32",               "-lm" },
+    { "mips-unknown-linux-gnu",          "mips-linux",          "linux",   "mips",    "gnu",  4,  1,  "-march=mips32 -mabi=32",                   "-lm" },
+    { "mipsel-unknown-linux-gnu",        "mipsel-linux",        "linux",   "mipsel",  "gnu",  4,  0,  "-march=mips32 -mabi=32",                   "-lm" },
+    { "powerpc64le-unknown-linux-gnu",   "ppc64le-linux",       "linux",   "ppc64le", "gnu",  8,  0,  "-mcpu=power8",                             "-lm -lpthread" },
+    { "s390x-unknown-linux-gnu",         "s390x-linux",         "linux",   "s390x",   "gnu",  8,  1,  "-march=z196",                              "-lm -lpthread" },
+    { "x86_64-apple-darwin",             "x86_64-macos",        "macos",   "x86_64",  "none", 8,  0,  "-arch x86_64 -mmacosx-version-min=10.15",  "-lSystem" },
+    { "aarch64-apple-darwin",            "aarch64-macos",       "macos",   "aarch64", "none", 8,  0,  "-arch arm64 -mmacosx-version-min=11.0",    "-lSystem" },
+    { "aarch64-apple-darwin",            "arm64-macos",         "macos",   "aarch64", "none", 8,  0,  "-arch arm64 -mmacosx-version-min=11.0",    "-lSystem" },
+    { "x86_64-pc-windows-msvc",          "x86_64-windows",      "windows", "x86_64",  "msvc", 8,  0,  "/arch:AVX2",                               "/SUBSYSTEM:CONSOLE" },
+    { "aarch64-pc-windows-msvc",         "aarch64-windows",     "windows", "aarch64", "msvc", 8,  0,  "",                                         "/SUBSYSTEM:CONSOLE" },
+    { "x86_64-pc-windows-gnu",           "x86_64-windows-gnu",  "windows", "x86_64",  "gnu",  8,  0,  "-march=x86-64",                            "-lkernel32 -lmsvcrt" },
+    { "wasm32-unknown-unknown",          "wasm32",              "none",    "wasm32",  "none", 4,  0,  "--target=wasm32-unknown-unknown --no-standard-libraries", "-Wl,--export-all,--no-entry" },
+    { "wasm64-unknown-unknown",          "wasm64",              "none",    "wasm64",  "none", 8,  0,  "--target=wasm64-unknown-unknown --no-standard-libraries", "-Wl,--export-all,--no-entry" },
+    { "wasm32-wasi",                     "wasm32-wasi",         "wasi",    "wasm32",  "wasi", 4,  0,  "--target=wasm32-wasi",                      "--sysroot=/opt/wasi-sdk/share/wasi-sysroot" },
+    { "thumbv7em-none-eabihf",           "cortex-m4",           "none",    "arm",     "eabi", 4,  0,  "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard", "-T link.ld --specs=nano.specs" },
+    { "thumbv8m.main-none-eabihf",       "cortex-m33",          "none",    "arm",     "eabi", 4,  0,  "-mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard", "-T link.ld --specs=nano.specs" },
+    { "aarch64-unknown-none",            "aarch64-bare",        "none",    "aarch64", "none", 8,  0,  "-march=armv8-a -ffreestanding -nostdlib",   "" },
+    { "x86_64-unknown-none",             "x86_64-bare",         "none",    "x86_64",  "none", 8,  0,  "-march=x86-64 -ffreestanding -nostdlib",    "" },
+    { "loongarch64-unknown-linux-gnu",   "loongarch64-linux",   "linux",   "la64",    "gnu",  8,  0,  "-march=loongarch64",                        "-lm -lpthread" },
+    { NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, NULL }
+};
+
+const CrossTarget *CrossGetTargets(void) {
+    return g_cross_targets;
+}
+
+const CrossTarget *CrossFindTarget(const char *name) {
+    if (!name) return NULL;
+    for (int i = 0; g_cross_targets[i].triple != NULL; i++) {
+        if (strcmp(name, g_cross_targets[i].triple) == 0 ||
+            strcmp(name, g_cross_targets[i].alias) == 0) {
+            return &g_cross_targets[i];
+        }
+    }
+    return NULL;
+}
+
+const char *CrossResolveTriple(const char *name) {
+    if (!name) return name;
+    for (int i = 0; g_cross_targets[i].triple != NULL; i++) {
+        if (strcmp(name, g_cross_targets[i].alias) == 0) {
+            return g_cross_targets[i].triple;
+        }
+    }
+    return name; // return unchanged if already a triple or unknown
+}
+
+void CrossListTargets(void) {
+    printf("AKS Supported Cross-Compilation Targets:\n\n");
+    printf("  %-40s  %-22s  %-8s  %-8s  %s\n", "Triple", "Alias", "OS", "Arch", "Ptr");
+    printf("  %-40s  %-22s  %-8s  %-8s  %s\n",
+           "----------------------------------------",
+           "----------------------",
+           "--------", "--------", "---");
+    const char *last_triple = NULL;
+    for (int i = 0; g_cross_targets[i].triple != NULL; i++) {
+        const CrossTarget *t = &g_cross_targets[i];
+        // skip duplicate triples (multiple aliases for same triple)
+        int is_dup = (last_triple && strcmp(last_triple, t->triple) == 0);
+        printf("  %-40s  %-22s  %-8s  %-8s  %d-bit\n",
+               is_dup ? "" : t->triple,
+               t->alias,
+               t->os, t->arch,
+               t->pointer_size * 8);
+        last_triple = t->triple;
+    }
+    printf("\nUsage:\n");
+    printf("  aks compile-exe <file.aks> --target=<alias-or-triple>\n");
+    printf("  aks run <file.aks> --cross-target <alias-or-triple>\n");
+    printf("  aks compile-llvm <file.aks> --target <triple>\n\n");
+    printf("Example:\n");
+    printf("  aks compile-exe hello.aks --target=aarch64-linux -o hello-arm64\n");
+}
+
+void CrossBuildFlags(const CrossTarget *tgt, char *outbuf, int bufsize) {
+    if (!tgt || !outbuf) return;
+    snprintf(outbuf, bufsize, "%s %s",
+             tgt->cc_flags ? tgt->cc_flags : "",
+             tgt->linker_flags ? tgt->linker_flags : "");
+}

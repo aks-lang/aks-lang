@@ -50,6 +50,8 @@ const char *gPgoProfile = NULL;
 const char *gPgoUse = NULL;
 const char *gBuildProfile = "release";
 extern int gContractCheck;
+const char *gCoverageFormat = "text";
+const char *gCoverageOutPath = NULL;
 
 extern const char *AKSPRELUDE;
 static char *ReadFileToStr(const char *path);
@@ -572,9 +574,9 @@ static void PrintUsage(const char *programname) {
     printf("  %s wasm <file.aks> [-o <output.wasm|wat>]       Compile source to WebAssembly binary (.wasm) or text (.wat)\n", programname);
     printf("  %s compile-wasm <file.aks> [-o <out.wasm>]      Compile source directly to standalone WebAssembly binary (.wasm)\n", programname);
     printf("  %s compile-nostd <file.aks> [-o <out.c>]        Compile source to freestanding bare-metal C\n", programname);
-    printf("  %s profile <file.aks>                           Execute script with instruction profiling\n", programname);
+    printf("  %s profile <file.aks> [-o <out.svg>]            Profile execution and generate SVG flamegraph\n", programname);
     printf("\nQuality & Testing Tools:\n");
-    printf("  %s test [file.aks] [--coverage]                 Run test functions and optional code coverage report\n", programname);
+    printf("  %s test [file.aks] [--coverage[=lcov|html]]    Run tests with optional text/lcov/HTML coverage\n", programname);
     printf("  %s check [file.aks]                             Perform static type checking and safety validation\n", programname);
     printf("  %s bench [file.aks | dir]                       Run performance benchmark suites\n", programname);
     printf("  %s fuzz [file.aks]                              Execute automated fuzz testing loop\n", programname);
@@ -601,7 +603,8 @@ static void PrintUsage(const char *programname) {
     printf("  %s pkg add <pkg>@<version>                      Add a dependency constraint to aks.json\n", programname);
     printf("  %s pkg install                                  Resolve and install package dependencies\n", programname);
     printf("  %s pkg run                                      Run the package entrypoint\n", programname);
-    printf("  %s pkg publish                                  Publish package to local registry\n", programname);
+    printf("  %s pkg publish [--remote|--registry=<url>]     Publish package to local or remote registry\n", programname);
+    printf("  %s pkg search <query>                           Search packages in registry\n", programname);
     printf("  %s pkg build [--bundle]                         Build package cache or standalone bundle\n", programname);
     printf("  %s pkg keygen <prefix>                          Generate cryptographic keypair for package signing\n", programname);
     printf("  %s pkg sign <bundle.aksb> <privkey.pem>         Sign package bundle for secure distribution\n", programname);
@@ -614,6 +617,7 @@ static void PrintUsage(const char *programname) {
     printf("  %s compile-llvm <file.aks> [-o <out.ll>]        Compile source to target-optimized LLVM IR\n", programname);
     printf("  %s compile-mlir <file.aks> [-o <out.mlir>]      Compile source to multi-dialect MLIR\n", programname);
     printf("  %s cc [args...]                                 Embedded C/C++ cross-compiler driver\n", programname);
+    printf("  %s targets                                      List supported cross-compilation targets\n", programname);
 }
 
 static const char *RegOpName(int op) {
@@ -684,7 +688,7 @@ static const char *RegOpName(int op) {
 
 extern const char *StackOpName(int op);
 
-static int ExecuteProfile(const char *sourcepath) {
+static int ExecuteProfile(const char *sourcepath, const char *svgpath) {
     int parseError = 0;
     char *rawsource = ReadFileToStr(sourcepath);
     if (!rawsource) {
@@ -735,6 +739,10 @@ static int ExecuteProfile(const char *sourcepath) {
     }
     CompFree(aksCompiler);
     aksVM->profilingmode = 1;
+    if (svgpath && svgpath[0] != '\0') {
+        aksVM->flame_profiling_enabled = 1;
+        strncpy(aksVM->flame_output_path, svgpath, sizeof(aksVM->flame_output_path) - 1);
+    }
     int vmresult = VMRun(aksVM);
     printf("\nInstruction profile:\n");
     uint64_t total = 0;
@@ -750,6 +758,9 @@ static int ExecuteProfile(const char *sourcepath) {
         }
     }
     printf("Total instructions: %llu\n", (unsigned long long)total);
+    if (aksVM->flame_profiling_enabled && aksVM->flame_output_path[0] != '\0') {
+        printf("Flamegraph SVG generated at: %s\n", aksVM->flame_output_path);
+    }
     VMFree(aksVM);
     return vmresult ? 0 : 1;
 }
@@ -1002,6 +1013,123 @@ static AKSValue GenerateRandomValue(const char *typename) {
     return ValNull();
 }
 
+static void WriteCoverageLcov(const char *sourcepath, int max_lines, const char *line_executable, const char *line_executed, const char *outpath) {
+    const char *target = (outpath && strlen(outpath) > 0) ? outpath : "coverage.info";
+    FILE *f = fopen(target, "w");
+    if (!f) {
+        fprintf(stderr, "Error opening coverage output file '%s'\n", target);
+        return;
+    }
+    fprintf(f, "TN:\n");
+    fprintf(f, "SF:%s\n", sourcepath);
+    int total_executable = 0;
+    int total_executed = 0;
+    for (int l = 1; l <= max_lines; l++) {
+        if (line_executable[l]) {
+            total_executable++;
+            int count = line_executed[l] ? 1 : 0;
+            if (count) total_executed++;
+            fprintf(f, "DA:%d,%d\n", l, count);
+        }
+    }
+    fprintf(f, "LF:%d\n", total_executable);
+    fprintf(f, "LH:%d\n", total_executed);
+    fprintf(f, "end_of_record\n");
+    fclose(f);
+    printf("LCOV coverage report written to: %s (LH:%d/LF:%d)\n", target, total_executed, total_executable);
+}
+
+static void WriteCoverageHtml(const char *sourcepath, const char *rawsource, int max_lines, const char *line_executable, const char *line_executed, const char *outpath) {
+    const char *target = (outpath && strlen(outpath) > 0) ? outpath : "coverage.html";
+    FILE *f = fopen(target, "w");
+    if (!f) {
+        fprintf(stderr, "Error opening coverage output file '%s'\n", target);
+        return;
+    }
+    int total_executable = 0;
+    int total_executed = 0;
+    for (int l = 1; l <= max_lines; l++) {
+        if (line_executable[l]) {
+            total_executable++;
+            if (line_executed[l]) total_executed++;
+        }
+    }
+    double pct = total_executable > 0 ? ((double)total_executed / total_executable) * 100.0 : 0.0;
+    const char *bar_color = (pct >= 80.0) ? "#a6e3a1" : (pct >= 50.0) ? "#f9e2af" : "#f38ba8";
+
+    fprintf(f, "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>AKS Code Coverage - %s</title>\n", sourcepath);
+    fprintf(f, "<style>\n");
+    fprintf(f, "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #1e1e2e; color: #cdd6f4; margin: 0; padding: 24px; }\n");
+    fprintf(f, ".container { max-width: 1000px; margin: 0 auto; }\n");
+    fprintf(f, "h1 { color: #89b4fa; margin-bottom: 8px; }\n");
+    fprintf(f, ".stats { display: flex; gap: 20px; background: #313244; padding: 16px; border-radius: 8px; margin-bottom: 20px; }\n");
+    fprintf(f, ".stat-item { flex: 1; text-align: center; }\n");
+    fprintf(f, ".stat-val { font-size: 24px; font-weight: bold; color: #f5e0dc; }\n");
+    fprintf(f, ".stat-lbl { font-size: 12px; color: #a6adc8; text-transform: uppercase; margin-top: 4px; }\n");
+    fprintf(f, ".progress-bar { background: #45475a; height: 12px; border-radius: 6px; overflow: hidden; margin-bottom: 24px; }\n");
+    fprintf(f, ".progress-fill { height: 100%%; background: %s; width: %.1f%%; }\n", bar_color, pct);
+    fprintf(f, "table.code { width: 100%%; border-collapse: collapse; font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; background: #181825; border-radius: 8px; overflow: hidden; }\n");
+    fprintf(f, "tr.hit { background: rgba(166, 227, 161, 0.15); }\n");
+    fprintf(f, "tr.miss { background: rgba(243, 139, 168, 0.2); }\n");
+    fprintf(f, "td.lineno { width: 50px; text-align: right; padding: 2px 10px; color: #6c7086; user-select: none; border-right: 1px solid #313244; }\n");
+    fprintf(f, "td.hits { width: 40px; text-align: center; font-weight: bold; padding: 2px 8px; border-right: 1px solid #313244; }\n");
+    fprintf(f, "td.hits.hit { color: #a6e3a1; }\n");
+    fprintf(f, "td.hits.miss { color: #f38ba8; }\n");
+    fprintf(f, "td.source { padding: 2px 12px; white-space: pre-wrap; word-break: break-all; }\n");
+    fprintf(f, "</style>\n</head>\n<body>\n<div class=\"container\">\n");
+    fprintf(f, "<h1>AKS Code Coverage Report</h1>\n");
+    fprintf(f, "<p style=\"color: #bac2de;\">Source: <code>%s</code></p>\n", sourcepath);
+    fprintf(f, "<div class=\"progress-bar\"><div class=\"progress-fill\"></div></div>\n");
+    fprintf(f, "<div class=\"stats\">\n");
+    fprintf(f, "  <div class=\"stat-item\"><div class=\"stat-val\">%.1f%%</div><div class=\"stat-lbl\">Coverage</div></div>\n", pct);
+    fprintf(f, "  <div class=\"stat-item\"><div class=\"stat-val\">%d / %d</div><div class=\"stat-lbl\">Executed / Executable</div></div>\n", total_executed, total_executable);
+    fprintf(f, "  <div class=\"stat-item\"><div class=\"stat-val\">%d</div><div class=\"stat-lbl\">Total Lines</div></div>\n", max_lines);
+    fprintf(f, "</div>\n");
+    fprintf(f, "<table class=\"code\">\n");
+
+    const char *ptr = rawsource;
+    int cur_line = 1;
+    while (*ptr) {
+        const char *line_end = strchr(ptr, '\n');
+        int len = line_end ? (int)(line_end - ptr) : (int)strlen(ptr);
+        if (len > 0 && ptr[len - 1] == '\r') len--;
+
+        const char *tr_class = "";
+        const char *hit_marker = "";
+        const char *hit_class = "";
+        if (line_executable[cur_line]) {
+            if (line_executed[cur_line]) {
+                tr_class = " class=\"hit\"";
+                hit_marker = "1";
+                hit_class = " hit";
+            } else {
+                tr_class = " class=\"miss\"";
+                hit_marker = "0";
+                hit_class = " miss";
+            }
+        }
+
+        fprintf(f, "<tr%s><td class=\"lineno\">%d</td><td class=\"hits%s\">%s</td><td class=\"source\">", tr_class, cur_line, hit_class, hit_marker);
+        for (int c = 0; c < len; c++) {
+            char ch = ptr[c];
+            if (ch == '&') fputs("&amp;", f);
+            else if (ch == '<') fputs("&lt;", f);
+            else if (ch == '>') fputs("&gt;", f);
+            else if (ch == '"') fputs("&quot;", f);
+            else fputc(ch, f);
+        }
+        fprintf(f, "</td></tr>\n");
+
+        cur_line++;
+        if (!line_end) break;
+        ptr = line_end + 1;
+    }
+
+    fprintf(f, "</table>\n</div>\n</body>\n</html>\n");
+    fclose(f);
+    printf("HTML coverage report written to: %s (%.1f%%)\n", target, pct);
+}
+
 static int ExecuteRunTest(const char *sourcepath, int coverage) {
     char *rawsource = ReadFileToStr(sourcepath);
     if (!rawsource) {
@@ -1185,36 +1313,43 @@ static int ExecuteRunTest(const char *sourcepath, int coverage) {
 
         double pct = total_executable > 0 ? ((double)total_executed / total_executable) * 100.0 : 0.0;
 
-        // Print line-by-line coverage
-        ptr = rawsource;
-        int cur_line = 1;
-        while (*ptr) {
-            char *line_end = strchr(ptr, '\n');
-            int len = line_end ? (int)(line_end - ptr) : (int)strlen(ptr);
-            
-            // Print line prefix
-            printf("%3d: ", cur_line);
-            
-            // Print code
-            printf("%.*s", len, ptr);
-            
-            // Print coverage indicator
-            if (line_executable[cur_line]) {
-                if (line_executed[cur_line]) {
-                    printf("\033[32m [COVERED]\033[0m\n");
+        if (strcmp(gCoverageFormat, "lcov") == 0) {
+            WriteCoverageLcov(sourcepath, max_lines, line_executable, line_executed, gCoverageOutPath);
+        } else if (strcmp(gCoverageFormat, "html") == 0) {
+            WriteCoverageHtml(sourcepath, rawsource, max_lines, line_executable, line_executed, gCoverageOutPath);
+        } else {
+            printf("\nCode coverage report:\n");
+            // Print line-by-line coverage
+            ptr = rawsource;
+            int cur_line = 1;
+            while (*ptr) {
+                char *line_end = strchr(ptr, '\n');
+                int len = line_end ? (int)(line_end - ptr) : (int)strlen(ptr);
+                
+                // Print line prefix
+                printf("%3d: ", cur_line);
+                
+                // Print code
+                printf("%.*s", len, ptr);
+                
+                // Print coverage indicator
+                if (line_executable[cur_line]) {
+                    if (line_executed[cur_line]) {
+                        printf("\033[32m [COVERED]\033[0m\n");
+                    } else {
+                        printf("\033[31m [UNCOVERED]\033[0m\n");
+                    }
                 } else {
-                    printf("\033[31m [UNCOVERED]\033[0m\n");
+                    printf("\n");
                 }
-            } else {
-                printf("\n");
+
+                cur_line++;
+                if (!line_end) break;
+                ptr = line_end + 1;
             }
 
-            cur_line++;
-            if (!line_end) break;
-            ptr = line_end + 1;
+            printf("\nTotal Coverage: %.1f%% (%d/%d lines)\n", pct, total_executed, total_executable);
         }
-
-        printf("\nTotal Coverage: %.1f%% (%d/%d lines)\n", pct, total_executed, total_executable);
         free(line_executable);
         free(line_executed);
     }
@@ -2782,6 +2917,19 @@ int main(int argc, char **argv) {
             for (int i = 2; i < argc; i++) {
                 if (strcmp(argv[i], "--coverage") == 0) {
                     coverage = 1;
+                } else if (strncmp(argv[i], "--coverage=", 11) == 0) {
+                    coverage = 1;
+                    gCoverageFormat = argv[i] + 11;
+                } else if (strcmp(argv[i], "--coverage-lcov") == 0) {
+                    coverage = 1;
+                    gCoverageFormat = "lcov";
+                } else if (strcmp(argv[i], "--coverage-html") == 0) {
+                    coverage = 1;
+                    gCoverageFormat = "html";
+                } else if (strncmp(argv[i], "--coverage-output=", 18) == 0) {
+                    gCoverageOutPath = argv[i] + 18;
+                } else if (strcmp(argv[i], "--coverage-output") == 0 && i + 1 < argc) {
+                    gCoverageOutPath = argv[++i];
                 } else if (argv[i][0] != '-') {
                     file_path = argv[i];
                 }
@@ -3171,6 +3319,9 @@ int main(int argc, char **argv) {
             }
             printf("[aks cc] Executing: %s\n", cmd);
             return system(cmd);
+        } else if (strcmp(command, "targets") == 0) {
+            CrossListTargets();
+            return 0;
         } else if (strcmp(command, "static") == 0) {
             /* aks static build <file.aks> [-o <outfile>] [--release]
                aks static run <file.aks> [--release]
@@ -3356,7 +3507,26 @@ int main(int argc, char **argv) {
                 PrintUsage(argv[0]);
                 return 1;
             }
-            return ExecuteProfile(argv[2]);
+            const char *srcfile = NULL;
+            const char *svgout = NULL;
+            for (int i = 2; i < argc; i++) {
+                if ((strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "--output") == 0) && i + 1 < argc) {
+                    svgout = argv[++i];
+                } else if (strncmp(argv[i], "-o=", 3) == 0) {
+                    svgout = argv[i] + 3;
+                } else if (strncmp(argv[i], "--output=", 9) == 0) {
+                    svgout = argv[i] + 9;
+                } else if (strncmp(argv[i], "--svg=", 6) == 0) {
+                    svgout = argv[i] + 6;
+                } else if (argv[i][0] != '-') {
+                    srcfile = argv[i];
+                }
+            }
+            if (!srcfile) {
+                PrintUsage(argv[0]);
+                return 1;
+            }
+            return ExecuteProfile(srcfile, svgout);
         } else if (strcmp(command, "pkg") == 0) {
             if (argc < 3) {
                 fprintf(stderr, "Error: Missing package sub-command. Example: %s pkg init <name>\n", argv[0]);
@@ -3375,7 +3545,20 @@ int main(int argc, char **argv) {
             } else if (strcmp(subcmd, "install") == 0) {
                 return PkgInstall();
             } else if (strcmp(subcmd, "publish") == 0) {
-                return PkgPublish();
+                const char *reg_url = NULL;
+                for (int i = 3; i < argc; i++) {
+                    if (strncmp(argv[i], "--registry=", 11) == 0) {
+                        reg_url = argv[i] + 11;
+                    } else if (strcmp(argv[i], "--registry") == 0 && i + 1 < argc) {
+                        reg_url = argv[++i];
+                    } else if (strcmp(argv[i], "--remote") == 0) {
+                        reg_url = "https://pkg.aks-lang.org/api/v1/packages";
+                    }
+                }
+                return PkgPublishTo(reg_url);
+            } else if (strcmp(subcmd, "search") == 0) {
+                const char *query = (argc >= 4) ? argv[3] : "";
+                return PkgSearch(query);
             } else if (strcmp(subcmd, "run") == 0) {
                 return PkgRun(argc, argv);
             } else if (strcmp(subcmd, "build") == 0) {

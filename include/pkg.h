@@ -10,6 +10,8 @@ int PkgAdd(const char *pkgspec);
 int PkgInstall(void);
 int PkgRun(int argc, char **argv);
 int PkgPublish(void);
+int PkgPublishTo(const char *registry_url);
+int PkgSearch(const char *query);
 int PkgBuild(int bundle);
 int PkgGithubActions(void);
 int PkgDocker(void);
