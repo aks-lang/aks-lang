@@ -593,6 +593,7 @@ static const CrossTarget g_cross_targets[] = {
     { "wasm32-unknown-unknown",          "wasm32",              "none",    "wasm32",  "none", 4,  0,  "--target=wasm32-unknown-unknown --no-standard-libraries", "-Wl,--export-all,--no-entry" },
     { "wasm64-unknown-unknown",          "wasm64",              "none",    "wasm64",  "none", 8,  0,  "--target=wasm64-unknown-unknown --no-standard-libraries", "-Wl,--export-all,--no-entry" },
     { "wasm32-wasi",                     "wasm32-wasi",         "wasi",    "wasm32",  "wasi", 4,  0,  "--target=wasm32-wasi",                      "--sysroot=/opt/wasi-sdk/share/wasi-sysroot" },
+    { "wasm32-wasip2",                   "wasm32-wasi-p2",      "wasi",    "wasm32",  "wasi", 4,  0,  "--target=wasm32-wasip2",                    "--sysroot=/opt/wasi-sdk/share/wasi-sysroot -mexec-model=reactor" },
     { "thumbv7em-none-eabihf",           "cortex-m4",           "none",    "arm",     "eabi", 4,  0,  "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard", "-T link.ld --specs=nano.specs" },
     { "thumbv8m.main-none-eabihf",       "cortex-m33",          "none",    "arm",     "eabi", 4,  0,  "-mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard", "-T link.ld --specs=nano.specs" },
     { "aarch64-unknown-none",            "aarch64-bare",        "none",    "aarch64", "none", 8,  0,  "-march=armv8-a -ffreestanding -nostdlib",   "" },

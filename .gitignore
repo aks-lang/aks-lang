@@ -55,6 +55,8 @@ PlotOutput.svg
 # Integration Mock Residues
 mylib/
 myapp/
+*.h.aks
+test_bench_stats.json
 
 # VS Code & IDE configs
 .vscode/

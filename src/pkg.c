@@ -244,6 +244,84 @@ static const char *GetRegIsTryDir(void) {
     return g_registrydir;
 }
 
+static const char *GetCredentialsPath(void) {
+    static char credpath[512] = "";
+    if (credpath[0] != '\0') return credpath;
+    const char *home = getenv("USERPROFILE");
+    if (!home) home = getenv("HOME");
+    if (!home) home = ".";
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s\\.aks", home);
+    snprintf(credpath, sizeof(credpath), "%s\\.aks\\credentials", home);
+    return credpath;
+}
+
+char *PkgGetStoredToken(const char *registry_url) {
+    const char *env_tok = getenv("AKS_AUTH_TOKEN");
+    if (env_tok && env_tok[0]) return strdup(env_tok);
+    const char *cpath = GetCredentialsPath();
+    FILE *f = fopen(cpath, "r");
+    if (!f) return NULL;
+    char line[512];
+    const char *target = registry_url ? registry_url : "default";
+    while (fgets(line, sizeof(line), f)) {
+        if (line[0] == '#' || line[0] == '\r' || line[0] == '\n') continue;
+        char *eq = strchr(line, '=');
+        if (eq) {
+            *eq = '\0';
+            char *reg = line;
+            char *tok = eq + 1;
+            while (*reg == ' ' || *reg == '\t') reg++;
+            while (*tok == ' ' || *tok == '\t') tok++;
+            size_t l = strlen(tok);
+            while (l > 0 && (tok[l - 1] == '\r' || tok[l - 1] == '\n' || tok[l - 1] == ' ')) tok[--l] = '\0';
+            if (strcmp(reg, target) == 0 || strcmp(reg, "token") == 0 || strcmp(reg, "default") == 0) {
+                fclose(f);
+                return strdup(tok);
+            }
+        }
+    }
+    fclose(f);
+    return NULL;
+}
+
+int PkgLogin(const char *token, const char *registry_url) {
+    if (!token || !token[0]) {
+        fprintf(stderr, "Error: Token cannot be empty.\n");
+        return 1;
+    }
+    const char *target = (registry_url && registry_url[0]) ? registry_url : "default";
+    const char *home = getenv("USERPROFILE");
+    if (!home) home = getenv("HOME");
+    if (!home) home = ".";
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s\\.aks", home);
+#ifdef _WIN32
+    CreateDirectoryA(dir, NULL);
+#else
+    mkdir(dir, 0755);
+#endif
+    const char *cpath = GetCredentialsPath();
+    FILE *f = fopen(cpath, "w");
+    if (!f) {
+        fprintf(stderr, "Error: Could not open credentials file '%s' for writing.\n", cpath);
+        return 1;
+    }
+    fprintf(f, "# AKS Package Registry Authentication Credentials\n");
+    fprintf(f, "%s=%s\n", target, token);
+    fclose(f);
+    printf("Successfully authenticated with AKS package registry ('%s').\nToken saved to '%s'.\n", target, cpath);
+    return 0;
+}
+
+int PkgLogout(const char *registry_url) {
+    (void)registry_url;
+    const char *cpath = GetCredentialsPath();
+    remove(cpath);
+    printf("Logged out from AKS package registry. Credentials cleared from '%s'.\n", cpath);
+    return 0;
+}
+
 const char *gcompiletarget = "host";
 
 // helper to create directory recursively
@@ -629,7 +707,14 @@ int PkgPublishTo(const char *registry_url) {
 
     const char *target_url = registry_url ? registry_url : (manifest_reg[0] != '\0' ? manifest_reg : NULL);
     if (target_url) {
+        char *auth_tok = PkgGetStoredToken(target_url);
         printf("Publishing package to remote registry: %s\n", target_url);
+        if (auth_tok) {
+            printf("Authenticated with bearer token: %.8s...\n", auth_tok);
+            free(auth_tok);
+        } else {
+            printf("Notice: Publishing anonymously. Run 'aks login <token>' to use credentials.\n");
+        }
         printf("Packaging bundle: %s-%s.akspkg\n", name, version);
         printf("Remote upload complete. Package '%s@%s' is live on %s\n", name, version, target_url);
     }

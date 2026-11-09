@@ -28,6 +28,7 @@
 #include "staticcodegen.h"
 #include "wasmcodegen.h"
 #include "nostdcodegen.h"
+#include "bench.h"
 #include "direct_linker.h"
 #include "mlircodegen.inc.c"
 #include "version.h"
@@ -610,6 +611,8 @@ static void PrintUsage(const char *programname) {
     printf("  %s pkg sign <bundle.aksb> <privkey.pem>         Sign package bundle for secure distribution\n", programname);
     printf("  %s pkg verify <bundle.aksb> <pubkey.pem>        Verify cryptographic signature of a package bundle\n", programname);
     printf("  %s pkg sbom [output.json]                       Export Software Bill of Materials (SBOM)\n", programname);
+    printf("  %s login <token> [--registry=<url>]             Authenticate CLI session with package registry\n", programname);
+    printf("  %s logout                                       Clear stored package registry credentials\n", programname);
     printf("\nInterop & Bindings:\n");
     printf("  %s bind <header.h> <output.aks>                 Generate AKS FFI bindings from C/C++ header\n", programname);
     printf("  %s wasm-bind <component.wit> <out.js> <out.ts>  Generate WebAssembly component glue code\n", programname);
@@ -1646,6 +1649,16 @@ static int ExecuteRunBench(const char *sourcepath, const char *savepath, const c
     typedef struct {
         char name[128];
         double time_us;
+        double mean_us;
+        double median_us;
+        double stddev_us;
+        double p95_us;
+        double p99_us;
+        double min_us;
+        double max_us;
+        double ops_sec;
+        int iterations;
+        int samples;
     } BenchRecord;
     BenchRecord baselines[256];
     int baseline_count = 0;
@@ -1679,9 +1692,9 @@ static int ExecuteRunBench(const char *sourcepath, const char *savepath, const c
 
     printf("\nRunning AKS Micro-Benchmarks\n");
     if (comparepath && baseline_count > 0) {
-        printf("%-30s %-12s %-12s %-10s %-12s\n", "Benchmark", "Iterations", "Time/Op", "vs Base", "Ops/Sec");
+        printf("%-26s %-10s %-10s %-10s %-10s %-10s %-10s %-12s\n", "Benchmark", "Iters", "Mean", "Median", "StdDev", "p95", "vs Base", "Ops/Sec");
     } else {
-        printf("%-30s %-12s %-12s %-12s\n", "Benchmark", "Iterations", "Time/Op", "Ops/Sec");
+        printf("%-26s %-10s %-10s %-10s %-10s %-10s %-10s %-12s\n", "Benchmark", "Iters", "Mean", "Median", "StdDev", "p95", "p99", "Ops/Sec");
     }
 
     for (int i = prelude_fn_count; i < aksVM->fncount; i++) {
@@ -1695,7 +1708,7 @@ static int ExecuteRunBench(const char *sourcepath, const char *savepath, const c
             }
             TaskReLease(aksVM, warmup);
 
-            // Time measurement
+            // Calibrate iteration count
             int iterations = 1000;
             double elapsed_sec = 0.0;
             
@@ -1726,18 +1739,65 @@ static int ExecuteRunBench(const char *sourcepath, const char *savepath, const c
                 elapsed_sec = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) * 1e-9;
 #endif
                 
-                if (elapsed_sec >= 0.1 || iterations >= 100000) {
+                if (elapsed_sec >= 0.05 || iterations >= 100000) {
                     break;
                 }
                 iterations *= 10;
             }
 
-            double time_per_op_us = (elapsed_sec / iterations) * 1e6;
-            double ops_sec = (double)iterations / elapsed_sec;
+            // Statistical sampling rounds
+            int num_samples = 15;
+            double samples_ns[64];
+            for (int s = 0; s < num_samples; s++) {
+#ifdef _WIN32
+                LARGE_INTEGER freq, s_start, s_end;
+                QueryPerformanceFrequency(&freq);
+                QueryPerformanceCounter(&s_start);
+#else
+                struct timespec s_start, s_end;
+                clock_gettime(CLOCK_MONOTONIC, &s_start);
+#endif
+                for (int iter = 0; iter < iterations; iter++) {
+                    VMTask *task = TaskNew(aksVM, fn, 0);
+                    aksVM->maintask = task;
+                    while (task->state != 3 && !aksVM->shouldterminate) {
+                        RunTaskSlice(aksVM, task, 100);
+                    }
+                    TaskReLease(aksVM, task);
+                }
+#ifdef _WIN32
+                QueryPerformanceCounter(&s_end);
+                double s_sec = (double)(s_end.QuadPart - s_start.QuadPart) / freq.QuadPart;
+#else
+                clock_gettime(CLOCK_MONOTONIC, &s_end);
+                double s_sec = (s_end.tv_sec - s_start.tv_sec) + (s_end.tv_nsec - s_start.tv_nsec) * 1e-9;
+#endif
+                samples_ns[s] = (s_sec * 1e9) / (double)iterations;
+            }
+
+            BenchStats stats = BenchComputeStats(fn->name, samples_ns, num_samples, iterations);
+            double mean_us = stats.mean_ns / 1000.0;
+            double median_us = stats.median_ns / 1000.0;
+            double stddev_us = stats.stddev_ns / 1000.0;
+            double p95_us = stats.p95_ns / 1000.0;
+            double p99_us = stats.p99_ns / 1000.0;
+            double min_us = stats.min_ns / 1000.0;
+            double max_us = stats.max_ns / 1000.0;
+            double ops_sec = stats.ops_per_sec;
 
             if (recorded_count < 256) {
                 strncpy(recorded[recorded_count].name, fn->name, 127);
-                recorded[recorded_count].time_us = time_per_op_us;
+                recorded[recorded_count].time_us = mean_us;
+                recorded[recorded_count].mean_us = mean_us;
+                recorded[recorded_count].median_us = median_us;
+                recorded[recorded_count].stddev_us = stddev_us;
+                recorded[recorded_count].p95_us = p95_us;
+                recorded[recorded_count].p99_us = p99_us;
+                recorded[recorded_count].min_us = min_us;
+                recorded[recorded_count].max_us = max_us;
+                recorded[recorded_count].ops_sec = ops_sec;
+                recorded[recorded_count].iterations = iterations;
+                recorded[recorded_count].samples = num_samples;
                 recorded_count++;
             }
 
@@ -1750,13 +1810,16 @@ static int ExecuteRunBench(const char *sourcepath, const char *savepath, const c
                     }
                 }
                 if (found_base >= 0) {
-                    double delta = ((time_per_op_us - baselines[found_base].time_us) / baselines[found_base].time_us) * 100.0;
-                    printf("%-30s %-12d %-10.2f us (%+6.1f%%) %-12.0f\n", fn->name, iterations, time_per_op_us, delta, ops_sec);
+                    double delta = ((mean_us - baselines[found_base].time_us) / baselines[found_base].time_us) * 100.0;
+                    printf("%-26s %-10d %-8.2f us %-8.2f us ±%-7.2f us %-8.2f us (%+6.1f%%) %-12.0f\n",
+                           fn->name, iterations, mean_us, median_us, stddev_us, p95_us, delta, ops_sec);
                 } else {
-                    printf("%-30s %-12d %-10.2f us            %-12.0f\n", fn->name, iterations, time_per_op_us, ops_sec);
+                    printf("%-26s %-10d %-8.2f us %-8.2f us ±%-7.2f us %-8.2f us            %-12.0f\n",
+                           fn->name, iterations, mean_us, median_us, stddev_us, p95_us, ops_sec);
                 }
             } else {
-                printf("%-30s %-12d %-10.2f us %-12.0f\n", fn->name, iterations, time_per_op_us, ops_sec);
+                printf("%-26s %-10d %-8.2f us %-8.2f us ±%-7.2f us %-8.2f us %-8.2f us %-12.0f\n",
+                       fn->name, iterations, mean_us, median_us, stddev_us, p95_us, p99_us, ops_sec);
             }
         }
     }
@@ -1766,12 +1829,29 @@ static int ExecuteRunBench(const char *sourcepath, const char *savepath, const c
         if (sf) {
             fprintf(sf, "{\n  \"benchmarks\": [\n");
             for (int r = 0; r < recorded_count; r++) {
-                fprintf(sf, "    { \"name\": \"%s\", \"time_us\": %.4f }%s\n",
-                        recorded[r].name, recorded[r].time_us, (r + 1 < recorded_count) ? "," : "");
+                fprintf(sf, "    {\n"
+                            "      \"name\": \"%s\",\n"
+                            "      \"iterations\": %d,\n"
+                            "      \"samples\": %d,\n"
+                            "      \"time_us\": %.4f,\n"
+                            "      \"mean_us\": %.4f,\n"
+                            "      \"median_us\": %.4f,\n"
+                            "      \"stddev_us\": %.4f,\n"
+                            "      \"p95_us\": %.4f,\n"
+                            "      \"p99_us\": %.4f,\n"
+                            "      \"min_us\": %.4f,\n"
+                            "      \"max_us\": %.4f,\n"
+                            "      \"ops_sec\": %.0f\n"
+                            "    }%s\n",
+                        recorded[r].name, recorded[r].iterations, recorded[r].samples,
+                        recorded[r].time_us, recorded[r].mean_us, recorded[r].median_us,
+                        recorded[r].stddev_us, recorded[r].p95_us, recorded[r].p99_us,
+                        recorded[r].min_us, recorded[r].max_us, recorded[r].ops_sec,
+                        (r + 1 < recorded_count) ? "," : "");
             }
             fprintf(sf, "  ]\n}\n");
             fclose(sf);
-            printf("\nSaved benchmark results to '%s'\n", savepath);
+            printf("\nSaved statistical benchmark results to '%s'\n", savepath);
         }
     }
 
@@ -2519,7 +2599,10 @@ static void ParseSafetyFlags(int *argcptr, char ***argvptr) {
             const char *san = argv[i] + 11;
             gNoBoundsCheck = 0;
             gStrictOvf = 1;
-            printf("[security] Sanitizer enabled: %s (spatial bounds & overflow checks enforced)\n", san);
+            if (strstr(san, "address") || strstr(san, "asan")) gSanitizeAddress = 1;
+            if (strstr(san, "thread") || strstr(san, "tsan")) gSanitizeThread = 1;
+            if (strstr(san, "all")) { gSanitizeAddress = 1; gSanitizeThread = 1; }
+            printf("[security] Sanitizer enabled: %s (address=%d, thread=%d, bounds & overflow checks enforced)\n", san, gSanitizeAddress, gSanitizeThread);
         } else if (strcmp(argv[i], "--reproducible") == 0) {
             printf("[security] Reproducible build mode enabled: deterministic binary timestamps\n");
         } else if (strcmp(argv[i], "--strict-overflow") == 0) {
@@ -3527,6 +3610,26 @@ int main(int argc, char **argv) {
                 return 1;
             }
             return ExecuteProfile(srcfile, svgout);
+        } else if (strcmp(command, "login") == 0) {
+            const char *tok = NULL;
+            const char *reg = NULL;
+            for (int i = 2; i < argc; i++) {
+                if (strncmp(argv[i], "--registry=", 11) == 0) {
+                    reg = argv[i] + 11;
+                } else if (strcmp(argv[i], "--registry") == 0 && i + 1 < argc) {
+                    reg = argv[++i];
+                } else if (argv[i][0] != '-') {
+                    tok = argv[i];
+                }
+            }
+            if (!tok) {
+                fprintf(stderr, "Usage: %s login <token> [--registry <url>]\n", argv[0]);
+                return 1;
+            }
+            return PkgLogin(tok, reg);
+        } else if (strcmp(command, "logout") == 0) {
+            const char *reg = (argc >= 3 && argv[2][0] != '-') ? argv[2] : NULL;
+            return PkgLogout(reg);
         } else if (strcmp(command, "pkg") == 0) {
             if (argc < 3) {
                 fprintf(stderr, "Error: Missing package sub-command. Example: %s pkg init <name>\n", argv[0]);
@@ -3597,6 +3700,26 @@ int main(int argc, char **argv) {
                 const char *outpath = (argc >= 4) ? argv[3] : NULL;
                 extern int PkgExportSbom(const char *output_path);
                 return PkgExportSbom(outpath);
+            } else if (strcmp(subcmd, "login") == 0) {
+                const char *tok = NULL;
+                const char *reg = NULL;
+                for (int i = 3; i < argc; i++) {
+                    if (strncmp(argv[i], "--registry=", 11) == 0) {
+                        reg = argv[i] + 11;
+                    } else if (strcmp(argv[i], "--registry") == 0 && i + 1 < argc) {
+                        reg = argv[++i];
+                    } else if (argv[i][0] != '-') {
+                        tok = argv[i];
+                    }
+                }
+                if (!tok) {
+                    fprintf(stderr, "Usage: %s pkg login <token> [--registry <url>]\n", argv[0]);
+                    return 1;
+                }
+                return PkgLogin(tok, reg);
+            } else if (strcmp(subcmd, "logout") == 0) {
+                const char *reg = (argc >= 4 && argv[3][0] != '-') ? argv[3] : NULL;
+                return PkgLogout(reg);
             } else {
                 fprintf(stderr, "Error: Unknown package sub-command '%s'\n", subcmd);
                 return 1;

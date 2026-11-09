@@ -1,0 +1,35 @@
+{
+  "name": "tree-sitter-aks",
+  "version": "1.2.2",
+  "description": "Tree-sitter grammar for the AKS programming language",
+  "main": "bindings/node",
+  "types": "bindings/node",
+  "keywords": [
+    "tree-sitter",
+    "parser",
+    "lexer",
+    "aks",
+    "aks-lang"
+  ],
+  "author": "Anoop Kumar Sharma",
+  "license": "MIT",
+  "dependencies": {
+    "nan": "^2.19.0"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.22.6"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.aks",
+      "file-types": [
+        "aks"
+      ],
+      "injection-regex": "^aks$"
+    }
+  ],
+  "scripts": {
+    "build": "tree-sitter generate",
+    "test": "tree-sitter test"
+  }
+}

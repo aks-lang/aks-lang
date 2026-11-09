@@ -113,7 +113,7 @@ struct Node {
         struct { Node *cond; Node *body; Node **invariants; int inv_count; } whilen;
         struct { Node *init; Node *cond; Node *post; Node *body; Node **invariants; int inv_count; } forn;
         struct { char *var; Node *iter; Node *body; int isasync; } forin;
-        struct { Node *expr; char *var; } single;
+        struct { Node *expr; char *var; char *as_alias; int is_c; } single;
         struct { Node *target; Node *value; } assign;
         struct {
             Node *callee; Node **args; int argc; int *isspread;

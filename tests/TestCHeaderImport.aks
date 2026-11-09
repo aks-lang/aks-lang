@@ -1,0 +1,14 @@
+// Test direct C header import
+import c "tests/c_math_helpers.h";
+
+fn test_c_header_import() {
+    let m = c_multiply_fast(6, 7);
+    assert(m == 42, "C header import c_multiply_fast failed");
+
+    let s = c_add_nums(15, 27);
+    assert(s == 42, "C header import c_add_nums failed");
+
+    println("Direct C header import tests passed successfully!");
+}
+
+test_c_header_import();

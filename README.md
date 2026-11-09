@@ -435,6 +435,30 @@ let evens = vec.Filter(fn(x) { return x % 20 == 0; }); // [20]
 let lib = Ffi.Open("kernel32.dll");
 let tick = lib.Call("GetTickCount");
 lib.Close();
+
+// 20. Function Parameter Pattern Destructuring
+fn summarize_point((x, y): (int, int)) -> int { return x + y; }
+fn format_user({ name, role }: { name: string, role: string }) -> string {
+    return name + " (" + role + ")";
+}
+let pt_sum = summarize_point((10, 20)); // 30
+let label = format_user({ name: "Alice", role: "admin" }); // "Alice (admin)"
+
+// 21. Zero-Step Direct C Header Importing
+import c "math_helpers.h";
+let hypot = c_hypot(3.0, 4.0); // 5.0
+
+// 22. Dynamic Trait Objects & Polymorphic Dispatch
+trait Greeter { fn greet(name: string) -> string; }
+struct FriendlyBot implements Greeter {
+    greet: fn(string) -> string;
+}
+fn broadcast(speaker: dyn Greeter, target: string) -> string {
+    return speaker.greet(target);
+}
+let bot = new FriendlyBot();
+bot.greet = fn(n: string) -> string { return "Hello, " + n + "!"; };
+let res = broadcast(bot as dyn Greeter, "World"); // "Hello, World!"
 ```
 
 ---
@@ -479,25 +503,28 @@ AKS ships with a complete toolchain out of the box:
 | **`new`** | `aks new <name>` | Creates a new project directory with manifest, starter code, and tests. |
 | **`build`** | `aks build [file.aks] [-o <out>] [--static]` | Compiles a standalone native executable or package bundle. |
 | **`sbom`** | `aks sbom [output.json]` | Generates a CycloneDX 1.4 Software Bill of Materials with SHA-256 hashes. |
-| **`run`** | `aks run <file.aks>` | Compiles and executes in memory via VM and JIT. |
+| **`run`** | `aks run <file.aks> [--sanitize=address,thread]` | Compiles and executes in memory via VM/JIT with memory/thread sanitizers. |
 | **`watch`** | `aks watch <file.aks>` | Watches source file and hot-reloads on modification. |
 | **`compile-exe`**| `aks compile-exe <file.aks> -o <out.exe>` | Generates a standalone native Windows executable. |
 | **`static`** | `aks static build <file.aks> -o <out.exe>` | Direct LLVM IR compilation with zero VM overhead. |
-| **`wasm`** | `aks wasm <file.aks> [-o <out.wasm>]` | Emits direct WebAssembly 1.0 binary bytecode or WAT. |
+| **`wasm`** | `aks wasm <file.aks> [-o <out.wasm>]` | Emits direct WebAssembly 1.0/WASI Preview 2 binary module with WIT metadata. |
 | **`targets`** | `aks targets` | Displays supported cross-compilation target triples and CPU architectures. |
 | **`profile`** | `aks profile <file.aks> [-o <out.svg>]` | Instruction profiling and interactive SVG execution flamegraph generation. |
 | **`test`** | `aks test [file.aks] [--coverage[=lcov\|html]]` | Discovers and executes tests with text, LCOV, or HTML coverage reporting. |
 | **`check`** | `aks check [file.aks]` | Static type checking and safety verification without execution. |
-| **`bench`** | `aks bench [file.aks \| dir] --save <out>` | Runs benchmark functions and saves performance profiles. |
+| **`bench`** | `aks bench [file.aks \| dir] [--save <out>]` | Statistical benchmarking with mean, median, stddev, p95/p99, and JSON export. |
+| **`login`** | `aks login [token]` | Authenticates CLI with package registry using secure API token. |
+| **`logout`** | `aks logout` | Clears stored registry authentication credentials. |
 | **`fuzz`** | `aks fuzz [file.aks]` | Automated coverage-guided fuzz testing loop. |
 | **`fmt`** | `aks fmt <file.aks>` | Formats source files to idiomatic styling conventions. |
 | **`lint`** | `aks lint <file.aks>` | Enforces best practices, style rules, and safety checks. |
 | **`dap`** | `aks dap <file.aks> [port]` | Starts Debug Adapter Protocol server for visual debugging. |
-| **`pkg`** | `aks pkg <init\|add\|install\|run\|publish\|search>` | Built-in package manager with local and remote registry support. |
+| **`pkg`** | `aks pkg <init\|add\|install\|run\|publish\|login>` | Built-in package manager with local and remote registry support. |
 | **`bind`** | `aks bind <header.h> <output.aks>` | Auto-generates type-safe FFI bindings from C/C++ headers. |
 
-### Editor Integrations
+### Editor Integrations & Grammars
 
+- **Tree-sitter Grammar**: Official AST grammar located in [`tree-sitter-aks/`](tree-sitter-aks/) for tree-sitter enabled editors (Neovim, Helix, Emacs, Zed).
 - **Visual Studio Code**: Extension located in [`editors/vscode/`](editors/vscode/) with syntax highlighting, language server protocol (`aksls`), and snippets.
 - **Neovim**: First-class Lua plugin located in [`editors/neovim/`](editors/neovim/) providing syntax highlighting, filetype detection, LSP integration, health checks (`:checkhealth aks`), and built-in `:AksRun`, `:AksTest`, `:AksFmt`, and `:AksLint` commands.
 

@@ -6,6 +6,7 @@
 #include "parser.h"
 #include "vm.h"
 #include "pkg.h"
+#include "bind.h"
 #include "diagnostic.h"
 #include <stdlib.h>
 #include <string.h>
@@ -2203,7 +2204,13 @@ static int TypesCompatibleInternal(Compiler *c, const char *expected, const char
     MangleTypeName(expclean, expmangled, sizeof(expmangled));
     MangleTypeName(actclean, actmangled, sizeof(actmangled));
     
+    const char *exp_eff = expmangled;
+    if (strncmp(exp_eff, "dyn", 3) == 0 && exp_eff[3] >= 'A' && exp_eff[3] <= 'Z') exp_eff += 3;
+    const char *act_eff = actmangled;
+    if (strncmp(act_eff, "dyn", 3) == 0 && act_eff[3] >= 'A' && act_eff[3] <= 'Z') act_eff += 3;
+
     if (TypeNameMatches(expmangled, actmangled)) return 1;
+    if (TypeNameMatches(exp_eff, act_eff)) return 1;
 
     for (int i = 0; i < c->enumcount; i++) {
         size_t elen = strlen(c->enums[i].name);
@@ -2326,7 +2333,7 @@ static int TypesCompatibleInternal(Compiler *c, const char *expected, const char
     
     int intfidx = -1;
     for (int i = 0; i < c->interfacecount; i++) {
-        if (strcmp(c->interfaces[i].name, expmangled) == 0) {
+        if (strcmp(c->interfaces[i].name, expmangled) == 0 || strcmp(c->interfaces[i].name, exp_eff) == 0) {
             intfidx = i;
             break;
         }
@@ -2335,7 +2342,7 @@ static int TypesCompatibleInternal(Compiler *c, const char *expected, const char
     if (intfidx >= 0) {
         int structidx = -1;
         for (int i = 0; i < c->structcount; i++) {
-            if (strcmp(c->structs[i].name, actmangled) == 0) {
+            if (strcmp(c->structs[i].name, actmangled) == 0 || strcmp(c->structs[i].name, act_eff) == 0) {
                 structidx = i;
                 break;
             }
@@ -2343,7 +2350,8 @@ static int TypesCompatibleInternal(Compiler *c, const char *expected, const char
         
         if (structidx >= 0) {
             for (int j = 0; j < c->structs[structidx].ic; j++) {
-                if (strcmp(c->structs[structidx].interfaces[j], expmangled) == 0) {
+                if (strcmp(c->structs[structidx].interfaces[j], expmangled) == 0 ||
+                    strcmp(c->structs[structidx].interfaces[j], exp_eff) == 0) {
                     return 1;
                 }
             }
@@ -2814,6 +2822,10 @@ static void EmitExpr(Compiler *c, Node *n) {
                 ChunkWrite(ch, OPCASTBOOL, n->line);
             } else if (strcmp(n->cast.targettype, "string") == 0 || strcmp(n->cast.targettype, "str") == 0) {
                 ChunkWrite(ch, OPCASTSTR, n->line);
+            } else if (strncmp(n->cast.targettype, "dyn", 3) == 0 ||
+                       (n->cast.targettype[0] >= 'A' && n->cast.targettype[0] <= 'Z') ||
+                       strcmp(n->cast.targettype, "any") == 0) {
+                // Trait object / interface / struct upcast: keep object on stack
             } else {
                 ChunkWrite(ch, OPCASTINT, n->line);
             }
@@ -7098,7 +7110,15 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             if (!existing_mod) existing_mod = CompilerFindModule(c, path);
             Node *importedast = (existing_mod && existing_mod->ast) ? existing_mod->ast : NULL;
             if (!importedast) {
-                char *src = CompReadFile(finalpath);
+                char *src = NULL;
+                if (n->single.is_c || (strlen(finalpath) >= 2 && strcmp(finalpath + strlen(finalpath) - 2, ".h") == 0)) {
+                    char genpath[512];
+                    snprintf(genpath, sizeof(genpath), "%s.aks", finalpath);
+                    AKSBindHeaders(finalpath, genpath, 0, NULL);
+                    src = CompReadFile(genpath);
+                } else {
+                    src = CompReadFile(finalpath);
+                }
                 if (!src) {
                     char errbuf3[600];
                     snprintf(errbuf3, sizeof(errbuf3),
@@ -9315,7 +9335,15 @@ static void PreregisterFns(Compiler *c, Node *n) {
         finalpath_buf[511] = '\0';
         if (resolved) { free(resolved); resolved = NULL; }
         const char *finalpath = finalpath_buf;
-        char *src = CompReadFile(finalpath);
+        char *src = NULL;
+        if (n->single.is_c || (strlen(finalpath) >= 2 && strcmp(finalpath + strlen(finalpath) - 2, ".h") == 0)) {
+            char genpath[512];
+            snprintf(genpath, sizeof(genpath), "%s.aks", finalpath);
+            AKSBindHeaders(finalpath, genpath, 0, NULL);
+            src = CompReadFile(genpath);
+        } else {
+            src = CompReadFile(finalpath);
+        }
         if (src) {
             int parseerr = 0;
             Node *importedast = Parse(src, &parseerr);
@@ -11348,7 +11376,15 @@ static void PreregisterTypes(Compiler *c, Node *n) {
             finalpath_buf[511] = '\0';
             if (resolved) { free(resolved); resolved = NULL; }
             const char *finalpath = finalpath_buf;
-            char *src = CompReadFile(finalpath);
+            char *src = NULL;
+        if (n->single.is_c || (strlen(finalpath) >= 2 && strcmp(finalpath + strlen(finalpath) - 2, ".h") == 0)) {
+            char genpath[512];
+            snprintf(genpath, sizeof(genpath), "%s.aks", finalpath);
+            AKSBindHeaders(finalpath, genpath, 0, NULL);
+            src = CompReadFile(genpath);
+        } else {
+            src = CompReadFile(finalpath);
+        }
             if (src) {
                 int parseerr = 0;
                 Node *importedast = Parse(src, &parseerr);

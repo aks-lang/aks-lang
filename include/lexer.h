@@ -118,6 +118,7 @@ typedef enum {
     TASM,          /* asm keyword */
     TCOMPTIME,     /* comptime keyword */
     TNURSERY,      /* nursery keyword */
+    TDYN,          /* dyn keyword for dynamic trait objects */
     TREGION,       /* region keyword */
     TACTOR,        /* actor keyword */
     TEFFECT,       /* effect keyword */

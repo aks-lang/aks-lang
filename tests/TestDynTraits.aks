@@ -1,0 +1,56 @@
+// Test Dynamic Traits and Trait Objects in AKS
+print("Testing Dynamic Traits and Trait Objects");
+
+trait Speaker {
+    fn speak(msg: string) -> string;
+}
+
+struct Robot implements Speaker {
+    speak: fn(string) -> string;
+}
+
+struct Dog implements Speaker {
+    speak: fn(string) -> string;
+}
+
+fn send_announcement(speaker: dyn Speaker, msg: string) -> string {
+    return speaker.speak(msg);
+}
+
+let r = new Robot();
+r.speak = fn(msg: string) -> string {
+    return "[Robot beep]: " + msg;
+};
+
+let d = new Dog();
+d.speak = fn(msg: string) -> string {
+    return "[Dog woof]: " + msg;
+};
+
+let r_out = send_announcement(r, "System online");
+print("Robot announcement: " + r_out);
+assert(r_out == "[Robot beep]: System online", "Robot output mismatch");
+
+let d_out = send_announcement(d, "Someone is at the door");
+print("Dog announcement: " + d_out);
+assert(d_out == "[Dog woof]: Someone is at the door", "Dog output mismatch");
+
+let r2 = new Robot();
+r2.speak = fn(msg: string) -> string {
+    return "[Robot beep]: " + msg;
+};
+
+// Test trait polymorphism with cast syntax
+let dyn_speaker = r2 as dyn Speaker;
+let cast_out = dyn_speaker.speak("Directive verified");
+print("Cast trait output: " + cast_out);
+assert(cast_out == "[Robot beep]: Directive verified", "Cast trait output mismatch");
+
+print("All dynamic trait tests passed successfully!");
+
+fn TestDynamicTraitDispatch() {
+    let r3 = new Robot();
+    r3.speak = fn(msg: string) -> string { return "Echo: " + msg; };
+    let s: dyn Speaker = r3;
+    assert(s.speak("test") == "Echo: test", "Dynamic dispatch failed");
+}

@@ -150,8 +150,6 @@ static int test_dap(void) {
         return 1;
     }
 
-    Sleep(800);
-
     WSADATA wsa;
     WSAStartup(MAKEWORD(2, 2), &wsa);
 
@@ -161,7 +159,12 @@ static int test_dap(void) {
     server.sin_addr.s_addr = inet_addr("127.0.0.1");
     server.sin_port = htons(4711);
 
-    int conn = connect(sock, (struct sockaddr *)&server, sizeof(server));
+    int conn = -1;
+    for (int retry = 0; retry < 25; retry++) {
+        Sleep(100);
+        conn = connect(sock, (struct sockaddr *)&server, sizeof(server));
+        if (conn == 0) break;
+    }
     if (conn < 0) {
         printf("FAIL: Could not connect to DAP server on 127.0.0.1:4711\n");
         closesocket(sock);

@@ -73,6 +73,11 @@ aks.exe run tests\TestComptimeTypelevel.aks || exit /b 1
 aks.exe test tests\TestComptimeTypelevel.aks || exit /b 1
 aks.exe run tests\TestSqlite.aks || exit /b 1
 aks.exe test tests\TestSqlite.aks || exit /b 1
+aks.exe run tests\TestFnPatternDestructuring.aks || exit /b 1
+aks.exe test tests\TestFnPatternDestructuring.aks || exit /b 1
+aks.exe run tests\TestCHeaderImport.aks || exit /b 1
+aks.exe run tests\TestDynTraits.aks || exit /b 1
+aks.exe test tests\TestDynTraits.aks || exit /b 1
 aks.exe compile-exe tests\TestComptimeExecution.aks -o test_standalone.exe || exit /b 1
 test_standalone.exe || exit /b 1
 del /f /q test_standalone.exe 2>nul

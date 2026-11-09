@@ -1,0 +1,14 @@
+// Benchmark suite for statistical analysis engine
+
+fn bench_math_ops() {
+    let sum = 0;
+    for (let i = 0; i < 100; i = i + 1) {
+        sum = sum + i * 2;
+    }
+    return sum;
+}
+
+fn bench_array_alloc() {
+    let arr = [1, 2, 3, 4, 5, 6, 7, 8];
+    return arr[3];
+}

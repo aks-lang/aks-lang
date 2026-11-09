@@ -59,6 +59,7 @@ static TType KeyWord(const char *s) {
             if (!strcmp(s, "def"))   return TFN;
             if (!strcmp(s, "use"))   return TUSE;
             if (!strcmp(s, "gpu"))   return TGPU;
+            if (!strcmp(s, "dyn"))   return TDYN;
             break;
         case 4:
             if (!strcmp(s, "else"))  return TELSE;
@@ -90,6 +91,7 @@ static TType KeyWord(const char *s) {
             if (!strcmp(s, "where")) return TWHERE;
             if (!strcmp(s, "actor")) return TACTOR;
             if (!strcmp(s, "defer")) return TDEFER;
+            if (!strcmp(s, "trait")) return TINTERFACE;
             break;
         case 6:
             if (!strcmp(s, "return")) return TRETURN;
@@ -607,6 +609,7 @@ const char *ToktypeName(TType t) {
         case TASM: return "asm";
         case TCOMPTIME: return "comptime";
         case TNURSERY: return "nursery";
+        case TDYN: return "dyn";
         case TREGION: return "region";
         case TACTOR: return "actor";
         case TEFFECT: return "effect";

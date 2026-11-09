@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
+#include <math.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -13,6 +14,75 @@ static LARGE_INTEGER g_freq;
 #else
 static struct timespec g_bench_start_time;
 #endif
+
+static int compare_doubles_asc(const void *a, const void *b) {
+    double da = *(const double *)a;
+    double db = *(const double *)b;
+    if (da < db) return -1;
+    if (da > db) return 1;
+    return 0;
+}
+
+BenchStats BenchComputeStats(const char *name, const double *samples_ns, int count, uint64_t iters_per_sample) {
+    BenchStats st;
+    memset(&st, 0, sizeof(st));
+    st.name = name;
+    st.iterations = iters_per_sample;
+    st.samples_count = count;
+    if (count <= 0 || !samples_ns) return st;
+
+    double *sorted = (double *)malloc(count * sizeof(double));
+    if (!sorted) return st;
+    memcpy(sorted, samples_ns, count * sizeof(double));
+    qsort(sorted, count, sizeof(double), compare_doubles_asc);
+
+    st.min_ns = sorted[0];
+    st.max_ns = sorted[count - 1];
+
+    double sum = 0.0;
+    for (int i = 0; i < count; i++) {
+        sum += sorted[i];
+    }
+    st.mean_ns = sum / (double)count;
+    st.total_time_ms = (sum * (double)iters_per_sample) / 1e6;
+
+    if (count % 2 == 1) {
+        st.median_ns = sorted[count / 2];
+    } else {
+        st.median_ns = (sorted[count / 2 - 1] + sorted[count / 2]) * 0.5;
+    }
+
+    int p95_idx = (int)(count * 0.95);
+    if (p95_idx >= count) p95_idx = count - 1;
+    st.p95_ns = sorted[p95_idx];
+
+    int p99_idx = (int)(count * 0.99);
+    if (p99_idx >= count) p99_idx = count - 1;
+    st.p99_ns = sorted[p99_idx];
+
+    double variance_sum = 0.0;
+    for (int i = 0; i < count; i++) {
+        double diff = sorted[i] - st.mean_ns;
+        variance_sum += diff * diff;
+    }
+    st.stddev_ns = (count > 1) ? sqrt(variance_sum / (double)(count - 1)) : 0.0;
+    st.ops_per_sec = st.mean_ns > 0.0 ? (1e9 / st.mean_ns) : 0.0;
+
+    free(sorted);
+    return st;
+}
+
+void BenchPrintStats(const BenchStats *stats) {
+    printf("[bench] %-28s | %8llu iters | mean: %8.2f ns (±%6.2f) | median: %8.2f ns | p95: %8.2f ns | p99: %8.2f ns | %10.0f ops/s\n",
+           stats->name ? stats->name : "Benchmark",
+           (unsigned long long)stats->iterations,
+           stats->mean_ns,
+           stats->stddev_ns,
+           stats->median_ns,
+           stats->p95_ns,
+           stats->p99_ns,
+           stats->ops_per_sec);
+}
 
 void BenchStart(const char *name) {
     (void)name;

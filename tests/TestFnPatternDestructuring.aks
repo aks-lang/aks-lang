@@ -1,0 +1,51 @@
+// Test parameter pattern destructuring for tuples and structs
+
+fn add_tuple((x, y)) {
+    return x + y;
+}
+
+fn add_triple((a, b, c)) {
+    return a + b + c;
+}
+
+struct Point {
+    x: int,
+    y: int
+}
+
+fn distance_squared({ x, y }) {
+    return x * x + y * y;
+}
+
+struct User {
+    name: string,
+    age: int
+}
+
+fn format_user({ name, age }) {
+    return name + " (" + String(age) + ")";
+}
+
+fn test_destructuring() {
+    // 1. Tuple parameter destructuring
+    let p = (10, 25);
+    let sum2 = add_tuple(p);
+    assert(sum2 == 35, "Tuple destructuring add_tuple failed");
+
+    let t3 = (3, 7, 12);
+    let sum3 = add_triple(t3);
+    assert(sum3 == 22, "Tuple destructuring add_triple failed");
+
+    // 2. Struct parameter destructuring
+    let pt = Point { x: 3, y: 4 };
+    let d2 = distance_squared(pt);
+    assert(d2 == 25, "Struct destructuring distance_squared failed");
+
+    let u = User { name: "Alice", age: 30 };
+    let msg = format_user(u);
+    assert(msg == "Alice (30)", "Struct destructuring format_user failed");
+
+    println("All function parameter destructuring tests passed successfully!");
+}
+
+test_destructuring();

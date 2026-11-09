@@ -171,17 +171,42 @@ int AKSBindHeaders(const char *header_path, const char *output_path, int is_cpp,
     char *p = clean;
     while (*p) {
         char *semi = strchr(p, ';');
-        if (!semi) break;
+        char *lbrace = strchr(p, '{');
+        char *rbrace = NULL;
+        int has_body = 0;
+        char *decl = NULL;
+        char *body_str = NULL;
 
-        size_t decl_len = semi - p;
-        char *decl = malloc(decl_len + 1);
-        if (!decl) {
-            p = semi + 1;
-            continue;
+        if (lbrace && (!semi || lbrace < semi)) {
+            // Function definition with inline body { ... }
+            rbrace = strchr(lbrace, '}');
+            if (rbrace) {
+                has_body = 1;
+                size_t dlen = lbrace - p;
+                decl = malloc(dlen + 1);
+                memcpy(decl, p, dlen);
+                decl[dlen] = '\0';
+
+                size_t blen = rbrace - lbrace - 1;
+                body_str = malloc(blen + 1);
+                memcpy(body_str, lbrace + 1, blen);
+                body_str[blen] = '\0';
+
+                p = rbrace + 1;
+            }
         }
-        memcpy(decl, p, decl_len);
-        decl[decl_len] = '\0';
-        p = semi + 1;
+        if (!has_body) {
+            if (!semi) break;
+            size_t decl_len = semi - p;
+            decl = malloc(decl_len + 1);
+            if (!decl) {
+                p = semi + 1;
+                continue;
+            }
+            memcpy(decl, p, decl_len);
+            decl[decl_len] = '\0';
+            p = semi + 1;
+        }
 
         TrimWhitespace(decl);
         char *lparen = strchr(decl, '(');
@@ -227,6 +252,7 @@ int AKSBindHeaders(const char *header_path, const char *output_path, int is_cpp,
             char ret_char = GetSigChar(ret_type);
 
             char *params_str = lparen + 1;
+            char param_names[16][64];
             char param_types[16];
             int param_count = 0;
 
@@ -241,14 +267,25 @@ int AKSBindHeaders(const char *header_path, const char *output_path, int is_cpp,
 
                     char *p_space = strrchr(param_decl, ' ');
                     char *p_star = strrchr(param_decl, '*');
+                    char *pname = NULL;
                     if (p_star && (!p_space || p_star > p_space)) {
+                        pname = p_star + 1;
                         *p_star = '\0';
                         strcat(param_decl, "*");
                     } else if (p_space) {
+                        pname = p_space + 1;
                         *p_space = '\0';
                     }
+                    if (pname && pname[0] != '\0') {
+                        TrimWhitespace(pname);
+                        strncpy(param_names[param_count], pname, 63);
+                        param_names[param_count][63] = '\0';
+                    } else {
+                        snprintf(param_names[param_count], 64, "p%d", param_count);
+                    }
                     TrimWhitespace(param_decl);
-                    param_types[param_count++] = GetSigChar(param_decl);
+                    param_types[param_count] = GetSigChar(param_decl);
+                    param_count++;
                 }
                 token = strtok(NULL, ",");
             }
@@ -261,35 +298,46 @@ int AKSBindHeaders(const char *header_path, const char *output_path, int is_cpp,
             sig_str[s_idx++] = ')';
             sig_str[s_idx] = '\0';
 
-            if (is_cpp) {
-                char msvc_name[512] = "";
-                char it_name[512] = "";
-                GetMsvcMangled(msvc_name, sizeof(msvc_name), func_name, ret_char, param_types, param_count);
-                GetItaniumMangled(it_name, sizeof(it_name), func_name, param_types, param_count);
-
-                fprintf(out, "let _sym_%s = \"\";\n", func_name);
-                fprintf(out, "if (platform() == \"windows\") {\n");
-                fprintf(out, "    _sym_%s = \"%s\";\n", func_name, msvc_name);
-                fprintf(out, "} else {\n");
-                fprintf(out, "    _sym_%s = \"%s\";\n", func_name, it_name);
-                fprintf(out, "}\n");
+            if (has_body && body_str) {
+                fprintf(out, "fn %s(", func_name);
+                for (int i = 0; i < param_count; i++) {
+                    fprintf(out, "%s", param_names[i]);
+                    if (i + 1 < param_count) fprintf(out, ", ");
+                }
+                TrimWhitespace(body_str);
+                fprintf(out, ") {\n    %s\n}\n\n", body_str);
+                free(body_str);
             } else {
-                fprintf(out, "let _sym_%s = \"%s\";\n", func_name, func_name);
-            }
+                if (is_cpp) {
+                    char msvc_name[512] = "";
+                    char it_name[512] = "";
+                    GetMsvcMangled(msvc_name, sizeof(msvc_name), func_name, ret_char, param_types, param_count);
+                    GetItaniumMangled(it_name, sizeof(it_name), func_name, param_types, param_count);
 
-            fprintf(out, "fn %s(", func_name);
-            for (int i = 0; i < param_count; i++) {
-                fprintf(out, "p%d", i);
-                if (i + 1 < param_count) fprintf(out, ", ");
+                    fprintf(out, "let _sym_%s = \"\";\n", func_name);
+                    fprintf(out, "if (platform() == \"windows\") {\n");
+                    fprintf(out, "    _sym_%s = \"%s\";\n", func_name, msvc_name);
+                    fprintf(out, "} else {\n");
+                    fprintf(out, "    _sym_%s = \"%s\";\n", func_name, it_name);
+                    fprintf(out, "}\n");
+                } else {
+                    fprintf(out, "let _sym_%s = \"%s\";\n", func_name, func_name);
+                }
+
+                fprintf(out, "fn %s(", func_name);
+                for (int i = 0; i < param_count; i++) {
+                    fprintf(out, "%s", param_names[i]);
+                    if (i + 1 < param_count) fprintf(out, ", ");
+                }
+                fprintf(out, ") {\n");
+                fprintf(out, "    return FFICall(_ffi_lib, _sym_%s, \"%s\", [", func_name, sig_str);
+                for (int i = 0; i < param_count; i++) {
+                    fprintf(out, "%s", param_names[i]);
+                    if (i + 1 < param_count) fprintf(out, ", ");
+                }
+                fprintf(out, "]);\n");
+                fprintf(out, "}\n\n");
             }
-            fprintf(out, ") {\n");
-            fprintf(out, "    return FFICall(_ffi_lib, _sym_%s, \"%s\", [", func_name, sig_str);
-            for (int i = 0; i < param_count; i++) {
-                fprintf(out, "p%d", i);
-                if (i + 1 < param_count) fprintf(out, ", ");
-            }
-            fprintf(out, "]);\n");
-            fprintf(out, "}\n\n");
         }
         free(decl);
     }

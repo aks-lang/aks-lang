@@ -202,7 +202,7 @@ static void ParseBaseType(Parser *p, TypeStr *ts) {
     TokFree(&arrow);
 
     ParseUnionType(p, ts);
-  } else if ((Check(p, TIDENT) && strcmp(p->cur.val, "dyn") == 0)) {
+  } else if (Check(p, TDYN) || (Check(p, TIDENT) && strcmp(p->cur.val, "dyn") == 0)) {
     Token dyn = Consume(p);
     TypeStrAppend(ts, "dyn ");
     TokFree(&dyn);
@@ -651,6 +651,17 @@ static Node *ParseFnBody(Parser *p, int line, char *fname) {
   char **pnames = malloc(pcap * sizeof(char *));
   char **ptypes = malloc(pcap * sizeof(char *));
   Node **pdefaults = malloc(pcap * sizeof(Node *));
+
+  typedef struct {
+    char *var_name;
+    char *arg_name;
+    int is_tuple;
+    int tuple_idx;
+    char *field_name;
+  } DestructBinding;
+  DestructBinding destruct_bindings[64];
+  int destruct_count = 0;
+
   while (!Check(p, TRPAREN) && !Check(p, TEOF)) {
     // variadic ...args
     if (Check(p, TDOTDOTDOT)) {
@@ -664,9 +675,75 @@ static Node *ParseFnBody(Parser *p, int line, char *fname) {
       ptypes = realloc(ptypes, pcap * sizeof(char *));
       pdefaults = realloc(pdefaults, pcap * sizeof(Node *));
     }
-    Token pn = Expect(p, TIDENT);
-    pnames[pc] = strdup(pn.val);
-    TokFree(&pn);
+    if (Check(p, TLPAREN)) {
+      // Tuple pattern parameter: fn foo((a, b))
+      Token lp_pat = Consume(p); TokFree(&lp_pat);
+      char synth[64];
+      snprintf(synth, sizeof(synth), "__aks_pat_arg_%d", pc);
+      pnames[pc] = strdup(synth);
+      int t_idx = 0;
+      while (!Check(p, TRPAREN) && !Check(p, TEOF)) {
+        Token sub_id = Expect(p, TIDENT);
+        if (destruct_count < 64) {
+          destruct_bindings[destruct_count].var_name = strdup(sub_id.val);
+          destruct_bindings[destruct_count].arg_name = strdup(synth);
+          destruct_bindings[destruct_count].is_tuple = 1;
+          destruct_bindings[destruct_count].tuple_idx = t_idx++;
+          destruct_bindings[destruct_count].field_name = NULL;
+          destruct_count++;
+        }
+        TokFree(&sub_id);
+        if (Check(p, TCOLON)) {
+          Token col = Consume(p); TokFree(&col);
+          char *sub_type = ParseType(p);
+          if (sub_type) free(sub_type);
+        }
+        if (!Check(p, TRPAREN)) {
+          Token cm = Expect(p, TCOMMA); TokFree(&cm);
+        }
+      }
+      Token rp_pat = Expect(p, TRPAREN); TokFree(&rp_pat);
+    } else if (Check(p, TLBRACE)) {
+      // Struct pattern parameter: fn foo({ x, y })
+      Token lb_pat = Consume(p); TokFree(&lb_pat);
+      char synth[64];
+      snprintf(synth, sizeof(synth), "__aks_pat_arg_%d", pc);
+      pnames[pc] = strdup(synth);
+      while (!Check(p, TRBRACE) && !Check(p, TEOF)) {
+        Token sub_id = Expect(p, TIDENT);
+        char *target_var = strdup(sub_id.val);
+        char *source_field = strdup(sub_id.val);
+        TokFree(&sub_id);
+        if (Check(p, TCOLON)) {
+          Token col = Consume(p); TokFree(&col);
+          if (Check(p, TIDENT)) {
+            Token renamed = Consume(p);
+            free(target_var);
+            target_var = strdup(renamed.val);
+            TokFree(&renamed);
+          } else {
+            char *sub_type = ParseType(p);
+            if (sub_type) free(sub_type);
+          }
+        }
+        if (destruct_count < 64) {
+          destruct_bindings[destruct_count].var_name = target_var;
+          destruct_bindings[destruct_count].arg_name = strdup(synth);
+          destruct_bindings[destruct_count].is_tuple = 0;
+          destruct_bindings[destruct_count].tuple_idx = 0;
+          destruct_bindings[destruct_count].field_name = source_field;
+          destruct_count++;
+        }
+        if (!Check(p, TRBRACE)) {
+          Token cm = Expect(p, TCOMMA); TokFree(&cm);
+        }
+      }
+      Token rb_pat = Expect(p, TRBRACE); TokFree(&rb_pat);
+    } else {
+      Token pn = Expect(p, TIDENT);
+      pnames[pc] = strdup(pn.val);
+      TokFree(&pn);
+    }
     ptypes[pc] = NULL;
     if (Match(p, TCOLON))
       ptypes[pc] = ParseType(p);
@@ -760,6 +837,40 @@ static Node *ParseFnBody(Parser *p, int line, char *fname) {
     body->block.stmts[0] = retnode;
   } else {
     body = ParseBlock(p);
+  }
+  if (destruct_count > 0 && body && body->type == NBLOCK) {
+    Node **new_stmts = malloc((body->block.count + destruct_count) * sizeof(Node *));
+    for (int d = 0; d < destruct_count; d++) {
+      Node *vdecl = NodeNew(NVARDECL, line);
+      vdecl->decl.name = destruct_bindings[d].var_name;
+      vdecl->decl.tname = NULL;
+      vdecl->decl.isconst = NULL;
+      vdecl->decl.isconstflag = 0;
+
+      Node *target = NodeNew(NIDENT, line);
+      target->sval = destruct_bindings[d].arg_name;
+
+      if (destruct_bindings[d].is_tuple) {
+        Node *idx = NodeNew(NINT, line);
+        idx->ival = destruct_bindings[d].tuple_idx;
+        Node *acc = NodeNew(NINDEX, line);
+        acc->index.arr = target;
+        acc->index.idx = idx;
+        vdecl->decl.init = acc;
+      } else {
+        Node *acc = NodeNew(NMEMBER, line);
+        acc->member.obj = target;
+        acc->member.field = destruct_bindings[d].field_name;
+        vdecl->decl.init = acc;
+      }
+      new_stmts[d] = vdecl;
+    }
+    for (int s = 0; s < body->block.count; s++) {
+      new_stmts[destruct_count + s] = body->block.stmts[s];
+    }
+    free(body->block.stmts);
+    body->block.stmts = new_stmts;
+    body->block.count += destruct_count;
   }
   Node *n = NodeNew(NFNDECL, line);
   n->fn.name = fname;
@@ -3241,6 +3352,12 @@ parse_use:;
     int line = p->cur.line;
     Token kw = Consume(p);
     TokFree(&kw);
+    int is_c_import = 0;
+    if (Check(p, TIDENT) && strcmp(p->cur.val, "c") == 0) {
+      Token ctok = Consume(p);
+      TokFree(&ctok);
+      is_c_import = 1;
+    }
     Token pathtok = (Check(p, TRAWSTRLIT) ? Consume(p) : Expect(p, TSTRLIT));
     char *path = strdup(pathtok.val);
     TokFree(&pathtok);
@@ -3255,12 +3372,9 @@ parse_use:;
     TokFree(&sc);
     Node *n = NodeNew(NIMPORT, line);
     n->single.var = path;
+    n->single.as_alias = alias;
+    n->single.is_c = is_c_import;
     n->single.expr = alias ? (Node *)(void *)alias : NULL;
-    // store alias in single.var (path) and we'll re-use single.var; alias
-    // stored separately: simple approach: store alias in n->sval via a hack -
-    // better: just use single.var for path we'll ignore alias for now, import
-    // still works flat
-    (void)alias;
     return n;
   }
   case TTRY: {

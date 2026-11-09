@@ -15,6 +15,9 @@ int PkgSearch(const char *query);
 int PkgBuild(int bundle);
 int PkgGithubActions(void);
 int PkgDocker(void);
+int PkgLogin(const char *token, const char *registry_url);
+char *PkgGetStoredToken(const char *registry_url);
+int PkgLogout(const char *registry_url);
 
 // Advanced supply-chain security commands
 int PkgKeygen(const char *prefix);

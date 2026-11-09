@@ -250,8 +250,15 @@ typedef struct {
 
 #ifdef _WIN32
     void *iocp;
-#elif defined(AKS_USE_IO_URING)
+#elif defined(__APPLE__)
+    int kq; /* macOS / Darwin kqueue event descriptor */
+#elif defined(__linux__)
+    int epoll_fd; /* Linux epoll event descriptor */
+#if defined(AKS_USE_IO_URING)
     struct io_uring ring;
+#endif
+#else
+    int event_fd; /* Generic POSIX event loop descriptor */
 #endif
 
     struct {
@@ -267,6 +274,8 @@ typedef struct {
     int strict_ovf;
     int test_mode;
     int coverage_enabled;
+    int sanitize_address;
+    int sanitize_thread;
     VMMethodCacheEntry method_cache[VM_METHOD_CACHE_SIZE];
 } VM;
 
@@ -378,6 +387,8 @@ extern int GDapActive;
 extern int GDapPaused;
 extern int gTestMode;
 extern int gCoverageEnabled;
+extern int gSanitizeAddress;
+extern int gSanitizeThread;
 extern char gStdlibErrorMessage[2048];
 
 void DAPInit(int port);

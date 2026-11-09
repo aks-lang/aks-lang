@@ -674,6 +674,24 @@ static int EmitWasmBinaryModule(Compiler *comp, Node *ast_root, const char *out_
     WbbWriteSection(f, 10, &code_sec);
     WbbFree(&code_sec);
 
+    // Section 0: Custom Section for WebAssembly Component Model & WASI Preview 2 WIT Metadata
+    WasmBinBuf custom_sec;
+    WbbInit(&custom_sec);
+    WbbWriteString(&custom_sec, "component-type:wit");
+    char wit_desc[1024];
+    snprintf(wit_desc, sizeof(wit_desc), "package aks:component@0.2.0;\nworld component-target {\n  import wasi:cli/environment@0.2.0;\n  import wasi:io/streams@0.2.0;\n");
+    for (int i = 0; i < fn_count; i++) {
+        if (fns[i].name && strcmp(fns[i].name, "memory") != 0) {
+            char fnbuf[128];
+            snprintf(fnbuf, sizeof(fnbuf), "  export %s: func() -> s64;\n", fns[i].name);
+            strncat(wit_desc, fnbuf, sizeof(wit_desc) - strlen(wit_desc) - 1);
+        }
+    }
+    strncat(wit_desc, "}\n", sizeof(wit_desc) - strlen(wit_desc) - 1);
+    WbbWriteBytes(&custom_sec, (const uint8_t *)wit_desc, strlen(wit_desc));
+    WbbWriteSection(f, 0, &custom_sec);
+    WbbFree(&custom_sec);
+
     fclose(f);
     return 1;
 }
