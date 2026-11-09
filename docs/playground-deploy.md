@@ -24,7 +24,7 @@ Verify the service is running:
 
 ```bash
 curl http://localhost:8000/health
-# {"status":"ok","service":"aks-playground","version":"1.2.2"}
+# {"status":"ok","service":"aks-playground","version":"1.2.3"}
 ```
 
 Execute code via curl:
