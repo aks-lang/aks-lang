@@ -82,6 +82,29 @@ int main(void) {
     remove("test_sec_key.public.pem");
     remove("test_sbom.json");
 
+    // SemVer constraint solver verification (^, ~, >=, <, ranges, 0.x semantics)
+    int sv_ok =
+        PkgVersionSatisfies("1.4.2", "^1.2.3") &&
+        !PkgVersionSatisfies("2.0.0", "^1.2.3") &&
+        !PkgVersionSatisfies("1.1.9", "^1.2.3") &&
+        PkgVersionSatisfies("0.2.5", "^0.2.3") &&
+        !PkgVersionSatisfies("0.3.0", "^0.2.3") &&
+        PkgVersionSatisfies("0.0.3", "^0.0.3") &&
+        !PkgVersionSatisfies("0.0.4", "^0.0.3") &&
+        PkgVersionSatisfies("1.2.9", "~1.2.3") &&
+        !PkgVersionSatisfies("1.3.0", "~1.2.3") &&
+        PkgVersionSatisfies("1.5.0", ">=1.0.0 <2.0.0") &&
+        !PkgVersionSatisfies("2.0.0", ">=1.0.0 <2.0.0") &&
+        PkgVersionSatisfies("1.8.0", "1.x") &&
+        !PkgVersionSatisfies("1.2.3", ">=1.0.0 !=1.2.3");
+    if (sv_ok) {
+        printf("PASS: [SemVer Constraint Solver (^, ~, ranges, 0.y.z)]\n");
+        g_pass_count++;
+    } else {
+        printf("FAIL: [SemVer Constraint Solver]\n");
+        g_fail_count++;
+    }
+
     // First-Party Libraries (aks-async, aks-http, aks-web, aks-db, aks-cli)
     assert_compile_success("aks-async & aks-http first-party library integration",
         "fn test_first_party() {\n"

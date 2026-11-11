@@ -2,7 +2,42 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdarg.h>
 #include "bind.h"
+
+typedef struct {
+    char *data;
+    size_t len;
+    size_t cap;
+} BindBuf;
+
+static int BindBufAppendf(BindBuf *b, const char *fmt, ...) {
+    va_list ap1, ap2;
+    va_start(ap1, fmt);
+    va_copy(ap2, ap1);
+    int needed = vsnprintf(NULL, 0, fmt, ap1);
+    va_end(ap1);
+    if (needed < 0) {
+        va_end(ap2);
+        return -1;
+    }
+    size_t req = b->len + (size_t)needed + 1;
+    if (req > b->cap) {
+        size_t new_cap = b->cap == 0 ? 1024 : b->cap;
+        while (new_cap < req) new_cap *= 2;
+        char *nb = (char *)realloc(b->data, new_cap);
+        if (!nb) {
+            va_end(ap2);
+            return -1;
+        }
+        b->data = nb;
+        b->cap = new_cap;
+    }
+    vsnprintf(b->data + b->len, b->cap - b->len, fmt, ap2);
+    va_end(ap2);
+    b->len += (size_t)needed;
+    return 0;
+}
 
 static char GetSigChar(const char *type_str) {
     if (!type_str) return 'i';
@@ -46,52 +81,54 @@ static void GetMsvcMangled(char *dest, size_t dest_len, const char *name, char r
     else if (ret_char == 'p') ret_msvc = 'P';
     else if (ret_char == 'v') ret_msvc = 'X';
 
-    int len;
+    int raw_len;
     if (is_long_ret) {
-        len = snprintf(dest, dest_len, "?%s@@YA_J", name);
+        raw_len = snprintf(dest, dest_len, "?%s@@YA_J", name);
     } else {
-        len = snprintf(dest, dest_len, "?%s@@YA%c", name, ret_msvc);
+        raw_len = snprintf(dest, dest_len, "?%s@@YA%c", name, ret_msvc);
     }
+    size_t len = (raw_len > 0) ? (size_t)raw_len : 0;
     for (int i = 0; i < param_count; i++) {
         char p = param_chars[i];
         if (p == 'i') {
-            if (len < dest_len - 1) { dest[len++] = 'H'; dest[len] = '\0'; }
+            if (len + 1 < dest_len) { dest[len++] = 'H'; dest[len] = '\0'; }
         } else if (p == 'l') {
-            if (len < dest_len - 2) { strcat(dest, "_J"); len += 2; }
+            if (len + 2 < dest_len) { strcat(dest, "_J"); len += 2; }
         } else if (p == 'd') {
-            if (len < dest_len - 1) { dest[len++] = 'N'; dest[len] = '\0'; }
+            if (len + 1 < dest_len) { dest[len++] = 'N'; dest[len] = '\0'; }
         } else if (p == 's') {
-            if (len < dest_len - 5) { strcat(dest, "PEBD"); len += 4; }
+            if (len + 4 < dest_len) { strcat(dest, "PEBD"); len += 4; }
         } else if (p == 'p') {
-            if (len < dest_len - 5) { strcat(dest, "PEAX"); len += 4; }
+            if (len + 4 < dest_len) { strcat(dest, "PEAX"); len += 4; }
         }
     }
     if (param_count == 0) {
-        if (len < dest_len - 1) { dest[len++] = 'X'; dest[len] = '\0'; }
+        if (len + 1 < dest_len) { dest[len++] = 'X'; dest[len] = '\0'; }
     }
-    if (len < dest_len - 3) {
+    if (len + 2 < dest_len) {
         strcat(dest, "@Z");
     }
 }
 
 static void GetItaniumMangled(char *dest, size_t dest_len, const char *name, const char *param_chars, int param_count) {
-    int len = snprintf(dest, dest_len, "_Z%d%s", (int)strlen(name), name);
+    int raw_len = snprintf(dest, dest_len, "_Z%d%s", (int)strlen(name), name);
+    size_t len = (raw_len > 0) ? (size_t)raw_len : 0;
     for (int i = 0; i < param_count; i++) {
         char p = param_chars[i];
         if (p == 'i') {
-            if (len < dest_len - 1) { dest[len++] = 'i'; dest[len] = '\0'; }
+            if (len + 1 < dest_len) { dest[len++] = 'i'; dest[len] = '\0'; }
         } else if (p == 'l') {
-            if (len < dest_len - 1) { dest[len++] = 'l'; dest[len] = '\0'; }
+            if (len + 1 < dest_len) { dest[len++] = 'l'; dest[len] = '\0'; }
         } else if (p == 'd') {
-            if (len < dest_len - 1) { dest[len++] = 'd'; dest[len] = '\0'; }
+            if (len + 1 < dest_len) { dest[len++] = 'd'; dest[len] = '\0'; }
         } else if (p == 's') {
-            if (len < dest_len - 4) { strcat(dest, "PKc"); len += 3; }
+            if (len + 3 < dest_len) { strcat(dest, "PKc"); len += 3; }
         } else if (p == 'p') {
-            if (len < dest_len - 3) { strcat(dest, "Pv"); len += 2; }
+            if (len + 2 < dest_len) { strcat(dest, "Pv"); len += 2; }
         }
     }
     if (param_count == 0) {
-        if (len < dest_len - 1) { dest[len++] = 'v'; dest[len] = '\0'; }
+        if (len + 1 < dest_len) { dest[len++] = 'v'; dest[len] = '\0'; }
     }
 }
 
@@ -111,34 +148,39 @@ static void TrimWhitespace(char *str) {
     }
 }
 
-int AKSBindHeaders(const char *header_path, const char *output_path, int is_cpp, const char *libname) {
+char *AKSBindHeadersToStr(const char *header_path, int is_cpp, const char *libname) {
+    if (!header_path) return NULL;
     FILE *in = fopen(header_path, "rb");
     if (!in) {
         fprintf(stderr, "Error: cannot open header file %s\n", header_path);
-        return -1;
+        return NULL;
     }
     fseek(in, 0, SEEK_END);
     long fsize = ftell(in);
     fseek(in, 0, SEEK_SET);
+    if (fsize < 0) {
+        fclose(in);
+        return NULL;
+    }
 
-    char *buf = malloc(fsize + 1);
+    char *buf = malloc((size_t)fsize + 1);
     if (!buf) {
         fclose(in);
-        return -1;
+        return NULL;
     }
-    fread(buf, 1, fsize, in);
-    buf[fsize] = '\0';
+    size_t nread = fread(buf, 1, (size_t)fsize, in);
+    buf[nread] = '\0';
     fclose(in);
 
     // Comment stripping (single-line // and block /* ... */)
-    char *clean = malloc(fsize + 1);
+    char *clean = malloc(nread + 1);
     if (!clean) {
         free(buf);
-        return -1;
+        return NULL;
     }
-    int c_idx = 0;
+    size_t c_idx = 0;
     int in_scomment = 0, in_bcomment = 0;
-    for (int i = 0; i < fsize; i++) {
+    for (size_t i = 0; i < nread; i++) {
         if (in_scomment) {
             if (buf[i] == '\n') in_scomment = 0;
             continue;
@@ -150,7 +192,7 @@ int AKSBindHeaders(const char *header_path, const char *output_path, int is_cpp,
         if (buf[i] == '/' && buf[i+1] == '/') { in_scomment = 1; i++; continue; }
         if (buf[i] == '/' && buf[i+1] == '*') { in_bcomment = 1; i++; continue; }
         if (buf[i] == '#') {
-            while (i < fsize && buf[i] != '\n') i++;
+            while (i < nread && buf[i] != '\n') i++;
             continue;
         }
         clean[c_idx++] = (buf[i] == '\n' || buf[i] == '\r' || buf[i] == '\t') ? ' ' : buf[i];
@@ -158,15 +200,14 @@ int AKSBindHeaders(const char *header_path, const char *output_path, int is_cpp,
     clean[c_idx] = '\0';
     free(buf);
 
-    FILE *out = fopen(output_path, "w");
-    if (!out) {
-        fprintf(stderr, "Error: cannot open output file %s\n", output_path);
-        free(clean);
-        return -1;
+    BindBuf out = {NULL, 0, 0};
+    const char *hdr_label = (libname && libname[0]) ? libname : header_path;
+    BindBufAppendf(&out, "// Automatically generated AKS FFI bindings for '%s'\n\n", hdr_label);
+    if (libname && libname[0]) {
+        BindBufAppendf(&out, "let _ffi_lib = FFILoad(\"%s\");\n\n", libname);
+    } else {
+        BindBufAppendf(&out, "let _ffi_lib = 0;\n\n");
     }
-
-    fprintf(out, "// Automatically generated AKS FFI bindings for '%s'\n\n", libname);
-    fprintf(out, "let _ffi_lib = FFILoad(\"%s\");\n\n", libname);
 
     char *p = clean;
     while (*p) {
@@ -299,13 +340,13 @@ int AKSBindHeaders(const char *header_path, const char *output_path, int is_cpp,
             sig_str[s_idx] = '\0';
 
             if (has_body && body_str) {
-                fprintf(out, "fn %s(", func_name);
+                BindBufAppendf(&out, "fn %s(", func_name);
                 for (int i = 0; i < param_count; i++) {
-                    fprintf(out, "%s", param_names[i]);
-                    if (i + 1 < param_count) fprintf(out, ", ");
+                    BindBufAppendf(&out, "%s", param_names[i]);
+                    if (i + 1 < param_count) BindBufAppendf(&out, ", ");
                 }
                 TrimWhitespace(body_str);
-                fprintf(out, ") {\n    %s\n}\n\n", body_str);
+                BindBufAppendf(&out, ") {\n    %s\n}\n\n", body_str);
                 free(body_str);
             } else {
                 if (is_cpp) {
@@ -314,36 +355,51 @@ int AKSBindHeaders(const char *header_path, const char *output_path, int is_cpp,
                     GetMsvcMangled(msvc_name, sizeof(msvc_name), func_name, ret_char, param_types, param_count);
                     GetItaniumMangled(it_name, sizeof(it_name), func_name, param_types, param_count);
 
-                    fprintf(out, "let _sym_%s = \"\";\n", func_name);
-                    fprintf(out, "if (platform() == \"windows\") {\n");
-                    fprintf(out, "    _sym_%s = \"%s\";\n", func_name, msvc_name);
-                    fprintf(out, "} else {\n");
-                    fprintf(out, "    _sym_%s = \"%s\";\n", func_name, it_name);
-                    fprintf(out, "}\n");
+                    BindBufAppendf(&out, "let _sym_%s = \"\";\n", func_name);
+                    BindBufAppendf(&out, "if (platform() == \"windows\") {\n");
+                    BindBufAppendf(&out, "    _sym_%s = \"%s\";\n", func_name, msvc_name);
+                    BindBufAppendf(&out, "} else {\n");
+                    BindBufAppendf(&out, "    _sym_%s = \"%s\";\n", func_name, it_name);
+                    BindBufAppendf(&out, "}\n");
                 } else {
-                    fprintf(out, "let _sym_%s = \"%s\";\n", func_name, func_name);
+                    BindBufAppendf(&out, "let _sym_%s = \"%s\";\n", func_name, func_name);
                 }
 
-                fprintf(out, "fn %s(", func_name);
+                BindBufAppendf(&out, "fn %s(", func_name);
                 for (int i = 0; i < param_count; i++) {
-                    fprintf(out, "%s", param_names[i]);
-                    if (i + 1 < param_count) fprintf(out, ", ");
+                    BindBufAppendf(&out, "%s", param_names[i]);
+                    if (i + 1 < param_count) BindBufAppendf(&out, ", ");
                 }
-                fprintf(out, ") {\n");
-                fprintf(out, "    return FFICall(_ffi_lib, _sym_%s, \"%s\", [", func_name, sig_str);
+                BindBufAppendf(&out, ") {\n");
+                BindBufAppendf(&out, "    return FFICall(_ffi_lib, _sym_%s, \"%s\", [", func_name, sig_str);
                 for (int i = 0; i < param_count; i++) {
-                    fprintf(out, "%s", param_names[i]);
-                    if (i + 1 < param_count) fprintf(out, ", ");
+                    BindBufAppendf(&out, "%s", param_names[i]);
+                    if (i + 1 < param_count) BindBufAppendf(&out, ", ");
                 }
-                fprintf(out, "]);\n");
-                fprintf(out, "}\n\n");
+                BindBufAppendf(&out, "]);\n");
+                BindBufAppendf(&out, "}\n\n");
             }
         }
         free(decl);
     }
 
     free(clean);
+    if (!out.data) return strdup("");
+    return out.data;
+}
+
+int AKSBindHeaders(const char *header_path, const char *output_path, int is_cpp, const char *libname) {
+    char *generated = AKSBindHeadersToStr(header_path, is_cpp, libname);
+    if (!generated) return -1;
+    FILE *out = fopen(output_path, "w");
+    if (!out) {
+        fprintf(stderr, "Error: cannot open output file %s\n", output_path);
+        free(generated);
+        return -1;
+    }
+    fputs(generated, out);
     fclose(out);
+    free(generated);
     return 0;
 }
 

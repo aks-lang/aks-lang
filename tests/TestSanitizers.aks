@@ -1,0 +1,74 @@
+// Active AddressSanitizer & ThreadSanitizer Verification Suite
+
+struct SharedCounter {
+    value: int;
+}
+
+fn MutexWorker(arr, m, iters) {
+    let i = 0;
+    while (i < iters) {
+        lock(m);
+        arr[0] = arr[0] + 1;
+        unlock(m);
+        i = i + 1;
+    }
+}
+
+fn StructWorker(counter, m, iters) {
+    let i = 0;
+    while (i < iters) {
+        lock(m);
+        counter.value = counter.value + 1;
+        unlock(m);
+        i = i + 1;
+    }
+}
+
+fn ChannelWorker(ch, count) {
+    let i = 0;
+    let sum = 0;
+    while (i < count) {
+        sum = sum + Receive(ch);
+        i = i + 1;
+    }
+    return sum;
+}
+
+fn main() {
+    let setup = [10, 20, 30];
+    assert(setup[0] == 10 && setup[2] == 30, "ASan valid array read");
+    setup[1] = 99;
+    assert(setup[1] == 99, "ASan valid array write");
+
+    // Synchronized shared array mutation protected by mutex
+    let shared_arr = [0];
+    let m1 = mutex();
+    let t1 = spawn MutexWorker(shared_arr, m1, 20);
+    let t2 = spawn MutexWorker(shared_arr, m1, 20);
+    await t1;
+    await t2;
+    assert(shared_arr[0] == 40, "TSan mutex array count mismatch");
+
+    // Synchronized shared struct mutation protected by mutex
+    let c = new SharedCounter();
+    c.value = 0;
+    let m2 = mutex();
+    let s1 = spawn StructWorker(c, m2, 15);
+    let s2 = spawn StructWorker(c, m2, 15);
+    await s1;
+    await s2;
+    assert(c.value == 30, "TSan mutex struct count mismatch");
+
+    // Channel happens-before transfer
+    let ch = Channel(4);
+    let r = spawn ChannelWorker(ch, 3);
+    Send(ch, 10);
+    Send(ch, 20);
+    Send(ch, 30);
+    let total = await r;
+    assert(total == 60, "TSan channel transfer mismatch");
+
+    println("TestSanitizers passed!");
+}
+
+main();

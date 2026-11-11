@@ -2,6 +2,12 @@
 #include <windows.h>
 #include <bcrypt.h>
 #include <wincrypt.h>
+#else
+#include "aks_plat.h"
+typedef struct {
+  uint32_t dwMagic;
+  uint32_t cbKey;
+} BCRYPT_ECCKEY_BLOB;
 #endif
 #include "value.h"
 #include <stdint.h>
@@ -73,6 +79,7 @@ int HexDecodeC(const char *in, uint8_t *out) {
 // Pem to der / der to pem
 
 uint8_t *PEMToDER(const char *pem, DWORD *out_len) {
+#ifdef _WIN32
   DWORD len = 0;
   if (!CryptStringToBinaryA(pem, 0, CRYPT_STRING_BASE64_ANY, NULL, &len, NULL,
                             NULL)) {
@@ -86,9 +93,49 @@ uint8_t *PEMToDER(const char *pem, DWORD *out_len) {
   }
   *out_len = len;
   return der;
+#else
+  if (!pem || !out_len) return NULL;
+  static const int8_t b64dec[256] = {
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,52,53,54,55,56,57,58,59,60,61,-1,-1,-1,-1,-1,-1,
+    -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,-1,-1,-1,-1,-1,
+    -1,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
+  };
+  size_t plen = strlen(pem);
+  uint8_t *der = malloc((plen / 4) * 3 + 4);
+  if (!der) return NULL;
+  const char *p = pem;
+  if (strstr(p, "-----BEGIN ") != NULL) {
+    const char *nl = strchr(p, '\n');
+    if (nl) p = nl + 1;
+  }
+  uint32_t acc = 0;
+  int bits = 0;
+  DWORD dlen = 0;
+  while (*p) {
+    if (*p == '-' && strncmp(p, "-----END ", 9) == 0) break;
+    unsigned char ch = (unsigned char)*p++;
+    if (ch == '=') break;
+    int8_t v = b64dec[ch];
+    if (v < 0) continue;
+    acc = (acc << 6) | (uint32_t)v;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      der[dlen++] = (uint8_t)((acc >> bits) & 0xFF);
+    }
+  }
+  *out_len = dlen;
+  return der;
+#endif
 }
 
 char *DERToPEM(const uint8_t *der, DWORD der_len, const char *header) {
+#ifdef _WIN32
   DWORD len = 0;
   if (!CryptBinaryToStringA(der, der_len, CRYPT_STRING_BASE64, NULL, &len)) {
     return NULL;
@@ -104,7 +151,400 @@ char *DERToPEM(const uint8_t *der, DWORD der_len, const char *header) {
   sprintf(pem, "-----BEGIN %s-----\n%s-----END %s-----\n", header, b64, header);
   free(b64);
   return pem;
+#else
+  if (!der || !header) return NULL;
+  static const char b64enc[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  size_t b64len = ((size_t)der_len + 2) / 3 * 4;
+  size_t lines = (b64len / 64) + 2;
+  char *b64 = malloc(b64len + lines + 1);
+  if (!b64) return NULL;
+  size_t o = 0;
+  size_t col = 0;
+  for (size_t i = 0; i < (size_t)der_len; i += 3) {
+    uint32_t b0 = der[i];
+    uint32_t b1 = (i + 1 < (size_t)der_len) ? der[i + 1] : 0;
+    uint32_t b2 = (i + 2 < (size_t)der_len) ? der[i + 2] : 0;
+    uint32_t tri = (b0 << 16) | (b1 << 8) | b2;
+    b64[o++] = b64enc[(tri >> 18) & 0x3F];
+    b64[o++] = b64enc[(tri >> 12) & 0x3F];
+    b64[o++] = (i + 1 < (size_t)der_len) ? b64enc[(tri >> 6) & 0x3F] : '=';
+    b64[o++] = (i + 2 < (size_t)der_len) ? b64enc[tri & 0x3F] : '=';
+    col += 4;
+    if (col >= 64) {
+      b64[o++] = '\n';
+      col = 0;
+    }
+  }
+  if (o == 0 || b64[o - 1] != '\n') b64[o++] = '\n';
+  b64[o] = '\0';
+  size_t pem_len = strlen(header) * 2 + 64 + o;
+  char *pem = malloc(pem_len);
+  if (pem) sprintf(pem, "-----BEGIN %s-----\n%s-----END %s-----\n", header, b64, header);
+  free(b64);
+  return pem;
+#endif
 }
+
+#ifndef _WIN32
+/* Portable pure-C SHA-256, HMAC, PBKDF2, and AES-GCM fallbacks for POSIX hosts */
+static int CryptoHash(unsigned char *out, const unsigned char *m, unsigned long long n);
+
+static void PosixSha256(const uint8_t *data, size_t len, uint8_t out[32]) {
+  static const uint32_t k[64] = {
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+  };
+  uint32_t state[8] = {
+    0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19
+  };
+  uint8_t blk[64];
+  size_t blen = 0;
+  uint64_t bitlen = 0;
+  for (size_t idx = 0; idx < len; idx++) {
+    blk[blen++] = data[idx];
+    if (blen == 64) {
+      uint32_t w[64], a,b,c,d,e,f,g,h;
+      for (int i = 0; i < 16; i++)
+        w[i] = ((uint32_t)blk[i*4]<<24)|((uint32_t)blk[i*4+1]<<16)|((uint32_t)blk[i*4+2]<<8)|blk[i*4+3];
+      for (int i = 16; i < 64; i++) {
+        uint32_t s0 = ((w[i-15]>>7)|(w[i-15]<<25))^((w[i-15]>>18)|(w[i-15]<<14))^(w[i-15]>>3);
+        uint32_t s1 = ((w[i-2]>>17)|(w[i-2]<<15))^((w[i-2]>>19)|(w[i-2]<<13))^(w[i-2]>>10);
+        w[i] = w[i-16] + s0 + w[i-7] + s1;
+      }
+      a=state[0]; b=state[1]; c=state[2]; d=state[3]; e=state[4]; f=state[5]; g=state[6]; h=state[7];
+      for (int i = 0; i < 64; i++) {
+        uint32_t S1 = ((e>>6)|(e<<26))^((e>>11)|(e<<21))^((e>>25)|(e<<7));
+        uint32_t ch = (e&f)^((~e)&g);
+        uint32_t t1 = h + S1 + ch + k[i] + w[i];
+        uint32_t S0 = ((a>>2)|(a<<30))^((a>>13)|(a<<19))^((a>>22)|(a<<10));
+        uint32_t maj = (a&b)^(a&c)^(b&c);
+        uint32_t t2 = S0 + maj;
+        h=g; g=f; f=e; e=d+t1; d=c; c=b; b=a; a=t1+t2;
+      }
+      state[0]+=a; state[1]+=b; state[2]+=c; state[3]+=d;
+      state[4]+=e; state[5]+=f; state[6]+=g; state[7]+=h;
+      bitlen += 512;
+      blen = 0;
+    }
+  }
+  size_t pad = blen;
+  blk[pad++] = 0x80;
+  if (pad > 56) {
+    while (pad < 64) blk[pad++] = 0;
+    uint32_t w[64], a,b,c,d,e,f,g,h;
+    for (int i = 0; i < 16; i++)
+      w[i] = ((uint32_t)blk[i*4]<<24)|((uint32_t)blk[i*4+1]<<16)|((uint32_t)blk[i*4+2]<<8)|blk[i*4+3];
+    for (int i = 16; i < 64; i++) {
+      uint32_t s0 = ((w[i-15]>>7)|(w[i-15]<<25))^((w[i-15]>>18)|(w[i-15]<<14))^(w[i-15]>>3);
+      uint32_t s1 = ((w[i-2]>>17)|(w[i-2]<<15))^((w[i-2]>>19)|(w[i-2]<<13))^(w[i-2]>>10);
+      w[i] = w[i-16] + s0 + w[i-7] + s1;
+    }
+    a=state[0]; b=state[1]; c=state[2]; d=state[3]; e=state[4]; f=state[5]; g=state[6]; h=state[7];
+    for (int i = 0; i < 64; i++) {
+      uint32_t S1 = ((e>>6)|(e<<26))^((e>>11)|(e<<21))^((e>>25)|(e<<7));
+      uint32_t ch = (e&f)^((~e)&g);
+      uint32_t t1 = h + S1 + ch + k[i] + w[i];
+      uint32_t S0 = ((a>>2)|(a<<30))^((a>>13)|(a<<19))^((a>>22)|(a<<10));
+      uint32_t maj = (a&b)^(a&c)^(b&c);
+      uint32_t t2 = S0 + maj;
+      h=g; g=f; f=e; e=d+t1; d=c; c=b; b=a; a=t1+t2;
+    }
+    state[0]+=a; state[1]+=b; state[2]+=c; state[3]+=d;
+    state[4]+=e; state[5]+=f; state[6]+=g; state[7]+=h;
+    pad = 0;
+  }
+  while (pad < 56) blk[pad++] = 0;
+  bitlen += (uint64_t)blen * 8;
+  for (int i = 0; i < 8; i++) blk[56 + i] = (uint8_t)((bitlen >> ((7 - i) * 8)) & 0xFF);
+  {
+    uint32_t w[64], a,b,c,d,e,f,g,h;
+    for (int i = 0; i < 16; i++)
+      w[i] = ((uint32_t)blk[i*4]<<24)|((uint32_t)blk[i*4+1]<<16)|((uint32_t)blk[i*4+2]<<8)|blk[i*4+3];
+    for (int i = 16; i < 64; i++) {
+      uint32_t s0 = ((w[i-15]>>7)|(w[i-15]<<25))^((w[i-15]>>18)|(w[i-15]<<14))^(w[i-15]>>3);
+      uint32_t s1 = ((w[i-2]>>17)|(w[i-2]<<15))^((w[i-2]>>19)|(w[i-2]<<13))^(w[i-2]>>10);
+      w[i] = w[i-16] + s0 + w[i-7] + s1;
+    }
+    a=state[0]; b=state[1]; c=state[2]; d=state[3]; e=state[4]; f=state[5]; g=state[6]; h=state[7];
+    for (int i = 0; i < 64; i++) {
+      uint32_t S1 = ((e>>6)|(e<<26))^((e>>11)|(e<<21))^((e>>25)|(e<<7));
+      uint32_t ch = (e&f)^((~e)&g);
+      uint32_t t1 = h + S1 + ch + k[i] + w[i];
+      uint32_t S0 = ((a>>2)|(a<<30))^((a>>13)|(a<<19))^((a>>22)|(a<<10));
+      uint32_t maj = (a&b)^(a&c)^(b&c);
+      uint32_t t2 = S0 + maj;
+      h=g; g=f; f=e; e=d+t1; d=c; c=b; b=a; a=t1+t2;
+    }
+    state[0]+=a; state[1]+=b; state[2]+=c; state[3]+=d;
+    state[4]+=e; state[5]+=f; state[6]+=g; state[7]+=h;
+  }
+  for (int i = 0; i < 8; i++) {
+    out[i*4]   = (uint8_t)(state[i] >> 24);
+    out[i*4+1] = (uint8_t)(state[i] >> 16);
+    out[i*4+2] = (uint8_t)(state[i] >> 8);
+    out[i*4+3] = (uint8_t)(state[i]);
+  }
+}
+
+static void PosixHmacSha256(const uint8_t *key, size_t keylen, const uint8_t *data, size_t datalen, uint8_t out[32]) {
+  uint8_t kpad[64];
+  memset(kpad, 0, sizeof(kpad));
+  if (keylen > 64) PosixSha256(key, keylen, kpad);
+  else if (keylen > 0) memcpy(kpad, key, keylen);
+  uint8_t *inner = malloc(64 + datalen);
+  if (!inner) return;
+  for (int i = 0; i < 64; i++) inner[i] = kpad[i] ^ 0x36;
+  if (datalen > 0) memcpy(inner + 64, data, datalen);
+  uint8_t ihash[32];
+  PosixSha256(inner, 64 + datalen, ihash);
+  free(inner);
+  uint8_t outer[64 + 32];
+  for (int i = 0; i < 64; i++) outer[i] = kpad[i] ^ 0x5c;
+  memcpy(outer + 64, ihash, 32);
+  PosixSha256(outer, sizeof(outer), out);
+}
+
+static void PosixHmacSha512(const uint8_t *key, size_t keylen, const uint8_t *data, size_t datalen, uint8_t out[64]) {
+  uint8_t kpad[128];
+  memset(kpad, 0, sizeof(kpad));
+  if (keylen > 128) CryptoHash(kpad, key, (unsigned long long)keylen);
+  else if (keylen > 0) memcpy(kpad, key, keylen);
+  uint8_t *inner = malloc(128 + datalen);
+  if (!inner) return;
+  for (int i = 0; i < 128; i++) inner[i] = kpad[i] ^ 0x36;
+  if (datalen > 0) memcpy(inner + 128, data, datalen);
+  uint8_t ihash[64];
+  CryptoHash(ihash, inner, (unsigned long long)(128 + datalen));
+  free(inner);
+  uint8_t outer[128 + 64];
+  for (int i = 0; i < 128; i++) outer[i] = kpad[i] ^ 0x5c;
+  memcpy(outer + 128, ihash, 64);
+  CryptoHash(out, outer, (unsigned long long)sizeof(outer));
+}
+
+static int PosixPbkdf2Sha256(const uint8_t *pwd, size_t pwd_len, const uint8_t *salt, size_t salt_len, uint32_t iters, uint8_t *dk, size_t dk_len) {
+  uint8_t *msg = malloc(salt_len + 4);
+  if (!msg) return 0;
+  if (salt_len > 0) memcpy(msg, salt, salt_len);
+  uint32_t block = 1;
+  size_t off = 0;
+  while (off < dk_len) {
+    msg[salt_len]   = (uint8_t)(block >> 24);
+    msg[salt_len+1] = (uint8_t)(block >> 16);
+    msg[salt_len+2] = (uint8_t)(block >> 8);
+    msg[salt_len+3] = (uint8_t)(block);
+    uint8_t u[32], t[32];
+    PosixHmacSha256(pwd, pwd_len, msg, salt_len + 4, u);
+    memcpy(t, u, 32);
+    for (uint32_t it = 1; it < iters; it++) {
+      PosixHmacSha256(pwd, pwd_len, u, 32, u);
+      for (int k = 0; k < 32; k++) t[k] ^= u[k];
+    }
+    size_t chunk = (dk_len - off < 32) ? (dk_len - off) : 32;
+    memcpy(dk + off, t, chunk);
+    off += chunk;
+    block++;
+  }
+  free(msg);
+  return 1;
+}
+
+static const uint8_t aes_sbox[256] = {
+  0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
+  0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,
+  0xb7,0xfd,0x93,0x26,0x36,0x3f,0xf7,0xcc,0x34,0xa5,0xe5,0xf1,0x71,0xd8,0x31,0x15,
+  0x04,0xc7,0x23,0xc3,0x18,0x96,0x05,0x9a,0x07,0x12,0x80,0xe2,0xeb,0x27,0xb2,0x75,
+  0x09,0x83,0x2c,0x1a,0x1b,0x6e,0x5a,0xa0,0x52,0x3b,0xd6,0xb3,0x29,0xe3,0x2f,0x84,
+  0x53,0xd1,0x00,0xed,0x20,0xfc,0xb1,0x5b,0x6a,0xcb,0xbe,0x39,0x4a,0x4c,0x58,0xcf,
+  0xd0,0xef,0xaa,0xfb,0x43,0x4d,0x33,0x85,0x45,0xf9,0x02,0x7f,0x50,0x3c,0x9f,0xa8,
+  0x51,0xa3,0x40,0x8f,0x92,0x9d,0x38,0xf5,0xbc,0xb6,0xda,0x21,0x10,0xff,0xf3,0xd2,
+  0xcd,0x0c,0x13,0xec,0x5f,0x97,0x44,0x17,0xc4,0xa7,0x7e,0x3d,0x64,0x5d,0x19,0x73,
+  0x60,0x81,0x4f,0xdc,0x22,0x2a,0x90,0x88,0x46,0xee,0xb8,0x14,0xde,0x5e,0x0b,0xdb,
+  0xe0,0x32,0x3a,0x0a,0x49,0x06,0x24,0x5c,0xc2,0xd3,0xac,0x62,0x91,0x95,0xe4,0x79,
+  0xe7,0xc8,0x37,0x6d,0x8d,0xd5,0x4e,0xa9,0x6c,0x56,0xf4,0xea,0x65,0x7a,0xae,0x08,
+  0xba,0x78,0x25,0x2e,0x1c,0xa6,0xb4,0xc6,0xe8,0xdd,0x74,0x1f,0x4b,0xbd,0x8b,0x8a,
+  0x70,0x3e,0xb5,0x66,0x48,0x03,0xf6,0x0e,0x61,0x35,0x57,0xb9,0x86,0xc1,0x1d,0x9e,
+  0xe1,0xf8,0x98,0x11,0x69,0xd9,0x8e,0x94,0x9b,0x1e,0x87,0xe9,0xce,0x55,0x28,0xdf,
+  0x8c,0xa1,0x89,0x0d,0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16
+};
+
+static int PosixAesKeyExpand(const uint8_t *key, size_t key_len, uint8_t rk[240]) {
+  static const uint8_t rcon[11] = {0x00,0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x1b,0x36};
+  int nk = (key_len >= 32) ? 8 : (key_len >= 24 ? 6 : 4);
+  int nr = nk + 6;
+  memcpy(rk, key, (size_t)nk * 4);
+  int rci = 1;
+  for (int i = nk; i < 4 * (nr + 1); i++) {
+    uint8_t t[4];
+    memcpy(t, &rk[(i - 1) * 4], 4);
+    if (i % nk == 0) {
+      uint8_t tmp = t[0];
+      t[0] = aes_sbox[t[1]] ^ rcon[rci++]; t[1] = aes_sbox[t[2]]; t[2] = aes_sbox[t[3]]; t[3] = aes_sbox[tmp];
+    } else if (nk > 6 && (i % nk) == 4) {
+      for (int k = 0; k < 4; k++) t[k] = aes_sbox[t[k]];
+    }
+    for (int k = 0; k < 4; k++) rk[i * 4 + k] = rk[(i - nk) * 4 + k] ^ t[k];
+  }
+  return nr;
+}
+
+static void PosixAesEncryptBlock(const uint8_t *key, size_t key_len, const uint8_t in[16], uint8_t out[16]) {
+  uint8_t rk[240];
+  int nr = PosixAesKeyExpand(key, key_len, rk);
+  uint8_t s[16];
+  for (int i = 0; i < 16; i++) s[i] = in[i] ^ rk[i];
+  for (int r = 1; r <= nr; r++) {
+    for (int i = 0; i < 16; i++) s[i] = aes_sbox[s[i]];
+    uint8_t t;
+    t = s[1]; s[1]=s[5]; s[5]=s[9]; s[9]=s[13]; s[13]=t;
+    t = s[2]; s[2]=s[10]; s[10]=t; t=s[6]; s[6]=s[14]; s[14]=t;
+    t = s[15]; s[15]=s[11]; s[11]=s[7]; s[7]=s[3]; s[3]=t;
+    if (r < nr) {
+      for (int c = 0; c < 4; c++) {
+        uint8_t a0=s[c*4], a1=s[c*4+1], a2=s[c*4+2], a3=s[c*4+3];
+        #define XT(x) (uint8_t)(((x)<<1)^(((x)&0x80)?0x1b:0))
+        s[c*4]   = XT(a0)^XT(a1)^a1^a2^a3;
+        s[c*4+1] = a0^XT(a1)^XT(a2)^a2^a3;
+        s[c*4+2] = a0^a1^XT(a2)^XT(a3)^a3;
+        s[c*4+3] = XT(a0)^a0^a1^a2^XT(a3);
+        #undef XT
+      }
+    }
+    for (int i = 0; i < 16; i++) s[i] ^= rk[r * 16 + i];
+  }
+  memcpy(out, s, 16);
+}
+
+static void PosixAesDecryptBlock(const uint8_t *key, size_t key_len, const uint8_t in[16], uint8_t out[16]) {
+  static const uint8_t inv_sbox[256] = {
+    0x52,0x09,0x6a,0xd5,0x30,0x36,0xa5,0x38,0xbf,0x40,0xa3,0x9e,0x81,0xf3,0xd7,0xfb,
+    0x7c,0xe3,0x39,0x82,0x9b,0x2f,0xff,0x87,0x34,0x8e,0x43,0x44,0xc4,0xde,0xe9,0xcb,
+    0x54,0x7b,0x94,0x32,0xa6,0xc2,0x23,0x3d,0xee,0x4c,0x95,0x0b,0x42,0xfa,0xc3,0x4e,
+    0x08,0x2e,0xa1,0x66,0x28,0xd9,0x24,0xb2,0x76,0x5b,0xa2,0x49,0x6d,0x8b,0xd1,0x25,
+    0x72,0xf8,0xf6,0x64,0x86,0x68,0x98,0x16,0xd4,0xa4,0x5c,0xcc,0x5d,0x65,0xb6,0x92,
+    0x6c,0x70,0x48,0x50,0xfd,0xed,0xb9,0xda,0x5e,0x15,0x46,0x57,0xa7,0x8d,0x9d,0x84,
+    0x90,0xd8,0xab,0x00,0x8c,0xbc,0xd3,0x0a,0xf7,0xe4,0x58,0x05,0xb8,0xb3,0x45,0x06,
+    0xd0,0x2c,0x1e,0x8f,0xca,0x3f,0x0f,0x02,0xc1,0xaf,0xbd,0x03,0x01,0x13,0x8a,0x6b,
+    0x3a,0x91,0x11,0x41,0x4f,0x67,0xdc,0xea,0x97,0xf2,0xcf,0xce,0xf0,0xb4,0xe6,0x73,
+    0x96,0xac,0x74,0x22,0xe7,0xad,0x35,0x85,0xe2,0xf9,0x37,0xe8,0x1c,0x75,0xdf,0x6e,
+    0x47,0xf1,0x1a,0x71,0x1d,0x29,0xc5,0x89,0x6f,0xb7,0x62,0x0e,0xaa,0x18,0xbe,0x1b,
+    0xfc,0x56,0x3e,0x4b,0xc6,0xd2,0x79,0x20,0x9a,0xdb,0xc0,0xfe,0x78,0xcd,0x5a,0xf4,
+    0x1f,0xdd,0xa8,0x33,0x88,0x07,0xc7,0x31,0xb1,0x12,0x10,0x59,0x27,0x80,0xec,0x5f,
+    0x60,0x51,0x7f,0xa9,0x19,0xb5,0x4a,0x0d,0x2d,0xe5,0x7a,0x9f,0x93,0xc9,0x9c,0xef,
+    0xa0,0xe0,0x3b,0x4d,0xae,0x2a,0xf5,0xb0,0xc8,0xeb,0xbb,0x3c,0x83,0x53,0x99,0x61,
+    0x17,0x2b,0x04,0x7e,0xba,0x77,0xd6,0x26,0xe1,0x69,0x14,0x63,0x55,0x21,0x0c,0x7d
+  };
+  uint8_t rk[240];
+  int nr = PosixAesKeyExpand(key, key_len, rk);
+  uint8_t s[16];
+  for (int i = 0; i < 16; i++) s[i] = in[i] ^ rk[nr * 16 + i];
+  for (int r = nr - 1; r >= 0; r--) {
+    uint8_t t;
+    t = s[13]; s[13]=s[9]; s[9]=s[5]; s[5]=s[1]; s[1]=t;
+    t = s[2]; s[2]=s[10]; s[10]=t; t=s[6]; s[6]=s[14]; s[14]=t;
+    t = s[3]; s[3]=s[7]; s[7]=s[11]; s[11]=s[15]; s[15]=t;
+    for (int i = 0; i < 16; i++) s[i] = inv_sbox[s[i]];
+    for (int i = 0; i < 16; i++) s[i] ^= rk[r * 16 + i];
+    if (r > 0) {
+      for (int c = 0; c < 4; c++) {
+        uint8_t a0=s[c*4], a1=s[c*4+1], a2=s[c*4+2], a3=s[c*4+3];
+        #define XT(x) (uint8_t)(((x)<<1)^(((x)&0x80)?0x1b:0))
+        #define X2(x) XT(x)
+        #define X4(x) XT(X2(x))
+        #define X8(x) XT(X4(x))
+        #define M09(x) (uint8_t)(X8(x)^(x))
+        #define M0B(x) (uint8_t)(X8(x)^X2(x)^(x))
+        #define M0D(x) (uint8_t)(X8(x)^X4(x)^(x))
+        #define M0E(x) (uint8_t)(X8(x)^X4(x)^X2(x))
+        s[c*4]   = M0E(a0)^M0B(a1)^M0D(a2)^M09(a3);
+        s[c*4+1] = M09(a0)^M0E(a1)^M0B(a2)^M0D(a3);
+        s[c*4+2] = M0D(a0)^M09(a1)^M0E(a2)^M0B(a3);
+        s[c*4+3] = M0B(a0)^M0D(a1)^M09(a2)^M0E(a3);
+        #undef M09
+        #undef M0B
+        #undef M0D
+        #undef M0E
+        #undef X8
+        #undef X4
+        #undef X2
+        #undef XT
+      }
+    }
+  }
+  memcpy(out, s, 16);
+}
+
+static void PosixGfMul(const uint8_t X[16], const uint8_t Y[16], uint8_t Z[16]) {
+  uint8_t V[16];
+  memset(Z, 0, 16);
+  memcpy(V, Y, 16);
+  for (int i = 0; i < 128; i++) {
+    if ((X[i >> 3] >> (7 - (i & 7))) & 1) {
+      for (int k = 0; k < 16; k++) Z[k] ^= V[k];
+    }
+    int lsb = V[15] & 1;
+    for (int k = 15; k > 0; k--) V[k] = (uint8_t)((V[k] >> 1) | ((V[k - 1] & 1) << 7));
+    V[0] >>= 1;
+    if (lsb) V[0] ^= 0xe1;
+  }
+}
+
+static void PosixGhash(const uint8_t H[16], const uint8_t *aad, size_t aad_len, const uint8_t *ct, size_t ct_len, uint8_t out[16]) {
+  memset(out, 0, 16);
+  for (size_t i = 0; i < aad_len; i += 16) {
+    size_t chunk = (aad_len - i < 16) ? (aad_len - i) : 16;
+    for (size_t k = 0; k < chunk; k++) out[k] ^= aad[i + k];
+    PosixGfMul(out, H, out);
+  }
+  for (size_t i = 0; i < ct_len; i += 16) {
+    size_t chunk = (ct_len - i < 16) ? (ct_len - i) : 16;
+    for (size_t k = 0; k < chunk; k++) out[k] ^= ct[i + k];
+    PosixGfMul(out, H, out);
+  }
+  uint8_t lenblk[16];
+  uint64_t ab = (uint64_t)aad_len * 8, cb = (uint64_t)ct_len * 8;
+  for (int i = 0; i < 8; i++) { lenblk[i] = (uint8_t)(ab >> ((7 - i) * 8)); lenblk[8 + i] = (uint8_t)(cb >> ((7 - i) * 8)); }
+  for (int k = 0; k < 16; k++) out[k] ^= lenblk[k];
+  PosixGfMul(out, H, out);
+}
+
+static int PosixAesGcmCrypt(int encrypt, const uint8_t *key, size_t key_len, const uint8_t *iv, size_t iv_len, const uint8_t *aad, size_t aad_len, const uint8_t *in, size_t len, uint8_t *out, uint8_t *tag, size_t tag_len) {
+  uint8_t H[16] = {0}, zeros[16] = {0}, J0[16] = {0};
+  PosixAesEncryptBlock(key, key_len, zeros, H);
+  if (iv_len == 12) {
+    memcpy(J0, iv, 12);
+    J0[15] = 1;
+  } else {
+    PosixGhash(H, NULL, 0, iv, iv_len, J0);
+  }
+  uint8_t cb[16], stream[16];
+  memcpy(cb, J0, 16);
+  for (size_t off = 0; off < len; off += 16) {
+    for (int k = 15; k >= 12; k--) { if (++cb[k] != 0) break; }
+    PosixAesEncryptBlock(key, key_len, cb, stream);
+    size_t chunk = (len - off < 16) ? (len - off) : 16;
+    for (size_t k = 0; k < chunk; k++) out[off + k] = in[off + k] ^ stream[k];
+  }
+  uint8_t S[16], ej0[16], computed[16];
+  PosixGhash(H, aad, aad_len, encrypt ? out : in, len, S);
+  PosixAesEncryptBlock(key, key_len, J0, ej0);
+  for (int k = 0; k < 16; k++) computed[k] = S[k] ^ ej0[k];
+  size_t tlen = tag_len <= 16 ? tag_len : 16;
+  if (encrypt) {
+    memcpy(tag, computed, tlen);
+    return 1;
+  }
+  uint8_t diff = 0;
+  for (size_t k = 0; k < tlen; k++) diff |= (uint8_t)(computed[k] ^ tag[k]);
+  return (diff == 0);
+}
+#endif
 
 // Sha-3 implementation (keccak)
 
@@ -403,6 +843,7 @@ static void ScryptRoMix(uint32_t *B, int r, uint64_t N, uint32_t *V,
 int CryptoScrypt(const uint8_t *pwd, size_t pwd_len, const uint8_t *salt,
                  size_t salt_len, uint64_t N, uint32_t r, uint32_t p,
                  uint8_t *dk, size_t dk_len) {
+#ifdef _WIN32
   BCRYPT_ALG_HANDLE hAlg = NULL;
   if (BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, NULL,
                                   BCRYPT_ALG_HANDLE_HMAC_FLAG) != 0)
@@ -451,6 +892,31 @@ int CryptoScrypt(const uint8_t *pwd, size_t pwd_len, const uint8_t *salt,
   free(B);
   BCryptCloseAlgorithmProvider(hAlg, 0);
   return res;
+#else
+  size_t B_len = p * 128 * r;
+  uint32_t *B = malloc(B_len);
+  if (!B) return 0;
+  if (!PosixPbkdf2Sha256(pwd, pwd_len, salt, salt_len, 1, (uint8_t *)B, B_len)) {
+    free(B);
+    return 0;
+  }
+  uint32_t *V = malloc(N * 128 * r);
+  uint32_t *XY = malloc(2 * 128 * r);
+  if (!V || !XY) {
+    free(B);
+    if (V) free(V);
+    if (XY) free(XY);
+    return 0;
+  }
+  for (uint32_t i = 0; i < p; i++) {
+    ScryptRoMix(B + i * 32 * r, r, N, V, XY);
+  }
+  int res = PosixPbkdf2Sha256(pwd, pwd_len, (const uint8_t *)B, B_len, 1, dk, dk_len);
+  free(V);
+  free(XY);
+  free(B);
+  return res;
+#endif
 }
 
 // Argon2 Key Derivation
@@ -640,6 +1106,7 @@ int CryptoArgon2(const uint8_t *pwd, size_t pwd_len, const uint8_t *salt,
 // Secure Random
 
 int CryptoSecureRandom(uint8_t *buf, size_t len) {
+#ifdef _WIN32
   BCRYPT_ALG_HANDLE hAlg = NULL;
   NTSTATUS status =
       BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_RNG_ALGORITHM, NULL, 0);
@@ -648,10 +1115,22 @@ int CryptoSecureRandom(uint8_t *buf, size_t len) {
   status = BCryptGenRandom(hAlg, buf, (ULONG)len, 0);
   BCryptCloseAlgorithmProvider(hAlg, 0);
   return (status == 0);
+#else
+  if (!buf || len == 0) return buf != NULL;
+  FILE *f = fopen("/dev/urandom", "rb");
+  if (f) {
+    size_t n = fread(buf, 1, len, f);
+    fclose(f);
+    if (n == len) return 1;
+  }
+  for (size_t i = 0; i < len; i++) buf[i] = (uint8_t)(rand() & 0xFF);
+  return 1;
+#endif
 }
 
 // Symmetric Encryption (AES-GCM / ChaCha20-Poly1305)
 
+#ifdef _WIN32
 static int CryptoSymEncrypt(LPCWSTR alg_id, const uint8_t *key, size_t key_len,
                             const uint8_t *iv, size_t iv_len,
                             const uint8_t *aad, size_t aad_len,
@@ -743,21 +1222,30 @@ static int CryptoSymDecrypt(LPCWSTR alg_id, const uint8_t *key, size_t key_len,
   BCryptCloseAlgorithmProvider(hAlg, 0);
   return (status == 0);
 }
+#endif
 
 int AesGcmEncrypt(const uint8_t *key, size_t key_len, const uint8_t *iv,
                   size_t iv_len, const uint8_t *aad, size_t aad_len,
                   const uint8_t *pt, size_t pt_len, uint8_t *ct, uint8_t *tag,
                   size_t tag_len) {
+#ifdef _WIN32
   return CryptoSymEncrypt(BCRYPT_AES_ALGORITHM, key, key_len, iv, iv_len, aad,
                           aad_len, pt, pt_len, ct, tag, tag_len);
+#else
+  return PosixAesGcmCrypt(1, key, key_len, iv, iv_len, aad, aad_len, pt, pt_len, ct, tag, tag_len);
+#endif
 }
 
 int AesGcmDecrypt(const uint8_t *key, size_t key_len, const uint8_t *iv,
                   size_t iv_len, const uint8_t *aad, size_t aad_len,
                   const uint8_t *ct, size_t ct_len, const uint8_t *tag,
                   size_t tag_len, uint8_t *pt) {
+#ifdef _WIN32
   return CryptoSymDecrypt(BCRYPT_AES_ALGORITHM, key, key_len, iv, iv_len, aad,
                           aad_len, ct, ct_len, tag, tag_len, pt);
+#else
+  return PosixAesGcmCrypt(0, key, key_len, iv, iv_len, aad, aad_len, ct, ct_len, pt, (uint8_t *)tag, tag_len);
+#endif
 }
 
 /* ChaCha20-Poly1305 pure-C (RFC 8439) */
@@ -1071,6 +1559,7 @@ int Chacha20Poly1305DecryptC(const uint8_t *key, size_t key_len,
 int CryptoHMAC(LPCWSTR alg_id, const uint8_t *key, size_t key_len,
                const uint8_t *data, size_t data_len, uint8_t *digest,
                size_t digest_len) {
+#ifdef _WIN32
   BCRYPT_ALG_HANDLE hAlg = NULL;
   BCRYPT_HASH_HANDLE hHash = NULL;
   NTSTATUS status = BCryptOpenAlgorithmProvider(&hAlg, alg_id, NULL,
@@ -1092,11 +1581,299 @@ int CryptoHMAC(LPCWSTR alg_id, const uint8_t *key, size_t key_len,
   BCryptDestroyHash(hHash);
   BCryptCloseAlgorithmProvider(hAlg, 0);
   return (status == 0);
+#else
+  if (!digest || digest_len == 0) return 0;
+  if (alg_id && wcscmp(alg_id, BCRYPT_SHA512_ALGORITHM) == 0) {
+    uint8_t out[64];
+    PosixHmacSha512(key, key_len, data, data_len, out);
+    memcpy(digest, out, digest_len < 64 ? digest_len : 64);
+    return 1;
+  }
+  uint8_t out[32];
+  PosixHmacSha256(key, key_len, data, data_len, out);
+  memcpy(digest, out, digest_len < 32 ? digest_len : 32);
+  return 1;
+#endif
 }
 
 // Asymmetric keys RSA( & ECDSA)
 
+#ifndef _WIN32
+#define RSA_MAX_WORDS 128
+
+static int BnCmp(const uint32_t *a, const uint32_t *b, int nw) {
+  for (int i = nw - 1; i >= 0; i--) {
+    if (a[i] < b[i]) return -1;
+    if (a[i] > b[i]) return 1;
+  }
+  return 0;
+}
+
+static uint32_t BnSub(uint32_t *r, const uint32_t *a, const uint32_t *b, int nw) {
+  uint64_t borrow = 0;
+  for (int i = 0; i < nw; i++) {
+    uint64_t diff = (uint64_t)a[i] - b[i] - borrow;
+    r[i] = (uint32_t)diff;
+    borrow = (diff >> 63) & 1u;
+  }
+  return (uint32_t)borrow;
+}
+
+static void BnMul(uint32_t *r2, const uint32_t *a, const uint32_t *b, int nw) {
+  memset(r2, 0, (size_t)(nw * 2) * sizeof(uint32_t));
+  for (int i = 0; i < nw; i++) {
+    uint64_t carry = 0;
+    for (int j = 0; j < nw; j++) {
+      uint64_t v = (uint64_t)a[i] * b[j] + r2[i + j] + carry;
+      r2[i + j] = (uint32_t)v;
+      carry = v >> 32;
+    }
+    r2[i + nw] += (uint32_t)carry;
+  }
+}
+
+static uint32_t BnMontN0p(uint32_t n0) {
+  uint32_t inv = 1;
+  for (int i = 0; i < 5; i++) inv *= (2u - n0 * inv);
+  return (uint32_t)(0u - inv);
+}
+
+static void BnMontMul(uint32_t *r, const uint32_t *a, const uint32_t *b,
+                      const uint32_t *n, int nw, uint32_t n0p) {
+  uint32_t t[RSA_MAX_WORDS + 2];
+  memset(t, 0, (size_t)(nw + 2) * sizeof(uint32_t));
+  for (int i = 0; i < nw; i++) {
+    uint64_t c = 0;
+    for (int j = 0; j < nw; j++) {
+      uint64_t v = (uint64_t)a[i] * b[j] + t[j] + c;
+      t[j] = (uint32_t)v;
+      c = v >> 32;
+    }
+    uint64_t vh = (uint64_t)t[nw] + c;
+    t[nw] = (uint32_t)vh;
+    t[nw + 1] += (uint32_t)(vh >> 32);
+
+    uint32_t m = t[0] * n0p;
+    uint64_t v0 = (uint64_t)m * n[0] + t[0];
+    c = v0 >> 32;
+    for (int j = 1; j < nw; j++) {
+      uint64_t v = (uint64_t)m * n[j] + t[j] + c;
+      t[j - 1] = (uint32_t)v;
+      c = v >> 32;
+    }
+    uint64_t vt = (uint64_t)t[nw] + c;
+    t[nw - 1] = (uint32_t)vt;
+    t[nw] = t[nw + 1] + (uint32_t)(vt >> 32);
+    t[nw + 1] = 0;
+  }
+  if (t[nw] || BnCmp(t, n, nw) >= 0) {
+    BnSub(r, t, n, nw);
+  } else {
+    memcpy(r, t, (size_t)nw * sizeof(uint32_t));
+  }
+}
+
+static void BnMontR2(uint32_t *r2, const uint32_t *n, int nw) {
+  memset(r2, 0, (size_t)nw * sizeof(uint32_t));
+  r2[0] = 1;
+  int bits = 2 * nw * 32;
+  for (int b = 0; b < bits; b++) {
+    uint32_t carry = 0;
+    for (int i = 0; i < nw; i++) {
+      uint32_t next_c = r2[i] >> 31;
+      r2[i] = (r2[i] << 1) | carry;
+      carry = next_c;
+    }
+    if (carry || BnCmp(r2, n, nw) >= 0) {
+      BnSub(r2, r2, n, nw);
+    }
+  }
+}
+
+static void BnMontPow(uint32_t *out, const uint32_t *base, const uint32_t *exp,
+                      int exp_words, const uint32_t *n, int nw,
+                      uint32_t n0p, const uint32_t *r2) {
+  uint32_t one[RSA_MAX_WORDS] = {0};
+  one[0] = 1;
+  uint32_t resM[RSA_MAX_WORDS], baseM[RSA_MAX_WORDS];
+  BnMontMul(resM, one, r2, n, nw, n0p);
+  BnMontMul(baseM, base, r2, n, nw, n0p);
+
+  int top_bit = -1;
+  for (int i = exp_words - 1; i >= 0 && top_bit < 0; i--) {
+    if (exp[i]) {
+      for (int bit = 31; bit >= 0; bit--) {
+        if ((exp[i] >> bit) & 1u) { top_bit = i * 32 + bit; break; }
+      }
+    }
+  }
+  for (int b = top_bit; b >= 0; b--) {
+    uint32_t sq[RSA_MAX_WORDS];
+    BnMontMul(sq, resM, resM, n, nw, n0p);
+    memcpy(resM, sq, (size_t)nw * sizeof(uint32_t));
+    if ((exp[b >> 5] >> (b & 31)) & 1u) {
+      uint32_t mul[RSA_MAX_WORDS];
+      BnMontMul(mul, resM, baseM, n, nw, n0p);
+      memcpy(resM, mul, (size_t)nw * sizeof(uint32_t));
+    }
+  }
+  BnMontMul(out, resM, one, n, nw, n0p);
+}
+
+static uint32_t BnModU32(const uint32_t *a, int nw, uint32_t m) {
+  uint64_t rem = 0;
+  for (int i = nw - 1; i >= 0; i--) rem = ((rem << 32) | a[i]) % m;
+  return (uint32_t)rem;
+}
+
+static int BnIsPrime(const uint32_t *p, int pw) {
+  static const uint16_t primes[] = {
+    3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97,
+    101,103,107,109,113,127,131,137,139,149,151,157,163,167,173,179,181,191,
+    193,197,199,211,223,227,229,233,239,241,251,257,263,269,271,277,281
+  };
+  if ((p[0] & 1u) == 0) return 0;
+  for (size_t i = 0; i < sizeof(primes) / sizeof(primes[0]); i++) {
+    if (BnModU32(p, pw, primes[i]) == 0) return 0;
+  }
+  uint32_t pm1[RSA_MAX_WORDS];
+  memcpy(pm1, p, (size_t)pw * sizeof(uint32_t));
+  pm1[0] &= ~1u;
+  if (BnModU32(pm1, pw, 65537u) == 0) return 0;
+
+  int s = 0;
+  int total_bits = pw * 32;
+  while (s < total_bits && !((pm1[s >> 5] >> (s & 31)) & 1u)) s++;
+  uint32_t q[RSA_MAX_WORDS] = {0};
+  int wshift = s >> 5, bshift = s & 31;
+  for (int i = 0; i + wshift < pw; i++) {
+    uint64_t v = (uint64_t)pm1[i + wshift] >> bshift;
+    if (bshift && i + wshift + 1 < pw) v |= (uint64_t)pm1[i + wshift + 1] << (32 - bshift);
+    q[i] = (uint32_t)v;
+  }
+
+  uint32_t n0p = BnMontN0p(p[0]);
+  uint32_t r2[RSA_MAX_WORDS];
+  BnMontR2(r2, p, pw);
+
+  uint32_t one[RSA_MAX_WORDS] = {0}; one[0] = 1;
+  uint32_t oneM[RSA_MAX_WORDS], pm1M[RSA_MAX_WORDS];
+  BnMontMul(oneM, one, r2, p, pw, n0p);
+  BnSub(pm1M, p, oneM, pw);
+
+  static const uint32_t bases[] = {2, 3, 5, 7, 11};
+  for (int bi = 0; bi < 5; bi++) {
+    uint32_t a[RSA_MAX_WORDS] = {0}, aM[RSA_MAX_WORDS], xM[RSA_MAX_WORDS];
+    a[0] = bases[bi];
+    BnMontMul(aM, a, r2, p, pw, n0p);
+    /* xM = a^q mod p in Montgomery form */
+    memcpy(xM, oneM, (size_t)pw * sizeof(uint32_t));
+    int top_bit = -1;
+    for (int i = pw - 1; i >= 0 && top_bit < 0; i--) {
+      if (q[i]) {
+        for (int bit = 31; bit >= 0; bit--) {
+          if ((q[i] >> bit) & 1u) { top_bit = i * 32 + bit; break; }
+        }
+      }
+    }
+    for (int b = top_bit; b >= 0; b--) {
+      uint32_t sq[RSA_MAX_WORDS];
+      BnMontMul(sq, xM, xM, p, pw, n0p);
+      memcpy(xM, sq, (size_t)pw * sizeof(uint32_t));
+      if ((q[b >> 5] >> (b & 31)) & 1u) {
+        uint32_t mul[RSA_MAX_WORDS];
+        BnMontMul(mul, xM, aM, p, pw, n0p);
+        memcpy(xM, mul, (size_t)pw * sizeof(uint32_t));
+      }
+    }
+    if (memcmp(xM, oneM, (size_t)pw * sizeof(uint32_t)) == 0 ||
+        memcmp(xM, pm1M, (size_t)pw * sizeof(uint32_t)) == 0) {
+      continue;
+    }
+    int witness_pass = 0;
+    for (int r = 1; r < s; r++) {
+      uint32_t sq[RSA_MAX_WORDS];
+      BnMontMul(sq, xM, xM, p, pw, n0p);
+      memcpy(xM, sq, (size_t)pw * sizeof(uint32_t));
+      if (memcmp(xM, pm1M, (size_t)pw * sizeof(uint32_t)) == 0) {
+        witness_pass = 1;
+        break;
+      }
+    }
+    if (!witness_pass) return 0;
+  }
+  return 1;
+}
+
+static int BnGenPrime(uint32_t *p, int pw) {
+  for (int attempt = 0; attempt < 2000; attempt++) {
+    if (!CryptoSecureRandom((uint8_t *)p, (size_t)pw * sizeof(uint32_t))) return 0;
+    p[0] |= 1u;
+    p[pw - 1] |= 0xC0000000u;
+    for (int step = 0; step < 500; step++) {
+      if (BnIsPrime(p, pw)) return 1;
+      uint64_t carry = 2;
+      for (int i = 0; i < pw && carry; i++) {
+        uint64_t v = (uint64_t)p[i] + carry;
+        p[i] = (uint32_t)v;
+        carry = v >> 32;
+      }
+      p[pw - 1] |= 0xC0000000u;
+    }
+  }
+  return 0;
+}
+
+static uint64_t ModInvU64(uint64_t a, uint64_t mod) {
+  int64_t t = 0, newt = 1, r = (int64_t)mod, newr = (int64_t)(a % mod);
+  while (newr != 0) {
+    int64_t q = r / newr;
+    int64_t tmp_t = t - q * newt; t = newt; newt = tmp_t;
+    int64_t tmp_r = r - q * newr; r = newr; newr = tmp_r;
+  }
+  if (t < 0) t += (int64_t)mod;
+  return (uint64_t)t;
+}
+
+static void BytesToBn(const uint8_t *b, int kbytes, uint32_t *w, int nw) {
+  memset(w, 0, (size_t)nw * sizeof(uint32_t));
+  for (int i = 0; i < nw && i * 4 < kbytes; i++) {
+    int off = kbytes - (i + 1) * 4;
+    w[i] = ((uint32_t)b[off] << 24) | ((uint32_t)b[off + 1] << 16) |
+           ((uint32_t)b[off + 2] << 8) | (uint32_t)b[off + 3];
+  }
+}
+
+static void BnToBytes(const uint32_t *w, int nw, uint8_t *b, int kbytes) {
+  for (int i = 0; i < nw && i * 4 < kbytes; i++) {
+    int off = kbytes - (i + 1) * 4;
+    b[off] = (uint8_t)(w[i] >> 24);
+    b[off + 1] = (uint8_t)(w[i] >> 16);
+    b[off + 2] = (uint8_t)(w[i] >> 8);
+    b[off + 3] = (uint8_t)w[i];
+  }
+}
+
+static void BuildPkcs1Sha256Em(const uint8_t *hash, uint8_t *em, int kbytes) {
+  static const uint8_t digest_info[19] = {
+    0x30,0x31,0x30,0x0d,0x06,0x09,0x60,0x86,0x48,0x01,
+    0x65,0x03,0x04,0x02,0x01,0x05,0x00,0x04,0x20
+  };
+  int ps_len = kbytes - 3 - 19 - 32;
+  em[0] = 0x00;
+  em[1] = 0x01;
+  memset(em + 2, 0xFF, (size_t)ps_len);
+  em[2 + ps_len] = 0x00;
+  memcpy(em + 3 + ps_len, digest_info, 19);
+  memcpy(em + 3 + ps_len + 19, hash, 32);
+}
+
+#define AKS_RSA_PUB_MAGIC  0x50535241u
+#define AKS_RSA_PRIV_MAGIC 0x52535241u
+#endif
+
 int RSAGenerateKeys(uint32_t key_size, char **pub_pem, char **priv_pem) {
+#ifdef _WIN32
   BCRYPT_ALG_HANDLE hAlg = NULL;
   BCRYPT_KEY_HANDLE hKey = NULL;
   NTSTATUS status =
@@ -1135,10 +1912,76 @@ int RSAGenerateKeys(uint32_t key_size, char **pub_pem, char **priv_pem) {
   BCryptDestroyKey(hKey);
   BCryptCloseAlgorithmProvider(hAlg, 0);
   return (status == 0) && (*priv_pem != NULL) && (*pub_pem != NULL);
+#else
+  if (key_size < 512) key_size = 512;
+  if (key_size > 4096) key_size = 4096;
+  int pw = (int)(key_size / 64);
+  if (pw < 8 || pw * 2 > RSA_MAX_WORDS) return 0;
+  int nw = pw * 2;
+  int kbytes = nw * 4;
+
+  uint32_t p[RSA_MAX_WORDS] = {0}, q[RSA_MAX_WORDS] = {0};
+  uint32_t n[RSA_MAX_WORDS] = {0}, d[RSA_MAX_WORDS] = {0};
+  if (!BnGenPrime(p, pw)) return 0;
+  do {
+    if (!BnGenPrime(q, pw)) return 0;
+  } while (BnCmp(p, q, pw) == 0);
+
+  BnMul(n, p, q, pw);
+
+  uint32_t pm1[RSA_MAX_WORDS] = {0}, qm1[RSA_MAX_WORDS] = {0}, phi[RSA_MAX_WORDS] = {0};
+  memcpy(pm1, p, (size_t)pw * sizeof(uint32_t)); pm1[0] &= ~1u;
+  memcpy(qm1, q, (size_t)pw * sizeof(uint32_t)); qm1[0] &= ~1u;
+  BnMul(phi, pm1, qm1, pw);
+
+  uint32_t k = BnModU32(phi, nw, 65537u);
+  if (k == 0) return 0;
+  uint64_t m = (ModInvU64(k, 65537u) * 65536ULL) % 65537ULL;
+
+  uint32_t tmp[RSA_MAX_WORDS + 1] = {0};
+  uint64_t c = 1;
+  for (int i = 0; i < nw; i++) {
+    uint64_t v = m * phi[i] + c;
+    tmp[i] = (uint32_t)v;
+    c = v >> 32;
+  }
+  tmp[nw] = (uint32_t)c;
+
+  uint64_t rem = 0;
+  for (int i = nw; i >= 0; i--) {
+    uint64_t cur = (rem << 32) | tmp[i];
+    uint32_t quo = (uint32_t)(cur / 65537ULL);
+    rem = cur % 65537ULL;
+    if (i < nw) d[i] = quo;
+  }
+  if (rem != 0) return 0;
+
+  size_t pub_sz = 8 + (size_t)kbytes;
+  size_t priv_sz = 8 + (size_t)kbytes * 2;
+  uint8_t *pub_blob = (uint8_t *)malloc(pub_sz);
+  uint8_t *priv_blob = (uint8_t *)malloc(priv_sz);
+  if (!pub_blob || !priv_blob) { free(pub_blob); free(priv_blob); return 0; }
+
+  uint32_t hdr_pub[2] = {AKS_RSA_PUB_MAGIC, (uint32_t)kbytes};
+  uint32_t hdr_priv[2] = {AKS_RSA_PRIV_MAGIC, (uint32_t)kbytes};
+  memcpy(pub_blob, hdr_pub, 8);
+  BnToBytes(n, nw, pub_blob + 8, kbytes);
+
+  memcpy(priv_blob, hdr_priv, 8);
+  BnToBytes(n, nw, priv_blob + 8, kbytes);
+  BnToBytes(d, nw, priv_blob + 8 + kbytes, kbytes);
+
+  *pub_pem = DERToPEM(pub_blob, (DWORD)pub_sz, "PUBLIC KEY");
+  *priv_pem = DERToPEM(priv_blob, (DWORD)priv_sz, "PRIVATE KEY");
+  free(pub_blob);
+  free(priv_blob);
+  return (*pub_pem != NULL) && (*priv_pem != NULL);
+#endif
 }
 
 int RSASignData(const char *priv_pem, const uint8_t *hash, size_t hash_len,
                 uint8_t *sig, size_t *sig_len) {
+#ifdef _WIN32
   BCRYPT_ALG_HANDLE hAlg = NULL;
   BCRYPT_KEY_HANDLE hKey = NULL;
   if (BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_RSA_ALGORITHM, NULL, 0) != 0)
@@ -1174,10 +2017,42 @@ int RSASignData(const char *priv_pem, const uint8_t *hash, size_t hash_len,
   BCryptDestroyKey(hKey);
   BCryptCloseAlgorithmProvider(hAlg, 0);
   return (status == 0);
+#else
+  if (!priv_pem || !hash || hash_len != 32 || !sig || !sig_len) return 0;
+  DWORD der_len = 0;
+  uint8_t *der = PEMToDER(priv_pem, &der_len);
+  if (!der || der_len < 8) { free(der); return 0; }
+  uint32_t magic = 0, kb = 0;
+  memcpy(&magic, der, 4); memcpy(&kb, der + 4, 4);
+  int kbytes = (int)kb;
+  if (magic != AKS_RSA_PRIV_MAGIC || kbytes < 64 || (kbytes % 4) != 0 ||
+      kbytes > RSA_MAX_WORDS * 4 || der_len < (DWORD)(8 + kbytes * 2) || *sig_len < (size_t)kbytes) {
+    free(der);
+    return 0;
+  }
+  int nw = kbytes / 4;
+  uint32_t n[RSA_MAX_WORDS] = {0}, d[RSA_MAX_WORDS] = {0},
+           em_bn[RSA_MAX_WORDS] = {0}, sig_bn[RSA_MAX_WORDS] = {0}, r2[RSA_MAX_WORDS] = {0};
+  BytesToBn(der + 8, kbytes, n, nw);
+  BytesToBn(der + 8 + kbytes, kbytes, d, nw);
+  free(der);
+
+  uint8_t em[512];
+  BuildPkcs1Sha256Em(hash, em, kbytes);
+  BytesToBn(em, kbytes, em_bn, nw);
+
+  uint32_t n0p = BnMontN0p(n[0]);
+  BnMontR2(r2, n, nw);
+  BnMontPow(sig_bn, em_bn, d, nw, n, nw, n0p, r2);
+  BnToBytes(sig_bn, nw, sig, kbytes);
+  *sig_len = (size_t)kbytes;
+  return 1;
+#endif
 }
 
 int RSAVerifyData(const char *pub_pem, const uint8_t *hash, size_t hash_len,
                   const uint8_t *sig, size_t sig_len) {
+#ifdef _WIN32
   BCRYPT_ALG_HANDLE hAlg = NULL;
   BCRYPT_KEY_HANDLE hKey = NULL;
   if (BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_RSA_ALGORITHM, NULL, 0) != 0)
@@ -1207,6 +2082,38 @@ int RSAVerifyData(const char *pub_pem, const uint8_t *hash, size_t hash_len,
   BCryptDestroyKey(hKey);
   BCryptCloseAlgorithmProvider(hAlg, 0);
   return (status == 0);
+#else
+  if (!pub_pem || !hash || hash_len != 32 || !sig) return 0;
+  DWORD der_len = 0;
+  uint8_t *der = PEMToDER(pub_pem, &der_len);
+  if (!der || der_len < 8) { free(der); return 0; }
+  uint32_t magic = 0, kb = 0;
+  memcpy(&magic, der, 4); memcpy(&kb, der + 4, 4);
+  int kbytes = (int)kb;
+  if (magic != AKS_RSA_PUB_MAGIC || kbytes < 64 || (kbytes % 4) != 0 ||
+      kbytes > RSA_MAX_WORDS * 4 || der_len < (DWORD)(8 + kbytes) || sig_len != (size_t)kbytes) {
+    free(der);
+    return 0;
+  }
+  int nw = kbytes / 4;
+  uint32_t n[RSA_MAX_WORDS] = {0}, sig_bn[RSA_MAX_WORDS] = {0},
+           em_bn[RSA_MAX_WORDS] = {0}, r2[RSA_MAX_WORDS] = {0};
+  BytesToBn(der + 8, kbytes, n, nw);
+  free(der);
+  BytesToBn(sig, kbytes, sig_bn, nw);
+
+  uint32_t exp_e[1] = {65537u};
+  uint32_t n0p = BnMontN0p(n[0]);
+  BnMontR2(r2, n, nw);
+  BnMontPow(em_bn, sig_bn, exp_e, 1, n, nw, n0p, r2);
+
+  uint8_t dec[512], expected[512];
+  BnToBytes(em_bn, nw, dec, kbytes);
+  BuildPkcs1Sha256Em(hash, expected, kbytes);
+  uint8_t diff = 0;
+  for (int i = 0; i < kbytes; i++) diff |= (uint8_t)(dec[i] ^ expected[i]);
+  return (diff == 0);
+#endif
 }
 
 // ECDSA / ed25519 & x25519 CNG operations
@@ -1270,8 +2177,6 @@ static void RandomBytes(uint8_t *x, uint64_t len) {
 #endif
 }
 
-static const u8 _0[16];
-static const u8 _9[32] = {9};
 static const gf gf0;
 static const gf gf1 = {1};
 static const gf _121665 = {0xDB41, 1};
@@ -1741,7 +2646,7 @@ static int UnpackNeg(gf r[4], const u8 p[32]) {
 }
 
 static int CryptoSignOpen(u8 *m, u64 *mlen, const u8 *sm, u64 n, const u8 *pk) {
-  int i;
+  u64 i;
   u8 t[32], h[64];
   gf p[4], q[4];
 
@@ -1776,11 +2681,67 @@ static int CryptoSignOpen(u8 *m, u64 *mlen, const u8 *sm, u64 n, const u8 *pk) {
 #undef FOR
 #undef sv
 
+#ifndef _WIN32
+static void PosixX25519(u8 *q, const u8 *n, const u8 *p) {
+  u8 z[32];
+  i64 x[80], r, i;
+  gf a, b, c, d, e, f;
+  for (i = 0; i < 31; i++) z[i] = n[i];
+  z[31] = (n[31] & 127) | 64;
+  z[0] &= 248;
+  Unpack25519(x, p);
+  for (i = 0; i < 16; i++) {
+    b[i] = x[i];
+    d[i] = a[i] = c[i] = 0;
+  }
+  a[0] = d[0] = 1;
+  for (i = 254; i >= 0; --i) {
+    r = (z[i >> 3] >> (i & 7)) & 1;
+    Sel25519(a, b, (int)r);
+    Sel25519(c, d, (int)r);
+    A(e, a, c);
+    Z(a, a, c);
+    A(c, b, d);
+    Z(b, b, d);
+    S(d, e);
+    S(f, a);
+    M(a, c, a);
+    M(c, b, e);
+    A(e, a, c);
+    Z(a, a, c);
+    S(b, a);
+    Z(c, d, f);
+    M(a, c, _121665);
+    A(a, a, d);
+    M(c, c, a);
+    M(a, d, f);
+    M(d, b, x);
+    S(b, e);
+    Sel25519(a, b, (int)r);
+    Sel25519(c, d, (int)r);
+  }
+  for (i = 0; i < 16; i++) {
+    x[i + 16] = a[i];
+    x[i + 32] = c[i];
+    x[i + 48] = b[i];
+    x[i + 64] = d[i];
+  }
+  Inv25519(x + 32, x + 32);
+  M(x + 16, x + 16, x + 32);
+  Pack25519(q, x + 16);
+}
+#endif
+
 int ECCGenerateKeys(LPCWSTR alg_id, LPCWSTR curve_name, DWORD magic_priv,
                     DWORD magic_pub, size_t key_bits, char **pub_pem,
                     char **priv_pem) {
-  if (alg_id && wcscmp(alg_id, BCRYPT_ECDSA_ALGORITHM) == 0 && curve_name &&
-      wcscmp(curve_name, BCRYPT_ECC_CURVE_25519) == 0) {
+  int use_ed25519 = (alg_id && wcscmp(alg_id, BCRYPT_ECDSA_ALGORITHM) == 0 && curve_name &&
+                     wcscmp(curve_name, BCRYPT_ECC_CURVE_25519) == 0);
+#ifndef _WIN32
+  use_ed25519 = 1;
+  (void)magic_priv; (void)magic_pub; (void)key_bits;
+#endif
+  if (use_ed25519) {
     u8 pk[32];
     u8 sk[64];
     CryptoSignKeypair(pk, sk);
@@ -1801,6 +2762,7 @@ int ECCGenerateKeys(LPCWSTR alg_id, LPCWSTR curve_name, DWORD magic_priv,
     return (*priv_pem != NULL) && (*pub_pem != NULL);
   }
 
+#ifdef _WIN32
   BCRYPT_ALG_HANDLE hAlg = NULL;
   BCRYPT_KEY_HANDLE hKey = NULL;
   NTSTATUS status = BCryptOpenAlgorithmProvider(&hAlg, alg_id, NULL, 0);
@@ -1848,13 +2810,20 @@ int ECCGenerateKeys(LPCWSTR alg_id, LPCWSTR curve_name, DWORD magic_priv,
   BCryptDestroyKey(hKey);
   BCryptCloseAlgorithmProvider(hAlg, 0);
   return (status == 0);
+#else
+  return 0;
+#endif
 }
 
 int ECCSignData(LPCWSTR alg_id, LPCWSTR curve_name, const char *priv_pem,
                 const uint8_t *hash, size_t hash_len, uint8_t *sig,
                 size_t *sig_len) {
-  if (alg_id && wcscmp(alg_id, BCRYPT_ECDSA_ALGORITHM) == 0 && curve_name &&
-      wcscmp(curve_name, BCRYPT_ECC_CURVE_25519) == 0) {
+  int use_ed25519 = (alg_id && wcscmp(alg_id, BCRYPT_ECDSA_ALGORITHM) == 0 && curve_name &&
+                     wcscmp(curve_name, BCRYPT_ECC_CURVE_25519) == 0);
+#ifndef _WIN32
+  use_ed25519 = 1;
+#endif
+  if (use_ed25519) {
     DWORD der_len = 0;
     uint8_t *der = PEMToDER(priv_pem, &der_len);
     if (!der || der_len < 104) {
@@ -1884,6 +2853,7 @@ int ECCSignData(LPCWSTR alg_id, LPCWSTR curve_name, const char *priv_pem,
     return 1;
   }
 
+#ifdef _WIN32
   BCRYPT_ALG_HANDLE hAlg = NULL;
   BCRYPT_KEY_HANDLE hKey = NULL;
   if (BCryptOpenAlgorithmProvider(&hAlg, alg_id, NULL, 0) != 0)
@@ -1920,13 +2890,20 @@ int ECCSignData(LPCWSTR alg_id, LPCWSTR curve_name, const char *priv_pem,
   BCryptDestroyKey(hKey);
   BCryptCloseAlgorithmProvider(hAlg, 0);
   return (status == 0);
+#else
+  return 0;
+#endif
 }
 
 int ECCVerifyData(LPCWSTR alg_id, LPCWSTR curve_name, const char *pub_pem,
                   const uint8_t *hash, size_t hash_len, const uint8_t *sig,
                   size_t sig_len) {
-  if (alg_id && wcscmp(alg_id, BCRYPT_ECDSA_ALGORITHM) == 0 && curve_name &&
-      wcscmp(curve_name, BCRYPT_ECC_CURVE_25519) == 0) {
+  int use_ed25519 = (alg_id && wcscmp(alg_id, BCRYPT_ECDSA_ALGORITHM) == 0 && curve_name &&
+                     wcscmp(curve_name, BCRYPT_ECC_CURVE_25519) == 0);
+#ifndef _WIN32
+  use_ed25519 = 1;
+#endif
+  if (use_ed25519) {
     DWORD der_len = 0;
     uint8_t *der = PEMToDER(pub_pem, &der_len);
     if (!der || der_len < 72) {
@@ -1952,6 +2929,7 @@ int ECCVerifyData(LPCWSTR alg_id, LPCWSTR curve_name, const char *pub_pem,
     return (res == 0);
   }
 
+#ifdef _WIN32
   BCRYPT_ALG_HANDLE hAlg = NULL;
   BCRYPT_KEY_HANDLE hKey = NULL;
   if (BCryptOpenAlgorithmProvider(&hAlg, alg_id, NULL, 0) != 0)
@@ -1982,9 +2960,13 @@ int ECCVerifyData(LPCWSTR alg_id, LPCWSTR curve_name, const char *pub_pem,
   BCryptDestroyKey(hKey);
   BCryptCloseAlgorithmProvider(hAlg, 0);
   return (status == 0);
+#else
+  return 0;
+#endif
 }
 
 int Curve25519GenerateHex(LPCWSTR alg_id, char *pub_hex, char *priv_hex) {
+#ifdef _WIN32
   BCRYPT_ALG_HANDLE hAlg = NULL;
   BCRYPT_KEY_HANDLE hKey = NULL;
   NTSTATUS status = BCryptOpenAlgorithmProvider(&hAlg, alg_id, NULL, 0);
@@ -2020,10 +3002,21 @@ int Curve25519GenerateHex(LPCWSTR alg_id, char *pub_hex, char *priv_hex) {
   BCryptDestroyKey(hKey);
   BCryptCloseAlgorithmProvider(hAlg, 0);
   return (status == 0);
+#else
+  (void)alg_id;
+  uint8_t priv[32], pub[32], basepoint[32] = {9};
+  RandomBytes(priv, 32);
+  priv[0] &= 248; priv[31] = (priv[31] & 127) | 64;
+  PosixX25519(pub, priv, basepoint);
+  HexEncodeC(pub, 32, pub_hex);
+  HexEncodeC(priv, 32, priv_hex);
+  return 1;
+#endif
 }
 
 int X25519SharedSecret(const char *priv_hex, const char *pub_hex,
                        char *secret_hex) {
+#ifdef _WIN32
   BCRYPT_ALG_HANDLE hAlg = NULL;
   BCRYPT_KEY_HANDLE hPrivKey = NULL;
   BCRYPT_KEY_HANDLE hPubKey = NULL;
@@ -2078,9 +3071,17 @@ int X25519SharedSecret(const char *priv_hex, const char *pub_hex,
     BCryptDestroyKey(hPubKey);
   BCryptCloseAlgorithmProvider(hAlg, 0);
   return (status == 0);
+#else
+  uint8_t priv_bytes[32], pub_bytes[32], secret[32];
+  if (!HexDecodeC(priv_hex, priv_bytes) || !HexDecodeC(pub_hex, pub_bytes)) return 0;
+  PosixX25519(secret, priv_bytes, pub_bytes);
+  HexEncodeC(secret, 32, secret_hex);
+  return 1;
+#endif
 }
 
 int CryptoSha512(const uint8_t *data, size_t len, uint8_t *digest) {
+#ifdef _WIN32
   BCRYPT_ALG_HANDLE hAlg = NULL;
   BCRYPT_HASH_HANDLE hHash = NULL;
   NTSTATUS status =
@@ -2096,6 +3097,9 @@ int CryptoSha512(const uint8_t *data, size_t len, uint8_t *digest) {
   if (hAlg)
     BCryptCloseAlgorithmProvider(hAlg, 0);
   return (status == 0);
+#else
+  return CryptoHash(digest, data, (u64)len) == 0;
+#endif
 }
 
 int CryptoBlake2b(const uint8_t *data, size_t len, uint8_t *out, size_t out_len) {
@@ -2337,12 +3341,12 @@ uint64_t CryptoSipHash64(const uint8_t key[16], const uint8_t *in, size_t inlen)
   }
 
   switch (left) {
-  case 7: b |= ((uint64_t)in[6]) << 48;
-  case 6: b |= ((uint64_t)in[5]) << 40;
-  case 5: b |= ((uint64_t)in[4]) << 32;
-  case 4: b |= ((uint64_t)in[3]) << 24;
-  case 3: b |= ((uint64_t)in[2]) << 16;
-  case 2: b |= ((uint64_t)in[1]) << 8;
+  case 7: b |= ((uint64_t)in[6]) << 48; /* fall through */
+  case 6: b |= ((uint64_t)in[5]) << 40; /* fall through */
+  case 5: b |= ((uint64_t)in[4]) << 32; /* fall through */
+  case 4: b |= ((uint64_t)in[3]) << 24; /* fall through */
+  case 3: b |= ((uint64_t)in[2]) << 16; /* fall through */
+  case 2: b |= ((uint64_t)in[1]) << 8;  /* fall through */
   case 1: b |= ((uint64_t)in[0]); break;
   case 0: break;
   }
@@ -2383,12 +3387,12 @@ void CryptoSipHash128(const uint8_t key[16], const uint8_t *in, size_t inlen, ui
   }
 
   switch (left) {
-  case 7: b |= ((uint64_t)in[6]) << 48;
-  case 6: b |= ((uint64_t)in[5]) << 40;
-  case 5: b |= ((uint64_t)in[4]) << 32;
-  case 4: b |= ((uint64_t)in[3]) << 24;
-  case 3: b |= ((uint64_t)in[2]) << 16;
-  case 2: b |= ((uint64_t)in[1]) << 8;
+  case 7: b |= ((uint64_t)in[6]) << 48; /* fall through */
+  case 6: b |= ((uint64_t)in[5]) << 40; /* fall through */
+  case 5: b |= ((uint64_t)in[4]) << 32; /* fall through */
+  case 4: b |= ((uint64_t)in[3]) << 24; /* fall through */
+  case 3: b |= ((uint64_t)in[2]) << 16; /* fall through */
+  case 2: b |= ((uint64_t)in[1]) << 8;  /* fall through */
   case 1: b |= ((uint64_t)in[0]); break;
   case 0: break;
   }
@@ -2749,6 +3753,8 @@ static void CryptoHmacSha256Raw(const uint8_t *key, size_t keylen, const uint8_t
     }
     BCryptCloseAlgorithmProvider(hAlg, 0);
   }
+#else
+  PosixHmacSha256(key, keylen, data, datalen, out);
 #endif
 }
 
@@ -2802,6 +3808,8 @@ static void Aes128EncryptBlock(const uint8_t key[16], const uint8_t in[16], uint
     }
     BCryptCloseAlgorithmProvider(hAlg, 0);
   }
+#else
+  PosixAesEncryptBlock(key, 16, in, out);
 #endif
 }
 
@@ -2849,4 +3857,109 @@ void CryptoAes128Cmac(const uint8_t key[16], const uint8_t *data, size_t len, ui
   for (int j = 0; j < 16; j++) Y[j] = X[j] ^ M_last[j];
   Aes128EncryptBlock(key, Y, mac);
 }
+
+/* Portable PBKDF2-HMAC-SHA256 helper shared by stdlib bindings across Win32 and POSIX. */
+int CryptoPbkdf2Sha256C(const uint8_t *pwd, size_t pwd_len, const uint8_t *salt,
+                        size_t salt_len, uint32_t iters, uint8_t *dk, size_t dk_len) {
+#ifdef _WIN32
+  BCRYPT_ALG_HANDLE hAlg = NULL;
+  if (BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, NULL,
+                                  BCRYPT_ALG_HANDLE_HMAC_FLAG) != 0)
+    return 0;
+  NTSTATUS st = BCryptDeriveKeyPBKDF2(hAlg, (PUCHAR)pwd, (ULONG)pwd_len,
+                                      (PUCHAR)salt, (ULONG)salt_len,
+                                      (ULONGLONG)iters, dk, (ULONG)dk_len, 0);
+  BCryptCloseAlgorithmProvider(hAlg, 0);
+  return st == 0;
+#else
+  return PosixPbkdf2Sha256(pwd, pwd_len, salt, salt_len, iters, dk, dk_len);
+#endif
+}
+
+static void PortableSha1(const uint8_t *data, size_t len, uint8_t out[20]) {
+  uint32_t h0 = 0x67452301u, h1 = 0xEFCDAB89u, h2 = 0x98BADCFEu,
+           h3 = 0x10325476u, h4 = 0xC3D2E1F0u;
+  size_t total = len + 1 + 8;
+  size_t padded = (total + 63) & ~(size_t)63;
+  uint8_t *buf = (uint8_t *)calloc(padded, 1);
+  if (!buf) { memset(out, 0, 20); return; }
+  if (len > 0) memcpy(buf, data, len);
+  buf[len] = 0x80;
+  uint64_t bitlen = (uint64_t)len * 8;
+  for (int i = 0; i < 8; i++) buf[padded - 8 + i] = (uint8_t)(bitlen >> ((7 - i) * 8));
+  for (size_t off = 0; off < padded; off += 64) {
+    uint32_t w[80];
+    for (int i = 0; i < 16; i++) {
+      w[i] = ((uint32_t)buf[off + i * 4] << 24) | ((uint32_t)buf[off + i * 4 + 1] << 16) |
+             ((uint32_t)buf[off + i * 4 + 2] << 8) | (uint32_t)buf[off + i * 4 + 3];
+    }
+    for (int i = 16; i < 80; i++) {
+      uint32_t x = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
+      w[i] = (x << 1) | (x >> 31);
+    }
+    uint32_t a = h0, b = h1, c = h2, d = h3, e = h4;
+    for (int i = 0; i < 80; i++) {
+      uint32_t f, k;
+      if (i < 20)      { f = (b & c) | ((~b) & d);           k = 0x5A827999u; }
+      else if (i < 40) { f = b ^ c ^ d;                      k = 0x6ED9EBA1u; }
+      else if (i < 60) { f = (b & c) | (b & d) | (c & d);    k = 0x8F1BBCDCu; }
+      else             { f = b ^ c ^ d;                      k = 0xCA62C1D6u; }
+      uint32_t temp = ((a << 5) | (a >> 27)) + f + e + k + w[i];
+      e = d; d = c; c = (b << 30) | (b >> 2); b = a; a = temp;
+    }
+    h0 += a; h1 += b; h2 += c; h3 += d; h4 += e;
+  }
+  free(buf);
+  uint32_t hs[5] = {h0, h1, h2, h3, h4};
+  for (int i = 0; i < 5; i++) {
+    out[i * 4] = (uint8_t)(hs[i] >> 24); out[i * 4 + 1] = (uint8_t)(hs[i] >> 16);
+    out[i * 4 + 2] = (uint8_t)(hs[i] >> 8); out[i * 4 + 3] = (uint8_t)hs[i];
+  }
+}
+
+/* RFC 2104 HMAC-SHA1 used for TOTP generation across POSIX and Windows. */
+int CryptoHmacSha1C(const uint8_t *key, size_t key_len, const uint8_t *data,
+                    size_t data_len, uint8_t out[20]) {
+  uint8_t k0[64] = {0};
+  if (key_len > 64) PortableSha1(key, key_len, k0);
+  else if (key_len > 0) memcpy(k0, key, key_len);
+  uint8_t *inner = (uint8_t *)malloc(64 + data_len);
+  if (!inner) return 0;
+  for (int i = 0; i < 64; i++) inner[i] = k0[i] ^ 0x36;
+  if (data_len > 0) memcpy(inner + 64, data, data_len);
+  uint8_t ihash[20];
+  PortableSha1(inner, 64 + data_len, ihash);
+  free(inner);
+  uint8_t outer[64 + 20];
+  for (int i = 0; i < 64; i++) outer[i] = k0[i] ^ 0x5c;
+  memcpy(outer + 64, ihash, 20);
+  PortableSha1(outer, sizeof(outer), out);
+  return 1;
+}
+
+#ifndef _WIN32
+/* Raw AES-CBC block transform (no internal PKCS#7 padding) across 16-byte blocks. */
+int CryptoAesCbcC(int encrypt, const uint8_t *key, size_t key_len,
+                  const uint8_t iv[16], const uint8_t *in, size_t len, uint8_t *out) {
+  if (!key || !iv || !in || !out || (len % 16) != 0) return 0;
+  uint8_t prev[16];
+  memcpy(prev, iv, 16);
+  for (size_t off = 0; off < len; off += 16) {
+    if (encrypt) {
+      uint8_t blk[16];
+      for (int i = 0; i < 16; i++) blk[i] = in[off + i] ^ prev[i];
+      PosixAesEncryptBlock(key, key_len, blk, out + off);
+      memcpy(prev, out + off, 16);
+    } else {
+      uint8_t next_prev[16];
+      memcpy(next_prev, in + off, 16);
+      uint8_t dec[16];
+      PosixAesDecryptBlock(key, key_len, in + off, dec);
+      for (int i = 0; i < 16; i++) out[off + i] = dec[i] ^ prev[i];
+      memcpy(prev, next_prev, 16);
+    }
+  }
+  return 1;
+}
+#endif
 

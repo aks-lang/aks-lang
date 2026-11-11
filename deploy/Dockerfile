@@ -15,15 +15,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /build
 COPY . .
 
-RUN gcc -O3 -w \
-    src/main.c src/prelude.c src/bind.c src/dap.c src/aot.c src/ast.c \
-    src/compiler.c src/cross.c src/crypto_custom.c src/jitllvm.c src/jitqbe.c \
-    src/jitx64.c src/jitarm64.c src/learning.c src/lexer.c src/parser.c \
-    src/pkg.c src/value.c src/vm.c src/typer.c src/staticcodegen.c \
-    src/wasmcodegen.c src/nostdcodegen.c src/bench.c src/direct_linker.c \
-    src/diagnostic.c \
-    -Iinclude -lm -lpthread -ldl \
-    -o /build/aks
+RUN bash build.sh && cp /build/aks /build/aks_bin && mv /build/aks_bin /build/aks
 
 FROM ubuntu:24.04
 

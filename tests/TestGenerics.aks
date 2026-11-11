@@ -40,8 +40,17 @@ fn TestGenericIdentity() {
     let a = Identity<int>(100);
     assert(a == 100, "Identity<int> mismatch");
 
+    let at = Identity::<int>(200);
+    assert(at == 200, "Identity::<int> turbofish mismatch");
+
     let s = Identity<string>("parametric");
     assert(s == "parametric", "Identity<string> mismatch");
+
+    let st = Identity::<string>("turbofish");
+    assert(st == "turbofish", "Identity::<string> turbofish mismatch");
+
+    let tb = MakeBox::<int>(77);
+    assert(tb.value == 77, "MakeBox::<int> turbofish mismatch");
 }
 
 fn TestBuiltinGenerics() {

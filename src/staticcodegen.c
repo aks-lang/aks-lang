@@ -12,6 +12,9 @@
 #include "ast.h"
 #include "typer.h"
 #include "diagnostic.h"
+#include "pkg.h"
+#include "bind.h"
+#include "parser.h"
 
 /* Global static mode flags */
 int gStaticMode = 0;
@@ -67,6 +70,24 @@ static const char *LLVMType(SType *t) {
 static int ScgTmp(SCGCtx *ctx) { return ctx->tmp++; }
 static int ScgLbl(SCGCtx *ctx) { return ctx->label++; }
 
+static void ScgAddStrDecl(SCGCtx *ctx, int id, const char *s) {
+    if (!s) s = "";
+    int slen = (int)strlen(s);
+    size_t sz = (size_t)slen + 128;
+    char *decl = (char *)malloc(sz);
+    if (!decl) return;
+    snprintf(decl, sz, "@.str%d = private unnamed_addr constant [%d x i8] c\"%s\\00\"",
+             id, slen + 1, s);
+    if (ctx->str_decl_count >= ctx->str_decl_cap) {
+        int nc = ctx->str_decl_cap ? ctx->str_decl_cap * 2 : 32;
+        char **na = (char **)realloc(ctx->str_decls, (size_t)nc * sizeof(char *));
+        if (!na) { free(decl); return; }
+        ctx->str_decls = na;
+        ctx->str_decl_cap = nc;
+    }
+    ctx->str_decls[ctx->str_decl_count++] = decl;
+}
+
 /* Expression emitter */
 
 static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg_len) {
@@ -91,12 +112,12 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
         }
         case NSTR: {
             int id = ScgTmp(ctx);
+            int gep_id = ScgTmp(ctx);
             int slen = n->sval ? (int)strlen(n->sval) : 0;
-            fprintf(ctx->out, "@.str%d = private unnamed_addr constant [%d x i8] c\"%s\\00\"\n",
-                    id, slen + 1, n->sval ? n->sval : "");
-            snprintf(out_reg, out_reg_len,
-                     "getelementptr inbounds ([%d x i8], [%d x i8]* @.str%d, i64 0, i64 0)",
-                     slen + 1, slen + 1, id);
+            ScgAddStrDecl(ctx, id, n->sval ? n->sval : "");
+            fprintf(ctx->out, "  %%%d = getelementptr inbounds [%d x i8], [%d x i8]* @.str%d, i64 0, i64 0\n",
+                    gep_id, slen + 1, slen + 1, id);
+            snprintf(out_reg, out_reg_len, "%%%d", gep_id);
             return "i8*";
         }
         case NIDENT: {
@@ -245,16 +266,54 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
             return vlt;
         }
         case NCALL: {
-            char fname_buf[128];
-            strncpy(fname_buf, "unknown_fn", sizeof(fname_buf) - 1);
+            char fname_buf[128] = "unknown_fn";
             if (n->call.callee && n->call.callee->type == NIDENT && n->call.callee->sval) {
-                strncpy(fname_buf, n->call.callee->sval, sizeof(fname_buf) - 1);
+                snprintf(fname_buf, sizeof(fname_buf), "%s", n->call.callee->sval);
             }
             char arg_regs[32][64];
             const char *arg_types_arr[32];
             int argc = (n->call.argc < 32) ? n->call.argc : 32;
             for (int i = 0; i < argc; i++) {
                 arg_types_arr[i] = EmitExprLLVM(ctx, n->call.args[i], arg_regs[i], 64);
+            }
+            if (strcmp(fname_buf, "println") == 0 || strcmp(fname_buf, "print") == 0) {
+                for (int i = 0; i < argc; i++) {
+                    if (strcmp(arg_types_arr[i], "i64") == 0)
+                        fprintf(ctx->out, "  call void @aksrt_print_int(i64 %s)\n", arg_regs[i]);
+                    else if (strcmp(arg_types_arr[i], "double") == 0)
+                        fprintf(ctx->out, "  call void @aksrt_print_float(double %s)\n", arg_regs[i]);
+                    else if (strcmp(arg_types_arr[i], "i1") == 0)
+                        fprintf(ctx->out, "  call void @aksrt_print_bool(i1 %s)\n", arg_regs[i]);
+                    else if (strcmp(arg_types_arr[i], "i8*") == 0) {
+                        int p = ScgTmp(ctx);
+                        fprintf(ctx->out, "  %%%d = ptrtoint i8* %s to i64\n", p, arg_regs[i]);
+                        fprintf(ctx->out, "  call void @aksrt_print_dyn(i64 %%%d)\n", p);
+                    } else
+                        fprintf(ctx->out, "  call void @aksrt_print_dyn(i64 %s)\n", arg_regs[i]);
+                }
+                snprintf(out_reg, out_reg_len, "0");
+                return "void";
+            }
+            if (strcmp(fname_buf, "assert") == 0 && argc >= 1) {
+                const char *creg = arg_regs[0];
+                char ctmp[64];
+                if (strcmp(arg_types_arr[0], "i1") != 0) {
+                    int cid = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = icmp ne %s %s, 0\n", cid, arg_types_arr[0], arg_regs[0]);
+                    snprintf(ctmp, sizeof(ctmp), "%%%d", cid);
+                    creg = ctmp;
+                }
+                int ok_l = ScgLbl(ctx), fail_l = ScgLbl(ctx);
+                fprintf(ctx->out, "  br i1 %s, label %%ok%d, label %%fail%d\n", creg, ok_l, fail_l);
+                fprintf(ctx->out, "fail%d:\n", fail_l);
+                if (argc >= 2 && strcmp(arg_types_arr[1], "i8*") == 0)
+                    fprintf(ctx->out, "  call void @aksrt_panic(i8* %s)\n", arg_regs[1]);
+                else
+                    fprintf(ctx->out, "  call void @aksrt_panic(i8* null)\n");
+                fprintf(ctx->out, "  unreachable\n");
+                fprintf(ctx->out, "ok%d:\n", ok_l);
+                snprintf(out_reg, out_reg_len, "0");
+                return "void";
             }
             const char *ret_lt = lt ? lt : "i64";
             int id = ScgTmp(ctx);
@@ -271,7 +330,7 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
                 fprintf(ctx->out, "%s %s", arg_types_arr[i], arg_regs[i]);
             }
             fprintf(ctx->out, ")\n");
-            if (strcmp(ret_lt, "void") == 0) strncpy(out_reg, "0", out_reg_len - 1);
+            if (strcmp(ret_lt, "void") == 0) snprintf(out_reg, out_reg_len, "0");
             else snprintf(out_reg, out_reg_len, "%%%d", id);
             return ret_lt;
         }
@@ -529,16 +588,20 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
         }
         case NPRINT:
         case NEXPRSTMT: {
-            char val[64]; EmitExprLLVM(ctx, n->single.expr, val, sizeof(val));
+            char val[64]; const char *vlt = EmitExprLLVM(ctx, n->single.expr, val, sizeof(val));
             if (n->type == NPRINT) {
                 SType *et = n->single.expr ? n->single.expr->stype : NULL;
-                if (et && et->kind == STYPE_INT)
+                if ((et && et->kind == STYPE_INT) || strcmp(vlt, "i64") == 0)
                     fprintf(ctx->out, "  call void @aksrt_print_int(i64 %s)\n", val);
-                else if (et && et->kind == STYPE_FLOAT)
+                else if ((et && et->kind == STYPE_FLOAT) || strcmp(vlt, "double") == 0)
                     fprintf(ctx->out, "  call void @aksrt_print_float(double %s)\n", val);
-                else if (et && et->kind == STYPE_BOOL)
+                else if ((et && et->kind == STYPE_BOOL) || strcmp(vlt, "i1") == 0)
                     fprintf(ctx->out, "  call void @aksrt_print_bool(i1 %s)\n", val);
-                else
+                else if (strcmp(vlt, "i8*") == 0) {
+                    int p = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = ptrtoint i8* %s to i64\n", p, val);
+                    fprintf(ctx->out, "  call void @aksrt_print_dyn(i64 %%%d)\n", p);
+                } else
                     fprintf(ctx->out, "  call void @aksrt_print_dyn(i64 %s)\n", val);
             }
             break;
@@ -662,7 +725,9 @@ static void EmitFn(SCGCtx *ctx, Node *fn) {
 
     SType *ret_t = fn->fn.ret
         ? TyperResolveName(ctx->comp, fn->fn.ret)
-        : StypeInternGet(ctx->comp, STYPE_VOID, "void");
+        : ((fn->stype && fn->stype->kind == STYPE_FN && fn->stype->ret)
+            ? fn->stype->ret
+            : StypeInternGet(ctx->comp, STYPE_VOID, "void"));
     const char *ret_lt = LLVMType(ret_t);
 
     /* Detect pointer params */
@@ -768,10 +833,10 @@ static void EmitFn(SCGCtx *ctx, Node *fn) {
     if (strcmp(ret_lt, "void") == 0) {
         fprintf(ctx->out, "  ret void\n");
     } else {
-        if (ret_t->kind == STYPE_INT)        fprintf(ctx->out, "  ret i64 0\n");
-        else if (ret_t->kind == STYPE_FLOAT) fprintf(ctx->out, "  ret double 0.0\n");
-        else if (ret_t->kind == STYPE_BOOL)  fprintf(ctx->out, "  ret i1 0\n");
-        else                                 fprintf(ctx->out, "  ret %s null\n", ret_lt);
+        if (strcmp(ret_lt, "i64") == 0)        fprintf(ctx->out, "  ret i64 0\n");
+        else if (strcmp(ret_lt, "double") == 0) fprintf(ctx->out, "  ret double 0.0\n");
+        else if (strcmp(ret_lt, "i1") == 0)     fprintf(ctx->out, "  ret i1 0\n");
+        else                                    fprintf(ctx->out, "  ret %s null\n", ret_lt);
     }
     fprintf(ctx->out, "}\n");
 
@@ -1103,6 +1168,84 @@ static void EmitModuleHeader(SCGCtx *ctx, const char *source_path) {
         "@.overflow_msg = private unnamed_addr constant [17 x i8] c\"integer overflow\\00\"\n\n");
 }
 
+static char *ScgReadFile(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    rewind(f);
+    if (sz < 0) { fclose(f); return NULL; }
+    char *buf = (char *)malloc((size_t)sz + 1);
+    if (!buf) { fclose(f); return NULL; }
+    size_t nr = fread(buf, 1, (size_t)sz, f);
+    buf[nr] = '\0';
+    fclose(f);
+    return buf;
+}
+
+typedef struct {
+    char visited[64][512];
+    int visited_count;
+    Node *top_stmts[512];
+    int top_count;
+    Node *imported_asts[64];
+    int imported_count;
+    int has_user_main;
+} ScgModuleState;
+
+static void ScgEmitProgramWithImports(SCGCtx *ctx, Node *program, ScgModuleState *st) {
+    if (!program || program->type != NPROGRAM) return;
+    for (int i = 0; i < program->block.count; i++) {
+        Node *stmt = program->block.stmts[i];
+        if (!stmt) continue;
+        if (stmt->type == NIMPORT && stmt->single.var && !stmt->decl.isconstflag) {
+            const char *path = stmt->single.var;
+            char *resolved = PkgResolveImport(path, ctx->comp->currentfilepath);
+            char finalpath[512];
+            snprintf(finalpath, sizeof(finalpath), "%s", resolved ? resolved : path);
+            if (resolved) free(resolved);
+            int seen = 0;
+            for (int v = 0; v < st->visited_count; v++) {
+                if (strcmp(st->visited[v], finalpath) == 0) { seen = 1; break; }
+            }
+            if (seen) continue;
+            if (st->visited_count < 64) {
+                snprintf(st->visited[st->visited_count++], 512, "%s", finalpath);
+            }
+            size_t plen = strlen(finalpath);
+            int is_c = stmt->single.is_c || (plen >= 2 && strcmp(finalpath + plen - 2, ".h") == 0);
+            char *src = is_c ? AKSBindHeadersToStr(finalpath, 0, NULL) : ScgReadFile(finalpath);
+            if (!src) {
+                fprintf(stderr, "staticcodegen: could not open imported module '%s'\n", finalpath);
+                ctx->had_error = 1;
+                continue;
+            }
+            int parse_err = 0;
+            Node *imp_ast = Parse(src, &parse_err);
+            free(src);
+            if (parse_err || !imp_ast) {
+                if (imp_ast) NodeFree(imp_ast);
+                fprintf(stderr, "staticcodegen: parse failed for imported module '%s'\n", finalpath);
+                ctx->had_error = 1;
+                continue;
+            }
+            char saved_path[512];
+            snprintf(saved_path, sizeof(saved_path), "%s", ctx->comp->currentfilepath);
+            snprintf(ctx->comp->currentfilepath, sizeof(ctx->comp->currentfilepath), "%s", finalpath);
+            TyperRun(ctx->comp, imp_ast);
+            ScgEmitProgramWithImports(ctx, imp_ast, st);
+            snprintf(ctx->comp->currentfilepath, sizeof(ctx->comp->currentfilepath), "%s", saved_path);
+            if (st->imported_count < 64) st->imported_asts[st->imported_count++] = imp_ast;
+            else NodeFree(imp_ast);
+        } else if (stmt->type == NFNDECL) {
+            if (stmt->fn.name && strcmp(stmt->fn.name, "main") == 0) st->has_user_main = 1;
+            EmitFn(ctx, stmt);
+        } else {
+            if (st->top_count < 512) st->top_stmts[st->top_count++] = stmt;
+        }
+    }
+}
+
 /* Public entry point */
 
 int StaticCodeGenEmitTarget(Compiler *c, Node *program, const char *outpath, const char *target_triple, int lto, const char *pgo_profile, const char *pgo_use) {
@@ -1123,20 +1266,39 @@ int StaticCodeGenEmitTarget(Compiler *c, Node *program, const char *outpath, con
 
     EmitModuleHeader(&ctx, outpath);
 
-    if (program && program->type == NPROGRAM) {
-        for (int i = 0; i < program->block.count; i++) {
-            Node *stmt = program->block.stmts[i];
-            if (stmt && stmt->type == NFNDECL) {
-                EmitFn(&ctx, stmt);
-            }
-        }
+    ScgModuleState *st = (ScgModuleState *)calloc(1, sizeof(ScgModuleState));
+    if (st && program && program->type == NPROGRAM) {
+        ScgEmitProgramWithImports(&ctx, program, st);
     }
 
-    /* Emit C-compatible main entry point */
-    fprintf(f, "\ndefine i32 @main() {\n");
-    fprintf(f, "entry:\n");
-    fprintf(f, "  ret i32 0\n");
-    fprintf(f, "}\n\n");
+    if (!st || !st->has_user_main) {
+        /* Emit C-compatible main entry point running top-level statements */
+        ctx.slot_count = 0;
+        memset(ctx.slot_names, 0, sizeof(ctx.slot_names));
+        fprintf(f, "\ndefine i32 @main() {\n");
+        fprintf(f, "entry:\n");
+        if (st) {
+            for (int i = 0; i < st->top_count; i++) {
+                EmitStmt(&ctx, st->top_stmts[i]);
+            }
+        }
+        fprintf(f, "  ret i32 0\n");
+        fprintf(f, "}\n\n");
+    }
+
+    if (ctx.str_decl_count > 0) {
+        fprintf(f, "; String literals\n");
+        for (int i = 0; i < ctx.str_decl_count; i++) {
+            fprintf(f, "%s\n", ctx.str_decls[i]);
+            free(ctx.str_decls[i]);
+        }
+        fprintf(f, "\n");
+    }
+    free(ctx.str_decls);
+    if (st) {
+        for (int i = 0; i < st->imported_count; i++) NodeFree(st->imported_asts[i]);
+        free(st);
+    }
 
     /* Multi-architecture optimization metadata: LTO, PGO, and Loop Auto-Vectorization */
     if (lto) {

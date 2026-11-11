@@ -7,6 +7,10 @@
 #include <math.h>
 #include <time.h>
 
+extern volatile int gAksAsanActive;
+void AksSanQuarantinePtr(void *ptr);
+void AksSanUnquarantinePtr(void *ptr);
+
 size_t gaslrshift = 0;
 
 /* AKS_RELEASE_BUILD: production builds bypass all debug-allocator overhead.
@@ -340,6 +344,7 @@ AKSValue ValArr(int cap) {
     arr->parent = ValNull();
     arr->arena = NULL;
     arr->detached = NULL;
+    if (gAksAsanActive) AksSanUnquarantinePtr(arr);
     AtomicIncrement(&gactivearrs);
     return ((uint64_t)0xFFF5 << 48) | ((uintptr_t)arr & 0x0000FFFFFFFFFFFFULL);
 }
@@ -361,6 +366,7 @@ AKSValue ValStruct(const char *typename) {
     obj->invalidated = 0;
     obj->isstack = 0;
     obj->arena = NULL;
+    if (gAksAsanActive) AksSanUnquarantinePtr(obj);
     AtomicIncrement(&gactivestructs);
     return ((uint64_t)0xFFF6 << 48) | ((uintptr_t)obj & 0x0000FFFFFFFFFFFFULL);
 }
@@ -554,6 +560,7 @@ void ValFreeFunc(AKSValue *v) {
                     }
                 }
                 if (should_free) {
+                    if (gAksAsanActive) AksSanQuarantinePtr(str);
                     if (str->data) free(str->data);
                     free(str);
                     AtomicDecrement(&gActiveStrs);
@@ -570,7 +577,10 @@ void ValFreeFunc(AKSValue *v) {
                     if (arr->invalidated) {
                         // Arena-freed: items already freed in arena_free.
                         // Just free the header and update the counter.
-                        if (!arr->isstack) free(arr);
+                        if (!arr->isstack) {
+                            if (gAksAsanActive) AksSanQuarantinePtr(arr);
+                            free(arr);
+                        }
                         AtomicDecrement(&gactivearrs);
                     } else {
                         if (arr->isslice) {
@@ -587,7 +597,10 @@ void ValFreeFunc(AKSValue *v) {
                             free(cur_detached);
                             cur_detached = next_detached;
                         }
-                        if (!arr->isstack) free(arr);
+                        if (!arr->isstack) {
+                            if (gAksAsanActive) AksSanQuarantinePtr(arr);
+                            free(arr);
+                        }
                         AtomicDecrement(&gactivearrs);
                     }
                 }
@@ -622,7 +635,10 @@ void ValFreeFunc(AKSValue *v) {
                         if (obj->fieldnames) free(obj->fieldnames);
                         if (obj->fieldvals) free(obj->fieldvals);
                         if (!obj->isstack && obj->typename) free(obj->typename);
-                        if (!obj->isstack) free(obj);
+                        if (!obj->isstack) {
+                            if (gAksAsanActive) AksSanQuarantinePtr(obj);
+                            free(obj);
+                        }
                         AtomicDecrement(&gactivestructs);
                     }
                 }
@@ -1197,27 +1213,6 @@ AKSValue ValCastStr(AKSValue val) {
     return ValToStr(val);
 }
 
-#ifndef AKS_RELEASE_BUILD
-char *AslrStrDup(const char *s) {
-    if (!s) return NULL;
-    size_t len = strlen(s);
-    char *res = AslrmAlloc(len + 1);
-    if (res) {
-        memcpy(res, s, len + 1);
-    }
-    return res;
-}
-
-void *AslrcAlloc(size_t num, size_t size) {
-    size_t total = num * size;
-    void *ptr = AslrmAlloc(total);
-    if (ptr) {
-        memset(ptr, 0, total);
-    }
-    return ptr;
-}
-#endif /* !AKS_RELEASE_BUILD */
-
 static inline void *StackAlloc(VMTask *task, size_t size) {
     if (!task || !task->stackarena) return NULL;
     size = (size + 7) & ~7;
@@ -1251,6 +1246,7 @@ AKSValue ValArrStack(VMTask *task, int cap) {
     arr->parent = ValNull();
     arr->arena = NULL;
     arr->detached = NULL;
+    if (gAksAsanActive) AksSanUnquarantinePtr(arr);
     AtomicIncrement(&gactivearrs);
     return ((uint64_t)0xFFF5 << 48) | ((uintptr_t)arr & 0x0000FFFFFFFFFFFFULL);
 }
@@ -1277,6 +1273,7 @@ AKSValue ValStructStack(VMTask *task, const char *typename) {
     obj->invalidated = 0;
     obj->isstack = 1;
     obj->arena = NULL;
+    if (gAksAsanActive) AksSanUnquarantinePtr(obj);
     AtomicIncrement(&gactivestructs);
     return ((uint64_t)0xFFF6 << 48) | ((uintptr_t)obj & 0x0000FFFFFFFFFFFFULL);
 }

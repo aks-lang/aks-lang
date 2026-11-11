@@ -4,6 +4,10 @@
 #ifndef _WIN32
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <dirent.h>
+#if defined(__GLIBC__) || defined(__APPLE__)
+#include <execinfo.h>
+#endif
 #endif
 
 #ifdef _WIN32
@@ -30,12 +34,12 @@
 #pragma comment(lib, "pdh.lib")
 #pragma comment(lib, "winhttp.lib")
 #define SleepMs(ms) Sleep((DWORD)(ms))
-static VOID CALLBACK AksThreadPoolWorkCallback(PTP_CALLBACK_INSTANCE Instance, PVOID Context, PTP_WORK Work) {
+VOID CALLBACK AksThreadPoolWorkCallback(PTP_CALLBACK_INSTANCE Instance, PVOID Context, PTP_WORK Work) {
   (void)Instance;
   (void)Context;
   (void)Work;
 }
-static VOID CALLBACK AksThreadPoolTimerCallback(PTP_CALLBACK_INSTANCE Instance, PVOID Context, PTP_TIMER Timer) {
+VOID CALLBACK AksThreadPoolTimerCallback(PTP_CALLBACK_INSTANCE Instance, PVOID Context, PTP_TIMER Timer) {
   (void)Instance;
   (void)Context;
   (void)Timer;
@@ -52,7 +56,10 @@ static VOID CALLBACK AksThreadPoolTimerCallback(PTP_CALLBACK_INSTANCE Instance, 
 #include "value.h"
 #include "pkg.h"
 #include "vm.h"
+#include "vm_stdlib.h"
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 #include <immintrin.h>
+#endif
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,59 +73,9 @@ static void VMRegisterStruct(VM *vm, const char *name, int fc, char **fnames,
                              char **ftypes);
 
 // Custom Cryptography Prototypes
-void HexEncodeC(const uint8_t *in, size_t in_len, char *out);
-int HexDecodeC(const char *in, uint8_t *out);
-int CryptoSha512(const uint8_t *data, size_t len, uint8_t *digest);
-void KeccakHash(const uint8_t *in, size_t inlen, uint8_t *out, size_t outlen,
-                int rate);
-int AesGcmEncrypt(const uint8_t *key, size_t key_len, const uint8_t *iv,
-                  size_t iv_len, const uint8_t *aad, size_t aad_len,
-                  const uint8_t *pt, size_t pt_len, uint8_t *ct, uint8_t *tag,
-                  size_t tag_len);
-int AesGcmDecrypt(const uint8_t *key, size_t key_len, const uint8_t *iv,
-                  size_t iv_len, const uint8_t *aad, size_t aad_len,
-                  const uint8_t *ct, size_t ct_len, const uint8_t *tag,
-                  size_t tag_len, uint8_t *pt);
-int Chacha20Poly1305EncryptC(const uint8_t *key, size_t key_len,
-                             const uint8_t *iv, size_t iv_len,
-                             const uint8_t *aad, size_t aad_len,
-                             const uint8_t *pt, size_t pt_len, uint8_t *ct,
-                             uint8_t *tag, size_t tag_len);
-int Chacha20Poly1305DecryptC(const uint8_t *key, size_t key_len,
-                             const uint8_t *iv, size_t iv_len,
-                             const uint8_t *aad, size_t aad_len,
-                             const uint8_t *ct, size_t ct_len,
-                             const uint8_t *tag, size_t tag_len, uint8_t *pt);
-int CryptoHMAC(LPCWSTR alg_id, const uint8_t *key, size_t key_len,
-               const uint8_t *data, size_t data_len, uint8_t *digest,
-               size_t digest_len);
-int CryptoScrypt(const uint8_t *pwd, size_t pwd_len, const uint8_t *salt,
-                 size_t salt_len, uint64_t N, uint32_t r, uint32_t p,
-                 uint8_t *dk, size_t dk_len);
-int CryptoArgon2(const uint8_t *pwd, size_t pwd_len, const uint8_t *salt,
-                 size_t salt_len, uint32_t m_cost, uint32_t t_cost,
-                 uint32_t parallelism, uint8_t *dk, size_t dk_len,
-                 const char *type);
-int RSAGenerateKeys(uint32_t key_size, char **pub_pem, char **priv_pem);
-int RSASignData(const char *priv_pem, const uint8_t *hash, size_t hash_len,
-                uint8_t *sig, size_t *sig_len);
-int RSAVerifyData(const char *pub_pem, const uint8_t *hash, size_t hash_len,
-                  const uint8_t *sig, size_t sig_len);
-int ECCGenerateKeys(LPCWSTR alg_id, LPCWSTR curve_name, DWORD magic_priv,
-                    DWORD magic_pub, size_t key_bits, char **pub_pem,
-                    char **priv_pem);
-int ECCSignData(LPCWSTR alg_id, LPCWSTR curve_name, const char *priv_pem,
-                const uint8_t *hash, size_t hash_len, uint8_t *sig,
-                size_t *sig_len);
-int ECCVerifyData(LPCWSTR alg_id, LPCWSTR curve_name, const char *pub_pem,
-                  const uint8_t *hash, size_t hash_len, const uint8_t *sig,
-                  size_t sig_len);
-int Curve25519GenerateHex(LPCWSTR alg_id, char *pub_hex, char *priv_hex);
-int X25519SharedSecret(const char *priv_hex, const char *pub_hex,
-                       char *secret_hex);
-int CryptoSecureRandom(uint8_t *buf, size_t len);
+/* crypto_custom.c prototypes declared in vm_stdlib.h */
 
-static int AksRxMatchLen(const char *p, const char *t, int *out_len) {
+int AksRxMatchLen(const char *p, const char *t, int *out_len) {
   if (!p || !t) return 0;
   if (p[0] == 0) { *out_len = 0; return 1; }
   if (p[0] == '$' && p[1] == 0) { *out_len = 0; return *t == 0; }
@@ -220,15 +177,14 @@ static int AksRxMatchLen(const char *p, const char *t, int *out_len) {
   return 0;
 }
 
-static int AksRxMatchHere(const char *p, const char *t) {
+int AksRxMatchHere(const char *p, const char *t) {
   int len = 0;
   return AksRxMatchLen(p, t, &len);
 }
-typedef struct { const char *s; int pos; } AksJP;
 static void AksJPSkip(AksJP *p) {
   while (p->s[p->pos]==' '||p->s[p->pos]=='\t'||p->s[p->pos]=='\n'||p->s[p->pos]=='\r') p->pos++;
 }
-static AKSValue AksJPParseValue(AksJP *p);
+AKSValue AksJPParseValue(AksJP *p);
 static AKSValue AksJPParseString(AksJP *p) {
   p->pos++;
   char stackbuf[256];
@@ -296,11 +252,11 @@ static AKSValue AksJPParseString(AksJP *p) {
   if (buf != stackbuf) free(buf);
   return res;
 }
-static void AksArrPush(AKSArray *a, AKSValue v) {
+void AksArrPush(AKSArray *a, AKSValue v) {
   AksArrayEnsureCapacity(a, a->count + 1);
   a->items[a->count++] = v;
 }
-static AKSValue AksJPParseValue(AksJP *p) {
+AKSValue AksJPParseValue(AksJP *p) {
   AksJPSkip(p);
   char c = p->s[p->pos];
   if (c == '"') return AksJPParseString(p);
@@ -327,7 +283,8 @@ static AKSValue AksJPParseValue(AksJP *p) {
     while (p->s[p->pos] && p->s[p->pos] != '}') {
       if (p->s[p->pos] != '"') { p->pos++; continue; }
       AKSValue key = AksJPParseString(p); AksJPSkip(p);
-      if (p->s[p->pos] == ':') p->pos++; AksJPSkip(p);
+      if (p->s[p->pos] == ':') p->pos++;
+      AksJPSkip(p);
       AKSValue val = AksJPParseValue(p); AksJPSkip(p);
       int fc = s->fieldcount;
       s->fieldnames = realloc(s->fieldnames, (fc+1)*sizeof(char*));
@@ -362,6 +319,33 @@ static AKSValue AksJPParseValue(AksJP *p) {
   return ValNull();
 }
 
+
+static int TryResolveVtableField(VM *vm, AKSValue objval, AKSStruct *s,
+                                 const char *fieldname, AKSValue *outval) {
+  if (!s || !fieldname) return 0;
+  for (int i = 0; i < s->fieldcount; i++) {
+    if (strncmp(s->fieldnames[i], "$vtable_", 8) == 0 &&
+        ValKind(s->fieldvals[i]) == VALSTRUCT && ValToObj(s->fieldvals[i])) {
+      AKSStruct *vt = ValToObj(s->fieldvals[i]);
+      for (int j = 0; j < vt->fieldcount; j++) {
+        if (strcmp(vt->fieldnames[j], fieldname) == 0) {
+          AKSValue fv = vt->fieldvals[j];
+          if (ValKind(fv) == VALFN) {
+            uint16_t fnid = ValToFn(fv);
+            if (fnid < vm->fncount && vm->fns[fnid]->paramcount > 0 &&
+                strcmp(vm->fns[fnid]->locals[0].name, "self") == 0) {
+              *outval = ValBoundmethod(objval, fieldname);
+              return 1;
+            }
+          }
+          *outval = ValCopy(fv);
+          return 1;
+        }
+      }
+    }
+  }
+  return 0;
+}
 
 static int TryExtractSwizzle(AKSStruct *s, const char *fieldname, AKSValue *outval) {
 
@@ -421,26 +405,9 @@ static int TryExtractSwizzle(AKSStruct *s, const char *fieldname, AKSValue *outv
     exit(code);                                                                \
   } while (0)
 
-static void *MutexNewNative(void);
-static void MutexFreeNative(void *m);
-static void MutexLockNative(void *m);
 typedef struct HuffNode HuffNode;
 static HuffNode *huff_tree_root = NULL;
 static void FreeHuffmanTree(HuffNode *node);
-static void MutexUnlockNative(void *m);
-static void WorkerPushTail(VMWorker *w, VMTask *t);
-
-typedef struct {
-#ifdef _WIN32
-  OVERLAPPED overlapped;
-#endif
-  VMTask *task;
-  HANDLE handle;
-  char *buffer;
-  int op_type; // = read, 1 = write, 2 = socket recv, 3 = socket send, 4 =
-               // socket accept, 5 = socket connect
-  void *extra;
-} AsyncIOContext;
 
 static uint64_t GetTimeMs(void) {
 #ifdef _WIN32
@@ -511,7 +478,7 @@ void *TimerThreadFunc(void *lpParam) {
   return 0;
 }
 
-static void WakeBlockedTaskOnChannel(VM *vm, VMTask *t, VMChannel *c) {
+void WakeBlockedTaskOnChannel(VM *vm, VMTask *t, VMChannel *c) {
   MutexLockNative(vm->globallock);
   if (t->is_in_select) {
     int woken_idx = -1;
@@ -672,6 +639,103 @@ static int PollIoCompletions(VM *vm, DWORD timeout_ms) {
   return completed_count;
 }
 #else
+static void CompletePosixAsyncIo(VM *vm, AsyncIOContext *ctx, int bytes_transferred) {
+  if (!ctx) return;
+  VMTask *task = ctx->task;
+  int fd = (int)(uintptr_t)ctx->handle;
+
+  if (ctx->op_type == 0 || ctx->op_type == 1) {
+    close(fd);
+  }
+
+  MutexLockNative(vm->globallock);
+  if (task->state == 2) {
+    if (bytes_transferred >= 0) {
+      if (ctx->op_type == 0 || ctx->op_type == 2) {
+        task->result = ValStrLen(ctx->buffer, bytes_transferred);
+      } else if (ctx->op_type == 1) {
+        task->result = ValBool(1);
+      } else if (ctx->op_type == 3) {
+        task->result = ValInt(bytes_transferred);
+      } else if (ctx->op_type == 4) {
+        task->result = ValInt(bytes_transferred);
+      } else if (ctx->op_type == 5) {
+        task->result = ValInt((int64_t)fd);
+      }
+    } else {
+      if (ctx->op_type == 2) task->result = ValStr("");
+      else if (ctx->op_type == 3) task->result = ValInt(0);
+      else if (ctx->op_type == 4 || ctx->op_type == 5) task->result = ValInt(-1);
+      else task->result = ValNull();
+    }
+    task->state = 3;
+
+    for (int i = 0; i < task->awaitercount; i++) {
+      VMTask *awaiter = task->awaiters[i];
+      awaiter->state = 0;
+      int targetworker = rand() % vm->workercount;
+      WorkerPushTail(&vm->workers[targetworker], awaiter);
+    }
+  }
+  MutexUnlockNative(vm->globallock);
+
+  if (ctx->buffer)
+    free(ctx->buffer);
+  if (ctx->extra)
+    free(ctx->extra);
+  free(ctx);
+}
+
+static int PosixExecuteAsyncSyscall(AsyncIOContext *ctx) {
+  int fd = (int)(uintptr_t)ctx->handle;
+  if (ctx->op_type == 2) {
+    if (ctx->is_udp && ctx->extra) {
+      socklen_t sl = sizeof(struct sockaddr_in);
+      return (int)recvfrom(fd, ctx->buffer, ctx->io_len, 0, (struct sockaddr *)ctx->extra, &sl);
+    }
+    return (int)recv(fd, ctx->buffer, ctx->io_len, 0);
+  } else if (ctx->op_type == 3) {
+    if (ctx->is_udp && ctx->extra) {
+      return (int)sendto(fd, ctx->buffer, ctx->io_len, 0, (struct sockaddr *)ctx->extra, sizeof(struct sockaddr_in));
+    }
+    return (int)send(fd, ctx->buffer, ctx->io_len, 0);
+  } else if (ctx->op_type == 4) {
+    return accept(fd, NULL, NULL);
+  } else if (ctx->op_type == 5) {
+    int err = 0;
+    socklen_t el = sizeof(err);
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &el) < 0 || err != 0) return -1;
+    return 0;
+  }
+  return -1;
+}
+
+int PosixRegisterAsyncIo(VM *vm, int fd, AsyncIOContext *ctx, int is_write) {
+#if defined(__linux__) && !defined(AKS_USE_IO_URING)
+  if (vm->epoll_fd >= 0) {
+    struct epoll_event ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.events = (is_write ? EPOLLOUT : EPOLLIN) | EPOLLONESHOT;
+    ev.data.ptr = ctx;
+    if (epoll_ctl(vm->epoll_fd, EPOLL_CTL_ADD, fd, &ev) == 0 ||
+        epoll_ctl(vm->epoll_fd, EPOLL_CTL_MOD, fd, &ev) == 0) {
+      return 1;
+    }
+  }
+#elif defined(__APPLE__)
+  if (vm->kq >= 0) {
+    struct kevent kev;
+    EV_SET(&kev, fd, is_write ? EVFILT_WRITE : EVFILT_READ, EV_ADD | EV_ONESHOT, 0, 0, ctx);
+    if (kevent(vm->kq, &kev, 1, NULL, 0, NULL) == 0) {
+      return 1;
+    }
+  }
+#else
+  (void)vm; (void)fd; (void)ctx; (void)is_write;
+#endif
+  return 0;
+}
+
 #ifdef AKS_USE_IO_URING
 static int PollIoCompletions(VM *vm, int timeout_ms) {
   struct io_uring_cqe *cqe = NULL;
@@ -684,52 +748,46 @@ static int PollIoCompletions(VM *vm, int timeout_ms) {
     completed_count++;
     AsyncIOContext *ctx = (AsyncIOContext *)io_uring_cqe_get_data(cqe);
     int bytes_transferred = cqe->res;
-
-    if (ctx) {
-      VMTask *task = ctx->task;
-
-      if (ctx->op_type == 0 || ctx->op_type == 1) {
-        close(ctx->handle);
-      }
-
-      MutexLockNative(vm->globallock);
-      if (task->state == 2) {
-        if (bytes_transferred >= 0) {
-          if (ctx->op_type == 0 || ctx->op_type == 2) {
-            task->result = ValStrLen(ctx->buffer, bytes_transferred);
-          } else if (ctx->op_type == 1) {
-            task->result = ValBool(1);
-          } else if (ctx->op_type == 3) {
-            task->result = ValInt(bytes_transferred);
-          } else if (ctx->op_type == 4) {
-            int client_fd = bytes_transferred;
-            task->result = ValInt(client_fd);
-          } else if (ctx->op_type == 5) {
-            task->result = ValInt((int64_t)ctx->handle);
-          }
-        } else {
-          task->result = ValNull();
-        }
-        task->state = 3;
-
-        for (int i = 0; i < task->awaitercount; i++) {
-          VMTask *awaiter = task->awaiters[i];
-          awaiter->state = 0;
-          int targetworker = rand() % vm->workercount;
-          WorkerPushTail(&vm->workers[targetworker], awaiter);
-        }
-      }
-      MutexUnlockNative(vm->globallock);
-
-      if (ctx->buffer)
-        free(ctx->buffer);
-      if (ctx->extra)
-        free(ctx->extra);
-      free(ctx);
-    }
+    CompletePosixAsyncIo(vm, ctx, bytes_transferred);
     io_uring_cqe_seen(&vm->ring, cqe);
   }
   return completed_count;
+}
+#elif defined(__linux__)
+static int PollIoCompletions(VM *vm, int timeout_ms) {
+  if (vm->epoll_fd < 0) return 0;
+  struct epoll_event events[64];
+  int n = epoll_wait(vm->epoll_fd, events, 64, timeout_ms);
+  if (n <= 0) return 0;
+  int completed = 0;
+  for (int i = 0; i < n; i++) {
+    AsyncIOContext *ctx = (AsyncIOContext *)events[i].data.ptr;
+    if (!ctx) continue;
+    int fd = (int)(uintptr_t)ctx->handle;
+    epoll_ctl(vm->epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+    int res = PosixExecuteAsyncSyscall(ctx);
+    CompletePosixAsyncIo(vm, ctx, res);
+    completed++;
+  }
+  return completed;
+}
+#elif defined(__APPLE__)
+static int PollIoCompletions(VM *vm, int timeout_ms) {
+  if (vm->kq < 0) return 0;
+  struct kevent events[64];
+  struct timespec ts = {.tv_sec = timeout_ms / 1000,
+                        .tv_nsec = (timeout_ms % 1000) * 1000000L};
+  int n = kevent(vm->kq, NULL, 0, events, 64, &ts);
+  if (n <= 0) return 0;
+  int completed = 0;
+  for (int i = 0; i < n; i++) {
+    AsyncIOContext *ctx = (AsyncIOContext *)events[i].udata;
+    if (!ctx) continue;
+    int res = PosixExecuteAsyncSyscall(ctx);
+    CompletePosixAsyncIo(vm, ctx, res);
+    completed++;
+  }
+  return completed;
 }
 #else
 static int PollIoCompletions(VM *vm, int timeout_ms) {
@@ -740,7 +798,7 @@ static int PollIoCompletions(VM *vm, int timeout_ms) {
 #endif
 #endif
 
-static VMTask *CreateAsyncPendingTask(VM *vm) {
+VMTask *CreateAsyncPendingTask(VM *vm) {
   VMTask *t = calloc(1, sizeof(VMTask));
   t->refcount = 1;
   t->state = 2; // Blocked
@@ -836,18 +894,22 @@ static void RecordTraceStep(VMTask *task, uint8_t op, uint8_t *ip,
 }
 
 // native mutex wrappers
-static void *MutexNewNative(void) {
+void *MutexNewNative(void) {
 #ifdef _WIN32
   CRITICAL_SECTION *cs = malloc(sizeof(CRITICAL_SECTION));
   InitializeCriticalSection(cs);
   return cs;
 #else
   pthread_mutex_t *m = malloc(sizeof(pthread_mutex_t));
-  pthread_mutex_init(m, NULL);
+  pthread_mutexattr_t attr;
+  pthread_mutexattr_init(&attr);
+  pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+  pthread_mutex_init(m, &attr);
+  pthread_mutexattr_destroy(&attr);
   return m;
 #endif
 }
-static void MutexFreeNative(void *m) {
+void MutexFreeNative(void *m) {
   if (m) {
 #ifdef _WIN32
     DeleteCriticalSection((CRITICAL_SECTION *)m);
@@ -857,7 +919,7 @@ static void MutexFreeNative(void *m) {
     free(m);
   }
 }
-static void MutexLockNative(void *m) {
+void MutexLockNative(void *m) {
   if (m) {
 #ifdef _WIN32
     EnterCriticalSection((CRITICAL_SECTION *)m);
@@ -866,7 +928,7 @@ static void MutexLockNative(void *m) {
 #endif
   }
 }
-static void MutexUnlockNative(void *m) {
+void MutexUnlockNative(void *m) {
   if (m) {
 #ifdef _WIN32
     LeaveCriticalSection((CRITICAL_SECTION *)m);
@@ -942,6 +1004,7 @@ VM *VMNew(void) {
     vm->strict_ovf = gStrictOvf;
     vm->sanitize_address = gSanitizeAddress;
     vm->sanitize_thread = gSanitizeThread;
+    AksSanInitVm(vm);
     vm->stackcanary =
         (((uint64_t)rand() << 16) | (uint64_t)rand()) & 0x00007FFFFFFFFFFFULL;
     vm->instructionlimit = 10000000;
@@ -1101,6 +1164,7 @@ void VMFree(VM *vm) {
   }
   for (int i = 0; i < vm->jitloopcount; i++) {
     if (vm->jitloops[i].libhandle) {
+#ifdef _WIN32
       FreeLibrary((HMODULE)vm->jitloops[i].libhandle);
       char dllfile[128];
       snprintf(dllfile, sizeof(dllfile), "jitloop%d%d.dll",
@@ -1109,6 +1173,16 @@ void VMFree(VM *vm) {
       snprintf(dllfile, sizeof(dllfile), "jittrace%d%d.dll",
                vm->jitloops[i].fnid, vm->jitloops[i].targetoffset);
       DeleteFileA(dllfile);
+#else
+      dlclose(vm->jitloops[i].libhandle);
+      char sofile[128];
+      snprintf(sofile, sizeof(sofile), "jitloop%d%d.so",
+               vm->jitloops[i].fnid, vm->jitloops[i].targetoffset);
+      remove(sofile);
+      snprintf(sofile, sizeof(sofile), "jittrace%d%d.so",
+               vm->jitloops[i].fnid, vm->jitloops[i].targetoffset);
+      remove(sofile);
+#endif
     }
   }
   for (int i = 0; i < vm->registered_natives_count; i++) {
@@ -1126,6 +1200,7 @@ void VMFree(VM *vm) {
   huff_tree_root = NULL;
   AksFreeWeakRegistry();
   AksCloseAllFileHandles();
+  AksSanFreeVm(vm);
   free(vm);
   if (gActiveStrs != 0 || gactivearrs != 0 || gactivestructs != 0) {
     fprintf(stderr,
@@ -1163,7 +1238,7 @@ static inline uint16_t FindTypeMethod(VM *vm, const char *typename, const char *
   snprintf(fullfnname, sizeof(fullfnname), "%s.%s", typename, methodname);
   uint16_t found = 65535;
   for (uint16_t k = 0; k < vm->fncount; k++) {
-    if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, fullfnname) == 0) {
+    if (vm->fns[k] && vm->fns[k]->name[0] != '\0' && strcmp(vm->fns[k]->name, fullfnname) == 0) {
       found = k;
       break;
     }
@@ -1175,12 +1250,12 @@ static inline uint16_t FindTypeMethod(VM *vm, const char *typename, const char *
       char basetype[128];
       size_t baselen = (size_t)(dot - typename);
       if (baselen < sizeof(basetype)) {
-        strncpy(basetype, typename, baselen);
+        memcpy(basetype, typename, baselen);
         basetype[baselen] = '\0';
         char basefnname[256];
         snprintf(basefnname, sizeof(basefnname), "%s.%s", basetype, methodname);
         for (uint16_t k = 0; k < vm->fncount; k++) {
-          if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, basefnname) == 0) {
+          if (vm->fns[k] && vm->fns[k]->name[0] != '\0' && strcmp(vm->fns[k]->name, basefnname) == 0) {
             found = k;
             break;
           }
@@ -1190,10 +1265,8 @@ static inline uint16_t FindTypeMethod(VM *vm, const char *typename, const char *
   }
 
 
-  strncpy(entry->typename, typename, sizeof(entry->typename) - 1);
-  entry->typename[sizeof(entry->typename) - 1] = '\0';
-  strncpy(entry->methodname, methodname, sizeof(entry->methodname) - 1);
-  entry->methodname[sizeof(entry->methodname) - 1] = '\0';
+  snprintf(entry->typename, sizeof(entry->typename), "%s", typename);
+  snprintf(entry->methodname, sizeof(entry->methodname), "%s", methodname);
   entry->fnid = found;
   entry->valid = 1;
 
@@ -1214,7 +1287,7 @@ int VMGenerateFlamegraphSVG(VM *vm, const char *filepath) {
     }
     if (total_calls == 0) total_calls = 100;
     
-    strncpy(vm->flame_nodes[0].name, "root", 127);
+    snprintf(vm->flame_nodes[0].name, sizeof(vm->flame_nodes[0].name), "root");
     vm->flame_nodes[0].samples = total_calls;
     vm->flame_nodes[0].self_samples = 0;
     vm->flame_nodes[0].parent_idx = -1;
@@ -1226,7 +1299,7 @@ int VMGenerateFlamegraphSVG(VM *vm, const char *filepath) {
         uint64_t count = (i < 4096 && vm->fncallcounts[i] > 0) ? vm->fncallcounts[i] : 1;
         int idx = vm->flame_node_count++;
         const char *fname = vm->fns[i]->name[0] ? vm->fns[i]->name : "anonymous";
-        strncpy(vm->flame_nodes[idx].name, fname, 127);
+        snprintf(vm->flame_nodes[idx].name, sizeof(vm->flame_nodes[idx].name), "%s", fname);
         vm->flame_nodes[idx].samples = count;
         vm->flame_nodes[idx].self_samples = count;
         vm->flame_nodes[idx].parent_idx = 0;
@@ -2025,9 +2098,8 @@ int VMLoadMem(VM *vm, Compiler *c) {
   for (int i = 0; i < vm->fncount; i++) {
     FnProto *srcfn = c->fns[i];
     FnProto *destfn = calloc(1, sizeof(FnProto));
-    strncpy(destfn->name, srcfn->name, 127);
-    strncpy(destfn->file_name, srcfn->file_name, sizeof(destfn->file_name) - 1);
-    destfn->file_name[sizeof(destfn->file_name) - 1] = '\0';
+    snprintf(destfn->name, sizeof(destfn->name), "%s", srcfn->name);
+    snprintf(destfn->file_name, sizeof(destfn->file_name), "%s", srcfn->file_name);
     destfn->id = srcfn->id;
     destfn->paramcount = srcfn->paramcount;
     destfn->localcount = srcfn->localcount;
@@ -2085,12 +2157,12 @@ int VMLoadMem(VM *vm, Compiler *c) {
 // stdlib helpers for system, string, array, and json
 
 #include <sys/stat.h>
-static int FileExists(const char *path) {
+int FileExists(const char *path) {
   struct stat buffer;
   return (stat(path, &buffer) == 0);
 }
 
-static int SetEnvironmentVar(const char *name, const char *val) {
+int SetEnvironmentVar(const char *name, const char *val) {
 #ifdef _WIN32
   return _putenv_s(name, val) == 0;
 #else
@@ -2138,7 +2210,7 @@ static void UnEscapeStrInplace(char *s) {
   *dst = '\0';
 }
 
-static int64_t MathGcd(int64_t a, int64_t b) {
+int64_t MathGcd(int64_t a, int64_t b) {
   a = a < 0 ? -a : a;
   b = b < 0 ? -b : b;
   while (b != 0) {
@@ -2149,7 +2221,7 @@ static int64_t MathGcd(int64_t a, int64_t b) {
   return a;
 }
 
-static int64_t MathLcm(int64_t a, int64_t b) {
+int64_t MathLcm(int64_t a, int64_t b) {
   if (a == 0 || b == 0)
     return 0;
   a = a < 0 ? -a : a;
@@ -2157,7 +2229,7 @@ static int64_t MathLcm(int64_t a, int64_t b) {
   return (a / MathGcd(a, b)) * b;
 }
 
-static int MathIsPrime(int64_t n) {
+int MathIsPrime(int64_t n) {
   if (n <= 1)
     return 0;
   if (n <= 3)
@@ -2171,7 +2243,7 @@ static int MathIsPrime(int64_t n) {
   return 1;
 }
 
-static double MathFact(double n) {
+double MathFact(double n) {
   if (n < 0.0)
     return 0.0;
   double res = 1.0;
@@ -2182,7 +2254,7 @@ static double MathFact(double n) {
   return res;
 }
 
-static double MathNpr(double n, double r) {
+double MathNpr(double n, double r) {
   if (n < 0 || r < 0 || n < r)
     return 0.0;
   double res = 1.0;
@@ -2194,7 +2266,7 @@ static double MathNpr(double n, double r) {
   return res;
 }
 
-static double MathNcr(double n, double r) {
+double MathNcr(double n, double r) {
   if (n < 0 || r < 0 || n < r)
     return 0.0;
   int64_t Ln = (int64_t)n;
@@ -2229,12 +2301,7 @@ static const uint32_t sha256k[64] = {
     0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
-typedef struct {
-  uint8_t data[64];
-  uint32_t datalen;
-  uint64_t bitlen;
-  uint32_t state[8];
-} AKSSHA256CTX;
+/* AKSSHA256CTX declared in vm_stdlib.h */
 
 static void Sha256Transform(AKSSHA256CTX *ctx, const uint8_t *data) {
   uint32_t a, b, c, d, e, f, g, h, i, j, t1, t2, m[64];
@@ -2273,7 +2340,7 @@ static void Sha256Transform(AKSSHA256CTX *ctx, const uint8_t *data) {
   ctx->state[7] += h;
 }
 
-static void Sha256Init(AKSSHA256CTX *ctx) {
+void Sha256Init(AKSSHA256CTX *ctx) {
   ctx->datalen = 0;
   ctx->bitlen = 0;
   ctx->state[0] = 0x6a09e667;
@@ -2286,7 +2353,7 @@ static void Sha256Init(AKSSHA256CTX *ctx) {
   ctx->state[7] = 0x5be0cd19;
 }
 
-static void Sha256Update(AKSSHA256CTX *ctx, const uint8_t *data, size_t len) {
+void Sha256Update(AKSSHA256CTX *ctx, const uint8_t *data, size_t len) {
   for (size_t i = 0; i < len; ++i) {
     ctx->data[ctx->datalen] = data[i];
     ctx->datalen++;
@@ -2298,7 +2365,7 @@ static void Sha256Update(AKSSHA256CTX *ctx, const uint8_t *data, size_t len) {
   }
 }
 
-static void Sha256Final(AKSSHA256CTX *ctx, uint8_t *hash) {
+void Sha256Final(AKSSHA256CTX *ctx, uint8_t *hash) {
   uint32_t i = ctx->datalen;
   if (ctx->datalen < 56) {
     ctx->data[i++] = 0x80;
@@ -2341,11 +2408,7 @@ static void Sha256Final(AKSSHA256CTX *ctx, uint8_t *hash) {
 #undef SIG0
 #undef SIG1
 
-typedef struct {
-  uint32_t count[2];
-  uint32_t state[4];
-  uint8_t buffer[64];
-} AKSMD5CTX;
+/* AKSMD5CTX declared in vm_stdlib.h */
 
 #define S11 7
 #define S12 12
@@ -2498,7 +2561,7 @@ static void MD5Transform(uint32_t state[4], const uint8_t block[64]) {
   memset((void *)x, 0, sizeof(x));
 }
 
-static void MD5Init(AKSMD5CTX *ctx) {
+void MD5Init(AKSMD5CTX *ctx) {
   ctx->count[0] = ctx->count[1] = 0;
   ctx->state[0] = 0x67452301;
   ctx->state[1] = 0xefcdab89;
@@ -2506,7 +2569,7 @@ static void MD5Init(AKSMD5CTX *ctx) {
   ctx->state[3] = 0x10325476;
 }
 
-static void MD5Update(AKSMD5CTX *ctx, const uint8_t *input, size_t inputLen) {
+void MD5Update(AKSMD5CTX *ctx, const uint8_t *input, size_t inputLen) {
   size_t i, index, partLen;
   index = (size_t)((ctx->count[0] >> 3) & 0x3F);
   if ((ctx->count[0] += ((uint32_t)inputLen << 3)) < ((uint32_t)inputLen << 3))
@@ -2525,7 +2588,7 @@ static void MD5Update(AKSMD5CTX *ctx, const uint8_t *input, size_t inputLen) {
   memcpy((void *)&ctx->buffer[index], (const void *)&input[i], inputLen - i);
 }
 
-static void MD5Final(AKSMD5CTX *ctx, uint8_t digest[16]) {
+void MD5Final(AKSMD5CTX *ctx, uint8_t digest[16]) {
   uint8_t bits[8];
   size_t index, padLen;
   MD5Encode(bits, ctx->count, 8);
@@ -2566,7 +2629,7 @@ static void MD5Final(AKSMD5CTX *ctx, uint8_t digest[16]) {
 static const char b64table[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-static char *Base64EncodeStr(const uint8_t *src, size_t len) {
+char *Base64EncodeStr(const uint8_t *src, size_t len) {
   size_t outlen = 4 * ((len + 2) / 3);
   char *out = malloc(outlen + 1);
   if (!out)
@@ -2593,7 +2656,7 @@ static char *Base64EncodeStr(const uint8_t *src, size_t len) {
   return out;
 }
 
-static uint8_t *Base64DecodeStr(const char *src, size_t *outlen) {
+uint8_t *Base64DecodeStr(const char *src, size_t *outlen) {
   size_t len = strlen(src);
   if (len % 4 != 0)
     return NULL;
@@ -2639,7 +2702,7 @@ static uint8_t *Base64DecodeStr(const char *src, size_t *outlen) {
   return out;
 }
 
-static char *UrlEncodeStr(const char *str) {
+char *UrlEncodeStr(const char *str) {
   size_t len = strlen(str);
   size_t cap = len * 3 + 1;
   char *buf = malloc(cap);
@@ -2658,7 +2721,7 @@ static char *UrlEncodeStr(const char *str) {
   return buf;
 }
 
-static char *UrlDecodeStr(const char *str) {
+char *UrlDecodeStr(const char *str) {
   size_t len = strlen(str);
   char *buf = malloc(len + 1);
   char *dst = buf;
@@ -2685,7 +2748,7 @@ static char *UrlDecodeStr(const char *str) {
 #define GetCurrentDir(buf, size) getcwd(buf, size)
 #endif
 
-static char *GetCwdStr(void) {
+char *GetCwdStr(void) {
   char buf[1024];
   if (GetCurrentDir(buf, sizeof(buf))) {
     return strdup(buf);
@@ -2693,7 +2756,7 @@ static char *GetCwdStr(void) {
   return strdup("");
 }
 
-static int CompareAKSVals(const void *a, const void *b) {
+int CompareAKSVals(const void *a, const void *b) {
   AKSValue va = *(const AKSValue *)a;
   AKSValue vb = *(const AKSValue *)b;
   ValType ta = ValKind(va);
@@ -2729,7 +2792,7 @@ static void SkipJSONWhitespace(const char **ptr) {
   }
 }
 
-static AKSValue ParseJSONVal(const char **ptr, int *Error);
+AKSValue ParseJSONVal(const char **ptr, int *Error);
 
 static AKSValue ParseJSONStr(const char **ptr, int *Error) {
   (*ptr)++; // skip opening '"'
@@ -2955,7 +3018,7 @@ static AKSValue ParseJSONObj(const char **ptr, int *Error) {
   return objval;
 }
 
-static AKSValue ParseJSONVal(const char **ptr, int *Error) {
+AKSValue ParseJSONVal(const char **ptr, int *Error) {
   SkipJSONWhitespace(ptr);
   if (!**ptr) {
     *Error = 1;
@@ -3037,7 +3100,7 @@ static void StrIfyString(const char *data, int slen, char **buf, size_t *len, si
   (*buf)[(*len)++] = '"';
 }
 
-static void StrIfyVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
+void StrIfyVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
   char temp[64];
   if (ValKind(v) == VALNULL) {
     const char *s = "null";
@@ -3166,7 +3229,7 @@ static void StrIfyVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
   }
 }
 
-static int IsPathSafe(VM *vm, const char *path) {
+int IsPathSafe(VM *vm, const char *path) {
   if (!vm->sandboxenabled)
     return 1;
   if (!path)
@@ -3180,7 +3243,7 @@ static int IsPathSafe(VM *vm, const char *path) {
   return 1;
 }
 
-static int ValidateCap(VM *vm, AKSValue cap, const char *expectedres,
+int ValidateCap(VM *vm, AKSValue cap, const char *expectedres,
                        const char *expectedperm, const char *path) {
   if (ValKind(cap) == VALNULL) {
     return !vm->capmode;
@@ -3219,14 +3282,14 @@ static int ValidateCap(VM *vm, AKSValue cap, const char *expectedres,
   return 1;
 }
 
-static AKSValue StdlibPop(AKSValue **stacktopptr) {
+AKSValue StdlibPop(AKSValue **stacktopptr) {
   (*stacktopptr)--;
   AKSValue val = **stacktopptr;
   **stacktopptr = ValNull();
   return val;
 }
 
-static void TaskCancel(VM *vm, VMTask *t) {
+void TaskCancel(VM *vm, VMTask *t) {
   MutexLockNative(vm->globallock);
   t->cancelled = 1;
   t->was_cancelled = 1;
@@ -3434,7 +3497,7 @@ static void FreeHuffmanTree(HuffNode *node) {
   free(node);
 }
 
-static char *HuffmanDecodeStr(const char *in_data, int in_len, int *out_len) {
+char *HuffmanDecodeStr(const char *in_data, int in_len, int *out_len) {
   BuildHuffmanTree();
   int max_out = in_len * 2 + 16;
   char *out = malloc(max_out);
@@ -3494,7 +3557,7 @@ typedef struct {
 #define MAX_TLS_CONTEXTS 128
 static TLSContext tls_contexts[MAX_TLS_CONTEXTS];
 
-static int CreateTLSContext(SOCKET sock, int is_server) {
+int CreateTLSContext(SOCKET sock, int is_server) {
   int id = -1;
   for (int i = 0; i < MAX_TLS_CONTEXTS; i++) {
     if (!tls_contexts[i].in_use) {
@@ -3519,7 +3582,7 @@ static int CreateTLSContext(SOCKET sock, int is_server) {
   return id;
 }
 
-static void TLSCloseContext(int tls_id) {
+void TLSCloseContext(int tls_id) {
   if (tls_id < 0 || tls_id >= MAX_TLS_CONTEXTS || !tls_contexts[tls_id].in_use)
     return;
   TLSContext *c = &tls_contexts[tls_id];
@@ -3536,7 +3599,7 @@ static void TLSCloseContext(int tls_id) {
   c->in_use = 0;
 }
 
-static int PerformTLSHandshake(int tls_id, const char *hostname) {
+int PerformTLSHandshake(int tls_id, const char *hostname) {
   if (tls_id < 0 || tls_id >= MAX_TLS_CONTEXTS || !tls_contexts[tls_id].in_use)
     return -1;
   TLSContext *c = &tls_contexts[tls_id];
@@ -3652,7 +3715,7 @@ static int PerformTLSHandshake(int tls_id, const char *hostname) {
   }
 }
 
-static int TLSSendData(int tls_id, const char *data, int len) {
+int TLSSendData(int tls_id, const char *data, int len) {
   if (tls_id < 0 || tls_id >= MAX_TLS_CONTEXTS || !tls_contexts[tls_id].in_use)
     return -1;
   TLSContext *c = &tls_contexts[tls_id];
@@ -3709,7 +3772,7 @@ static int TLSSendData(int tls_id, const char *data, int len) {
   return len;
 }
 
-static int TLSRecvData(int tls_id, char *out_buf, int max_len) {
+int TLSRecvData(int tls_id, char *out_buf, int max_len) {
   if (tls_id < 0 || tls_id >= MAX_TLS_CONTEXTS || !tls_contexts[tls_id].in_use)
     return -1;
   TLSContext *c = &tls_contexts[tls_id];
@@ -3816,22 +3879,14 @@ static int TLSRecvData(int tls_id, char *out_buf, int max_len) {
   }
 }
 #else
-typedef int SOCKET;
-static int CreateTLSContext(SOCKET sock, int is_server) { return -1; }
-static int PerformTLSHandshake(int tls_id, const char *hostname) { return -1; }
-static int TLSSendData(int tls_id, const char *data, int len) { return -1; }
-static int TLSRecvData(int tls_id, char *out_buf, int max_len) { return -1; }
-static void TLSCloseContext(int tls_id) {}
+int CreateTLSContext(SOCKET sock, int is_server) { return -1; }
+int PerformTLSHandshake(int tls_id, const char *hostname) { return -1; }
+int TLSSendData(int tls_id, const char *data, int len) { return -1; }
+int TLSRecvData(int tls_id, char *out_buf, int max_len) { return -1; }
+void TLSCloseContext(int tls_id) {}
 #endif
 
-typedef enum {
-  ORDER_SEQ_CST,
-  ORDER_ACQUIRE,
-  ORDER_RELEASE,
-  ORDER_RELAXED
-} MemOrder;
-
-static MemOrder ParseMemOrder(AKSValue val) {
+MemOrder ParseMemOrder(AKSValue val) {
   if (ValKind(val) == VALSTR && ValToStrPtr(val)->data) {
     const char *s = ValToStrPtr(val)->data;
     if (strcmp(s, "acquire") == 0)
@@ -3846,7 +3901,7 @@ static MemOrder ParseMemOrder(AKSValue val) {
 
 // Serialization formats helpers CBOR(, messagepack, CSV, TOML, XML, protobuf)
 
-static void CBOREncodeVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
+void CBOREncodeVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
 #define APPEND_BYTE(b)                                                         \
   do {                                                                         \
     if (*len >= *cap) {                                                        \
@@ -3857,7 +3912,7 @@ static void CBOREncodeVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
   } while (0)
 #define APPEND_BYTES(bytes, bytes_len)                                         \
   do {                                                                         \
-    for (size_t k = 0; k < (bytes_len); k++)                                   \
+    for (size_t k = 0; k < (size_t)(bytes_len); k++)                           \
       APPEND_BYTE((bytes)[k]);                                                 \
   } while (0)
 
@@ -4000,7 +4055,7 @@ static void CBOREncodeVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
 #undef APPEND_BYTES
 }
 
-static AKSValue CBORDecodeVal(const uint8_t **ptr, const uint8_t *end,
+AKSValue CBORDecodeVal(const uint8_t **ptr, const uint8_t *end,
                               int *Error) {
   if (*ptr >= end) {
     *Error = 1;
@@ -4180,7 +4235,7 @@ static AKSValue CBORDecodeVal(const uint8_t **ptr, const uint8_t *end,
 #undef READ_UINT
 }
 
-static void MsgpackEncodeVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
+void MsgpackEncodeVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
 #define APPEND_BYTE(b)                                                         \
   do {                                                                         \
     if (*len >= *cap) {                                                        \
@@ -4191,7 +4246,7 @@ static void MsgpackEncodeVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
   } while (0)
 #define APPEND_BYTES(bytes, bytes_len)                                         \
   do {                                                                         \
-    for (size_t k = 0; k < (bytes_len); k++)                                   \
+    for (size_t k = 0; k < (size_t)(bytes_len); k++)                           \
       APPEND_BYTE((bytes)[k]);                                                 \
   } while (0)
 
@@ -4327,7 +4382,7 @@ static void MsgpackEncodeVal(AKSValue v, char **buf, size_t *len, size_t *cap) {
 #undef APPEND_BYTES
 }
 
-static AKSValue MsgpackDecodeVal(const uint8_t **ptr, const uint8_t *end,
+AKSValue MsgpackDecodeVal(const uint8_t **ptr, const uint8_t *end,
                                  int *Error) {
   if (*ptr >= end) {
     *Error = 1;
@@ -4604,7 +4659,7 @@ static AKSValue MsgpackDecodeVal(const uint8_t **ptr, const uint8_t *end,
 #undef READ_UINT
 }
 
-static AKSValue ParseCSVStr(const char *csv) {
+AKSValue ParseCSVStr(const char *csv) {
   AKSValue res = ValArr(0);
   AKSArray *res_arr = ValToArr(res);
   AKSValue headers = ValNull();
@@ -4733,7 +4788,7 @@ static void CSVAppendEscaped(const char *s, char **buf, size_t *len,
 #undef APPEND_BYTE
 }
 
-static char *StringifyCSV(AKSValue arr) {
+char *StringifyCSV(AKSValue arr) {
   size_t cap = 256;
   size_t len = 0;
   char *buf = malloc(cap);
@@ -4856,7 +4911,7 @@ static AKSValue ParseTOMLVal(const char *ValStr) {
   return res;
 }
 
-static AKSValue ParseTOMLStr(const char *toml) {
+AKSValue ParseTOMLStr(const char *toml) {
   AKSValue res = ValStruct("Object");
   AKSStruct *root = ValToObj(res);
   AKSStruct *current_table = root;
@@ -4983,7 +5038,7 @@ static void TOMLStringifyTable(AKSStruct *s, const char *prefix, char **buf,
 #undef APPEND_STR
 }
 
-static char *StringifyTOML(AKSValue val) {
+char *StringifyTOML(AKSValue val) {
   size_t cap = 256;
   size_t len = 0;
   char *buf = malloc(cap);
@@ -4999,7 +5054,7 @@ static char *StringifyTOML(AKSValue val) {
   return buf;
 }
 
-static AKSValue ParseXMLStr(const char *xml) {
+AKSValue ParseXMLStr(const char *xml) {
   AKSValue res = ValStruct("Object");
   AKSStruct *current = ValToObj(res);
   const char *p = xml;
@@ -5118,7 +5173,7 @@ static void XMLStringifyVal(const char *name, AKSValue v, char **buf,
 #undef APPEND_STR
 }
 
-static char *StringifyXML(AKSValue val) {
+char *StringifyXML(AKSValue val) {
   size_t cap = 256;
   size_t len = 0;
   char *buf = malloc(cap);
@@ -5174,7 +5229,7 @@ static uint64_t ReadProtoVarint(const uint8_t **ptr, const uint8_t *end,
   return val;
 }
 
-static char *ProtobufEncodeObjFunc(AKSValue obj, AKSValue mapping,
+char *ProtobufEncodeObjFunc(AKSValue obj, AKSValue mapping,
                                    size_t *out_len) {
   size_t cap = 256;
   size_t len = 0;
@@ -5189,7 +5244,7 @@ static char *ProtobufEncodeObjFunc(AKSValue obj, AKSValue mapping,
   } while (0)
 #define APPEND_BYTES(bytes, bytes_len)                                         \
   do {                                                                         \
-    for (size_t k = 0; k < (bytes_len); k++)                                   \
+    for (size_t k = 0; k < (size_t)(bytes_len); k++)                           \
       APPEND_BYTE((bytes)[k]);                                                 \
   } while (0)
 
@@ -5235,7 +5290,7 @@ static char *ProtobufEncodeObjFunc(AKSValue obj, AKSValue mapping,
 #undef APPEND_BYTES
 }
 
-static AKSValue ProtobufDecodeObjFunc(const char *bytes, int bytes_len,
+AKSValue ProtobufDecodeObjFunc(const char *bytes, int bytes_len,
                                       AKSValue mapping, const char *typename) {
   AKSValue res = ValStruct(typename);
   AKSStruct *obj = ValToObj(res);
@@ -5302,7 +5357,7 @@ static AKSValue ProtobufDecodeObjFunc(const char *bytes, int bytes_len,
   return res;
 }
 
-static int Utf8NextCodepoint(const uint8_t *s, int len, int *bytes_consumed) {
+int Utf8NextCodepoint(const uint8_t *s, int len, int *bytes_consumed) {
   if (len <= 0) {
     *bytes_consumed = 0;
     return 0;
@@ -5372,7 +5427,7 @@ static int Utf8EncodeCodepoint(int cp, char *out) {
   return 3;
 }
 
-static int Utf8LenFunc(const char *str) {
+int Utf8LenFunc(const char *str) {
   int len = (int)strlen(str);
   int count = 0;
   int pos = 0;
@@ -5387,7 +5442,7 @@ static int Utf8LenFunc(const char *str) {
   return count;
 }
 
-static char *Utf8CharAtFunc(const char *str, int target_idx) {
+char *Utf8CharAtFunc(const char *str, int target_idx) {
   int len = (int)strlen(str);
   int count = 0;
   int pos = 0;
@@ -5408,7 +5463,7 @@ static char *Utf8CharAtFunc(const char *str, int target_idx) {
   return strdup("");
 }
 
-static int Utf8CodepointAtFunc(const char *str, int target_idx) {
+int Utf8CodepointAtFunc(const char *str, int target_idx) {
   int len = (int)strlen(str);
   int count = 0;
   int pos = 0;
@@ -5427,40 +5482,7 @@ static int Utf8CodepointAtFunc(const char *str, int target_idx) {
   return -1;
 }
 
-typedef enum {
-  RE_CHAR,
-  RE_ANY,
-  RE_CLASS,
-  RE_SPLIT,
-  RE_JUMP,
-  RE_SAVE,
-  RE_MATCH,
-  RE_ANCHOR_START,
-  RE_ANCHOR_END
-} ReOp;
-
-typedef struct {
-  int start;
-  int end;
-} ReClassRange;
-
-typedef struct {
-  ReOp op;
-  int val;
-  int target1;
-  int target2;
-  uint8_t class_bits[32];
-  ReClassRange *class_ranges;
-  int class_range_count;
-  int class_negated;
-} ReInst;
-
-typedef struct {
-  ReInst *insts;
-  int count;
-  int cap;
-  int save_count;
-} ReProg;
+/* ReProg declared in vm_stdlib.h */
 
 /* Ensure prog->insts has room for at least (count + extra) entries.
  * MUST be used instead of bare realloc() so that prog->cap stays in sync.
@@ -5595,7 +5617,6 @@ static int ParseReAtom(const char **pat, ReProg *prog) {
   if (c == '(') {
     (*pat)++;
     int group_id = ++prog->save_count;
-    int save_start_pc = prog->count;
     ReEmit(prog, RE_SAVE, 2 * group_id, 0, 0);
     ParseReExpr(pat, prog);
     if (**pat == ')')
@@ -5908,7 +5929,7 @@ static int ParseReExpr(const char **pat, ReProg *prog) {
   return 1;
 }
 
-static ReProg CompileRegex(const char *pattern) {
+ReProg CompileRegex(const char *pattern) {
   ReProg prog = {NULL, 0, 0, 0};
   ReEmit(&prog, RE_SAVE, 0, 0, 0);
   ParseReExpr(&pattern, &prog);
@@ -5917,7 +5938,7 @@ static ReProg CompileRegex(const char *pattern) {
   return prog;
 }
 
-static void FreeRegex(ReProg *prog) {
+void FreeRegex(ReProg *prog) {
   for (int i = 0; i < prog->count; i++) {
     if (prog->insts[i].class_ranges) {
       free(prog->insts[i].class_ranges);
@@ -5926,7 +5947,7 @@ static void FreeRegex(ReProg *prog) {
   free(prog->insts);
 }
 
-static int MatchNFA(ReInst *program, int pc, const int *input, int input_len,
+int MatchNFA(ReInst *program, int pc, const int *input, int input_len,
                     int idx, int *saves, int save_count) {
   while (1) {
     ReInst inst = program[pc];
@@ -6010,7 +6031,7 @@ static int MatchNFA(ReInst *program, int pc, const int *input, int input_len,
   }
 }
 
-static int *StrToCodepoints(const char *str, int *out_len) {
+int *StrToCodepoints(const char *str, int *out_len) {
   int len = (int)strlen(str);
   int *cps = malloc((len + 1) * sizeof(int));
   int count = 0;
@@ -6028,7 +6049,7 @@ static int *StrToCodepoints(const char *str, int *out_len) {
   return cps;
 }
 
-static char *CodepointsToStr(const int *cps, int count) {
+char *CodepointsToStr(const int *cps, int count) {
   size_t cap = 256;
   size_t len = 0;
   char *buf = malloc(cap);
@@ -6231,7 +6252,7 @@ static int *NormalizeCompose(const int *input, int input_len, int *out_len) {
   return buf;
 }
 
-static char *UnicodeNormalizeFunc(const char *str, const char *form) {
+char *UnicodeNormalizeFunc(const char *str, const char *form) {
   int len = 0;
   int *cps = StrToCodepoints(str, &len);
   int decomp_len = 0;
@@ -6252,6 +6273,7 @@ static char *UnicodeNormalizeFunc(const char *str, const char *form) {
   }
 }
 
+#ifdef _WIN32
 static wchar_t *Utf8ToUtf16(const char *str) {
   int len = MultiByteToWideChar(CP_UTF8, 0, str, -1, NULL, 0);
   wchar_t *wstr = malloc((len + 1) * sizeof(wchar_t));
@@ -6259,7 +6281,7 @@ static wchar_t *Utf8ToUtf16(const char *str) {
   return wstr; // Unicode ASCII-order: ä (U+00E4=228) vs z (U+007A=122) - 228 >
                // in Unicode order
 }
-static int LocaleCompareFunc(const char *str1, const char *str2,
+int LocaleCompareFunc(const char *str1, const char *str2,
                              const char *locale) {
   wchar_t *wstr1 = Utf8ToUtf16(str1);
   wchar_t *wstr2 = Utf8ToUtf16(str2);
@@ -6281,12 +6303,107 @@ static int LocaleCompareFunc(const char *str1, const char *str2,
     return 1;
   return 0;
 }
+#else
+static uint32_t NextUtf8Codepoint(const unsigned char **pp) {
+  const unsigned char *p = *pp;
+  uint32_t c = p[0];
+  if (c < 0x80) {
+    *pp = p + 1;
+    return c;
+  }
+  if ((c & 0xE0) == 0xC0 && (p[1] & 0xC0) == 0x80) {
+    *pp = p + 2;
+    return ((c & 0x1F) << 6) | (p[1] & 0x3F);
+  }
+  if ((c & 0xF0) == 0xE0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80) {
+    *pp = p + 3;
+    return ((c & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+  }
+  if ((c & 0xF8) == 0xF0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80 &&
+      (p[3] & 0xC0) == 0x80) {
+    *pp = p + 4;
+    return ((c & 0x07) << 18) | ((p[1] & 0x3F) << 12) |
+           ((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
+  }
+  *pp = p + 1;
+  return c;
+}
 
-#include <immintrin.h>
+static uint32_t FoldLatinPrimary(uint32_t cp) {
+  if (cp >= 'A' && cp <= 'Z')
+    return cp + ('a' - 'A');
+  if ((cp >= 0xC0 && cp <= 0xC6) || (cp >= 0xE0 && cp <= 0xE6))
+    return 'a';
+  if (cp == 0xC7 || cp == 0xE7)
+    return 'c';
+  if ((cp >= 0xC8 && cp <= 0xCB) || (cp >= 0xE8 && cp <= 0xEB))
+    return 'e';
+  if ((cp >= 0xCC && cp <= 0xCF) || (cp >= 0xEC && cp <= 0xEF))
+    return 'i';
+  if (cp == 0xD1 || cp == 0xF1)
+    return 'n';
+  if ((cp >= 0xD2 && cp <= 0xD6) || cp == 0xD8 ||
+      (cp >= 0xF2 && cp <= 0xF6) || cp == 0xF8)
+    return 'o';
+  if ((cp >= 0xD9 && cp <= 0xDC) || (cp >= 0xF9 && cp <= 0xFC))
+    return 'u';
+  if (cp == 0xDD || cp == 0xFD || cp == 0xFF)
+    return 'y';
+  if (cp == 0xDF)
+    return 's';
+  return cp;
+}
 
-static void SimdOpArrays(AKSArray *a1, AKSArray *a2, AKSArray *res_arr,
+static int FallbackUtf8LocaleCompare(const char *s1, const char *s2) {
+  const unsigned char *p1 = (const unsigned char *)s1;
+  const unsigned char *p2 = (const unsigned char *)s2;
+  int tie = 0;
+  while (*p1 && *p2) {
+    uint32_t c1 = NextUtf8Codepoint(&p1);
+    uint32_t c2 = NextUtf8Codepoint(&p2);
+    uint32_t b1 = FoldLatinPrimary(c1);
+    uint32_t b2 = FoldLatinPrimary(c2);
+    if (b1 != b2)
+      return (b1 < b2) ? -1 : 1;
+    if (tie == 0 && c1 != c2)
+      tie = (c1 < c2) ? -1 : 1;
+  }
+  if (*p1)
+    return 1;
+  if (*p2)
+    return -1;
+  return tie;
+}
+
+int LocaleCompareFunc(const char *str1, const char *str2,
+                             const char *locale) {
+  int r = 0;
+  if (locale && locale[0] != '\0') {
+    char loc_utf8[128];
+    snprintf(loc_utf8, sizeof(loc_utf8), "%s.UTF-8", locale);
+    for (char *p = loc_utf8; *p; p++) { if (*p == '-') *p = '_'; }
+    locale_t loc = newlocale(LC_COLLATE_MASK, loc_utf8, (locale_t)0);
+    if (!loc) loc = newlocale(LC_COLLATE_MASK, locale, (locale_t)0);
+    if (loc) {
+      r = strcoll_l(str1, str2, loc);
+      freelocale(loc);
+    } else {
+      // Fallback when minimal OS environments lack installed locale data
+      r = FallbackUtf8LocaleCompare(str1, str2);
+    }
+  } else {
+    r = strcoll(str1, str2);
+  }
+  if (r < 0) return -1;
+  if (r > 0) return 1;
+  return 0;
+}
+#endif
+
+void SimdOpArrays(AKSArray *a1, AKSArray *a2, AKSArray *res_arr,
                          int count, int op) {
   int i = 0;
+#if defined(__AVX2__) || defined(_M_X64)
   for (; i <= count - 4; i += 4) {
     double temp1[4];
     double temp2[4];
@@ -6312,6 +6429,7 @@ static void SimdOpArrays(AKSArray *a1, AKSArray *a2, AKSArray *res_arr,
       res_arr->items[i + j] = ValFloat(temp_res[j]);
     }
   }
+#endif
   for (; i < count; i++) {
     double d1 = ValToFloat(a1->items[i]);
     double d2 = ValToFloat(a2->items[i]);
@@ -6328,9 +6446,10 @@ static void SimdOpArrays(AKSArray *a1, AKSArray *a2, AKSArray *res_arr,
   }
 }
 
-static void SimdFmaArrays(AKSArray *a1, AKSArray *a2, AKSArray *a3,
+void SimdFmaArrays(AKSArray *a1, AKSArray *a2, AKSArray *a3,
                           AKSArray *res_arr, int count) {
   int i = 0;
+#if defined(__AVX2__) || defined(_M_X64)
   for (; i <= count - 4; i += 4) {
     double temp1[4];
     double temp2[4];
@@ -6343,7 +6462,11 @@ static void SimdFmaArrays(AKSArray *a1, AKSArray *a2, AKSArray *a3,
     __m256d v1 = _mm256_loadu_pd(temp1);
     __m256d v2 = _mm256_loadu_pd(temp2);
     __m256d v3 = _mm256_loadu_pd(temp3);
+#if defined(__FMA__) || defined(_M_X64)
     __m256d v_res = _mm256_fmadd_pd(v1, v2, v3);
+#else
+    __m256d v_res = _mm256_add_pd(_mm256_mul_pd(v1, v2), v3);
+#endif
 
     double temp_res[4];
     _mm256_storeu_pd(temp_res, v_res);
@@ -6351,6 +6474,7 @@ static void SimdFmaArrays(AKSArray *a1, AKSArray *a2, AKSArray *a3,
       res_arr->items[i + j] = ValFloat(temp_res[j]);
     }
   }
+#endif
   for (; i < count; i++) {
     double d1 = ValToFloat(a1->items[i]);
     double d2 = ValToFloat(a2->items[i]);
@@ -6359,20 +6483,27 @@ static void SimdFmaArrays(AKSArray *a1, AKSArray *a2, AKSArray *a3,
   }
 }
 
-static void MatrixMulC(int r1, int c1, double *d1, int r2, int c2, double *d2,
+void MatrixMulC(int r1, int c1, double *d1, int r2, int c2, double *d2,
                        double *res) {
+  (void)r2;
   memset(res, 0, r1 * c2 * sizeof(double));
   for (int i = 0; i < r1; i++) {
     for (int k = 0; k < c1; k++) {
       double val1 = d1[i * c1 + k];
       int j = 0;
+#if defined(__AVX2__) || defined(_M_X64)
       __m256d v_val1 = _mm256_set1_pd(val1);
       for (; j <= c2 - 4; j += 4) {
         __m256d v_d2 = _mm256_loadu_pd(&d2[k * c2 + j]);
         __m256d v_res = _mm256_loadu_pd(&res[i * c2 + j]);
+#if defined(__FMA__) || defined(_M_X64)
         v_res = _mm256_fmadd_pd(v_val1, v_d2, v_res);
+#else
+        v_res = _mm256_add_pd(_mm256_mul_pd(v_val1, v_d2), v_res);
+#endif
         _mm256_storeu_pd(&res[i * c2 + j], v_res);
       }
+#endif
       for (; j < c2; j++) {
         res[i * c2 + j] += val1 * d2[k * c2 + j];
       }
@@ -6380,7 +6511,7 @@ static void MatrixMulC(int r1, int c1, double *d1, int r2, int c2, double *d2,
   }
 }
 
-static int MatrixInverseC(int n, double *a, double *res) {
+int MatrixInverseC(int n, double *a, double *res) {
   double *temp = malloc(n * n * sizeof(double));
   memcpy(temp, a, n * n * sizeof(double));
   memset(res, 0, n * n * sizeof(double));
@@ -6429,7 +6560,7 @@ static int MatrixInverseC(int n, double *a, double *res) {
   return 1;
 }
 
-static int MatrixLuC(int n, double *a, double *L, double *U, double *P) {
+int MatrixLuC(int n, double *a, double *L, double *U, double *P) {
   memset(L, 0, n * n * sizeof(double));
   memset(U, 0, n * n * sizeof(double));
   for (int i = 0; i < n; i++)
@@ -6481,7 +6612,7 @@ static int MatrixLuC(int n, double *a, double *L, double *U, double *P) {
   return 1;
 }
 
-static int MatrixCholeskyC(int n, double *a, double *L) {
+int MatrixCholeskyC(int n, double *a, double *L) {
   memset(L, 0, n * n * sizeof(double));
   for (int i = 0; i < n; i++) {
     for (int j = 0; j <= i; j++) {
@@ -6522,7 +6653,7 @@ static void FFTReorder(double *real, double *imag, int n) {
   }
 }
 
-static void FFTC(double *real, double *imag, int n, int inverse) {
+void FFTC(double *real, double *imag, int n, int inverse) {
   FFTReorder(real, imag, n);
   for (int len = 2; len <= n; len <<= 1) {
     double angle = 2.0 * 3.141592653589793 / len * (inverse ? 1.0 : -1.0);
@@ -6555,7 +6686,7 @@ static void FFTC(double *real, double *imag, int n, int inverse) {
   }
 }
 
-static char *BigIntAddC(const char *s1, const char *s2) {
+char *BigIntAddC(const char *s1, const char *s2) {
   int len1 = (int)strlen(s1);
   int len2 = (int)strlen(s2);
   int max_len = len1 > len2 ? len1 : len2;
@@ -6579,7 +6710,7 @@ static char *BigIntAddC(const char *s1, const char *s2) {
   return final_res;
 }
 
-static int BigIntCmpC(const char *s1, const char *s2) {
+int BigIntCmpC(const char *s1, const char *s2) {
   while (*s1 == '0' && *(s1 + 1))
     s1++;
   while (*s2 == '0' && *(s2 + 1))
@@ -6591,7 +6722,7 @@ static int BigIntCmpC(const char *s1, const char *s2) {
   return strcmp(s1, s2);
 }
 
-static char *BigIntSubC(const char *s1, const char *s2) {
+char *BigIntSubC(const char *s1, const char *s2) {
   int len1 = (int)strlen(s1);
   int len2 = (int)strlen(s2);
   char *res = malloc(len1 + 1);
@@ -6617,7 +6748,7 @@ static char *BigIntSubC(const char *s1, const char *s2) {
   return final_res;
 }
 
-static char *BigIntMulC(const char *s1, const char *s2) {
+char *BigIntMulC(const char *s1, const char *s2) {
   int len1 = (int)strlen(s1);
   int len2 = (int)strlen(s2);
   int *temp = calloc(len1 + len2, sizeof(int));
@@ -6646,7 +6777,7 @@ static char *BigIntMulC(const char *s1, const char *s2) {
   return res;
 }
 
-static char *BigIntDivC(const char *s1, const char *s2, char **rem) {
+char *BigIntDivC(const char *s1, const char *s2, char **rem) {
   int len1 = (int)strlen(s1);
   if (strcmp(s2, "0") == 0) {
     *rem = strdup("0");
@@ -6681,10 +6812,76 @@ static char *BigIntDivC(const char *s1, const char *s2, char **rem) {
   return final_q;
 }
 
-static void StructSetFieldNative(AKSStruct *s, const char *fieldname,
+void StructSetFieldNative(AKSStruct *s, const char *fieldname,
                                  AKSValue val);
+#ifndef _WIN32
+int PosixSetConsoleRawMode(int enable);
+/* Small helper outside monolithic ExecuteStdlib so glibc _FORTIFY_SOURCE evaluates open() flags statically cleanly. */
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((noinline))
+#endif
+int AksPosixOpen(const char *path, int flags, int mode) {
+  return (flags & O_CREAT) ? open(path, flags, (mode_t)mode) : open(path, flags);
+}
+#endif
 
-#include "vm_stdlib.inc.c"
+int AksExecuteStdlibFn(VM *vm, VMTask *task, const char *name, int argc,
+                       AKSValue **stacktopptr) {
+  AKSValue *stacktop = *stacktopptr;
+  AKSValue *stacklimit = task->stack + (task->stackcap > 0 ? task->stackcap : MAXSTACK);
+  for (int i = 0; i < vm->registered_natives_count; i++) {
+    if (strcmp(vm->registered_natives[i].name, name) == 0) {
+      typedef AKSValue (*AksNativeFn)(void *vm, int argc, AKSValue *args);
+      AksNativeFn func = (AksNativeFn)vm->registered_natives[i].func;
+      AKSValue *args = malloc(sizeof(AKSValue) * (argc > 0 ? argc : 1));
+      for (int j = argc - 1; j >= 0; j--) {
+        args[j] = StdlibPop(&stacktop);
+      }
+      AKSValue res = func(vm, argc, args);
+      for (int j = 0; j < argc; j++) {
+        ValFree(&args[j]);
+      }
+      free(args);
+      AKS_STDLIB_PUSH(res);
+      *stacktopptr = stacktop;
+      return 1;
+    }
+  }
+  int rc = ExecuteStdlibCore(vm, task, name, argc, stacktopptr);
+  if (rc != 0) return rc;
+  rc = ExecuteStdlibCollections(vm, task, name, argc, stacktopptr);
+  if (rc != 0) return rc;
+  rc = ExecuteStdlibMathSimd(vm, task, name, argc, stacktopptr);
+  if (rc != 0) return rc;
+  rc = ExecuteStdlibCryptoDb(vm, task, name, argc, stacktopptr);
+  if (rc != 0) return rc;
+  rc = ExecuteStdlibAutodiff(vm, task, name, argc, stacktopptr);
+  if (rc != 0) return rc;
+  rc = ExecuteStdlibOsNet(vm, task, name, argc, stacktopptr);
+  if (rc != 0) return rc;
+  return 0;
+}
+
+static int ExecuteStdlib(VM *vm, VMTask *task, const char *name, int argc,
+                         AKSValue **stacktopptr) {
+  return AksExecuteStdlibFn(vm, task, name, argc, stacktopptr);
+}
+
+/* Helper outside #pragma optimize(O0) so glibc FORTIFY evaluates fgets cleanly. */
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((noinline))
+#endif
+static void VmReadStdinLine(char *buf, int cap) {
+  if (!buf || cap <= 0) return;
+  if (!fgets(buf, cap, stdin)) {
+    buf[0] = '\0';
+    return;
+  }
+  size_t len = strlen(buf);
+  while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r')) {
+    buf[--len] = '\0';
+  }
+}
 
 typedef int (*FastBuiltinFn)(VM *vm, VMTask *task, int argc, AKSValue **stacktopptr);
 
@@ -7104,7 +7301,6 @@ static int ChkopOverload(VM *vm, VMTask *task, uint8_t **ipptr,
   AKSValue *stacktop = *stacktopptr;
   if (stacktop - task->stack < 2)
     return 0;
-  AKSValue b = stacktop[-1];
   AKSValue a = stacktop[-2];
   if (ValKind(a) == VALSTRUCT && ValToObj(a)) {
     int ovidx = -1;
@@ -7181,8 +7377,10 @@ static int ChkopOverload(VM *vm, VMTask *task, uint8_t **ipptr,
 #elif defined(__GNUC__)
 #pragma GCC optimize("O0")
 #endif
+#ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 4065)
+#endif
 int RunTaskSlice(VM *vm, VMTask *task, int maxinstructions) {
   CallFrame *frame = &task->frames[task->framecount - 1];
   uint8_t *ip = frame->ip;
@@ -7195,7 +7393,6 @@ int RunTaskSlice(VM *vm, VMTask *task, int maxinstructions) {
    * in registers throughout the dispatch loop rather than reloading from
    * the VM struct pointer on every instruction. */
   const int strict_ovf = vm->strict_ovf;
-  const int no_bounds_check = vm->no_bounds_check;
 
   /* Growable frame-array: save/restore frame ptr around FrameEnsure. */
 #define FRAME_GROW() do { \
@@ -7339,16 +7536,16 @@ enter_register_interpreter:
       &&do_regopwriteln,   &&do_regopinputstr,    &&do_regopprintrepl,
       &&do_regoptypeof,    &&do_regopclonestruct, &&do_regopcastint,
       &&do_regopcastfloat, &&do_regopcastbool,    &&do_regopcaststr};
-  curr_inst = regip++;
-  goto *reg_dispatch_table[curr_inst->op];
-}
-while (0)
+#define REG_DISPATCH() do { \
+    curr_inst = regip++; \
+    goto *reg_dispatch_table[curr_inst->op]; \
+} while (0)
 #else
 #define REG_DISPATCH() goto reg_dispatch_switch;
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
-#define REG_DISPATCH_OR_BREAK() REG_DISPATCH()
+#define REG_DISPATCH_OR_BREAK() goto enter_register_interpreter_loop
 #else
 #define REG_DISPATCH_OR_BREAK() break
 #endif
@@ -7606,6 +7803,10 @@ while (0)
       }
       ValFree(&frameslots[curr_inst->dst]);
       if (found >= 0) {
+        if (vm->sanitize_thread) {
+          int ln = (frame->fn && frame->fn->chunk.lines && ipoffset >= 0 && ipoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[ipoffset] : 0;
+          AksSanRecordAccess(vm, task, (uintptr_t)&vm->globals[found], vm->globals[found].name, 0, ln);
+        }
         frameslots[curr_inst->dst] = ValCopy(vm->globals[found].val);
       } else {
         frameslots[curr_inst->dst] = ValNull();
@@ -7641,13 +7842,22 @@ while (0)
         }
       }
       if (found >= 0) {
+        if (vm->sanitize_thread) {
+          int ln = (frame->fn && frame->fn->chunk.lines && ipoffset >= 0 && ipoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[ipoffset] : 0;
+          AksSanRecordAccess(vm, task, (uintptr_t)&vm->globals[found], vm->globals[found].name, 1, ln);
+        }
         ValFree(&vm->globals[found].val);
         vm->globals[found].val = val;
       } else {
         if (vm->globalcount < MAXGLOBALS) {
-          vm->globals[vm->globalcount].name = strdup(name);
-          vm->globals[vm->globalcount].val = val;
+          int new_idx = vm->globalcount;
+          vm->globals[new_idx].name = strdup(name);
+          vm->globals[new_idx].val = val;
           vm->globalcount++;
+          if (vm->sanitize_thread) {
+            int ln = (frame->fn && frame->fn->chunk.lines && ipoffset >= 0 && ipoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[ipoffset] : 0;
+            AksSanRecordAccess(vm, task, (uintptr_t)&vm->globals[new_idx], vm->globals[new_idx].name, 1, ln);
+          }
         } else {
           fprintf(stderr, "Runtime error: global variable capacity exceeded (%d)\n", MAXGLOBALS);
           ValFree(&val);
@@ -9012,7 +9222,8 @@ while (0)
       AKSValue arrval = frameslots[curr_inst->src1];
       AKSValue idxval = frameslots[curr_inst->src2];
       /* Fast path: array[int] read */
-      if (ValIsArr(arrval) & ValIsInt(idxval)) {
+      if (!vm->sanitize_address && !vm->sanitize_thread &&
+          (ValIsArr(arrval) & ValIsInt(idxval))) {
         AKSArray *arr = ValToArr(arrval);
         int64_t idx = ValToIntUnchecked(idxval);
         if ((uint64_t)idx < (uint64_t)arr->count) {
@@ -9048,6 +9259,13 @@ while (0)
                &ip, &stacktop, &frame, &frameslots);
         continue;
       }
+      if (vm->sanitize_address && !AksSanCheckObjAsan(vm, arrval, "array read",
+          (frame->fn && frame->fn->chunk.lines && curr_inst->bytecodeoffset >= 0 && curr_inst->bytecodeoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[curr_inst->bytecodeoffset] : 0)) {
+        RaiseX(vm,
+               "UseAfterFreeError: [AddressSanitizer] attempt to use freed/quarantined object",
+               &ip, &stacktop, &frame, &frameslots);
+        continue;
+      }
       if (ValIsInvalidated(arrval)) {
         RaiseX(vm,
                "UseAfterFreeError: attempt to use an explicitly "
@@ -9061,15 +9279,23 @@ while (0)
         int64_t idx = ValToInt(idxval);
         int64_t orig_idx = idx;
         if (idx < 0) idx += ValToArr(arrval)->count;
-        if (!vm->no_bounds_check) {
+        if (!vm->no_bounds_check || vm->sanitize_address) {
           if (idx < 0 || idx >= ValToArr(arrval)->count) {
             char buf[128];
             snprintf(buf, sizeof(buf),
                      "Array index out of bounds: index %lld, size %d",
                      (long long)orig_idx, ValToArr(arrval)->count);
+            if (vm->sanitize_address) {
+              int ln = (frame->fn && frame->fn->chunk.lines && curr_inst->bytecodeoffset >= 0 && curr_inst->bytecodeoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[curr_inst->bytecodeoffset] : 0;
+              AksSanReportAsanError(vm, "heap-buffer-overflow", buf, ln);
+            }
             RaiseX(vm, buf, &ip, &stacktop, &frame, &frameslots);
             continue;
           }
+        }
+        if (vm->sanitize_thread) {
+          int ln = (frame->fn && frame->fn->chunk.lines && curr_inst->bytecodeoffset >= 0 && curr_inst->bytecodeoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[curr_inst->bytecodeoffset] : 0;
+          AksSanRecordAccess(vm, task, (uintptr_t)ValToArr(arrval), "array", 0, ln);
         }
         if (idx < 0)
           idx = 0;
@@ -9133,7 +9359,8 @@ while (0)
       AKSValue idxval = frameslots[curr_inst->src1];
       AKSValue val_src = frameslots[curr_inst->src2];
       /* Fast path: array[int] = primitive write */
-      if (ValIsArr(arrval) & ValIsInt(idxval) & ValIsPrimitive(val_src)) {
+      if (!vm->sanitize_address && !vm->sanitize_thread &&
+          (ValIsArr(arrval) & ValIsInt(idxval) & ValIsPrimitive(val_src))) {
         AKSArray *arr = ValToArr(arrval);
         int64_t idx = ValToIntUnchecked(idxval);
         if ((uint64_t)idx < (uint64_t)arr->count) {
@@ -9158,6 +9385,14 @@ while (0)
                &ip, &stacktop, &frame, &frameslots);
         continue;
       }
+      if (vm->sanitize_address && !AksSanCheckObjAsan(vm, arrval, "array write",
+          (frame->fn && frame->fn->chunk.lines && curr_inst->bytecodeoffset >= 0 && curr_inst->bytecodeoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[curr_inst->bytecodeoffset] : 0)) {
+        ValFree(&val);
+        RaiseX(vm,
+               "UseAfterFreeError: [AddressSanitizer] attempt to write freed/quarantined object",
+               &ip, &stacktop, &frame, &frameslots);
+        continue;
+      }
       if (ValIsInvalidated(arrval)) {
         ValFree(&val);
         RaiseX(vm,
@@ -9175,16 +9410,24 @@ while (0)
 
       if (ValKind(arrval) == VALARR && ValKind(idxval) == VALINT) {
         int64_t idx = ValToInt(idxval);
-        if (!vm->no_bounds_check) {
+        if (!vm->no_bounds_check || vm->sanitize_address) {
           if (idx < 0 || idx >= ValToArr(arrval)->count) {
             char buf[128];
             snprintf(buf, sizeof(buf),
                      "Array index out of bounds: index %lld, size %d",
                      (long long)idx, ValToArr(arrval)->count);
+            if (vm->sanitize_address) {
+              int ln = (frame->fn && frame->fn->chunk.lines && curr_inst->bytecodeoffset >= 0 && curr_inst->bytecodeoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[curr_inst->bytecodeoffset] : 0;
+              AksSanReportAsanError(vm, "heap-buffer-overflow", buf, ln);
+            }
             ValFree(&val);
             RaiseX(vm, buf, &ip, &stacktop, &frame, &frameslots);
             continue;
           }
+        }
+        if (vm->sanitize_thread) {
+          int ln = (frame->fn && frame->fn->chunk.lines && curr_inst->bytecodeoffset >= 0 && curr_inst->bytecodeoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[curr_inst->bytecodeoffset] : 0;
+          AksSanRecordAccess(vm, task, (uintptr_t)ValToArr(arrval), "array", 1, ln);
         }
         if (idx >= 0 && idx < ValToArr(arrval)->count) {
           if (!ValIsPrimitive(ValToArr(arrval)->items[idx])) {
@@ -9259,6 +9502,13 @@ while (0)
                &ip, &stacktop, &frame, &frameslots);
         continue;
       }
+      if (vm->sanitize_address && !AksSanCheckObjAsan(vm, objval, "field read",
+          (frame->fn && frame->fn->chunk.lines && curr_inst->bytecodeoffset >= 0 && curr_inst->bytecodeoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[curr_inst->bytecodeoffset] : 0)) {
+        RaiseX(vm,
+               "UseAfterFreeError: [AddressSanitizer] attempt to read field on freed/quarantined object",
+               &ip, &stacktop, &frame, &frameslots);
+        continue;
+      }
       if (ValIsInvalidated(objval)) {
         RaiseX(vm,
                "UseAfterFreeError: attempt to use an explicitly "
@@ -9269,6 +9519,10 @@ while (0)
       if (ValKind(objval) == VALARR) {
         const char *mname = curr_inst->fieldname;
         if (strcmp(mname, "len") == 0) {
+          if (vm->sanitize_thread) {
+            int ln = (frame->fn && frame->fn->chunk.lines && curr_inst->bytecodeoffset >= 0 && curr_inst->bytecodeoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[curr_inst->bytecodeoffset] : 0;
+            AksSanRecordAccess(vm, task, (uintptr_t)ValToArr(objval), "array", 0, ln);
+          }
           ValFree(&frameslots[dst]);
           frameslots[dst] = ValInt(ValToArr(objval)->count);
           REG_DISPATCH_OR_BREAK();
@@ -9281,6 +9535,10 @@ while (0)
       }
 
       AKSStruct *s = ValToObj(objval);
+      if (vm->sanitize_thread) {
+        int ln = (frame->fn && frame->fn->chunk.lines && curr_inst->bytecodeoffset >= 0 && curr_inst->bytecodeoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[curr_inst->bytecodeoffset] : 0;
+        AksSanRecordAccess(vm, task, (uintptr_t)s, "struct", 0, ln);
+      }
       int found = -1;
       RegInst *actual_inst = (RegInst *)frame->fn->regcode +
                              (regip - 1 - (RegInst *)frame->fn->regcode);
@@ -9322,7 +9580,9 @@ while (0)
         }
       } else {
         AKSValue swiz_val;
-        if (TryExtractSwizzle(s, curr_inst->fieldname, &swiz_val)) {
+        if (TryResolveVtableField(vm, objval, s, curr_inst->fieldname, &res)) {
+          /* resolved via $vtable_<Trait> */
+        } else if (TryExtractSwizzle(s, curr_inst->fieldname, &swiz_val)) {
           res = swiz_val;
         } else {
           int has_type_method = 0;
@@ -9370,6 +9630,14 @@ while (0)
                &ip, &stacktop, &frame, &frameslots);
         continue;
       }
+      if (vm->sanitize_address && !AksSanCheckObjAsan(vm, objval, "field write",
+          (frame->fn && frame->fn->chunk.lines && curr_inst->bytecodeoffset >= 0 && curr_inst->bytecodeoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[curr_inst->bytecodeoffset] : 0)) {
+        ValFree(&val);
+        RaiseX(vm,
+               "UseAfterFreeError: [AddressSanitizer] attempt to write field on freed/quarantined object",
+               &ip, &stacktop, &frame, &frameslots);
+        continue;
+      }
       if (ValIsInvalidated(objval)) {
         ValFree(&val);
         RaiseX(vm,
@@ -9386,6 +9654,10 @@ while (0)
       }
 
       AKSStruct *s = ValToObj(objval);
+      if (vm->sanitize_thread) {
+        int ln = (frame->fn && frame->fn->chunk.lines && curr_inst->bytecodeoffset >= 0 && curr_inst->bytecodeoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[curr_inst->bytecodeoffset] : 0;
+        AksSanRecordAccess(vm, task, (uintptr_t)s, "struct", 1, ln);
+      }
       int found = -1;
       RegInst *actual_inst = (RegInst *)frame->fn->regcode +
                              (regip - 1 - (RegInst *)frame->fn->regcode);
@@ -9885,6 +10157,7 @@ while (0)
         spawned->stack[i] = args[i];
       }
 
+      if (vm->sanitize_thread) AksSanOnSpawn(vm, task, spawned);
       int targetworker = rand() % vm->workercount;
       WorkerPushTail(&vm->workers[targetworker], spawned);
 
@@ -9924,6 +10197,7 @@ while (0)
         }
         ValFree(&frameslots[curr_inst->dst]);
         frameslots[curr_inst->dst] = ValCopy(target->result);
+        if (vm->sanitize_thread) AksSanOnAwait(vm, task, target);
         MutexUnlockNative(vm->globallock);
         ValFree(&taskval);
       } else {
@@ -10427,17 +10701,9 @@ while (0)
         fflush(stdout);
       }
       char buf[1024];
-      if (fgets(buf, sizeof(buf), stdin)) {
-        size_t len = strlen(buf);
-        while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r')) {
-          buf[--len] = '\0';
-        }
-        ValFree(&frameslots[curr_inst->dst]);
-        frameslots[curr_inst->dst] = ValStr(buf);
-      } else {
-        ValFree(&frameslots[curr_inst->dst]);
-        frameslots[curr_inst->dst] = ValStr("");
-      }
+      VmReadStdinLine(buf, (int)sizeof(buf));
+      ValFree(&frameslots[curr_inst->dst]);
+      frameslots[curr_inst->dst] = ValStr(buf);
       REG_DISPATCH_FAST();
     }
 
@@ -10559,9 +10825,11 @@ enter_stack_interpreter: for (;;) {
   uint8_t op = READBYTE();
   if (vm->profilingmode)
     vm->instructioncounters[op]++;
+#ifdef _MSC_VER
   // op is always a byte - __assume lets MSVC drop the range guard on the switch
   // table
   __assume(op < 256);
+#endif
 
   switch (op) {
   case OPHALT:
@@ -10705,11 +10973,15 @@ enter_stack_interpreter: for (;;) {
     }
 
     if (found >= 0) {
+      if (vm->sanitize_thread) {
+        int ln = (frame->fn && frame->fn->chunk.lines && ipoffset >= 0 && ipoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[ipoffset] : 0;
+        AksSanRecordAccess(vm, task, (uintptr_t)&vm->globals[found], vm->globals[found].name, 0, ln);
+      }
       PUSH(ValCopy(vm->globals[found].val));
     } else {
       int fn_found = -1;
       for (uint16_t k = 0; k < vm->fncount; k++) {
-        if (vm->fns[k] && vm->fns[k]->name && strcmp(vm->fns[k]->name, name) == 0) {
+        if (vm->fns[k] && vm->fns[k]->name[0] && strcmp(vm->fns[k]->name, name) == 0) {
           PUSH(ValFn(k));
           fn_found = 1;
           break;
@@ -10766,6 +11038,10 @@ enter_stack_interpreter: for (;;) {
     }
 
     if (found >= 0) {
+      if (vm->sanitize_thread) {
+        int ln = (frame->fn && frame->fn->chunk.lines && ipoffset >= 0 && ipoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[ipoffset] : 0;
+        AksSanRecordAccess(vm, task, (uintptr_t)&vm->globals[found], vm->globals[found].name, 1, ln);
+      }
       ValFree(&vm->globals[found].val);
       vm->globals[found].val = val;
     } else {
@@ -10774,19 +11050,26 @@ enter_stack_interpreter: for (;;) {
         ValFree(&val);
         return 0;
       }
-      vm->globals[vm->globalcount].name = strdup(name);
-      vm->globals[vm->globalcount].val = val;
+      int new_idx = vm->globalcount;
+      vm->globals[new_idx].name = strdup(name);
+      vm->globals[new_idx].val = val;
       if (frame->fn->chunk.globalcache) {
-        frame->fn->chunk.globalcache[ipoffset] = vm->globalcount;
+        frame->fn->chunk.globalcache[ipoffset] = new_idx;
       }
       vm->globalcount++;
+      if (vm->sanitize_thread) {
+        int ln = (frame->fn && frame->fn->chunk.lines && ipoffset >= 0 && ipoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[ipoffset] : 0;
+        AksSanRecordAccess(vm, task, (uintptr_t)&vm->globals[new_idx], vm->globals[new_idx].name, 1, ln);
+      }
     }
     break;
   }
 
-  case OPDUP:
-    PUSH(ValCopy(*(stacktop - 1)));
+  case OPDUP: {
+    AKSValue top = *(stacktop - 1);
+    PUSH(ValCopy(top));
     break;
+  }
 
   case OPPOP: {
     AKSValue val = POP();
@@ -10815,13 +11098,7 @@ enter_stack_interpreter: for (;;) {
       fflush(stdout);
     }
     char buf[1024];
-    if (!fgets(buf, sizeof(buf), stdin)) {
-      buf[0] = '\0';
-    }
-    size_t len = strlen(buf);
-    while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r')) {
-      buf[--len] = '\0';
-    }
+    VmReadStdinLine(buf, (int)sizeof(buf));
     PUSH(ValStr(buf));
     break;
   }
@@ -12485,7 +12762,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPARRGET: {
-    if (stacktop - task->stack >= 2) {
+    if (!vm->sanitize_address && !vm->sanitize_thread &&
+        stacktop - task->stack >= 2) {
       AKSValue arrval = stacktop[-2];
       AKSValue idxval = stacktop[-1];
       if ((ValKind(arrval) == VALARR || ValKind(arrval) == VALTUPLE) && ValIsInt(idxval) && !ValIsInvalidated(arrval)) {
@@ -12510,6 +12788,15 @@ enter_stack_interpreter: for (;;) {
              &ip, &stacktop, &frame, &frameslots);
       continue;
     }
+    if (vm->sanitize_address && !AksSanCheckObjAsan(vm, arrval, "array read",
+        (frame->fn && frame->fn->chunk.lines) ? frame->fn->chunk.lines[(int)(ip - 1 - frame->fn->chunk.code)] : 0)) {
+      ValFree(&idxval);
+      ValFree(&arrval);
+      RaiseX(vm,
+             "UseAfterFreeError: [AddressSanitizer] attempt to read freed/quarantined array",
+             &ip, &stacktop, &frame, &frameslots);
+      continue;
+    }
     if (ValIsInvalidated(arrval)) {
       ValFree(&idxval);
       ValFree(&arrval);
@@ -12524,17 +12811,27 @@ enter_stack_interpreter: for (;;) {
       int64_t idx = ValToInt(idxval);
       int64_t orig_idx = idx;
       if (idx < 0) idx += ValToArr(arrval)->count;
-      if (!vm->no_bounds_check) {
+      if (!vm->no_bounds_check || vm->sanitize_address) {
         if (idx < 0 || idx >= ValToArr(arrval)->count) {
           char buf[128];
           snprintf(buf, sizeof(buf),
                    "Array index out of bounds: index %lld, size %d",
                    (long long)orig_idx, ValToArr(arrval)->count);
+          if (vm->sanitize_address) {
+            int off = (int)(ip - 1 - frame->fn->chunk.code);
+            int ln = (frame->fn && frame->fn->chunk.lines && off >= 0 && off < frame->fn->chunk.count) ? frame->fn->chunk.lines[off] : 0;
+            AksSanReportAsanError(vm, "heap-buffer-overflow", buf, ln);
+          }
           ValFree(&idxval);
           ValFree(&arrval);
           RaiseX(vm, buf, &ip, &stacktop, &frame, &frameslots);
           continue;
         }
+      }
+      if (vm->sanitize_thread) {
+        int off = (int)(ip - 1 - frame->fn->chunk.code);
+        int ln = (frame->fn && frame->fn->chunk.lines && off >= 0 && off < frame->fn->chunk.count) ? frame->fn->chunk.lines[off] : 0;
+        AksSanRecordAccess(vm, task, (uintptr_t)ValToArr(arrval), "array", 0, ln);
       }
       if (idx < 0)
         idx = 0;
@@ -12685,7 +12982,8 @@ enter_stack_interpreter: for (;;) {
   }
 
   case OPARRSET: {
-    if (stacktop - task->stack >= 3) {
+    if (!vm->sanitize_address && !vm->sanitize_thread &&
+        stacktop - task->stack >= 3) {
       AKSValue val = stacktop[-3];
       AKSValue arrval = stacktop[-2];
       AKSValue idxval = stacktop[-1];
@@ -12713,6 +13011,16 @@ enter_stack_interpreter: for (;;) {
              &ip, &stacktop, &frame, &frameslots);
       continue;
     }
+    if (vm->sanitize_address && !AksSanCheckObjAsan(vm, arrval, "array write",
+        (frame->fn && frame->fn->chunk.lines) ? frame->fn->chunk.lines[(int)(ip - 1 - frame->fn->chunk.code)] : 0)) {
+      ValFree(&idxval);
+      ValFree(&arrval);
+      ValFree(&val);
+      RaiseX(vm,
+             "UseAfterFreeError: [AddressSanitizer] attempt to write freed/quarantined array",
+             &ip, &stacktop, &frame, &frameslots);
+      continue;
+    }
     if (ValIsInvalidated(arrval)) {
       ValFree(&idxval);
       ValFree(&arrval);
@@ -12733,18 +13041,28 @@ enter_stack_interpreter: for (;;) {
     }
     if (ValKind(arrval) == VALARR && ValKind(idxval) == VALINT) {
       int64_t idx = ValToInt(idxval);
-      if (!vm->no_bounds_check) {
+      if (!vm->no_bounds_check || vm->sanitize_address) {
         if (idx < 0 || idx >= ValToArr(arrval)->count) {
           char buf[128];
           snprintf(buf, sizeof(buf),
                    "Array index out of bounds: index %lld, size %d",
                    (long long)idx, ValToArr(arrval)->count);
+          if (vm->sanitize_address) {
+            int off = (int)(ip - 1 - frame->fn->chunk.code);
+            int ln = (frame->fn && frame->fn->chunk.lines && off >= 0 && off < frame->fn->chunk.count) ? frame->fn->chunk.lines[off] : 0;
+            AksSanReportAsanError(vm, "heap-buffer-overflow", buf, ln);
+          }
           ValFree(&idxval);
           ValFree(&arrval);
           ValFree(&val);
           RaiseX(vm, buf, &ip, &stacktop, &frame, &frameslots);
           continue;
         }
+      }
+      if (vm->sanitize_thread) {
+        int off = (int)(ip - 1 - frame->fn->chunk.code);
+        int ln = (frame->fn && frame->fn->chunk.lines && off >= 0 && off < frame->fn->chunk.count) ? frame->fn->chunk.lines[off] : 0;
+        AksSanRecordAccess(vm, task, (uintptr_t)ValToArr(arrval), "array", 1, ln);
       }
       if (idx >= 0 && idx < ValToArr(arrval)->count) {
         ValFree(&ValToArr(arrval)->items[idx]);
@@ -12809,6 +13127,14 @@ enter_stack_interpreter: for (;;) {
              &ip, &stacktop, &frame, &frameslots);
       continue;
     }
+    if (vm->sanitize_address && !AksSanCheckObjAsan(vm, objval, "field read",
+        (frame->fn && frame->fn->chunk.lines && ipoffset >= 0 && ipoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[ipoffset] : 0)) {
+      ValFree(&objval);
+      RaiseX(vm,
+             "UseAfterFreeError: [AddressSanitizer] attempt to read field on freed/quarantined struct",
+             &ip, &stacktop, &frame, &frameslots);
+      continue;
+    }
     if (ValIsInvalidated(objval)) {
       ValFree(&objval);
       RaiseX(vm,
@@ -12824,6 +13150,10 @@ enter_stack_interpreter: for (;;) {
       continue;
     }
     AKSStruct *s = ValToObj(objval);
+    if (vm->sanitize_thread) {
+      int ln = (frame->fn && frame->fn->chunk.lines && ipoffset >= 0 && ipoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[ipoffset] : 0;
+      AksSanRecordAccess(vm, task, (uintptr_t)s, "struct", 0, ln);
+    }
     int found = -1;
     // inline field cache: try cached index first
     if (frame->fn->chunk.fieldcache && ipoffset >= 0) {
@@ -12915,24 +13245,29 @@ enter_stack_interpreter: for (;;) {
         }
       }
       if (!is_swizzle) {
-        int has_type_method = 0;
-        if (s->typename) {
-          has_type_method = (FindTypeMethod(vm, s->typename, fieldname) != 65535);
-        }
-        if (has_type_method) {
-          PUSH(ValBoundmethod(objval, fieldname));
+        AKSValue vt_val;
+        if (TryResolveVtableField(vm, objval, s, fieldname, &vt_val)) {
+          PUSH(vt_val);
         } else {
-          int mmfound = -1;
-          for (int i = 0; i < s->fieldcount; i++) {
-            if (strcmp(s->fieldnames[i], "methodmissing") == 0) {
-              mmfound = i;
-              break;
-            }
+          int has_type_method = 0;
+          if (s->typename) {
+            has_type_method = (FindTypeMethod(vm, s->typename, fieldname) != 65535);
           }
-          if (mmfound >= 0) {
+          if (has_type_method) {
             PUSH(ValBoundmethod(objval, fieldname));
           } else {
-            PUSH(ValNull());
+            int mmfound = -1;
+            for (int i = 0; i < s->fieldcount; i++) {
+              if (strcmp(s->fieldnames[i], "methodmissing") == 0) {
+                mmfound = i;
+                break;
+              }
+            }
+            if (mmfound >= 0) {
+              PUSH(ValBoundmethod(objval, fieldname));
+            } else {
+              PUSH(ValNull());
+            }
           }
         }
       }
@@ -12954,6 +13289,15 @@ enter_stack_interpreter: for (;;) {
              &ip, &stacktop, &frame, &frameslots);
       continue;
     }
+    if (vm->sanitize_address && !AksSanCheckObjAsan(vm, objval, "field write",
+        (frame->fn && frame->fn->chunk.lines && sfipoffset >= 0 && sfipoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[sfipoffset] : 0)) {
+      ValFree(&objval);
+      ValFree(&val);
+      RaiseX(vm,
+             "UseAfterFreeError: [AddressSanitizer] attempt to write field on freed/quarantined struct",
+             &ip, &stacktop, &frame, &frameslots);
+      continue;
+    }
     if (ValIsInvalidated(objval)) {
       ValFree(&objval);
       ValFree(&val);
@@ -12971,6 +13315,10 @@ enter_stack_interpreter: for (;;) {
       continue;
     }
     AKSStruct *s = ValToObj(objval);
+    if (vm->sanitize_thread) {
+      int ln = (frame->fn && frame->fn->chunk.lines && sfipoffset >= 0 && sfipoffset < frame->fn->chunk.count) ? frame->fn->chunk.lines[sfipoffset] : 0;
+      AksSanRecordAccess(vm, task, (uintptr_t)s, "struct", 1, ln);
+    }
     int found = -1;
     // inline field cache: try cached index first
     if (frame->fn->chunk.fieldcache && sfipoffset >= 0) {
@@ -13118,7 +13466,7 @@ enter_stack_interpreter: for (;;) {
       }
       ip += offset;
     } else {
-      POP();
+      --stacktop;
     }
     break;
   }
@@ -13222,6 +13570,7 @@ enter_stack_interpreter: for (;;) {
       ValFree(&spawned->stack[i]);
       spawned->stack[i] = args[i];
     }
+    if (vm->sanitize_thread) AksSanOnSpawn(vm, task, spawned);
     int targetworker = rand() % vm->workercount;
     WorkerPushTail(&vm->workers[targetworker], spawned);
     PUSH(ValTask(spawned));
@@ -13503,6 +13852,7 @@ enter_stack_interpreter: for (;;) {
         continue;
       }
       PUSH(ValCopy(target->result));
+      if (vm->sanitize_thread) AksSanOnAwait(vm, task, target);
       MutexUnlockNative(vm->globallock);
       VMRemoveTimer(vm, task);
       ValFree(&taskval);
@@ -13642,7 +13992,9 @@ enter_stack_interpreter: for (;;) {
 }
 return 0;
 }
+#ifdef _MSC_VER
 #pragma warning(pop)
+#endif
 #if defined(_MSC_VER)
 #pragma optimize("", on)
 #elif defined(__clang__)
@@ -13655,7 +14007,7 @@ return 0;
 #undef DispatchStdlib
 #undef FRAME_GROW
 #undef STACK_GROW
-static void StructSetFieldNative(AKSStruct *s, const char *fieldname,
+void StructSetFieldNative(AKSStruct *s, const char *fieldname,
                                  AKSValue val) {
   int found = -1;
   for (int i = 0; i < s->fieldcount; i++) {
@@ -13676,7 +14028,7 @@ static void StructSetFieldNative(AKSStruct *s, const char *fieldname,
   }
 }
 
-static void TriggerPanic(VM *vm, VMTask *task, const char *msg,
+void TriggerPanic(VM *vm, VMTask *task, const char *msg,
                          uint8_t **ipptr) {
   if (vm->panic_hook != 0 && vm->panic_hook != ValNull()) {
     AKSValue backtrace_arr = ValArr(task->framecount);
@@ -13923,11 +14275,21 @@ int VMRun(VM *vm) {
     SleepMs(1);
   }
   int success = (vm->maintask->state == 3 && !vm->shouldterminate);
-  if (vm->sanitize_address && success) {
-    printf("[AddressSanitizer] Execution clean: 0 heap corruptions, 0 buffer overflows detected.\n");
+  if (vm->sanitize_address) {
+    if (vm->san_error_count > 0) {
+      fprintf(stderr, "[AddressSanitizer] SUMMARY: AddressSanitizer: %d error(s) detected.\n", vm->san_error_count);
+      success = 0;
+    } else if (success) {
+      printf("[AddressSanitizer] Execution clean: 0 heap corruptions, 0 buffer overflows detected.\n");
+    }
   }
-  if (vm->sanitize_thread && success) {
-    printf("[ThreadSanitizer] Concurrency clean: 0 data races detected across active tasks.\n");
+  if (vm->sanitize_thread) {
+    if (vm->san_error_count > 0) {
+      fprintf(stderr, "[ThreadSanitizer] SUMMARY: ThreadSanitizer: %d error(s)/data race(s) detected.\n", vm->san_error_count);
+      success = 0;
+    } else if (success) {
+      printf("[ThreadSanitizer] Concurrency clean: 0 data races detected across active tasks.\n");
+    }
   }
   return success;
 }
@@ -13988,9 +14350,8 @@ void VMSync(VM *vm, Compiler *c, int syncmain) {
   for (int i = vm->fncount; i < c->fncount; i++) {
     FnProto *srcfn = c->fns[i];
     FnProto *destfn = calloc(1, sizeof(FnProto));
-    strncpy(destfn->name, srcfn->name, 127);
-    strncpy(destfn->file_name, srcfn->file_name, sizeof(destfn->file_name) - 1);
-    destfn->file_name[sizeof(destfn->file_name) - 1] = '\0';
+    snprintf(destfn->name, sizeof(destfn->name), "%s", srcfn->name);
+    snprintf(destfn->file_name, sizeof(destfn->file_name), "%s", srcfn->file_name);
     destfn->id = srcfn->id;
     destfn->paramcount = srcfn->paramcount;
     destfn->localcount = srcfn->localcount;
@@ -14177,3 +14538,18 @@ const char *StackOpName(int op) {
     return "UNKNOWN";
   }
 }
+
+#ifndef _WIN32
+#include <termios.h>
+/* Keep <termios.h> baud macros (B0, etc.) isolated at EOF after math code. */
+int PosixSetConsoleRawMode(int enable) {
+  struct termios tty;
+  if (tcgetattr(STDIN_FILENO, &tty) != 0)
+    return 0;
+  if (enable)
+    tty.c_lflag &= (tcflag_t)~(ECHO | ICANON | ISIG);
+  else
+    tty.c_lflag |= (tcflag_t)(ECHO | ICANON | ISIG);
+  return tcsetattr(STDIN_FILENO, TCSANOW, &tty) == 0 ? 1 : 0;
+}
+#endif

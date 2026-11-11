@@ -12,6 +12,10 @@
 #pragma comment(lib, "dbghelp.lib")
 #else
 #include <pthread.h>
+#include <dirent.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 #endif
 
 #include "lexer.h"
@@ -261,37 +265,40 @@ static void RunRepl(void) {
             printf("\033[1;33mCompiled Functions (%d total):\033[0m\n", vm->fncount);
             for (int fi = 0; fi < vm->fncount; fi++) {
                 FnProto *fn = vm->fns[fi];
-                if (fn && fn->name && fn->name[0]) {
+                if (fn && fn->name[0]) {
                     printf("  \033[1;36mfn %s\033[0m(params: %d, locals: %d)\n", fn->name, fn->paramcount, fn->localcount);
                 }
             }
             continue;
         }
+        const char *lstart = linebuffer;
+        while (*lstart == ' ' || *lstart == '\t') lstart++;
         int time_execution = 0;
-        if (strncmp(trimmed, ":time ", 6) == 0) {
-            const char *stmt = linebuffer;
-            while (*stmt && *stmt != ' ') stmt++;
-            while (*stmt == ' ') stmt++;
-            strncpy(linebuffer, stmt, sizeof(linebuffer) - 1);
-            linebuffer[sizeof(linebuffer) - 1] = '\0';
+        if (strncmp(lstart, ":time ", 6) == 0 || strncmp(lstart, ":time\t", 6) == 0) {
+            const char *stmt = lstart + 5;
+            while (*stmt == ' ' || *stmt == '\t') stmt++;
+            size_t slen = strlen(stmt);
+            memmove(linebuffer, stmt, slen + 1);
             time_execution = 1;
-        } else if (strncmp(trimmed, ":type ", 6) == 0 || strncmp(trimmed, ":t ", 3) == 0) {
-            const char *expr = linebuffer;
-            while (*expr && *expr != ' ') expr++;
-            while (*expr == ' ') expr++;
+        } else if (strncmp(lstart, ":type ", 6) == 0 || strncmp(lstart, ":t ", 3) == 0) {
+            const char *expr = lstart + (lstart[2] == ' ' ? 2 : 5);
+            while (*expr == ' ' || *expr == '\t') expr++;
             char wrap[1024];
-            snprintf(wrap, sizeof(wrap), "println(type(%s));\n", expr);
-            strncpy(linebuffer, wrap, sizeof(linebuffer) - 1);
-            linebuffer[sizeof(linebuffer) - 1] = '\0';
+            char clean_expr[960];
+            snprintf(clean_expr, sizeof(clean_expr), "%s", expr);
+            size_t clen = strlen(clean_expr);
+            while (clen > 0 && (clean_expr[clen - 1] == '\r' || clean_expr[clen - 1] == '\n' || clean_expr[clen - 1] == ';')) {
+                clean_expr[--clen] = '\0';
+            }
+            snprintf(wrap, sizeof(wrap), "println(type(%s));\n", clean_expr);
+            snprintf(linebuffer, sizeof(linebuffer), "%s", wrap);
         }
 
-        if (strncmp(trimmed, ":doc ", 5) == 0) {
-            const char *topic = linebuffer;
-            while (*topic && *topic != ' ') topic++;
-            while (*topic == ' ') topic++;
+        if (strncmp(lstart, ":doc ", 5) == 0) {
+            const char *topic = lstart + 5;
+            while (*topic == ' ' || *topic == '\t') topic++;
             char clean_topic[256];
-            strncpy(clean_topic, topic, sizeof(clean_topic) - 1);
-            clean_topic[sizeof(clean_topic) - 1] = '\0';
+            snprintf(clean_topic, sizeof(clean_topic), "%s", topic);
             for (int ci = 0; clean_topic[ci]; ci++) {
                 if (clean_topic[ci] == '\r' || clean_topic[ci] == '\n') clean_topic[ci] = '\0';
             }
@@ -299,10 +306,9 @@ static void RunRepl(void) {
             continue;
         }
 
-        if (strncmp(trimmed, ":load ", 6) == 0) {
-            const char *filepath = linebuffer;
-            while (*filepath && *filepath != ' ') filepath++;
-            while (*filepath == ' ') filepath++;
+        if (strncmp(lstart, ":load ", 6) == 0) {
+            const char *filepath = lstart + 6;
+            while (*filepath == ' ' || *filepath == '\t') filepath++;
             char clean_path[512];
             strncpy(clean_path, filepath, sizeof(clean_path) - 1);
             clean_path[sizeof(clean_path) - 1] = '\0';
@@ -420,15 +426,21 @@ static void RunRepl(void) {
             LARGE_INTEGER t_freq, t_0, t_1;
             QueryPerformanceFrequency(&t_freq);
             QueryPerformanceCounter(&t_0);
+#else
+            struct timespec ts_0, ts_1;
+            clock_gettime(CLOCK_MONOTONIC, &ts_0);
 #endif
             VMRepl(vm, startoffset);
-#ifdef _WIN32
-            QueryPerformanceCounter(&t_1);
             if (time_execution) {
+#ifdef _WIN32
+                QueryPerformanceCounter(&t_1);
                 double elapsed_ms = (t_1.QuadPart - t_0.QuadPart) * 1000.0 / (double)t_freq.QuadPart;
+#else
+                clock_gettime(CLOCK_MONOTONIC, &ts_1);
+                double elapsed_ms = (ts_1.tv_sec - ts_0.tv_sec) * 1000.0 + (ts_1.tv_nsec - ts_0.tv_nsec) / 1e6;
+#endif
                 printf("\033[1;32m[Time: %.3f ms]\033[0m\n", elapsed_ms);
             }
-#endif
             AppendReplHistory(codebuf);
         } else {
             // Restore ophalt
@@ -1364,54 +1376,134 @@ static int ExecuteRunTest(const char *sourcepath, int coverage) {
     return failed > 0 ? 1 : 0;
 }
 
-static int ExecuteRunTestsDir(const char *dirpath, int coverage) {
+static int ShouldRunTestSuiteFile(const char *fname) {
+    if (!fname) return 0;
+    size_t len = strlen(fname);
+    if (len < 4 || strcmp(fname + len - 4, ".aks") != 0) return 0;
+    if (!(strncmp(fname, "Test", 4) == 0 || strncmp(fname, "test_", 5) == 0 || strstr(fname, "_test.aks") != NULL)) return 0;
+    if (strstr(fname, "Fail") != NULL || strstr(fname, "Error") != NULL || strstr(fname, "Input") != NULL) return 0;
+    if (strcmp(fname, "TestStaticRecursion.aks") == 0 || strcmp(fname, "TestVisibilityEnforce.aks") == 0) return 0;
+    return 1;
+}
+
+/* Portable directory check using stat(2) on both Windows and POSIX. */
+static int IsDirectoryPath(const char *path) {
+    if (!path || !*path) return 0;
+    struct stat st;
+    if (stat(path, &st) != 0) return 0;
+#ifdef _WIN32
+    return (st.st_mode & _S_IFDIR) != 0;
+#else
+    return S_ISDIR(st.st_mode) ? 1 : 0;
+#endif
+}
+
+static void GetSelfExePath(char *exepath, size_t sz) {
+    snprintf(exepath, sz, "%s", gProgramName ? gProgramName : "aks");
+#ifdef _WIN32
+    GetModuleFileNameA(NULL, exepath, (DWORD)sz);
+#elif defined(__APPLE__)
+    uint32_t exelen = (uint32_t)sz;
+    if (_NSGetExecutablePath(exepath, &exelen) != 0)
+        snprintf(exepath, sz, "%s", gProgramName ? gProgramName : "aks");
+#else
+    ssize_t rl = readlink("/proc/self/exe", exepath, sz - 1);
+    if (rl > 0) exepath[rl] = '\0';
+#endif
+}
+
+typedef int (*SuiteFilterFn)(const char *fname, const char *fullpath);
+
+static int ShouldRunBenchSuiteFile(const char *fname, const char *fullpath) {
+    size_t len = strlen(fname);
+    if (len < 5 || strcmp(fname + len - 4, ".aks") != 0) return 0;
+    if (strncmp(fname, "Bench", 5) == 0 ||
+        strncmp(fname, "bench_", 6) == 0 ||
+        strstr(fname, "_bench.aks") != NULL ||
+        strstr(fname, "Bench.aks") != NULL) {
+        return 1;
+    }
+    char *raw = ReadFileToStr(fullpath);
+    int found = 0;
+    if (raw) {
+        found = (strstr(raw, "bench_") != NULL);
+        free(raw);
+    }
+    return found;
+}
+
+static int ShouldRunTestSuiteWrapper(const char *fname, const char *fullpath) {
+    (void)fullpath;
+    return ShouldRunTestSuiteFile(fname);
+}
+
+/* Unified directory runner for `aks test <dir>` and `aks bench <dir>`. */
+static int RunAksSuiteDir(const char *dirpath, const char *subcmd, const char *label,
+                          SuiteFilterFn filter, const char *extra_flags,
+                          int *out_total, int *out_failures) {
+    char exepath[1024];
+    GetSelfExePath(exepath, sizeof(exepath));
+    int total_suites = 0, suite_failures = 0;
+
+#ifdef _WIN32
     char searchpat[512];
     snprintf(searchpat, sizeof(searchpat), "%s\\*.aks", dirpath);
     for (char *p = searchpat; *p; p++) { if (*p == '/') *p = '\\'; }
-    
     WIN32_FIND_DATAA ffd;
     HANDLE hfind = FindFirstFileA(searchpat, &ffd);
     if (hfind == INVALID_HANDLE_VALUE) {
-        fprintf(stderr, "Error: Could not find tests in directory '%s'\n", dirpath);
-        return 1;
+        return 0;
     }
-    
-    char exepath[MAX_PATH];
-    GetModuleFileNameA(NULL, exepath, sizeof(exepath));
-    
-    printf("AKS Test Runner: Scanning directory '%s' for test suites...\n\n", dirpath);
-    int total_suites = 0;
-    int suite_failures = 0;
-    
     do {
         if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-        if (strncmp(ffd.cFileName, "Test", 4) == 0 ||
-            strncmp(ffd.cFileName, "test_", 5) == 0 ||
-            strstr(ffd.cFileName, "_test.aks") != NULL) {
-            
-            if (strstr(ffd.cFileName, "Fail") != NULL) continue;
-            if (strstr(ffd.cFileName, "Error") != NULL) continue;
-            if (strstr(ffd.cFileName, "Input") != NULL) continue;
-            if (strcmp(ffd.cFileName, "TestStaticRecursion.aks") == 0) continue;
-            if (strcmp(ffd.cFileName, "TestVisibilityEnforce.aks") == 0) continue;
-            
-            char fullpath[512];
-            snprintf(fullpath, sizeof(fullpath), "%s\\%s", dirpath, ffd.cFileName);
-            for (char *p = fullpath; *p; p++) { if (*p == '/') *p = '\\'; }
-            
-            printf("[TEST SUITE] %s\n", ffd.cFileName);
+        char fullpath[512];
+        snprintf(fullpath, sizeof(fullpath), "%s\\%s", dirpath, ffd.cFileName);
+        for (char *p = fullpath; *p; p++) { if (*p == '/') *p = '\\'; }
+        if (filter(ffd.cFileName, fullpath)) {
+            printf("[%s] %s\n", label, ffd.cFileName);
             total_suites++;
-            char cmd[1024];
-            snprintf(cmd, sizeof(cmd), "\"\"%s\" test \"%s\"%s\"", exepath, fullpath, coverage ? " --coverage" : "");
-            int res = system(cmd);
-            if (res != 0) {
-                suite_failures++;
-            }
+            char cmd[2048];
+            snprintf(cmd, sizeof(cmd), "\"\"%s\" %s \"%s\"%s\"", exepath, subcmd, fullpath, extra_flags ? extra_flags : "");
+            if (system(cmd) != 0) suite_failures++;
             printf("\n");
         }
     } while (FindNextFileA(hfind, &ffd));
     FindClose(hfind);
-    
+#else
+    DIR *d = opendir(dirpath);
+    if (!d) {
+        return 0;
+    }
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        char fullpath[512];
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", dirpath, ent->d_name);
+        if (IsDirectoryPath(fullpath)) continue;
+        if (filter(ent->d_name, fullpath)) {
+            printf("[%s] %s\n", label, ent->d_name);
+            total_suites++;
+            char cmd[2048];
+            snprintf(cmd, sizeof(cmd), "\"%s\" %s \"%s\"%s", exepath, subcmd, fullpath, extra_flags ? extra_flags : "");
+            if (system(cmd) != 0) suite_failures++;
+            printf("\n");
+        }
+    }
+    closedir(d);
+#endif
+    *out_total = total_suites;
+    *out_failures = suite_failures;
+    return 1;
+}
+
+static int ExecuteRunTestsDir(const char *dirpath, int coverage) {
+    printf("AKS Test Runner: Scanning directory '%s' for test suites...\n\n", dirpath);
+    int total_suites = 0, suite_failures = 0;
+    if (!RunAksSuiteDir(dirpath, "test", "TEST SUITE", ShouldRunTestSuiteWrapper,
+                        coverage ? " --coverage" : "", &total_suites, &suite_failures)) {
+        fprintf(stderr, "Error: Could not find tests in directory '%s'\n", dirpath);
+        return 1;
+    }
+
     if (suite_failures == 0) {
         printf("\033[32mALL %d TEST SUITES PASSED SUCCESSFULLY!\033[0m\n", total_suites);
     } else {
@@ -1676,7 +1768,7 @@ static int ExecuteRunBench(const char *sourcepath, const char *savepath, const c
                     if (sscanf(np, "\"name\": \"%127[^\"]\"", bname) == 1 &&
                         sscanf(tp, "\"time_us\": %lf", &btime) == 1) {
                         if (baseline_count < 256) {
-                            strncpy(baselines[baseline_count].name, bname, 127);
+                            snprintf(baselines[baseline_count].name, sizeof(baselines[baseline_count].name), "%s", bname);
                             baselines[baseline_count].time_us = btime;
                             baseline_count++;
                         }
@@ -1786,7 +1878,7 @@ static int ExecuteRunBench(const char *sourcepath, const char *savepath, const c
             double ops_sec = stats.ops_per_sec;
 
             if (recorded_count < 256) {
-                strncpy(recorded[recorded_count].name, fn->name, 127);
+                snprintf(recorded[recorded_count].name, sizeof(recorded[recorded_count].name), "%s", fn->name);
                 recorded[recorded_count].time_us = mean_us;
                 recorded[recorded_count].mean_us = mean_us;
                 recorded[recorded_count].median_us = median_us;
@@ -1862,65 +1954,21 @@ static int ExecuteRunBench(const char *sourcepath, const char *savepath, const c
 }
 
 static int ExecuteRunBenchDir(const char *dirpath, const char *savepath, const char *comparepath) {
-    char searchpat[512];
-    snprintf(searchpat, sizeof(searchpat), "%s\\*.aks", dirpath);
-    for (char *p = searchpat; *p; p++) { if (*p == '/') *p = '\\'; }
+    char extra[512] = "";
+    if (savepath) {
+        snprintf(extra + strlen(extra), sizeof(extra) - strlen(extra), " --save \"%s\"", savepath);
+    }
+    if (comparepath) {
+        snprintf(extra + strlen(extra), sizeof(extra) - strlen(extra), " --compare \"%s\"", comparepath);
+    }
 
-    WIN32_FIND_DATAA ffd;
-    HANDLE hfind = FindFirstFileA(searchpat, &ffd);
-    if (hfind == INVALID_HANDLE_VALUE) {
+    printf("AKS Benchmark Runner: Scanning directory '%s' for benchmarks...\n\n", dirpath);
+    int total_suites = 0, suite_failures = 0;
+    if (!RunAksSuiteDir(dirpath, "bench", "BENCH SUITE", ShouldRunBenchSuiteFile,
+                        extra, &total_suites, &suite_failures)) {
         fprintf(stderr, "Error: Could not find benchmarks in directory '%s'\n", dirpath);
         return 1;
     }
-
-    char exepath[MAX_PATH];
-    GetModuleFileNameA(NULL, exepath, sizeof(exepath));
-
-    printf("AKS Benchmark Runner: Scanning directory '%s' for benchmarks...\n\n", dirpath);
-    int total_suites = 0;
-    int suite_failures = 0;
-
-    do {
-        if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-
-        char fullpath[512];
-        snprintf(fullpath, sizeof(fullpath), "%s\\%s", dirpath, ffd.cFileName);
-        for (char *p = fullpath; *p; p++) { if (*p == '/') *p = '\\'; }
-
-        int is_bench = (strncmp(ffd.cFileName, "Bench", 5) == 0 ||
-                        strncmp(ffd.cFileName, "bench_", 6) == 0 ||
-                        strstr(ffd.cFileName, "_bench.aks") != NULL ||
-                        strstr(ffd.cFileName, "Bench.aks") != NULL);
-        if (!is_bench) {
-            char *raw = ReadFileToStr(fullpath);
-            if (raw) {
-                if (strstr(raw, "bench_") != NULL) {
-                    is_bench = 1;
-                }
-                free(raw);
-            }
-        }
-
-        if (is_bench) {
-            printf("[BENCH SUITE] %s\n", ffd.cFileName);
-            total_suites++;
-            char extra[512] = "";
-            if (savepath) {
-                snprintf(extra + strlen(extra), sizeof(extra) - strlen(extra), " --save \"%s\"", savepath);
-            }
-            if (comparepath) {
-                snprintf(extra + strlen(extra), sizeof(extra) - strlen(extra), " --compare \"%s\"", comparepath);
-            }
-            char cmd[1024];
-            snprintf(cmd, sizeof(cmd), "\"\"%s\" bench \"%s\"%s\"", exepath, fullpath, extra);
-            int res = system(cmd);
-            if (res != 0) {
-                suite_failures++;
-            }
-            printf("\n");
-        }
-    } while (FindNextFileA(hfind, &ffd));
-    FindClose(hfind);
 
     if (total_suites == 0) {
         printf("No benchmark suites found in '%s'.\n", dirpath);
@@ -2455,7 +2503,7 @@ static int ExecuteCompileAot(const char *sourcepath, const char *outputpath) {
     CompFree(aksCompiler);
 
     if (compiletobinary) {
-        char buildcmd[512];
+        char buildcmd[1024];
         char ltoflags[64] = "";
         char targetflags[128] = "";
         if (gLto) {
@@ -2497,7 +2545,8 @@ static int ExecuteCompileAot(const char *sourcepath, const char *outputpath) {
         }
 
         char optflag[32] = "-O3";
-        char dbgflag[32] = "";
+        char dbgflag[64] = "";
+        char sanflag[64] = "";
         extern const char *gBuildProfile;
         if (strcmp(gBuildProfile, "debug") == 0) {
             strcpy(optflag, "-O0");
@@ -2506,19 +2555,27 @@ static int ExecuteCompileAot(const char *sourcepath, const char *outputpath) {
             strcpy(optflag, "-O2");
             strcpy(dbgflag, "-g -pg -DPROFILING");
         }
+        if (gSanitizeAddress && gSanitizeThread) {
+            strcpy(sanflag, "-fsanitize=address -fno-omit-frame-pointer -g");
+        } else if (gSanitizeAddress) {
+            strcpy(sanflag, "-fsanitize=address -fno-omit-frame-pointer -g");
+        } else if (gSanitizeThread) {
+            strcpy(sanflag, "-fsanitize=thread -fno-omit-frame-pointer -g");
+        }
 
-        snprintf(buildcmd, sizeof(buildcmd), "clang %s %s %s %s \"%s\" -o \"%s\" -luser32 -lgdi32 -lshell32 2>nul",
-                 optflag, dbgflag, ltoflags, targetflags, targetcpath, outputpath);
+        snprintf(buildcmd, sizeof(buildcmd), "clang %s %s %s %s %s \"%s\" -o \"%s\" -luser32 -lgdi32 -lshell32 2>nul",
+                 optflag, dbgflag, sanflag, ltoflags, targetflags, targetcpath, outputpath);
         int res = system(buildcmd);
         if (res != 0) {
-            snprintf(buildcmd, sizeof(buildcmd), "gcc %s %s %s %s \"%s\" -o \"%s\" 2>nul",
-                     optflag, dbgflag, ltoflags, targetflags, targetcpath, outputpath);
+            snprintf(buildcmd, sizeof(buildcmd), "gcc %s %s %s %s %s \"%s\" -o \"%s\" 2>nul",
+                     optflag, dbgflag, sanflag, ltoflags, targetflags, targetcpath, outputpath);
             res = system(buildcmd);
         }
         if (res != 0) {
             char cl_opt[32] = "/O2";
             char cl_dbg[64] = "";
             char cl_lto[32] = "";
+            char cl_san[32] = "";
             if (strcmp(gBuildProfile, "debug") == 0) {
                 strcpy(cl_opt, "/Od");
                 strcpy(cl_dbg, "/Zi /DDEBUG");
@@ -2529,6 +2586,10 @@ static int ExecuteCompileAot(const char *sourcepath, const char *outputpath) {
             if (gLto) {
                 strcpy(cl_lto, "/GL");
             }
+            if (gSanitizeAddress) {
+                strcpy(cl_san, "/fsanitize=address");
+                if (!cl_dbg[0]) strcpy(cl_dbg, "/Zi");
+            }
             char win_out[256];
             snprintf(win_out, sizeof(win_out), "%s", outputpath);
             for (char *p = win_out; *p; p++) if (*p == '/') *p = '\\';
@@ -2536,8 +2597,8 @@ static int ExecuteCompileAot(const char *sourcepath, const char *outputpath) {
             snprintf(win_src, sizeof(win_src), "%s", targetcpath);
             for (char *p = win_src; *p; p++) if (*p == '/') *p = '\\';
             
-            snprintf(buildcmd, sizeof(buildcmd), "cl %s %s %s %s /Fe:\"%s\" user32.lib gdi32.lib shell32.lib",
-                     cl_opt, cl_dbg, cl_lto, win_src, win_out);
+            snprintf(buildcmd, sizeof(buildcmd), "cl %s %s %s %s %s /Fe:\"%s\" user32.lib gdi32.lib shell32.lib",
+                     cl_opt, cl_dbg, cl_san, cl_lto, win_src, win_out);
             res = system(buildcmd);
             
             char clean_obj[256];
@@ -2597,11 +2658,12 @@ static void ParseSafetyFlags(int *argcptr, char ***argvptr) {
             gNoBoundsCheck = 1;
         } else if (strncmp(argv[i], "--sanitize=", 11) == 0) {
             const char *san = argv[i] + 11;
+            extern volatile int gAksAsanActive;
             gNoBoundsCheck = 0;
             gStrictOvf = 1;
-            if (strstr(san, "address") || strstr(san, "asan")) gSanitizeAddress = 1;
+            if (strstr(san, "address") || strstr(san, "asan")) { gSanitizeAddress = 1; gAksAsanActive = 1; }
             if (strstr(san, "thread") || strstr(san, "tsan")) gSanitizeThread = 1;
-            if (strstr(san, "all")) { gSanitizeAddress = 1; gSanitizeThread = 1; }
+            if (strstr(san, "all")) { gSanitizeAddress = 1; gSanitizeThread = 1; gAksAsanActive = 1; }
             printf("[security] Sanitizer enabled: %s (address=%d, thread=%d, bounds & overflow checks enforced)\n", san, gSanitizeAddress, gSanitizeThread);
         } else if (strcmp(argv[i], "--reproducible") == 0) {
             printf("[security] Reproducible build mode enabled: deterministic binary timestamps\n");
@@ -2804,6 +2866,7 @@ static int ExecuteWatch(const char *filepath) {
         return 1;
     }
     time_t last_mtime = st.st_mtime;
+    (void)last_mtime;
     ExecuteRun(filepath);
     printf("[aks --watch] Watching for file changes completed.\n");
     return 0;
@@ -2892,7 +2955,20 @@ int main(int argc, char **argv) {
 
         if (strcmp(command, "--version") == 0 || strcmp(command, "-v") == 0 ||
             strcmp(command, "-V") == 0 || strcmp(command, "version") == 0) {
-            printf("aks %s (x86_64-pc-windows-msvc)\n", AKS_VERSION_STRING);
+#ifdef _WIN32
+            const char *host_triple = "x86_64-pc-windows-msvc";
+#elif defined(__APPLE__)
+#  if defined(__aarch64__) || defined(__arm64__)
+            const char *host_triple = "aarch64-apple-darwin";
+#  else
+            const char *host_triple = "x86_64-apple-darwin";
+#  endif
+#elif defined(__aarch64__)
+            const char *host_triple = "aarch64-unknown-linux-gnu";
+#else
+            const char *host_triple = "x86_64-unknown-linux-gnu";
+#endif
+            printf("aks %s (%s)\n", AKS_VERSION_STRING, host_triple);
             return 0;
         }
         if (strcmp(command, "--help") == 0 || strcmp(command, "-h") == 0) {
@@ -3021,15 +3097,9 @@ int main(int argc, char **argv) {
                 file_path = GetPackageEntrypoint();
             }
             if (!file_path) {
-                DWORD attr = GetFileAttributesA("tests");
-                if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
-                    file_path = "tests";
-                } else {
-                    file_path = ".";
-                }
+                file_path = IsDirectoryPath("tests") ? "tests" : ".";
             }
-            DWORD attr = GetFileAttributesA(file_path);
-            if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+            if (IsDirectoryPath(file_path)) {
                 return ExecuteRunTestsDir(file_path, coverage);
             }
             return ExecuteRunTest(file_path, coverage);
@@ -3061,31 +3131,19 @@ int main(int argc, char **argv) {
                     file_path = argv[i];
                 }
             }
-            if (!file_path) {
-                DWORD attr = GetFileAttributesA("benches");
-                if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
-                    file_path = "benches";
-                }
+            if (!file_path && IsDirectoryPath("benches")) {
+                file_path = "benches";
             }
-            if (!file_path) {
-                DWORD attr = GetFileAttributesA("bench");
-                if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
-                    file_path = "bench";
-                }
+            if (!file_path && IsDirectoryPath("bench")) {
+                file_path = "bench";
             }
             if (!file_path) {
                 file_path = GetPackageEntrypoint();
             }
             if (!file_path) {
-                DWORD attr = GetFileAttributesA("tests");
-                if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
-                    file_path = "tests";
-                } else {
-                    file_path = ".";
-                }
+                file_path = IsDirectoryPath("tests") ? "tests" : ".";
             }
-            DWORD attr = GetFileAttributesA(file_path);
-            if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+            if (IsDirectoryPath(file_path)) {
                 return ExecuteRunBenchDir(file_path, save_path, compare_path);
             }
             return ExecuteRunBench(file_path, save_path, compare_path);
@@ -3687,10 +3745,10 @@ int main(int argc, char **argv) {
                 return PkgSign(argv[3], argv[4]);
             } else if (strcmp(subcmd, "verify") == 0) {
                 if (argc >= 5) {
-                    extern int PkgVerify(const char *bundle_path, const char *pubkey_path);
                     return PkgVerify(argv[3], argv[4]);
+                } else if (argc == 4) {
+                    return PkgVerify(argv[3], NULL);
                 } else {
-                    extern int PkgVerifyLock(void);
                     return PkgVerifyLock();
                 }
             } else if (strcmp(subcmd, "check") == 0 || strcmp(subcmd, "audit") == 0 || strcmp(subcmd, "verify-lock") == 0) {
@@ -3810,8 +3868,6 @@ int main(int argc, char **argv) {
             : LogCrash(GetExceptionInformation())
     ) {
         return 1;
-    }
-#else
     }
 #endif
     return 0;

@@ -27,6 +27,7 @@ typedef enum {
     STYPE_RESULT,    /* Result<T, E> */
     STYPE_OPTION,    /* Option<T> */
     STYPE_SIMD,      /* f32x4 / i32x8 etc */
+    STYPE_TRAIT,     /* dyn Trait */
     STYPE_NEVER,     /* !  -  diverging (return from panic/loop-forever) */
 } STypeKind;
 
@@ -243,8 +244,9 @@ typedef struct {
     int strcount;
     int strcap;
     StrPoolEntry *str_hash[STRPOOL_BUCKETS];
-    Module modules[256];
+    Module *modules;
     int module_count;
+    int module_cap;
     FnProto *fns[MAXFNS];
     int fncount;
     FnProto *current;
@@ -445,5 +447,6 @@ typedef struct CachedSignature {
 
 int CompilerCheckIncremental(Compiler *c, const char *filepath);
 void CompilerTrackFunctionDependency(Compiler *c, const char *caller, const char *callee);
+extern int gContractCheck;
 
 #endif // Comph

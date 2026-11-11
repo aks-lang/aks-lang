@@ -50,6 +50,11 @@ typedef struct SCGCtx {
     int        lto;
     const char *pgo_profile;
     const char *pgo_use;
+
+    /* Module-level string literal declarations emitted after functions */
+    char     **str_decls;
+    int        str_decl_count;
+    int        str_decl_cap;
 } SCGCtx;
 
 /* Public API declarations */

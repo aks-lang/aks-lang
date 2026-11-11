@@ -573,7 +573,7 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
     int slot_freq[256];
     memset(slot_freq, 0, sizeof(slot_freq));
     for (int i = 0; i < stepcount; i++) {
-        if ((trace[i].op == OPLOAD || trace[i].op == OPSTORE) && trace[i].slot >= 0 && trace[i].slot < 256) {
+        if ((trace[i].op == OPLOAD || trace[i].op == OPSTORE) && trace[i].slot < 256) {
             slot_freq[trace[i].slot]++;
         }
     }
@@ -1039,11 +1039,18 @@ void *LoadX64TraceFromCache(const char *cachefile, int *outsize) {
     }
     
     JITHelperTable oldtable;
-    fread(&oldtable, sizeof(oldtable), 1, cf);
-    
-    int codesize = filesize - sizeof(oldtable);
-    uint8_t *code = malloc(codesize);
-    fread(code, 1, codesize, cf);
+    if (fread(&oldtable, sizeof(oldtable), 1, cf) != 1) {
+        fclose(cf);
+        return NULL;
+    }
+
+    int codesize = filesize - (int)sizeof(oldtable);
+    uint8_t *code = malloc((size_t)codesize);
+    if (!code || fread(code, 1, (size_t)codesize, cf) != (size_t)codesize) {
+        free(code);
+        fclose(cf);
+        return NULL;
+    }
     fclose(cf);
     
     // Current helpers

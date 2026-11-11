@@ -14,6 +14,8 @@
 #include "ast.h"
 #include "parser.h"
 #include "diagnostic.h"
+#include "pkg.h"
+#include "bind.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,9 +26,7 @@
 #include <sys/stat.h>
 #endif
 
-/* Primitive SType singletons (allocated once per Compiler) */
-
-static SType *s_void, *s_bool, *s_int, *s_float, *s_str, *s_never;
+/* Primitive SType singletons (allocated via StypeInternGet per Compiler) */
 
 /* SType intern table */
 
@@ -292,7 +292,7 @@ SType *StypeMakeArray(Compiler *c, SType *elem, int len) {
     snprintf(name, sizeof(name), "[%s;%d]", elemname, len);
     SType *t = StypeAlloc(c, STYPE_ARRAY);
     t->inner = elem; t->array_len = len;
-    strncpy(t->name, name, sizeof(t->name) - 1);
+    snprintf(t->name, sizeof(t->name), "%.127s", name);
     return t;
 }
 
@@ -314,9 +314,18 @@ SType *StypeMakeFn(Compiler *c, SType **params, int pc, SType *ret) {
 
 SType *StypeMakeTuple(Compiler *c, SType **elems, int count) {
     SType *t = StypeAlloc(c, STYPE_TUPLE);
-    t->params = (SType**)malloc(count * sizeof(SType*));
-    memcpy(t->params, elems, count * sizeof(SType*));
+    t->params = (SType**)malloc((size_t)(count > 0 ? count : 1) * sizeof(SType*));
+    if (count > 0 && elems) memcpy(t->params, elems, (size_t)count * sizeof(SType*));
     t->param_count = count;
+    char tname[128] = "(";
+    for (int i = 0; i < count; i++) {
+        char ename[48];
+        StypeName(elems[i], ename, sizeof(ename));
+        if (i > 0) strncat(tname, ",", sizeof(tname) - strlen(tname) - 1);
+        strncat(tname, ename, sizeof(tname) - strlen(tname) - 1);
+    }
+    strncat(tname, ")", sizeof(tname) - strlen(tname) - 1);
+    snprintf(t->name, sizeof(t->name), "%s", tname);
     return t;
 }
 
@@ -334,7 +343,7 @@ SType *StypeMakeResult(Compiler *c, SType *ok, SType *err) {
     char ok_name[64], err_name[64];
     StypeName(ok, ok_name, sizeof(ok_name));
     StypeName(err, err_name, sizeof(err_name));
-    snprintf(t->name, sizeof(t->name), "Result<%s,%s>", ok_name, err_name);
+    snprintf(t->name, sizeof(t->name), "Result<%.55s,%.55s>", ok_name, err_name);
     return t;
 }
 
@@ -360,6 +369,7 @@ const char *StypeName(SType *t, char *buf, int buflen) {
         case STYPE_VOID:  strncpy(buf, "void", buflen-1); break;
         case STYPE_NEVER: strncpy(buf, "!", buflen-1); break;
         case STYPE_STR:   strncpy(buf, "str", buflen-1); break;
+        case STYPE_TRAIT: snprintf(buf, buflen, "dyn %s", t->name[0] ? t->name : "Trait"); return buf;
         case STYPE_UNKNOWN: strncpy(buf, "unknown", buflen-1); break;
         default: strncpy(buf, t->name[0] ? t->name : "?", buflen-1); break;
     }
@@ -444,7 +454,7 @@ static const char *TyperSuggestEnvVar(TypeEnv *env, const char *name) {
     for (TypeEnv *cur = env; cur; cur = cur->parent) {
         for (int b = 0; b < 64; b++) {
             for (TypeEnvEntry *e = cur->buckets[b]; e; e = e->next) {
-                if (!e->name) continue;
+                if (!e->name[0]) continue;
                 if (strcmp(e->name, name) == 0) continue;
                 int d = CompLevenshteinDistance(name, e->name);
                 if (d > 0 && d < best_dist && d <= (strlen(name) > 3 ? 2 : 1)) {
@@ -474,7 +484,7 @@ static const char *TyperSuggestType(Compiler *c, const char *name) {
     }
     if (c) {
         for (int i = 0; i < c->structcount; i++) {
-            if (!c->structs[i].name) continue;
+            if (!c->structs[i].name[0]) continue;
             if (strcmp(name, c->structs[i].name) == 0) continue;
             int d = CompLevenshteinDistance(name, c->structs[i].name);
             if (d > 0 && d < best_dist && d <= (strlen(name) > 3 ? 2 : 1)) {
@@ -483,7 +493,7 @@ static const char *TyperSuggestType(Compiler *c, const char *name) {
             }
         }
         for (int i = 0; i < c->enumcount; i++) {
-            if (!c->enums[i].name) continue;
+            if (!c->enums[i].name[0]) continue;
             if (strcmp(name, c->enums[i].name) == 0) continue;
             int d = CompLevenshteinDistance(name, c->enums[i].name);
             if (d > 0 && d < best_dist && d <= (strlen(name) > 3 ? 2 : 1)) {
@@ -492,7 +502,7 @@ static const char *TyperSuggestType(Compiler *c, const char *name) {
             }
         }
         for (int i = 0; i < c->aliascount; i++) {
-            if (!c->aliases[i].name) continue;
+            if (!c->aliases[i].name[0]) continue;
             if (strcmp(name, c->aliases[i].name) == 0) continue;
             int d = CompLevenshteinDistance(name, c->aliases[i].name);
             if (d > 0 && d < best_dist && d <= (strlen(name) > 3 ? 2 : 1)) {
@@ -561,6 +571,9 @@ static void TyperWarn(TyperCtx *ctx, int line, const char *msg) {
 
 SType *TyperResolveName(Compiler *c, const char *tname) {
     if (!tname || tname[0] == '\0') return StypeInternGet(c, STYPE_UNKNOWN, "");
+    const char *tp = tname;
+    while (*tp == ' ' || *tp == '\t' || *tp == '\r' || *tp == '\n') tp++;
+    int is_dyn_kw = (strncmp(tp, "dyn", 3) == 0 && (tp[3] == ' ' || tp[3] == '\t'));
     char clean[256];
     int cidx = 0;
     for (int i = 0; tname[i] && cidx < 255; i++) {
@@ -575,6 +588,11 @@ SType *TyperResolveName(Compiler *c, const char *tname) {
     char *bang = strchr(clean, '!');
     if (bang && bang != clean) *bang = '\0';
 
+    if (is_dyn_kw && clean[3] != '\0') {
+        return StypeInternGet(c, STYPE_TRAIT, clean + 3);
+    }
+    if (strcmp(clean, "any") == 0 || strcmp(clean, "unknown") == 0)
+        return StypeInternGet(c, STYPE_UNKNOWN, "any");
     if (strcmp(clean, "int") == 0 || strcmp(clean, "i64") == 0 || strcmp(clean, "i32") == 0)
         return StypeInternGet(c, STYPE_INT, "int");
     if (strcmp(clean, "float") == 0 || strcmp(clean, "f64") == 0 || strcmp(clean, "f32") == 0)
@@ -586,6 +604,31 @@ SType *TyperResolveName(Compiler *c, const char *tname) {
     if (strcmp(clean, "void") == 0)
         return StypeInternGet(c, STYPE_VOID, "void");
     if (clean[0] == '!') return StypeInternGet(c, STYPE_NEVER, "!");
+
+    /* Function type fn(T1, T2) -> R */
+    if (strncmp(clean, "fn(", 3) == 0) {
+        char *close_p = strrchr(clean + 3, ')');
+        if (close_p) {
+            char pbuf[256];
+            size_t plen = (size_t)(close_p - (clean + 3));
+            if (plen >= sizeof(pbuf)) plen = sizeof(pbuf) - 1;
+            memcpy(pbuf, clean + 3, plen);
+            pbuf[plen] = '\0';
+            SType *ptypes[32];
+            int pc = 0;
+            if (pbuf[0] != '\0') {
+                char *tok = strtok(pbuf, ",");
+                while (tok && pc < 32) {
+                    ptypes[pc++] = TyperResolveName(c, tok);
+                    tok = strtok(NULL, ",");
+                }
+            }
+            const char *rstr = close_p + 1;
+            if (strncmp(rstr, "->", 2) == 0) rstr += 2;
+            SType *rt = (*rstr) ? TyperResolveName(c, rstr) : StypeInternGet(c, STYPE_VOID, "void");
+            return StypeMakeFn(c, ptypes, pc, rt);
+        }
+    }
 
     /* Check for Option<T> */
     if (strncmp(clean, "Option<", 7) == 0) {
@@ -705,6 +748,10 @@ SType *TyperResolveName(Compiler *c, const char *tname) {
             if (strcmp(c->enums[i].name, clean) == 0)
                 return StypeInternGet(c, STYPE_ENUM, clean);
         }
+        for (int i = 0; i < c->interfacecount; i++) {
+            if (strcmp(c->interfaces[i].name, clean) == 0)
+                return StypeInternGet(c, STYPE_TRAIT, clean);
+        }
     }
     /* SIMD types */
     if (strncmp(clean, "f32x", 4) == 0 || strncmp(clean, "i32x", 4) == 0 ||
@@ -713,6 +760,57 @@ SType *TyperResolveName(Compiler *c, const char *tname) {
     }
     /* Generic parameter  -  leave as STYPE_GENERIC for monomorphization */
     return StypeInternGet(c, STYPE_GENERIC, clean);
+}
+
+static int TyperCheckTraitImpl(Compiler *c, const char *struct_name, const char *trait_name) {
+    if (!c || !struct_name || !trait_name) return 0;
+    const CompilerStruct *s = NULL;
+    for (int i = 0; i < c->structcount; i++) {
+        if (strcmp(c->structs[i].name, struct_name) == 0) {
+            s = &c->structs[i];
+            break;
+        }
+    }
+    if (!s) return 0;
+    int declared = 0;
+    for (int i = 0; i < s->ic; i++) {
+        if (s->interfaces && s->interfaces[i] && strcmp(s->interfaces[i], trait_name) == 0) {
+            declared = 1;
+            break;
+        }
+    }
+    if (!declared) return 0;
+    const CompilerInterface *inf = NULL;
+    for (int i = 0; i < c->interfacecount; i++) {
+        if (strcmp(c->interfaces[i].name, trait_name) == 0) {
+            inf = &c->interfaces[i];
+            break;
+        }
+    }
+    if (!inf) return 1;
+    for (int j = 0; j < inf->count; j++) {
+        if (inf->hasdefault && inf->hasdefault[j]) continue;
+        const char *req = inf->fnames[j];
+        int ok = 0;
+        for (int f = 0; f < s->fc; f++) {
+            if (s->fnames && s->fnames[f] && strcmp(s->fnames[f], req) == 0) {
+                ok = 1;
+                break;
+            }
+        }
+        if (!ok) {
+            char mname[256];
+            snprintf(mname, sizeof(mname), "%s.%s", s->name, req);
+            for (int k = 0; k < c->fncount; k++) {
+                if (c->fns[k] && c->fns[k]->name[0] && strcmp(c->fns[k]->name, mname) == 0) {
+                    ok = 1;
+                    break;
+                }
+            }
+        }
+        if (!ok) return 0;
+    }
+    return 1;
 }
 
 /* Unification */
@@ -725,6 +823,13 @@ SType *TyperUnify(Compiler *c, SType *a, SType *b, int line) {
     if (a->kind == STYPE_NEVER) return b;
     if (b->kind == STYPE_NEVER) return a;
     if (StypeEquals(a, b)) return a;
+    /* Trait object (dyn Trait) conformance check */
+    if (a->kind == STYPE_TRAIT && b->kind == STYPE_STRUCT) {
+        if (TyperCheckTraitImpl(c, b->name, a->name)) return a;
+    }
+    if (b->kind == STYPE_TRAIT && a->kind == STYPE_STRUCT) {
+        if (TyperCheckTraitImpl(c, a->name, b->name)) return b;
+    }
     /* Numeric coercion: int literal may unify with float */
     if (a->kind == STYPE_INT && b->kind == STYPE_FLOAT) return b;
     if (a->kind == STYPE_FLOAT && b->kind == STYPE_INT) return a;
@@ -794,7 +899,7 @@ SType *TyperUnify(Compiler *c, SType *a, SType *b, int line) {
             snprintf(dmsg, sizeof(dmsg), "mismatched types: expected `%s`, found `%s`", na, nb);
             DiagnosticInit(&diag, DIAG_ERROR, "E0308", dmsg);
             if (file && line > 0) {
-                char lbl[128];
+                char lbl[256];
                 snprintf(lbl, sizeof(lbl), "expected `%s`, found `%s`", na, nb);
                 DiagnosticAddSpan(&diag, file, line, 1, 4, lbl, 1);
             }
@@ -1020,6 +1125,94 @@ int TyperConstFold(Compiler *c, Node *n) {
 
 static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n);
 static void CheckNode(TyperCtx *ctx, TypeEnv *env, Node *n, SType *expected);
+static void TyperPreregister(TyperCtx *ctx, TypeEnv *env, Node *program);
+
+static char *TyperReadFile(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    rewind(f);
+    if (sz < 0) { fclose(f); return NULL; }
+    char *buf = (char *)malloc((size_t)sz + 1);
+    if (!buf) { fclose(f); return NULL; }
+    size_t nr = fread(buf, 1, (size_t)sz, f);
+    buf[nr] = '\0';
+    fclose(f);
+    return buf;
+}
+
+static int TyperMarkVisitedImport(TyperCtx *ctx, const char *path) {
+    for (int i = 0; i < ctx->visited_import_count; i++) {
+        if (strcmp(ctx->visited_imports[i], path) == 0) return 0;
+    }
+    char **na = (char **)realloc(ctx->visited_imports,
+                                  (size_t)(ctx->visited_import_count + 1) * sizeof(char *));
+    if (!na) return 0;
+    ctx->visited_imports = na;
+    ctx->visited_imports[ctx->visited_import_count++] = strdup(path);
+    return 1;
+}
+
+static void TyperProcessImport(TyperCtx *ctx, TypeEnv *env, Node *n) {
+    if (!n || !n->single.var || n->decl.isconstflag) return;
+    Compiler *c = ctx->comp;
+    char *resolved = PkgResolveImport(n->single.var, c ? c->currentfilepath : "");
+    char finalpath[512];
+    snprintf(finalpath, sizeof(finalpath), "%s", resolved ? resolved : n->single.var);
+    if (resolved) free(resolved);
+    if (!TyperMarkVisitedImport(ctx, finalpath)) return;
+    size_t plen = strlen(finalpath);
+    int is_c = n->single.is_c || (plen >= 2 && strcmp(finalpath + plen - 2, ".h") == 0);
+    char *src = is_c ? AKSBindHeadersToStr(finalpath, 0, NULL) : TyperReadFile(finalpath);
+    if (!src) return;
+    int perr = 0;
+    Node *imp_ast = Parse(src, &perr);
+    free(src);
+    if (perr || !imp_ast) {
+        if (imp_ast) NodeFree(imp_ast);
+        return;
+    }
+    char saved_path[512] = "";
+    if (c) {
+        snprintf(saved_path, sizeof(saved_path), "%s", c->currentfilepath);
+        snprintf(c->currentfilepath, sizeof(c->currentfilepath), "%s", finalpath);
+    }
+    TyperPreregister(ctx, env, imp_ast);
+    if (imp_ast->type == NPROGRAM) {
+        for (int i = 0; i < imp_ast->block.count; i++) {
+            InferNode(ctx, env, imp_ast->block.stmts[i]);
+        }
+    } else {
+        InferNode(ctx, env, imp_ast);
+    }
+    if (c) snprintf(c->currentfilepath, sizeof(c->currentfilepath), "%s", saved_path);
+    NodeFree(imp_ast);
+}
+
+static SType *TyperBuiltinRetType(Compiler *c, const char *fname) {
+    if (!fname) return NULL;
+    if (strcmp(fname, "assert") == 0 || strcmp(fname, "print") == 0 ||
+        strcmp(fname, "println") == 0 || strcmp(fname, "panic") == 0 ||
+        strcmp(fname, "push") == 0 || strcmp(fname, "sleep") == 0 ||
+        strcmp(fname, "SleepMs") == 0 || strcmp(fname, "Exit") == 0 ||
+        strcmp(fname, "FFIFree") == 0)
+        return StypeInternGet(c, STYPE_VOID, "void");
+    if (strcmp(fname, "len") == 0 || strcmp(fname, "Int") == 0 ||
+        strcmp(fname, "FFILoad") == 0 || strcmp(fname, "exec") == 0)
+        return StypeInternGet(c, STYPE_INT, "int");
+    if (strcmp(fname, "Float") == 0)
+        return StypeInternGet(c, STYPE_FLOAT, "float");
+    if (strcmp(fname, "Bool") == 0 || strcmp(fname, "writefile") == 0)
+        return StypeInternGet(c, STYPE_BOOL, "bool");
+    if (strcmp(fname, "str") == 0 || strcmp(fname, "String") == 0 ||
+        strcmp(fname, "type") == 0 || strcmp(fname, "platform") == 0 ||
+        strcmp(fname, "readfile") == 0 || strcmp(fname, "format") == 0)
+        return StypeInternGet(c, STYPE_STR, "str");
+    if (strcmp(fname, "pop") == 0 || strcmp(fname, "FFICall") == 0)
+        return StypeInternGet(c, STYPE_UNKNOWN, "");
+    return NULL;
+}
 
 static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
     if (!n) return StypeInternGet(ctx->comp, STYPE_VOID, "void");
@@ -1058,14 +1251,14 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
                     t = StypeInternGet(c, STYPE_UNKNOWN, n->sval);
                 } else if (c) {
                     for (int i = 0; i < c->enumcount; i++) {
-                        if (c->enums[i].name && strcmp(c->enums[i].name, n->sval) == 0) {
+                        if (c->enums[i].name[0] && strcmp(c->enums[i].name, n->sval) == 0) {
                             t = StypeInternGet(c, STYPE_ENUM, n->sval);
                             break;
                         }
                     }
                     if (!t) {
                         for (int i = 0; i < c->structcount; i++) {
-                            if (c->structs[i].name && strcmp(c->structs[i].name, n->sval) == 0) {
+                            if (c->structs[i].name[0] && strcmp(c->structs[i].name, n->sval) == 0) {
                                 t = StypeInternGet(c, STYPE_STRUCT, n->sval);
                                 break;
                             }
@@ -1073,7 +1266,7 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
                     }
                     if (!t) {
                         for (int i = 0; i < c->fncount; i++) {
-                            if (c->fns[i] && c->fns[i]->name && strcmp(c->fns[i]->name, n->sval) == 0) {
+                            if (c->fns[i] && c->fns[i]->name[0] && strcmp(c->fns[i]->name, n->sval) == 0) {
                                 t = StypeMakeFn(c, NULL, c->fns[i]->paramcount,
                                                 TyperResolveName(c, c->fns[i]->rettype));
                                 break;
@@ -1122,6 +1315,11 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
                 SType *init_type = InferNode(ctx, env, n->decl.init);
                 if (decl_type) {
                     result = TyperUnify(c, decl_type, init_type, n->line);
+                    if (!result) {
+                        ctx->had_error = 1;
+                        ctx->error_count++;
+                        result = decl_type;
+                    }
                 } else {
                     result = init_type;
                 }
@@ -1196,12 +1394,27 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             SType *ret_t = n->single.expr
                 ? InferNode(ctx, env, n->single.expr)
                 : StypeInternGet(c, STYPE_VOID, "void");
+            if (n->single.expr) ctx->has_value_return = 1;
             if (ctx->current_fn_ret && ctx->current_fn_ret->kind != STYPE_UNKNOWN) {
                 TyperUnify(c, ctx->current_fn_ret, ret_t, n->line);
             } else if (ctx->current_fn_ret && ctx->current_fn_ret->kind == STYPE_UNKNOWN) {
                 ctx->current_fn_ret = ret_t;
             }
             result = StypeInternGet(c, STYPE_NEVER, "!");
+            break;
+        }
+
+        case NPROGRAM: {
+            result = StypeInternGet(c, STYPE_VOID, "void");
+            for (int i = 0; i < n->block.count; i++) {
+                result = InferNode(ctx, env, n->block.stmts[i]);
+            }
+            break;
+        }
+
+        case NIMPORT: {
+            TyperProcessImport(ctx, env, n);
+            result = StypeInternGet(c, STYPE_VOID, "void");
             break;
         }
 
@@ -1323,15 +1536,33 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
                 }
             }
             /* Look up function return type */
+            SType *callee_fn_t = NULL;
             if (n->call.callee && n->call.callee->type == NIDENT) {
                 const char *fname = n->call.callee->sval;
                 int found = 0;
+                TypeEnvEntry *fn_en = EnvGetEntry(env, fname);
+                if (fn_en && fn_en->stype) {
+                    if (fn_en->stype->kind == STYPE_FN) {
+                        callee_fn_t = fn_en->stype;
+                        result = fn_en->stype->ret ? fn_en->stype->ret : StypeInternGet(c, STYPE_UNKNOWN, "");
+                    } else {
+                        result = fn_en->stype;
+                    }
+                    found = 1;
+                }
                 /* Look for FnProto */
-                for (int i = 0; i < c->fncount; i++) {
+                for (int i = 0; !found && i < c->fncount; i++) {
                     if (strcmp(c->fns[i]->name, fname) == 0) {
                         result = TyperResolveName(c, c->fns[i]->rettype);
                         found = 1;
                         break;
+                    }
+                }
+                if (!found) {
+                    SType *bt = TyperBuiltinRetType(c, fname);
+                    if (bt) {
+                        result = bt;
+                        found = 1;
                     }
                 }
                 if (!found) {
@@ -1361,10 +1592,29 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
                         }
                     }
                 }
+                if (result->kind == STYPE_UNKNOWN) {
+                    SType *mt = InferNode(ctx, env, m);
+                    if (mt && mt->kind == STYPE_FN) {
+                        callee_fn_t = mt;
+                        result = mt->ret ? mt->ret : StypeInternGet(c, STYPE_UNKNOWN, "");
+                    }
+                }
             }
-            /* Infer arg types too */
+            /* Infer arg types and check against parameter types in strict/static mode */
             for (int i = 0; i < n->call.argc; i++) {
-                InferNode(ctx, env, n->call.args[i]);
+                SType *arg_t = InferNode(ctx, env, n->call.args[i]);
+                if (callee_fn_t && callee_fn_t->kind == STYPE_FN && callee_fn_t->params && i < callee_fn_t->param_count) {
+                    extern int gStrictTypes;
+                    if (gStrictTypes || (c && c->is_static_mode)) {
+                        SType *pt = callee_fn_t->params[i];
+                        if (pt && pt->kind != STYPE_UNKNOWN) {
+                            if (!TyperUnify(c, pt, arg_t, n->line)) {
+                                ctx->had_error = 1;
+                                ctx->error_count++;
+                            }
+                        }
+                    }
+                }
             }
             if (result->kind == STYPE_UNKNOWN) result = StypeInternGet(c, STYPE_UNKNOWN, "");
             break;
@@ -1377,6 +1627,43 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
                     result = StypeMakeOption(c, StypeInternGet(c, STYPE_UNKNOWN, ""));
                     break;
                 }
+            }
+            /* Trait method lookup for dyn Trait */
+            if (obj_t && obj_t->kind == STYPE_TRAIT && n->member.field) {
+                int found_m = 0;
+                for (int i = 0; i < c->interfacecount; i++) {
+                    if (strcmp(c->interfaces[i].name, obj_t->name) == 0) {
+                        CompilerInterface *inf = &c->interfaces[i];
+                        for (int j = 0; j < inf->count; j++) {
+                            if (inf->fnames[j] && strcmp(inf->fnames[j], n->member.field) == 0) {
+                                SType *ptypes[32] = {0};
+                                int pc = inf->paramcounts ? inf->paramcounts[j] : 0;
+                                if (pc > 32) pc = 32;
+                                for (int k = 0; k < pc; k++) {
+                                    ptypes[k] = (inf->paramtypes && inf->paramtypes[j] && inf->paramtypes[j][k])
+                                        ? TyperResolveName(c, inf->paramtypes[j][k])
+                                        : StypeInternGet(c, STYPE_UNKNOWN, "");
+                                }
+                                SType *rt = (inf->rettypes && inf->rettypes[j])
+                                    ? TyperResolveName(c, inf->rettypes[j])
+                                    : StypeInternGet(c, STYPE_VOID, "void");
+                                result = StypeMakeFn(c, ptypes, pc, rt);
+                                found_m = 1;
+                                break;
+                            }
+                        }
+                        if (!found_m) {
+                            extern int gStrictTypes;
+                            if (gStrictTypes || (c && c->is_static_mode)) {
+                                char msg[256];
+                                snprintf(msg, sizeof(msg), "trait '%s' has no method '%s'", obj_t->name, n->member.field);
+                                TyperError(ctx, n->line, msg);
+                            }
+                        }
+                        break;
+                    }
+                }
+                break;
             }
             /* Field type lookup for known structs */
             if (obj_t && obj_t->kind == STYPE_STRUCT) {
@@ -1470,7 +1757,9 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             }
 
             SType *saved_ret = ctx->current_fn_ret;
+            int saved_has_val_ret = ctx->has_value_return;
             ctx->current_fn_ret = ret_t;
+            ctx->has_value_return = 0;
             int saved_const = ctx->in_const_fn;
             if (n->fn.name && strncmp(n->fn.name, "const_", 6) == 0) ctx->in_const_fn = 1;
 
@@ -1487,7 +1776,7 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             if (ret_t->kind == STYPE_UNKNOWN && ctx->current_fn_ret && ctx->current_fn_ret->kind != STYPE_UNKNOWN) {
                 ret_t = ctx->current_fn_ret;
             }
-            if (ret_t->kind == STYPE_UNKNOWN) {
+            if (ret_t->kind == STYPE_UNKNOWN && !ctx->has_value_return) {
                 ret_t = StypeInternGet(c, STYPE_VOID, "void");
             }
 
@@ -1502,6 +1791,7 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             memcpy(ctx->current_deps, saved_deps, sizeof(saved_deps));
 
             ctx->current_fn_ret = saved_ret;
+            ctx->has_value_return = saved_has_val_ret;
             ctx->in_const_fn = saved_const;
 
             result = StypeMakeFn(c, param_stypes, n->fn.pc, ret_t);
@@ -1656,10 +1946,97 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
         }
 
         case NCAST: {
-            if (n->cast.expr) InferNode(ctx, env, n->cast.expr);
+            SType *src_t = n->cast.expr ? InferNode(ctx, env, n->cast.expr) : StypeInternGet(c, STYPE_UNKNOWN, "");
             result = TyperResolveName(c, n->cast.targettype);
+            if (result && result->kind == STYPE_TRAIT && src_t &&
+                src_t->kind != STYPE_UNKNOWN && src_t->kind != STYPE_GENERIC) {
+                int ok = (src_t->kind == STYPE_TRAIT && strcmp(src_t->name, result->name) == 0) ||
+                         (src_t->kind == STYPE_STRUCT && TyperCheckTraitImpl(c, src_t->name, result->name));
+                if (!ok) {
+                    extern int gStrictTypes;
+                    if (gStrictTypes || (c && c->is_static_mode)) {
+                        char sa[64], msg[512];
+                        StypeName(src_t, sa, sizeof(sa));
+                        snprintf(msg, sizeof(msg), "cannot cast '%.63s' to 'dyn %.127s': struct does not implement trait '%.127s'",
+                                 sa, result->name, result->name);
+                        TyperError(ctx, n->line, msg);
+                    }
+                }
+            }
             break;
         }
+
+        case NSTRUCTINIT: {
+            const char *tname = n->structinit.typename ? n->structinit.typename : "Object";
+            if (n->structinit.spread) InferNode(ctx, env, n->structinit.spread);
+            const CompilerStruct *cs = NULL;
+            if (c) {
+                for (int si = 0; si < c->structcount; si++) {
+                    if (strcmp(c->structs[si].name, tname) == 0) { cs = &c->structs[si]; break; }
+                }
+            }
+            for (int i = 0; i < n->structinit.fc; i++) {
+                SType *ft = InferNode(ctx, env, n->structinit.fvals[i]);
+                if (cs && n->structinit.fnames[i]) {
+                    for (int f = 0; f < cs->fc; f++) {
+                        if (cs->fnames[f] && strcmp(cs->fnames[f], n->structinit.fnames[i]) == 0) {
+                            SType *decl_ft = TyperResolveName(c, cs->ftypes[f]);
+                            if (!TyperUnify(c, decl_ft, ft, n->line)) {
+                                ctx->had_error = 1;
+                                ctx->error_count++;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            result = TyperResolveName(c, tname);
+            break;
+        }
+
+        case NDESTRUCTARR: {
+            SType *vt = n->destructarr.value ? InferNode(ctx, env, n->destructarr.value) : StypeInternGet(c, STYPE_UNKNOWN, "");
+            for (int i = 0; i < n->destructarr.count; i++) {
+                SType *et = StypeInternGet(c, STYPE_UNKNOWN, "");
+                if (vt && vt->kind == STYPE_TUPLE && vt->params && i < vt->param_count) et = vt->params[i];
+                else if (vt && vt->kind == STYPE_ARRAY && vt->inner) et = vt->inner;
+                if (n->destructarr.names && n->destructarr.names[i]) EnvSet(env, n->destructarr.names[i], et);
+            }
+            result = StypeInternGet(c, STYPE_VOID, "void");
+            break;
+        }
+
+        case NDESTRUCTOBJ: {
+            SType *vt = n->destructobj.value ? InferNode(ctx, env, n->destructobj.value) : StypeInternGet(c, STYPE_UNKNOWN, "");
+            const CompilerStruct *cs = NULL;
+            if (c && vt && vt->kind == STYPE_STRUCT) {
+                for (int si = 0; si < c->structcount; si++) {
+                    if (strcmp(c->structs[si].name, vt->name) == 0) { cs = &c->structs[si]; break; }
+                }
+            }
+            for (int i = 0; i < n->destructobj.count; i++) {
+                SType *ft = StypeInternGet(c, STYPE_UNKNOWN, "");
+                if (cs && n->destructobj.keys && n->destructobj.keys[i]) {
+                    for (int f = 0; f < cs->fc; f++) {
+                        if (cs->fnames[f] && strcmp(cs->fnames[f], n->destructobj.keys[i]) == 0) {
+                            ft = TyperResolveName(c, cs->ftypes[f]);
+                            break;
+                        }
+                    }
+                }
+                if (n->destructobj.aliases && n->destructobj.aliases[i]) {
+                    EnvSet(env, n->destructobj.aliases[i], ft);
+                }
+            }
+            result = StypeInternGet(c, STYPE_VOID, "void");
+            break;
+        }
+
+        case NSTRUCTDECL:
+        case NINTERFACEDECL:
+        case NENUMDECL:
+            result = StypeInternGet(c, STYPE_VOID, "void");
+            break;
 
         case NREGION: {
             TypeEnv *inner = EnvPush(env);
@@ -1759,6 +2136,129 @@ static void TyperOptimizeAST(Node *n) {
     }
 }
 
+/* Pass 1: Pre-register top-level interfaces, structs, enums, functions, and imports */
+static void TyperPreregister(TyperCtx *ctx, TypeEnv *env, Node *program) {
+    if (!program || !ctx || !ctx->comp) return;
+    Compiler *c = ctx->comp;
+    if (program->type != NPROGRAM && program->type != NBLOCK) return;
+    for (int i = 0; i < program->block.count; i++) {
+        Node *n = program->block.stmts[i];
+        if (!n) continue;
+        if (n->type == NIMPORT && n->single.var && !n->decl.isconstflag) {
+            TyperProcessImport(ctx, env, n);
+        } else if (n->type == NINTERFACEDECL && n->interfacedecl.name) {
+            int found = 0;
+            for (int k = 0; k < c->interfacecount; k++) {
+                if (strcmp(c->interfaces[k].name, n->interfacedecl.name) == 0) { found = 1; break; }
+            }
+            if (!found && c->interfacecount < 512) {
+                CompilerInterface *inf = &c->interfaces[c->interfacecount++];
+                memset(inf, 0, sizeof(*inf));
+                snprintf(inf->name, sizeof(inf->name), "%s", n->interfacedecl.name);
+                inf->count = n->interfacedecl.count;
+                if (inf->count > 0) {
+                    inf->fnames = calloc((size_t)inf->count, sizeof(char *));
+                    inf->rettypes = calloc((size_t)inf->count, sizeof(char *));
+                    inf->paramtypes = calloc((size_t)inf->count, sizeof(char **));
+                    inf->paramnames = calloc((size_t)inf->count, sizeof(char **));
+                    inf->paramcounts = calloc((size_t)inf->count, sizeof(int));
+                    inf->hasdefault = calloc((size_t)inf->count, sizeof(int));
+                    inf->defaultbodies = calloc((size_t)inf->count, sizeof(Node *));
+                    for (int m = 0; m < inf->count; m++) {
+                        inf->fnames[m] = n->interfacedecl.fnames[m] ? strdup(n->interfacedecl.fnames[m]) : strdup("");
+                        inf->rettypes[m] = n->interfacedecl.rettypes[m] ? strdup(n->interfacedecl.rettypes[m]) : strdup("void");
+                        int pc = n->interfacedecl.paramcounts ? n->interfacedecl.paramcounts[m] : 0;
+                        inf->paramcounts[m] = pc;
+                        inf->hasdefault[m] = n->interfacedecl.hasdefault ? n->interfacedecl.hasdefault[m] : 0;
+                        if (pc > 0) {
+                            inf->paramtypes[m] = calloc((size_t)pc, sizeof(char *));
+                            inf->paramnames[m] = calloc((size_t)pc, sizeof(char *));
+                            for (int p = 0; p < pc; p++) {
+                                inf->paramtypes[m][p] = n->interfacedecl.paramtypes[m][p] ? strdup(n->interfacedecl.paramtypes[m][p]) : strdup("any");
+                                inf->paramnames[m][p] = n->interfacedecl.paramnames[m][p] ? strdup(n->interfacedecl.paramnames[m][p]) : strdup("arg");
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (n->type == NSTRUCTDECL && n->strct.name && n->strct.tpc == 0) {
+            int found = 0;
+            for (int k = 0; k < c->structcount; k++) {
+                if (strcmp(c->structs[k].name, n->strct.name) == 0) { found = 1; break; }
+            }
+            if (!found && c->structcount < 512) {
+                CompilerStruct *s = &c->structs[c->structcount++];
+                memset(s, 0, sizeof(*s));
+                snprintf(s->name, sizeof(s->name), "%s", n->strct.name);
+                s->fc = n->strct.fc;
+                if (s->fc > 0) {
+                    s->fnames = calloc((size_t)s->fc, sizeof(char *));
+                    s->ftypes = calloc((size_t)s->fc, sizeof(char *));
+                    for (int f = 0; f < s->fc; f++) {
+                        s->fnames[f] = n->strct.fnames[f] ? strdup(n->strct.fnames[f]) : strdup("");
+                        s->ftypes[f] = n->strct.ftypes[f] ? strdup(n->strct.ftypes[f]) : strdup("any");
+                    }
+                }
+                s->ic = n->strct.ic;
+                if (s->ic > 0) {
+                    s->interfaces = calloc((size_t)s->ic, sizeof(char *));
+                    for (int k = 0; k < s->ic; k++) {
+                        s->interfaces[k] = n->strct.interfaces[k] ? strdup(n->strct.interfaces[k]) : strdup("");
+                    }
+                }
+            }
+        } else if (n->type == NENUMDECL && n->enumdecl.name) {
+            int found = 0;
+            for (int k = 0; k < c->enumcount; k++) {
+                if (strcmp(c->enums[k].name, n->enumdecl.name) == 0) { found = 1; break; }
+            }
+            if (!found && c->enumcount < 512) {
+                CompilerEnum *en = &c->enums[c->enumcount++];
+                memset(en, 0, sizeof(*en));
+                snprintf(en->name, sizeof(en->name), "%s", n->enumdecl.name);
+                en->count = n->enumdecl.count;
+                en->isadt = n->enumdecl.isadt;
+                if (en->count > 0) {
+                    en->members = calloc((size_t)en->count, sizeof(char *));
+                    en->values = calloc((size_t)en->count, sizeof(int64_t));
+                    for (int m = 0; m < en->count; m++) {
+                        en->members[m] = n->enumdecl.members[m] ? strdup(n->enumdecl.members[m]) : strdup("");
+                        en->values[m] = n->enumdecl.values ? n->enumdecl.values[m] : 0;
+                    }
+                }
+            }
+        } else if (n->type == NFNDECL && n->fn.name) {
+            SType *ptypes[32] = {0};
+            int pc = (n->fn.pc < 32) ? n->fn.pc : 32;
+            for (int p = 0; p < pc; p++) {
+                const char *pt = (n->fn.ptypes && n->fn.ptypes[p]) ? n->fn.ptypes[p] : NULL;
+                ptypes[p] = (pt && pt[0]) ? TyperResolveName(c, pt) : StypeInternGet(c, STYPE_UNKNOWN, "");
+            }
+            SType *rt = n->fn.ret ? TyperResolveName(c, n->fn.ret) : StypeInternGet(c, STYPE_UNKNOWN, "");
+            EnvSet(env, n->fn.name, StypeMakeFn(c, ptypes, pc, rt));
+        }
+    }
+    /* Verify implemented traits once interfaces & structs are all registered */
+    extern int gStrictTypes;
+    if (gStrictTypes || c->is_static_mode) {
+        for (int i = 0; i < program->block.count; i++) {
+            Node *n = program->block.stmts[i];
+            if (n && n->type == NSTRUCTDECL && n->strct.name && n->strct.tpc == 0 && n->strct.ic > 0) {
+                for (int k = 0; k < n->strct.ic; k++) {
+                    if (n->strct.interfaces[k] &&
+                        !TyperCheckTraitImpl(c, n->strct.name, n->strct.interfaces[k])) {
+                        char msg[256];
+                        snprintf(msg, sizeof(msg),
+                                 "struct '%s' does not implement required members of trait '%s'",
+                                 n->strct.name, n->strct.interfaces[k]);
+                        TyperError(ctx, n->line, msg);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /* Public entry point */
 
 int TyperRun(Compiler *c, Node *program) {
@@ -1779,6 +2279,9 @@ int TyperRun(Compiler *c, Node *program) {
     StypeInternGet(c, STYPE_VOID, "void");
     StypeInternGet(c, STYPE_NEVER, "!");
 
+    /* Pass 1: Pre-register declarations and resolve imports */
+    if (program) TyperPreregister(&ctx, &root, program);
+
     /* Infer all top-level nodes */
     if (program && program->type == NPROGRAM) {
         for (int i = 0; i < program->block.count; i++) {
@@ -1793,15 +2296,20 @@ int TyperRun(Compiler *c, Node *program) {
         TyperOptimizeAST(program);
     }
 
-    /* Flush local root env */
+    /* Flush local root env and visited import cache */
     EnvFreeLocal(&root);
+    for (int i = 0; i < ctx.visited_import_count; i++) {
+        free(ctx.visited_imports[i]);
+    }
+    free(ctx.visited_imports);
 
-    if (ctx.error_count > 0) {
-        fprintf(stderr, "Type checking failed: %d error(s) found.\n", ctx.error_count);
+    int total_errs = ctx.error_count + (c ? c->error_count : 0);
+    if (total_errs > 0) {
+        fprintf(stderr, "Type checking failed: %d error(s) found.\n", total_errs);
     } else {
         TyperSaveSigCache(c, ".akscache/signatures.bin");
     }
-    return ctx.had_error ? 0 : 1;
+    return (ctx.had_error || (c && c->haderror)) ? 0 : 1;
 }
 
 SType *TyperInfer(Compiler *c, Node *n) {
@@ -1856,12 +2364,13 @@ int TyperMono(Compiler *c, Node *fn_node, SType **arg_types, int argc, int call_
        when the body is identical. */
     int fnid = -1;
     for (int i = 0; i < c->fncount; i++) {
-        if (c->fns[i]->name && strcmp(c->fns[i]->name, fn_node->fn.name ? fn_node->fn.name : "") == 0) {
+        if (c->fns[i]->name[0] && strcmp(c->fns[i]->name, fn_node->fn.name ? fn_node->fn.name : "") == 0) {
             fnid = i; break;
         }
     }
     if (fnid >= 0 && c->mono_cache_count < 1024) {
-        strncpy(c->mono_cache[c->mono_cache_count].key, key, 255);
+        snprintf(c->mono_cache[c->mono_cache_count].key,
+                 sizeof(c->mono_cache[c->mono_cache_count].key), "%s", key);
         c->mono_cache[c->mono_cache_count].fnid = fnid;
         c->mono_cache_count++;
     }

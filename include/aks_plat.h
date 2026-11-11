@@ -20,18 +20,37 @@
 #endif
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <ctype.h>
+#include <limits.h>
+#include <string.h>
+#include <strings.h>
+#include <wchar.h>
+#include <locale.h>
+#include <dlfcn.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netdb.h>
+#ifdef __linux__
+#include <sys/epoll.h>
+#elif defined(__APPLE__)
+#include <sys/event.h>
+#endif
 #include <sys/types.h>
 #include <sys/select.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <sys/mman.h>
 #include <signal.h>
+
+#ifndef MemoryBarrier
+#define MemoryBarrier() __atomic_thread_fence(__ATOMIC_SEQ_CST)
+#endif
 
 #ifndef _popen
 #define _popen(cmd, mode) popen(cmd, mode)
@@ -48,8 +67,12 @@ typedef int SOCKET;
 #define SOCKET_ERROR -1
 #define closesocket(s) close(s)
 #define WSAGetLastError() errno
-#define WSAStartup(wVersionRequired, lpWSAData) (0)
-#define WSACleanup() (0)
+static inline int AksWsaStartupNoop(unsigned short wVersionRequired, void *lpWSAData) {
+    (void)wVersionRequired; (void)lpWSAData; return 0;
+}
+static inline int AksWsaCleanupNoop(void) { return 0; }
+#define WSAStartup(wVersionRequired, lpWSAData) AksWsaStartupNoop((wVersionRequired), (lpWSAData))
+#define WSACleanup() AksWsaCleanupNoop()
 typedef struct { int dummy; } WSADATA;
 #define MAKEWORD(a, b) 0
 
@@ -297,6 +320,82 @@ typedef struct {
 static inline void GetSystemInfo(SYSTEM_INFO *si) {
     si->dwNumberOfProcessors = sysconf(_SC_NPROCESSORS_ONLN);
     if (si->dwNumberOfProcessors < 1) si->dwNumberOfProcessors = 1;
+}
+
+#ifndef _stricmp
+#define _stricmp strcasecmp
+#endif
+#ifndef _strnicmp
+#define _strnicmp strncasecmp
+#endif
+#ifndef LPCWSTR
+typedef const wchar_t *LPCWSTR;
+#endif
+#ifndef ULONG
+typedef uint32_t ULONG;
+#endif
+
+#ifndef BCRYPT_SHA256_ALGORITHM
+#define BCRYPT_SHA256_ALGORITHM L"SHA256"
+#endif
+#ifndef BCRYPT_SHA512_ALGORITHM
+#define BCRYPT_SHA512_ALGORITHM L"SHA512"
+#endif
+#ifndef BCRYPT_AES_ALGORITHM
+#define BCRYPT_AES_ALGORITHM L"AES"
+#endif
+#ifndef BCRYPT_ECDSA_ALGORITHM
+#define BCRYPT_ECDSA_ALGORITHM L"ECDSA"
+#endif
+#ifndef BCRYPT_ECDSA_P256_ALGORITHM
+#define BCRYPT_ECDSA_P256_ALGORITHM L"ECDSA_P256"
+#endif
+#ifndef BCRYPT_ECDH_ALGORITHM
+#define BCRYPT_ECDH_ALGORITHM L"ECDH"
+#endif
+#ifndef BCRYPT_ECC_CURVE_25519
+#define BCRYPT_ECC_CURVE_25519 L"curve25519"
+#endif
+
+#ifndef MAX_PATH
+#ifdef PATH_MAX
+#define MAX_PATH PATH_MAX
+#else
+#define MAX_PATH 4096
+#endif
+#endif
+
+typedef int64_t LONG64;
+#define InterlockedCompareExchange64(dest, exch, comp) __sync_val_compare_and_swap((dest), (comp), (exch))
+#define InterlockedExchange64(dest, val) __sync_lock_test_and_set((dest), (val))
+#define InterlockedOr64(dest, val) __sync_fetch_and_or((dest), (val))
+
+static inline void *_aligned_malloc(size_t size, size_t alignment) {
+    void *ptr = NULL;
+    if (alignment < sizeof(void *)) alignment = sizeof(void *);
+    if (posix_memalign(&ptr, alignment, size ? size : 1) != 0) return NULL;
+    return ptr;
+}
+#define _aligned_free(ptr) free(ptr)
+
+#define _byteswap_ushort(x) __builtin_bswap16((uint16_t)(x))
+#define _byteswap_ulong(x)  __builtin_bswap32((uint32_t)(x))
+#define _byteswap_uint64(x) __builtin_bswap64((uint64_t)(x))
+
+static inline unsigned char _BitScanForward(unsigned long *index, unsigned long mask) {
+    if (mask == 0) return 0;
+    *index = (unsigned long)__builtin_ctzl(mask);
+    return 1;
+}
+static inline unsigned char _BitScanForward64(unsigned long *index, unsigned long long mask) {
+    if (mask == 0) return 0;
+    *index = (unsigned long)__builtin_ctzll(mask);
+    return 1;
+}
+static inline unsigned char _BitScanReverse64(unsigned long *index, unsigned long long mask) {
+    if (mask == 0) return 0;
+    *index = (unsigned long)(63 - __builtin_clzll(mask));
+    return 1;
 }
 
 #endif // _win32

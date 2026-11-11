@@ -1752,7 +1752,6 @@ Node *NodeOpt(Node *n) {
         }
 
         case NFOR: {
-            int unrolled = 0;
             if (n->forn.init && n->forn.cond && n->forn.post) {
                 Node *init = n->forn.init;
                 Node *cond = n->forn.cond;

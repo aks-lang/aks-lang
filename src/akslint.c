@@ -663,10 +663,15 @@ static void RunLinterOnFile(const char *filename, int *warns) {
     }
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
+    if (size < 0) size = 0;
     fseek(f, 0, SEEK_SET);
-    char *buf = malloc(size + 1);
-    fread(buf, 1, size, f);
-    buf[size] = '\0';
+    char *buf = malloc((size_t)size + 1);
+    if (!buf) {
+        fclose(f);
+        return;
+    }
+    size_t nr = fread(buf, 1, (size_t)size, f);
+    buf[nr] = '\0';
     fclose(f);
     
     int count = 0;

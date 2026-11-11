@@ -26,7 +26,7 @@ static char g_fallback_clip[4096] = "";
 
 void SysClipSetText(const char *text) {
     if (!text) text = "";
-    strncpy_s(g_fallback_clip, sizeof(g_fallback_clip), text, _TRUNCATE);
+    snprintf(g_fallback_clip, sizeof(g_fallback_clip), "%s", text);
 #ifdef _WIN32
     int retries = 10;
     while (!OpenClipboard(NULL) && --retries > 0) {
@@ -76,7 +76,7 @@ char *SysClipGetText(void) {
     }
     return strdup(g_fallback_clip);
 #else
-    return strdup("[POSIX Clipboard Content]");
+    return strdup(g_fallback_clip);
 #endif
 }
 
@@ -190,7 +190,7 @@ AKSValue SysGUINewBtn(AKSValue parentwin, const char *text, int x, int y, int w,
                               x, y, w, h, parent, NULL, hInst, NULL);
     return ValInt((int64_t)btn);
 #else
-    printf("[POSIX GUI] Button '%s' created on parent %lld\n", text, ValToInt(parentwin));
+    printf("[POSIX GUI] Button '%s' created on parent %lld\n", text, (long long)ValToInt(parentwin));
     return ValInt(43);
 #endif
 }
@@ -332,7 +332,7 @@ void SysGUIEnableDragDrop(AKSValue window) {
 #ifdef _WIN32
     DragAcceptFiles((HWND)ValToInt(window), TRUE);
 #else
-    printf("[GUI DragDrop] Drag Accept enabled for window %lld\n", ValToInt(window));
+    printf("[GUI DragDrop] Drag Accept enabled for window %lld\n", (long long)ValToInt(window));
 #endif
 }
 
@@ -368,10 +368,10 @@ int CompileToWasm(const char *sourcepath, const char *outputpath) {
         sourcelen = ftell(sf);
         fseek(sf, 0, SEEK_SET);
         if (sourcelen > 0) {
-            source = malloc(sourcelen + 1);
+            source = malloc((size_t)sourcelen + 1);
             if (source) {
-                fread(source, 1, sourcelen, sf);
-                source[sourcelen] = '\0';
+                size_t nr = fread(source, 1, (size_t)sourcelen, sf);
+                source[nr] = '\0';
             }
         }
         fclose(sf);
@@ -493,8 +493,8 @@ int RunWasmBinary(const char *wasmpath) {
         
         if (secid == 0x0a) {
             // read code payload
-            fread(codebuf, 1, secsz, f);
-            codelen = secsz;
+            size_t to_read = secsz > sizeof(codebuf) ? sizeof(codebuf) : secsz;
+            codelen = (int)fread(codebuf, 1, to_read, f);
             break;
         } else {
             fseek(f, secsz, SEEK_CUR);

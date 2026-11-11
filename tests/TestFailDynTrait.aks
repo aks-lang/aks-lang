@@ -1,0 +1,14 @@
+trait Speaker {
+    fn speak(msg: string) -> string;
+}
+
+struct Rock {
+    weight: int;
+}
+
+fn announce(s: dyn Speaker, msg: string) -> string {
+    return s.speak(msg);
+}
+
+let rock = new Rock();
+announce(rock, "hello");

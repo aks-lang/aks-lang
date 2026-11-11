@@ -276,6 +276,9 @@ typedef struct {
     int coverage_enabled;
     int sanitize_address;
     int sanitize_thread;
+    int san_error_count;
+    void *san_state;
+    void *san_lock;
     VMMethodCacheEntry method_cache[VM_METHOD_CACHE_SIZE];
 } VM;
 

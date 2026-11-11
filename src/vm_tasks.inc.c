@@ -177,7 +177,7 @@ VMSemaphore *SemNew(int initialcount) {
 }
 
 // deque operations
-static void WorkerPushTail(VMWorker *w, VMTask *t) {
+void WorkerPushTail(VMWorker *w, VMTask *t) {
   MutexLockNative(w->lock);
   while ((uint32_t)(w->tail - w->head) >= 1024) {
     MutexUnlockNative(w->lock);
@@ -221,8 +221,8 @@ int RunTaskSlice(VM *vm, VMTask *task, int maxinstructions);
 static void RaiseEx(VM *vm, VMTask *task, const char *msg, uint8_t **ipptr,
                     AKSValue **stacktopptr, CallFrame **frameptr,
                     AKSValue **frameslotsptr);
-static void TriggerPanic(VM *vm, VMTask *task, const char *msg,
-                         uint8_t **ipptr);
+void TriggerPanic(VM *vm, VMTask *task, const char *msg,
+                  uint8_t **ipptr);
 static void RaiseExceptionValue(VM *vm, VMTask *task, AKSValue exception_val,
                                 uint8_t **ipptr, AKSValue **stacktopptr,
                                 CallFrame **frameptr, AKSValue **frameslotsptr);

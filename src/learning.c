@@ -887,7 +887,7 @@ void LearnTutorial(const char *action, const char *arg) {
     int currentlesson = 1;
     FILE *f = fopen(".akstutorial", "r");
     if (f) {
-        fscanf(f, "%d", &currentlesson);
+        if (fscanf(f, "%d", &currentlesson) != 1) currentlesson = 1;
         fclose(f);
     }
     if (currentlesson < 1 || currentlesson > LESSONCOUNT) currentlesson = 1;
@@ -931,7 +931,8 @@ void LearnTutorial(const char *action, const char *arg) {
         printf("Executing automated verification tests...\n");
         char cmd[512];
         sprintf(cmd, "\"%s\" run tutorialexerciseverify.aks > tutorialres.txt 2>&1", gProgramName);
-        system(cmd);
+        int sys_rc = system(cmd);
+        (void)sys_rc;
         char *output = LearnReadFile("tutorialres.txt");
         remove("tutorialexerciseverify.aks");
         remove("tutorialres.txt");
@@ -1245,7 +1246,8 @@ void LearnPlayground(int port) {
                 LearnWriteFile("playgroundtemp.aks", body);
                 char cmd[512];
                 sprintf(cmd, "\"%s\" run playgroundtemp.aks > playgroundout.txt 2>&1", gProgramName);
-                system(cmd);
+                int sys_rc = system(cmd);
+                (void)sys_rc;
                 char *output = LearnReadFile("playgroundout.txt");
                 if (!output) output = strdup("No output produced.");
 

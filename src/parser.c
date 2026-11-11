@@ -299,6 +299,26 @@ static void ParseRefTypeSuffix(Parser *p, TypeStr *ts) {
   }
 }
 
+static Parser ParserSaveState(const Parser *p) {
+  Parser saved = *p;
+  if (saved.cur.val)
+    saved.cur.val = strdup(saved.cur.val);
+  if (saved.peek.val)
+    saved.peek.val = strdup(saved.peek.val);
+  return saved;
+}
+
+static void ParserFreeSavedState(Parser *saved) {
+  TokFree(&saved->cur);
+  TokFree(&saved->peek);
+}
+
+static void ParserRestoreState(Parser *p, Parser *saved) {
+  TokFree(&p->cur);
+  TokFree(&p->peek);
+  *p = *saved;
+}
+
 static char *ParseType(Parser *p) {
   TypeStr ts;
   TypeStrInit(&ts);
@@ -307,20 +327,14 @@ static char *ParseType(Parser *p) {
   // this disambiguates from function body braces
   if (Check(p, TLBRACE) && Check2(p, TIDENT)) {
     // save state and peek ahead to confirm ident followed by colon
-    Parser saved = *p;
-    if (saved.cur.val)
-      saved.cur.val = strdup(saved.cur.val);
-    if (saved.peek.val)
-      saved.peek.val = strdup(saved.peek.val);
+    Parser saved = ParserSaveState(p);
     Token lb = Consume(p);
     TokFree(&lb); // consume {
     Token id = Consume(p);
     TokFree(&id); // consume ident
     int isref = Check(p, TCOLON);
     // restore parser state
-    TokFree(&p->cur);
-    TokFree(&p->peek);
-    *p = saved;
+    ParserRestoreState(p, &saved);
     if (isref) {
       ParseRefTypeSuffix(p, &ts);
     }
@@ -3199,7 +3213,6 @@ parse_use:;
   }
   case TDEFER: {
     int line = p->cur.line;
-    int col = p->cur.col;
     Token kw = Consume(p);
     TokFree(&kw);
     Node *stmt = NULL;
@@ -3214,7 +3227,6 @@ parse_use:;
   }
   case TERRDEFER: {
     int line = p->cur.line;
-    int col = p->cur.col;
     Token kw = Consume(p);
     TokFree(&kw);
     Node *stmt = NULL;
@@ -4295,30 +4307,34 @@ static Node *ParsePostfix(Parser *p) {
       n->call.targs = NULL;
       n->call.tc = 0;
       expr = n;
-    } else if (Check(p, TLT) && expr->type == NIDENT) {
-      // backtracking peek for template call: expr<types>(args)
-      Parser saved = *p;
-      if (saved.cur.val)
-        saved.cur.val = strdup(saved.cur.val);
-      if (saved.peek.val)
-        saved.peek.val = strdup(saved.peek.val);
+    } else if ((Check(p, TCOLONCOLON) && Check2(p, TLT)) ||
+               (Check(p, TLT) && expr->type == NIDENT)) {
+      // backtracking peek for template call: expr::<types>(args) or expr<types>(args)
+      int has_turbofish = Check(p, TCOLONCOLON);
+      Parser saved = ParserSaveState(p);
       int savedsuppress = p->suppresserrors;
       p->suppresserrors = 1; // suppress errors during speculative parse
       int savederr = p->err;
       int istemplate = 0;
+      if (has_turbofish) {
+        Token cc = Consume(p);
+        TokFree(&cc);
+      }
       Token lt = Consume(p);
       TokFree(&lt);
       int tc = 0, tcap = 4;
       char **targs = malloc(tcap * sizeof(char *));
       while (!Check(p, TGT) && !Check(p, TEOF)) {
         char *tname = ParseType(p);
-        if (tname) {
+        if (tname && tname[0]) {
           if (tc == tcap) {
             tcap *= 2;
             targs = realloc(targs, tcap * sizeof(char *));
           }
           targs[tc++] = tname;
         } else {
+          if (tname)
+            free(tname);
           break;
         }
         if (!Check(p, TGT)) {
@@ -4326,7 +4342,7 @@ static Node *ParsePostfix(Parser *p) {
             break;
         }
       }
-      if (Check(p, TGT)) {
+      if (Check(p, TGT) && tc > 0) {
         Token gt = Consume(p);
         TokFree(&gt);
         if (Check(p, TLPAREN)) {
@@ -4335,6 +4351,7 @@ static Node *ParsePostfix(Parser *p) {
       }
       p->suppresserrors = savedsuppress; // restore error reporting
       if (istemplate) {
+        ParserFreeSavedState(&saved);
         p->suppresserrors = 0; // restore error reporting
         Token lp = Expect(p, TLPAREN);
         TokFree(&lp);
@@ -4374,9 +4391,7 @@ static Node *ParsePostfix(Parser *p) {
         for (int i = 0; i < tc; i++)
           free(targs[i]);
         free(targs);
-        TokFree(&p->cur);
-        TokFree(&p->peek);
-        *p = saved;
+        ParserRestoreState(p, &saved);
         break; // continue parsing binary operations
       }
     } else if (Check(p, TLBRACKET)) {
@@ -4723,6 +4738,9 @@ static Node *ParsePrimary(Parser *p) {
 
     /* Consume :: path segments: ident::ident::... or ident::* */
     while (Check(p, TCOLONCOLON)) {
+      if (p->peek.type != TIDENT && p->peek.type != TSTAR) {
+        break;
+      }
       Token cctok = Consume(p);
       TokFree(&cctok);
       if (Check(p, TIDENT)) {
@@ -4741,8 +4759,6 @@ static Node *ParsePrimary(Parser *p) {
         snprintf(newname, newlen, "%s::*", name);
         free(name);
         name = newname;
-        break;
-      } else {
         break;
       }
     }

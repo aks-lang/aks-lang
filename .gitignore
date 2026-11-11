@@ -1,5 +1,6 @@
 # Build outputs & executables
 *.obj
+*.o
 src/*.obj
 tests/*.obj
 *.exe
@@ -7,9 +8,17 @@ tests/*.exe
 *.pdb
 *.ilk
 *.dll
+*.so
+*.dylib
 *.lib
 *.exp
 *.node
+/aks
+/aksls
+/aksfmt
+/akslint
+/obj/
+/tests/TestProtocols
 
 # Intermediate Maps & Traces
 *.c.map

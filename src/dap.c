@@ -15,7 +15,6 @@ int GDapPaused = 0;
 extern VM *GActiveVm;
 
 static SOCKET GDapClient = INVALID_SOCKET;
-static HANDLE GResumeEvent = NULL;
 #ifdef _WIN32
 static CRITICAL_SECTION GDapLock;
 #else
@@ -26,8 +25,6 @@ static pthread_mutex_t GDapLock;
 // = none, 1 = step-in, 2 = step-over, 3 = step-out, 4 = step-back
 static int GStepMode = 0;
 static int GStepFrameCount = 0;
-static int GStepLine = -1;
-static char GStepFile[256] = "";
 
 // Breakpoints
 typedef struct {
@@ -406,7 +403,7 @@ static void DAPTakeSnapshot(VMTask *Task, CallFrame *Frame, int Line) {
     
     // Save to ring buffer
     int Idx = GSnapshotCount % MAX_SNAPSHOTS;
-    strncpy(GSnapshots[Idx].FnName, Frame->fn->name, 127);
+    snprintf(GSnapshots[Idx].FnName, sizeof(GSnapshots[Idx].FnName), "%s", Frame->fn->name);
     GSnapshots[Idx].Line = Line;
     GSnapshots[Idx].framecount = Task->framecount;
     GSnapshots[Idx].stacktop = Task->stacktop;
@@ -502,7 +499,7 @@ static int EvaluateCondition(const char *Cond, VMTask *Task, CallFrame *Frame, V
     } else if (t == VALSTR) {
         // Strip string literal quotes if present
         char CleanTarget[128];
-        strncpy(CleanTarget, ValStr, sizeof(CleanTarget) - 1);
+        snprintf(CleanTarget, sizeof(CleanTarget), "%s", ValStr);
         if (CleanTarget[0] == '"') {
             size_t Len = strlen(CleanTarget);
             if (Len > 2) {

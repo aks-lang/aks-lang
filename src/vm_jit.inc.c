@@ -565,7 +565,8 @@ static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
   snprintf(compilecmd, sizeof(compilecmd),
            "gcc -O3 -shared -fPIC \"%s\" -o \"%s\" >/dev/null 2>&1", cfile,
            dllfile);
-  system(compilecmd);
+  if (system(compilecmd) != 0) {
+  }
 #endif
 
   // clean up temporary C and object files safely using C remove()
@@ -642,8 +643,8 @@ static void TriggerTracingJIT(VM *vm, VMTask *task, FnProto *fn,
   }
 
   if (vm->jitcacheenabled && vm->jitmode == 1) {
-    NewDir(".akscache");
-    NewDir(".akscache/jitcache");
+    (void)NewDir(".akscache");
+    (void)NewDir(".akscache/jitcache");
     char cachefile[256];
     snprintf(cachefile, sizeof(cachefile),
              ".akscache/jitcache/trace_%d_%d_%d.bin", fn->id, startoffset,
@@ -1215,7 +1216,8 @@ static void TriggerTracingJIT(VM *vm, VMTask *task, FnProto *fn,
   snprintf(compilecmd, sizeof(compilecmd),
            "gcc -O3 -shared -fPIC \"%s\" -o \"%s\" >/dev/null 2>&1", cfile,
            dllfile);
-  system(compilecmd);
+  if (system(compilecmd) != 0) {
+  }
 #endif
 
   // clean up temporary C and object files safely using C remove()
@@ -1377,7 +1379,7 @@ static void ExecuteJITCompiled(VM *vm, VMTask *task, FnProto *fn,
       int top = (int)(*stacktopptr - task->stack);
       typedef int (*jitloopfnt)(AKSValue *, int *, AKSValue *, void *,
                                 AKSValue (*)(AKSValue), void (*)(AKSValue *));
-      int resumeoffset = ((jitloopfnt)vm->jitloops[i].jitfn)(
+      int resumeoffset = ((jitloopfnt)(void (*)(void))vm->jitloops[i].jitfn)(
           task->stack, &top, task->stack + (*frameptr)->slotsbase, vm, ValCopy,
           ValFreeFunc);
       *stacktopptr = task->stack + top;

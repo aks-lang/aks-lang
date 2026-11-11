@@ -6,19 +6,26 @@
 #include "aks_plat.h"
 #include <fcntl.h>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <unistd.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #define _dup dup
 #define _dup2 dup2
 #define _fileno fileno
 #define _close close
+#ifndef MAX_PATH
 #define MAX_PATH 260
+#endif
 #endif
 
 #include "lexer.h"
 #include "ast.h"
 #include "parser.h"
 #include "compiler.h"
+#include "pkg.h"
 #include "diagnostic.h"
 #define AKS_NO_FMT_MAIN
 #include "aksfmt.c"
@@ -285,11 +292,12 @@ static Document *DocGet(const char *uri) {
 
 // Symbol and AST visiting
 typedef enum {
-    SYM_FN, SYM_STRUCT, SYM_ENUM, SYM_VAR
+    SYM_FN, SYM_STRUCT, SYM_ENUM, SYM_INTERFACE, SYM_VAR
 } SymbolKind;
 
 typedef struct {
     char *name;
+    char *uri;
     SymbolKind kind;
     int line; // 1-based
     int col;  // 1-based
@@ -302,45 +310,233 @@ typedef struct {
 static SymbolDef *g_syms = NULL;
 static int g_syms_count = 0;
 
-static void SymAddEx(const char *name, SymbolKind kind, int line, int col, const char *detail, int param_count, char **params, const char *ret_type) {
-    g_syms = realloc(g_syms, (g_syms_count + 1) * sizeof(SymbolDef));
-    g_syms[g_syms_count].name = strdup(name);
-    g_syms[g_syms_count].kind = kind;
-    g_syms[g_syms_count].line = line;
-    g_syms[g_syms_count].col = col;
-    g_syms[g_syms_count].detail = strdup(detail ? detail : "");
-    g_syms[g_syms_count].param_count = param_count;
+static int LspUriEqual(const char *a, const char *b) {
+    if (!a && !b) return 1;
+    if (!a || !b) return 0;
+#ifdef _WIN32
+    return _stricmp(a, b) == 0;
+#else
+    return strcmp(a, b) == 0;
+#endif
+}
+
+static const char *LspStristr(const char *haystack, const char *needle) {
+    if (!haystack || !needle) return NULL;
+    if (!*needle) return haystack;
+    size_t nlen = strlen(needle);
+    for (const char *p = haystack; *p; p++) {
+        size_t i = 0;
+        while (i < nlen && p[i] && tolower((unsigned char)p[i]) == tolower((unsigned char)needle[i])) {
+            i++;
+        }
+        if (i == nlen) return p;
+    }
+    return NULL;
+}
+
+static void SymFreeEntry(SymbolDef *s) {
+    if (!s) return;
+    free(s->name);
+    free(s->uri);
+    free(s->detail);
+    if (s->ret_type) free(s->ret_type);
+    if (s->params) {
+        for (int p = 0; p < s->param_count; p++) {
+            free(s->params[p]);
+        }
+        free(s->params);
+    }
+}
+
+static void SymAddExUri(const char *uri, const char *name, SymbolKind kind, int line, int col, const char *detail, int param_count, char **params, const char *ret_type) {
+    if (!name || !*name) return;
+    SymbolDef *grown = realloc(g_syms, (size_t)(g_syms_count + 1) * sizeof(SymbolDef));
+    if (!grown) return;
+    g_syms = grown;
+    SymbolDef *s = &g_syms[g_syms_count++];
+    s->name = strdup(name);
+    s->uri = strdup(uri ? uri : "");
+    s->kind = kind;
+    s->line = line;
+    s->col = col;
+    s->detail = strdup(detail ? detail : "");
+    s->param_count = param_count;
     if (param_count > 0 && params) {
-        g_syms[g_syms_count].params = malloc(param_count * sizeof(char *));
-        for (int i = 0; i < param_count; i++) {
-            g_syms[g_syms_count].params[i] = strdup(params[i] ? params[i] : "");
+        s->params = malloc((size_t)param_count * sizeof(char *));
+        if (s->params) {
+            for (int i = 0; i < param_count; i++) {
+                s->params[i] = strdup(params[i] ? params[i] : "");
+            }
+        } else {
+            s->param_count = 0;
         }
     } else {
-        g_syms[g_syms_count].params = NULL;
+        s->params = NULL;
     }
-    g_syms[g_syms_count].ret_type = ret_type ? strdup(ret_type) : NULL;
-    g_syms_count++;
+    s->ret_type = ret_type ? strdup(ret_type) : NULL;
 }
 
-static void SymAdd(const char *name, SymbolKind kind, int line, int col, const char *detail) {
-    SymAddEx(name, kind, line, col, detail, 0, NULL, NULL);
+static void SymAddUri(const char *uri, const char *name, SymbolKind kind, int line, int col, const char *detail) {
+    SymAddExUri(uri, name, kind, line, col, detail, 0, NULL, NULL);
 }
 
-static void SymsClear() {
+static void SymsRemoveForUri(const char *uri) {
+    if (!uri) return;
+    int write_idx = 0;
     for (int i = 0; i < g_syms_count; i++) {
-        free(g_syms[i].name);
-        free(g_syms[i].detail);
-        if (g_syms[i].ret_type) free(g_syms[i].ret_type);
-        if (g_syms[i].params) {
-            for (int p = 0; p < g_syms[i].param_count; p++) {
-                free(g_syms[i].params[p]);
+        if (LspUriEqual(g_syms[i].uri, uri)) {
+            SymFreeEntry(&g_syms[i]);
+        } else {
+            if (write_idx != i) {
+                g_syms[write_idx] = g_syms[i];
             }
-            free(g_syms[i].params);
+            write_idx++;
         }
+    }
+    g_syms_count = write_idx;
+}
+
+static void SymsClearAll(void) {
+    for (int i = 0; i < g_syms_count; i++) {
+        SymFreeEntry(&g_syms[i]);
     }
     free(g_syms);
     g_syms = NULL;
     g_syms_count = 0;
+}
+
+static SymbolDef *FindBestSymbol(const char *name, const char *prefer_uri, int fn_only) {
+    if (!name || !*name) return NULL;
+    SymbolDef *fallback = NULL;
+    for (int i = 0; i < g_syms_count; i++) {
+        if (fn_only && g_syms[i].kind != SYM_FN) continue;
+        if (strcmp(g_syms[i].name, name) != 0) continue;
+        if (prefer_uri && LspUriEqual(g_syms[i].uri, prefer_uri)) {
+            return &g_syms[i];
+        }
+        if (!fallback) fallback = &g_syms[i];
+    }
+    return fallback;
+}
+
+static int LspHexVal(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+static int UriToPath(const char *uri, char *out, size_t out_sz) {
+    if (!out || out_sz == 0) return 0;
+    out[0] = '\0';
+    if (!uri || !*uri) return 0;
+
+    const char *src = uri;
+    if (strncmp(uri, "file://", 7) == 0) {
+        src = uri + 7;
+        if (strncmp(src, "localhost/", 10) == 0) {
+            src += 9;
+        }
+    } else if (strstr(uri, "://") != NULL) {
+        return 0;
+    }
+
+    size_t j = 0;
+    for (size_t i = 0; src[i] && j + 1 < out_sz; i++) {
+        if (src[i] == '%' && src[i + 1] && src[i + 2]) {
+            int hi = LspHexVal(src[i + 1]);
+            int lo = LspHexVal(src[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                out[j++] = (char)((hi << 4) | lo);
+                i += 2;
+                continue;
+            }
+        }
+        out[j++] = (src[i] == '\\') ? '/' : src[i];
+    }
+    out[j] = '\0';
+
+#ifdef _WIN32
+    if (out[0] == '/' && isalpha((unsigned char)out[1]) && out[2] == ':') {
+        memmove(out, out + 1, strlen(out));
+    }
+#endif
+    size_t len = strlen(out);
+    while (len > 1 && out[len - 1] == '/') {
+#ifdef _WIN32
+        if (len == 3 && isalpha((unsigned char)out[0]) && out[1] == ':') break;
+#endif
+        out[--len] = '\0';
+    }
+    return out[0] != '\0';
+}
+
+static void PathToUri(const char *path, char *out, size_t out_sz) {
+    if (!out || out_sz == 0) return;
+    out[0] = '\0';
+    if (!path || !*path) return;
+    if (strncmp(path, "file://", 7) == 0) {
+        snprintf(out, out_sz, "%s", path);
+        return;
+    }
+    char abs_buf[2048];
+#ifdef _WIN32
+    if (!_fullpath(abs_buf, path, sizeof(abs_buf))) {
+        snprintf(abs_buf, sizeof(abs_buf), "%.2047s", path);
+    }
+#else
+    char *rp = realpath(path, NULL);
+    if (rp) {
+        snprintf(abs_buf, sizeof(abs_buf), "%.2047s", rp);
+        free(rp);
+    } else {
+        snprintf(abs_buf, sizeof(abs_buf), "%.2047s", path);
+    }
+#endif
+    for (size_t i = 0; abs_buf[i]; i++) {
+        if (abs_buf[i] == '\\') abs_buf[i] = '/';
+    }
+    int max_body = (out_sz > 10) ? (int)(out_sz - 10) : 0;
+#ifdef _WIN32
+    if (isalpha((unsigned char)abs_buf[0]) && abs_buf[1] == ':') {
+        snprintf(out, out_sz, "file:///%.*s", max_body, abs_buf);
+    } else if (abs_buf[0] == '/') {
+        snprintf(out, out_sz, "file://%.*s", max_body, abs_buf);
+    } else {
+        snprintf(out, out_sz, "file:///%.*s", max_body, abs_buf);
+    }
+#else
+    if (abs_buf[0] == '/') {
+        snprintf(out, out_sz, "file://%.*s", max_body, abs_buf);
+    } else {
+        snprintf(out, out_sz, "file:///%.*s", max_body, abs_buf);
+    }
+#endif
+}
+
+static char *LspReadFileStr(const char *path) {
+    if (!path || !*path) return NULL;
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    long sz = ftell(f);
+    if (sz < 0 || sz > 4 * 1024 * 1024) {
+        fclose(f);
+        return NULL;
+    }
+    rewind(f);
+    char *buf = malloc((size_t)sz + 1);
+    if (!buf) {
+        fclose(f);
+        return NULL;
+    }
+    size_t nr = fread(buf, 1, (size_t)sz, f);
+    buf[nr] = '\0';
+    fclose(f);
+    return buf;
 }
 
 static void GetColumnForLine(const char *text, int line, const char *name, int *out_col) {
@@ -364,7 +560,7 @@ static void GetColumnForLine(const char *text, int line, const char *name, int *
     }
 }
 
-static void WalkAST(Node *n, const char *text) {
+static void WalkASTForUri(Node *n, const char *text, const char *uri) {
     if (!n) return;
     int col = 1;
     switch (n->type) {
@@ -373,89 +569,287 @@ static void WalkAST(Node *n, const char *text) {
                 GetColumnForLine(text, n->line, n->fn.name, &col);
                 char detail[1024];
                 char param_buf[1024] = "";
+                size_t pb_len = 0;
                 char **param_strs = NULL;
                 if (n->fn.pc > 0) {
-                    param_strs = malloc(n->fn.pc * sizeof(char *));
+                    param_strs = malloc((size_t)n->fn.pc * sizeof(char *));
                     for (int i = 0; i < n->fn.pc; i++) {
                         char single_p[256];
                         const char *pname = (n->fn.pnames && n->fn.pnames[i]) ? n->fn.pnames[i] : "arg";
                         const char *ptype = (n->fn.ptypes && n->fn.ptypes[i]) ? n->fn.ptypes[i] : NULL;
-                        if (ptype && strlen(ptype) > 0) {
+                        if (ptype && ptype[0] != '\0') {
                             snprintf(single_p, sizeof(single_p), "%s: %s", pname, ptype);
                         } else {
                             snprintf(single_p, sizeof(single_p), "%s", pname);
                         }
-                        param_strs[i] = strdup(single_p);
-                        if (i > 0) strncat(param_buf, ", ", sizeof(param_buf) - strlen(param_buf) - 1);
-                        strncat(param_buf, single_p, sizeof(param_buf) - strlen(param_buf) - 1);
+                        if (param_strs) param_strs[i] = strdup(single_p);
+                        if (pb_len + 4 < sizeof(param_buf)) {
+                            int w = snprintf(param_buf + pb_len, sizeof(param_buf) - pb_len,
+                                             "%s%s", i > 0 ? ", " : "", single_p);
+                            if (w > 0) {
+                                size_t adv = (size_t)w;
+                                pb_len += (pb_len + adv < sizeof(param_buf)) ? adv : (sizeof(param_buf) - 1 - pb_len);
+                            }
+                        }
                     }
                 }
-                if (n->fn.ret && strlen(n->fn.ret) > 0) {
+                if (n->fn.ret && n->fn.ret[0] != '\0') {
                     snprintf(detail, sizeof(detail), "fn %s(%s) -> %s", n->fn.name, param_buf, n->fn.ret);
                 } else {
                     snprintf(detail, sizeof(detail), "fn %s(%s)", n->fn.name, param_buf);
                 }
-                SymAddEx(n->fn.name, SYM_FN, n->line, col, detail, n->fn.pc, param_strs, n->fn.ret);
+                SymAddExUri(uri, n->fn.name, SYM_FN, n->line, col, detail, n->fn.pc, param_strs, n->fn.ret);
                 if (param_strs) {
                     for (int i = 0; i < n->fn.pc; i++) free(param_strs[i]);
                     free(param_strs);
                 }
             }
-            WalkAST(n->fn.body, text);
+            WalkASTForUri(n->fn.body, text, uri);
             break;
         case NSTRUCTDECL:
             if (n->strct.name) {
                 GetColumnForLine(text, n->line, n->strct.name, &col);
                 char detail[256];
                 snprintf(detail, sizeof(detail), "struct %s", n->strct.name);
-                SymAdd(n->strct.name, SYM_STRUCT, n->line, col, detail);
+                SymAddUri(uri, n->strct.name, SYM_STRUCT, n->line, col, detail);
+            }
+            break;
+        case NINTERFACEDECL:
+            if (n->interfacedecl.name) {
+                GetColumnForLine(text, n->line, n->interfacedecl.name, &col);
+                char detail[256];
+                snprintf(detail, sizeof(detail), "interface %s", n->interfacedecl.name);
+                SymAddUri(uri, n->interfacedecl.name, SYM_INTERFACE, n->line, col, detail);
             }
             break;
         case NVARDECL:
         case NCONSTDECL:
             if (n->decl.name) {
                 GetColumnForLine(text, n->line, n->decl.name, &col);
-                SymAdd(n->decl.name, SYM_VAR, n->line, col, "variable");
+                SymAddUri(uri, n->decl.name, SYM_VAR, n->line, col, "variable");
             }
-            WalkAST(n->decl.init, text);
+            WalkASTForUri(n->decl.init, text, uri);
             break;
         case NENUMDECL:
             if (n->enumdecl.name) {
                 GetColumnForLine(text, n->line, n->enumdecl.name, &col);
-                SymAdd(n->enumdecl.name, SYM_ENUM, n->line, col, "enum");
+                SymAddUri(uri, n->enumdecl.name, SYM_ENUM, n->line, col, "enum");
             }
             break;
         case NBLOCK:
         case NPROGRAM:
-            for (int i = 0; i < n->block.count; i++) WalkAST(n->block.stmts[i], text);
+            for (int i = 0; i < n->block.count; i++) WalkASTForUri(n->block.stmts[i], text, uri);
             break;
         case NIF:
-            WalkAST(n->ifn.cond, text);
-            WalkAST(n->ifn.then, text);
-            WalkAST(n->ifn.els, text);
+            WalkASTForUri(n->ifn.cond, text, uri);
+            WalkASTForUri(n->ifn.then, text, uri);
+            WalkASTForUri(n->ifn.els, text, uri);
             break;
         case NWHILE:
-            WalkAST(n->whilen.cond, text);
-            WalkAST(n->whilen.body, text);
+            WalkASTForUri(n->whilen.cond, text, uri);
+            WalkASTForUri(n->whilen.body, text, uri);
             break;
         case NFOR:
-            WalkAST(n->forn.init, text);
-            WalkAST(n->forn.cond, text);
-            WalkAST(n->forn.post, text);
-            WalkAST(n->forn.body, text);
+            WalkASTForUri(n->forn.init, text, uri);
+            WalkASTForUri(n->forn.cond, text, uri);
+            WalkASTForUri(n->forn.post, text, uri);
+            WalkASTForUri(n->forn.body, text, uri);
             break;
         case NRETURN:
         case NPRINT:
         case NEXPRSTMT:
-            WalkAST(n->single.expr, text);
+            WalkASTForUri(n->single.expr, text, uri);
             break;
         case NBINOP:
-            WalkAST(n->binop.left, text);
-            WalkAST(n->binop.right, text);
+            WalkASTForUri(n->binop.left, text, uri);
+            WalkASTForUri(n->binop.right, text, uri);
             break;
         default:
             break;
     }
+}
+
+static int LspIsCHeaderName(const char *path) {
+    if (!path) return 0;
+    size_t len = strlen(path);
+    if (len >= 2 && strcmp(path + len - 2, ".h") == 0) return 1;
+    if (len >= 4 && (strcmp(path + len - 4, ".hpp") == 0 || strcmp(path + len - 4, ".hxx") == 0)) return 1;
+    return 0;
+}
+
+static void CollectImportsFromAST(Node *n, const char **out_imps, int *count, int max_imps) {
+    if (!n || *count >= max_imps) return;
+    if (n->type == NIMPORT) {
+        if (!n->single.is_c && n->single.var && n->single.var[0] != '\0' && !LspIsCHeaderName(n->single.var)) {
+            out_imps[(*count)++] = n->single.var;
+        }
+        return;
+    }
+    if (n->type == NPROGRAM || n->type == NBLOCK) {
+        for (int i = 0; i < n->block.count && *count < max_imps; i++) {
+            CollectImportsFromAST(n->block.stmts[i], out_imps, count, max_imps);
+        }
+    }
+}
+
+static char *LspResolveImportFile(const char *imp_path, const char *cur_fs_path) {
+    if (!imp_path || !*imp_path || LspIsCHeaderName(imp_path)) return NULL;
+    char *resolved = PkgResolveImport(imp_path, cur_fs_path);
+    if (resolved) {
+        FILE *f = fopen(resolved, "rb");
+        if (f) {
+            fclose(f);
+            return resolved;
+        }
+        free(resolved);
+    }
+    // Fallback to sibling `<dir>/<imp>` or `<dir>/<imp>.aks`
+    if (cur_fs_path && cur_fs_path[0]) {
+        char dir[1024];
+        snprintf(dir, sizeof(dir), "%s", cur_fs_path);
+        for (size_t i = 0; dir[i]; i++) if (dir[i] == '\\') dir[i] = '/';
+        char *slash = strrchr(dir, '/');
+        if (slash) *slash = '\0'; else snprintf(dir, sizeof(dir), ".");
+
+        char *cand = malloc(2048);
+        if (!cand) return NULL;
+        snprintf(cand, 2048, "%s/%s", dir, imp_path);
+        FILE *f = fopen(cand, "rb");
+        if (f) { fclose(f); return cand; }
+        if (!strstr(imp_path, ".aks")) {
+            snprintf(cand, 2048, "%s/%s.aks", dir, imp_path);
+            f = fopen(cand, "rb");
+            if (f) { fclose(f); return cand; }
+        }
+        free(cand);
+    }
+    return NULL;
+}
+
+static int LspVisitedContains(char **visited, int count, const char *uri) {
+    for (int i = 0; i < count; i++) {
+        if (LspUriEqual(visited[i], uri)) return 1;
+    }
+    return 0;
+}
+
+static void IndexFilePathRecursive(const char *fs_path, char **visited, int *vcount, int max_visited, int depth) {
+    if (!fs_path || !*fs_path || depth > 6 || *vcount >= max_visited) return;
+    char uri[2048];
+    PathToUri(fs_path, uri, sizeof(uri));
+    if (!uri[0] || LspVisitedContains(visited, *vcount, uri)) return;
+    visited[(*vcount)++] = strdup(uri);
+
+    Document *open_doc = DocGet(uri);
+    char *disk_src = open_doc ? NULL : LspReadFileStr(fs_path);
+    const char *src = open_doc ? open_doc->text : disk_src;
+    if (!src) return;
+
+    SymsRemoveForUri(uri);
+    int herr = 0;
+    Node *prog = Parse(src, &herr);
+    if (prog) {
+        WalkASTForUri(prog, src, uri);
+        const char *imps[64];
+        int imp_count = 0;
+        CollectImportsFromAST(prog, imps, &imp_count, 64);
+        for (int i = 0; i < imp_count; i++) {
+            char *next_path = LspResolveImportFile(imps[i], fs_path);
+            if (next_path) {
+                IndexFilePathRecursive(next_path, visited, vcount, max_visited, depth + 1);
+                free(next_path);
+            }
+        }
+        NodeFree(prog);
+    }
+    free(disk_src);
+}
+
+static void IndexImportsForParsedDoc(const char *uri, Node *prog) {
+    if (!uri || !prog) return;
+    char cur_fs_path[2048];
+    if (!UriToPath(uri, cur_fs_path, sizeof(cur_fs_path))) return;
+
+    const char *imps[64];
+    int imp_count = 0;
+    CollectImportsFromAST(prog, imps, &imp_count, 64);
+    if (imp_count == 0) return;
+
+    char *visited[64];
+    int vcount = 0;
+    visited[vcount++] = strdup(uri);
+    for (int i = 0; i < imp_count; i++) {
+        char *next_path = LspResolveImportFile(imps[i], cur_fs_path);
+        if (next_path) {
+            IndexFilePathRecursive(next_path, visited, &vcount, 64, 1);
+            free(next_path);
+        }
+    }
+    for (int i = 0; i < vcount; i++) free(visited[i]);
+}
+
+static int LspShouldSkipDir(const char *name) {
+    if (!name || strcmp(name, ".") == 0 || strcmp(name, "..") == 0) return 1;
+    if (strcmp(name, ".git") == 0 || strcmp(name, ".akspackages") == 0 ||
+        strcmp(name, ".akscache") == 0 || strcmp(name, ".aks_cache") == 0 ||
+        strcmp(name, "obj") == 0 || strcmp(name, "node_modules") == 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static int LspIsAksFilename(const char *name) {
+    if (!name) return 0;
+    size_t len = strlen(name);
+    return len > 4 && strcmp(name + len - 4, ".aks") == 0;
+}
+
+static void IndexWorkspaceDir(const char *dir_path, int depth, char **visited, int *vcount, int max_visited) {
+    if (!dir_path || !*dir_path || depth > 4 || *vcount >= max_visited) return;
+
+#ifdef _WIN32
+    char pattern[2048];
+    snprintf(pattern, sizeof(pattern), "%s/*", dir_path);
+    WIN32_FIND_DATAA ffd;
+    HANDLE hFind = FindFirstFileA(pattern, &ffd);
+    if (hFind == INVALID_HANDLE_VALUE) return;
+    do {
+        if (LspShouldSkipDir(ffd.cFileName)) continue;
+        char full[2048];
+        snprintf(full, sizeof(full), "%s/%s", dir_path, ffd.cFileName);
+        if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            IndexWorkspaceDir(full, depth + 1, visited, vcount, max_visited);
+        } else if (LspIsAksFilename(ffd.cFileName)) {
+            IndexFilePathRecursive(full, visited, vcount, max_visited, 0);
+        }
+    } while (FindNextFileA(hFind, &ffd) != 0 && *vcount < max_visited);
+    FindClose(hFind);
+#else
+    DIR *d = opendir(dir_path);
+    if (!d) return;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL && *vcount < max_visited) {
+        if (LspShouldSkipDir(ent->d_name)) continue;
+        char full[2048];
+        snprintf(full, sizeof(full), "%s/%s", dir_path, ent->d_name);
+        struct stat st;
+        if (stat(full, &st) != 0) continue;
+        if (S_ISDIR(st.st_mode)) {
+            IndexWorkspaceDir(full, depth + 1, visited, vcount, max_visited);
+        } else if (S_ISREG(st.st_mode) && LspIsAksFilename(ent->d_name)) {
+            IndexFilePathRecursive(full, visited, vcount, max_visited, 0);
+        }
+    }
+    closedir(d);
+#endif
+}
+
+static void IndexWorkspaceRoot(const char *root_path) {
+    if (!root_path || !*root_path) return;
+    char *visited[256];
+    int vcount = 0;
+    IndexWorkspaceDir(root_path, 0, visited, &vcount, 256);
+    for (int i = 0; i < vcount; i++) free(visited[i]);
 }
 
 // Get word under cursor
@@ -617,8 +1011,8 @@ static void LspDiagHandler(const Diagnostic *d, void *userdata) {
     LspCollectedDiag *item = &ctx->items[ctx->count++];
     memset(item, 0, sizeof(LspCollectedDiag));
     item->level = d->level;
-    strncpy(item->code, d->code[0] ? d->code : "E0000", sizeof(item->code) - 1);
-    strncpy(item->message, d->message, sizeof(item->message) - 1);
+    snprintf(item->code, sizeof(item->code), "%s", d->code[0] ? d->code : "E0000");
+    snprintf(item->message, sizeof(item->message), "%s", d->message);
     if (d->note[0]) {
         size_t cur_len = strlen(item->message);
         snprintf(item->message + cur_len, sizeof(item->message) - cur_len, "\nNote: %s", d->note);
@@ -630,7 +1024,7 @@ static void LspDiagHandler(const Diagnostic *d, void *userdata) {
     item->line = 1;
     item->col = 1;
     item->length = 1;
-    strncpy(item->source, "aks", sizeof(item->source) - 1);
+    snprintf(item->source, sizeof(item->source), "aks");
     item->related_span_count = 0;
 
     int found_primary = 0;
@@ -655,7 +1049,7 @@ static void LspDiagHandler(const Diagnostic *d, void *userdata) {
 
 // Capture & report syntax and semantic diagnostics
 static void CheckDiagnostics(const char *uri, const char *text) {
-    SymsClear();
+    SymsRemoveForUri(uri);
 
     char cap_path[MAX_PATH];
 #ifdef _WIN32
@@ -692,7 +1086,7 @@ static void CheckDiagnostics(const char *uri, const char *text) {
                 char parsed_msg[512];
                 if (sscanf(line_buf, "Syntax error on line %d: %[^\r\n]", &parsed_line, parsed_msg) == 2) {
                     line_num = parsed_line;
-                    strncpy(msg, parsed_msg, sizeof(msg) - 1);
+                    snprintf(msg, sizeof(msg), "%s", parsed_msg);
                     break;
                 }
             }
@@ -702,16 +1096,17 @@ static void CheckDiagnostics(const char *uri, const char *text) {
                 LspCollectedDiag *item = &diag_ctx.items[diag_ctx.count++];
                 memset(item, 0, sizeof(LspCollectedDiag));
                 item->level = DIAG_ERROR;
-                strncpy(item->code, "E0001", sizeof(item->code) - 1);
-                strncpy(item->message, msg, sizeof(item->message) - 1);
+                snprintf(item->code, sizeof(item->code), "E0001");
+                snprintf(item->message, sizeof(item->message), "%s", msg);
                 item->line = line_num > 0 ? line_num : 1;
                 item->col = 1;
                 item->length = 80;
-                strncpy(item->source, "aks", sizeof(item->source) - 1);
+                snprintf(item->source, sizeof(item->source), "aks");
             }
         }
     } else if (prog) {
-        WalkAST(prog, text);
+        WalkASTForUri(prog, text, uri);
+        IndexImportsForParsedDoc(uri, prog);
 
         int prev_borrow = gBorrowCheckerEnabled;
         int prev_type = gTypeCheckingEnabled;
@@ -720,7 +1115,12 @@ static void CheckDiagnostics(const char *uri, const char *text) {
 
         Compiler *c = CompNew();
         if (c) {
-            if (uri) strncpy(c->currentfilepath, uri, sizeof(c->currentfilepath) - 1);
+            char fs_path[2048];
+            if (uri && UriToPath(uri, fs_path, sizeof(fs_path))) {
+                snprintf(c->currentfilepath, sizeof(c->currentfilepath), "%.511s", fs_path);
+            } else if (uri) {
+                snprintf(c->currentfilepath, sizeof(c->currentfilepath), "%.511s", uri);
+            }
             c->borrow_checker_enabled = 1;
             c->type_checking_enabled = 1;
             CompCompile(c, prog);
@@ -750,12 +1150,12 @@ static void CheckDiagnostics(const char *uri, const char *text) {
                         LspCollectedDiag *item = &diag_ctx.items[diag_ctx.count++];
                         memset(item, 0, sizeof(LspCollectedDiag));
                         item->level = DIAG_ERROR;
-                        strncpy(item->code, "E0002", sizeof(item->code) - 1);
-                        strncpy(item->message, parsed_msg, sizeof(item->message) - 1);
+                        snprintf(item->code, sizeof(item->code), "E0002");
+                        snprintf(item->message, sizeof(item->message), "%s", parsed_msg);
                         item->line = parsed_line > 0 ? parsed_line : 1;
                         item->col = 1;
                         item->length = 1;
-                        strncpy(item->source, "aks", sizeof(item->source) - 1);
+                        snprintf(item->source, sizeof(item->source), "aks");
                     }
                 }
             }
@@ -847,13 +1247,70 @@ static void CheckDiagnostics(const char *uri, const char *text) {
     free(diag_json);
 }
 
+static void LspBufAppend(char **buf, size_t *cap, size_t *len, const char *piece) {
+    if (!buf || !*buf || !piece) return;
+    size_t plen = strlen(piece);
+    if (*len + plen + 16 > *cap) {
+        size_t ncap = (*len + plen + 16) * 2;
+        char *nb = realloc(*buf, ncap);
+        if (!nb) return;
+        *buf = nb;
+        *cap = ncap;
+    }
+    memcpy(*buf + *len, piece, plen + 1);
+    *len += plen;
+}
+
+static int LspSymToDocSymbolKind(SymbolKind k) {
+    switch (k) {
+        case SYM_FN: return 12;        /* Function */
+        case SYM_STRUCT: return 23;    /* Struct */
+        case SYM_ENUM: return 10;      /* Enum */
+        case SYM_INTERFACE: return 11; /* Interface */
+        case SYM_VAR: return 13;       /* Variable */
+        default: return 13;
+    }
+}
+
+static int LspSymToCompletionKind(SymbolKind k) {
+    switch (k) {
+        case SYM_FN: return 3;        /* Function */
+        case SYM_STRUCT: return 22;   /* Struct */
+        case SYM_ENUM: return 13;     /* Enum */
+        case SYM_INTERFACE: return 8; /* Interface */
+        case SYM_VAR: return 6;       /* Variable */
+        default: return 6;
+    }
+}
+
 // LSP handlers
-static void HandleInitialize(JsonValue *id) {
+static void HandleInitialize(JsonValue *id, JsonValue *params) {
+    if (params) {
+        const char *root_uri = JSONGetStr(params, "rootUri");
+        if (!root_uri || !*root_uri) {
+            JsonValue *folders = JSONGet(params, "workspaceFolders");
+            if (folders && folders->type == JSON_ARRAY && folders->array.count > 0) {
+                root_uri = JSONGetStr(folders->array.items[0], "uri");
+            }
+        }
+        char root_path_buf[2048] = "";
+        if (root_uri && *root_uri) {
+            UriToPath(root_uri, root_path_buf, sizeof(root_path_buf));
+        } else {
+            const char *rp = JSONGetStr(params, "rootPath");
+            if (rp && *rp) snprintf(root_path_buf, sizeof(root_path_buf), "%s", rp);
+        }
+        if (root_path_buf[0] != '\0') {
+            IndexWorkspaceRoot(root_path_buf);
+        }
+    }
+
     SendResponse(id,
                   "{\"capabilities\":{"
                   "\"textDocumentSync\":1,"
                   "\"hoverProvider\":true,"
                   "\"definitionProvider\":true,"
+                  "\"workspaceSymbolProvider\":true,"
                   "\"completionProvider\":{\"triggerCharacters\":[\".\"]},"
                   "\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\",\",\"]},"
                   "\"referencesProvider\":true,"
@@ -872,20 +1329,19 @@ static void HandleInitialize(JsonValue *id) {
 static void HandleHover(JsonValue *id, const char *uri, int line, int character) {
     Document *doc = DocGet(uri);
     if (!doc) { SendResponse(id, "null"); return; }
-    
+
     char word[256];
     GetWordAtPos(doc->text, line, character, word, sizeof(word));
     if (strlen(word) == 0) { SendResponse(id, "null"); return; }
-    
-    SymbolDef *found = NULL;
-    for (int i = 0; i < g_syms_count; i++) {
-        if (strcmp(g_syms[i].name, word) == 0) { found = &g_syms[i]; break; }
-    }
+
+    SymbolDef *found = FindBestSymbol(word, uri, 0);
     if (found) {
-        char hover_markdown[1024];
+        char esc_detail[1024];
+        EscapeJson(found->detail, esc_detail, sizeof(esc_detail));
+        char hover_markdown[1536];
         snprintf(hover_markdown, sizeof(hover_markdown),
                  "{\"contents\":{\"kind\":\"markdown\",\"value\":\"```aks\\n%s\\n```\"}}",
-                 found->detail);
+                 esc_detail);
         SendResponse(id, hover_markdown);
     } else {
         SendResponse(id, "null");
@@ -895,69 +1351,80 @@ static void HandleHover(JsonValue *id, const char *uri, int line, int character)
 static void HandleDefinition(JsonValue *id, const char *uri, int line, int character) {
     Document *doc = DocGet(uri);
     if (!doc) { SendResponse(id, "null"); return; }
-    
+
     char word[256];
     GetWordAtPos(doc->text, line, character, word, sizeof(word));
     if (strlen(word) == 0) { SendResponse(id, "null"); return; }
-    
-    SymbolDef *found = NULL;
-    for (int i = 0; i < g_syms_count; i++) {
-        if (strcmp(g_syms[i].name, word) == 0) { found = &g_syms[i]; break; }
-    }
+
+    SymbolDef *found = FindBestSymbol(word, uri, 0);
     if (found) {
-        char def_json[1024];
+        const char *target_uri = (found->uri && found->uri[0] != '\0') ? found->uri : uri;
+        char esc_uri[2048];
+        EscapeJson(target_uri, esc_uri, sizeof(esc_uri));
+        char def_json[2560];
         snprintf(def_json, sizeof(def_json),
                  "{\"uri\":\"%s\",\"range\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}}}",
-                 uri, found->line - 1, found->col - 1, found->line - 1, found->col - 1 + (int)strlen(word));
+                 esc_uri, found->line - 1, found->col - 1, found->line - 1, found->col - 1 + (int)strlen(word));
         SendResponse(id, def_json);
     } else {
         SendResponse(id, "null");
     }
 }
 
-static void HandleCompletion(JsonValue *id) {
-    // Standard completions: keywords, standard math functions/prelude classes, and cached symbols
-    char res[8192] = "{\"isIncomplete\":false,\"items\":[";
-    
+static void HandleCompletion(JsonValue *id, const char *uri) {
+    (void)uri;
+    size_t cap = 16384;
+    char *res = malloc(cap);
+    if (!res) { SendResponse(id, "{\"isIncomplete\":false,\"items\":[]}"); return; }
+    strcpy(res, "{\"isIncomplete\":false,\"items\":[");
+    size_t cur_len = strlen(res);
+    int emitted = 0;
+
     // Add keywords
-    const char *kws[] = {"let", "const", "fn", "return", "if", "else", "while", "for", "import", "struct", "enum", "match", "new"};
+    const char *kws[] = {"let", "const", "fn", "return", "if", "else", "while", "for", "import", "struct", "enum", "interface", "match", "new"};
     for (size_t i = 0; i < sizeof(kws)/sizeof(kws[0]); i++) {
         char item[128];
-        snprintf(item, sizeof(item), "{\"label\":\"%s\",\"kind\":14},", kws[i]);
-        strcat(res, item);
+        snprintf(item, sizeof(item), "%s{\"label\":\"%s\",\"kind\":14}", emitted++ > 0 ? "," : "", kws[i]);
+        LspBufAppend(&res, &cap, &cur_len, item);
     }
     // Add math builtins
     const char *math[] = {"Matrix", "DataFrame", "Plot", "Dual", "BigInt", "Decimal", "SimdAdd", "SimdSub", "SimdMul", "SimdDiv", "FftForward", "FftInverse"};
     for (size_t i = 0; i < sizeof(math)/sizeof(math[0]); i++) {
         char item[128];
-        snprintf(item, sizeof(item), "{\"label\":\"%s\",\"kind\":3},", math[i]);
-        strcat(res, item);
+        snprintf(item, sizeof(item), "%s{\"label\":\"%s\",\"kind\":3}", emitted++ > 0 ? "," : "", math[i]);
+        LspBufAppend(&res, &cap, &cur_len, item);
     }
-    // Add scanned symbols
+    // Add scanned workspace & local symbols (deduplicated by name)
     for (int i = 0; i < g_syms_count; i++) {
-        int lsp_kind = 6; // Variable
-        if (g_syms[i].kind == SYM_FN) lsp_kind = 3;
-        else if (g_syms[i].kind == SYM_STRUCT) lsp_kind = 22;
-        char item[256];
-        snprintf(item, sizeof(item), "{\"label\":\"%s\",\"kind\":%d},", g_syms[i].name, lsp_kind);
-        strcat(res, item);
+        int dup = 0;
+        for (int j = 0; j < i; j++) {
+            if (strcmp(g_syms[j].name, g_syms[i].name) == 0) {
+                dup = 1;
+                break;
+            }
+        }
+        if (dup) continue;
+        char esc_name[256];
+        EscapeJson(g_syms[i].name, esc_name, sizeof(esc_name));
+        int lsp_kind = LspSymToCompletionKind(g_syms[i].kind);
+        char item[384];
+        snprintf(item, sizeof(item), "%s{\"label\":\"%s\",\"kind\":%d}", emitted++ > 0 ? "," : "", esc_name, lsp_kind);
+        LspBufAppend(&res, &cap, &cur_len, item);
     }
-    // Remove trailing comma if any
-    int rlen = (int)strlen(res);
-    if (res[rlen - 1] == ',') res[rlen - 1] = '\0';
-    strcat(res, "]}");
-    
+    LspBufAppend(&res, &cap, &cur_len, "]}");
+
     SendResponse(id, res);
+    free(res);
 }
 
 static void HandleReferences(JsonValue *id, const char *uri, int line, int character) {
     Document *doc = DocGet(uri);
     if (!doc) { SendResponse(id, "[]"); return; }
-    
+
     char word[256];
     GetWordAtPos(doc->text, line, character, word, sizeof(word));
     if (strlen(word) == 0) { SendResponse(id, "[]"); return; }
-    
+
     char res[8192] = "[";
     const char *p = doc->text;
     int cur_line = 0;
@@ -967,20 +1434,20 @@ static void HandleReferences(JsonValue *id, const char *uri, int line, int chara
             cur_line++;
             line_char_offset = 0;
         } else {
-            if (isalnum(*p) || *p == '_') {
+            if (isalnum((unsigned char)*p) || *p == '_') {
                 const char *start = p;
                 int len = 0;
-                while (*p && (isalnum(*p) || *p == '_')) { p++; len++; }
+                while (*p && (isalnum((unsigned char)*p) || *p == '_')) { p++; len++; }
                 char sym[256];
-                if (len < sizeof(sym)) {
-                    memcpy(sym, start, len);
+                if (len < (int)sizeof(sym)) {
+                    memcpy(sym, start, (size_t)len);
                     sym[len] = '\0';
                     if (strcmp(sym, word) == 0) {
                         char loc[512];
                         snprintf(loc, sizeof(loc),
                                  "{\"uri\":\"%s\",\"range\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}}},",
                                  uri, cur_line, line_char_offset, cur_line, line_char_offset + len);
-                        strcat(res, loc);
+                        if (strlen(res) + strlen(loc) + 4 < sizeof(res)) strcat(res, loc);
                     }
                 }
                 line_char_offset += len;
@@ -991,7 +1458,7 @@ static void HandleReferences(JsonValue *id, const char *uri, int line, int chara
         p++;
     }
     int rlen = (int)strlen(res);
-    if (res[rlen - 1] == ',') res[rlen - 1] = '\0';
+    if (rlen > 1 && res[rlen - 1] == ',') res[rlen - 1] = '\0';
     strcat(res, "]");
     SendResponse(id, res);
 }
@@ -999,16 +1466,16 @@ static void HandleReferences(JsonValue *id, const char *uri, int line, int chara
 static void HandleRename(JsonValue *id, const char *uri, int line, int character, const char *new_name) {
     Document *doc = DocGet(uri);
     if (!doc || !new_name) { SendResponse(id, "null"); return; }
-    
+
     char word[256];
     GetWordAtPos(doc->text, line, character, word, sizeof(word));
     if (strlen(word) == 0) { SendResponse(id, "null"); return; }
-    
+
     char edits[8192] = "{\"changes\":{";
     char uri_key[512];
     snprintf(uri_key, sizeof(uri_key), "\"%s\":[", uri);
     strcat(edits, uri_key);
-    
+
     const char *p = doc->text;
     int cur_line = 0;
     int line_char_offset = 0;
@@ -1017,20 +1484,20 @@ static void HandleRename(JsonValue *id, const char *uri, int line, int character
             cur_line++;
             line_char_offset = 0;
         } else {
-            if (isalnum(*p) || *p == '_') {
+            if (isalnum((unsigned char)*p) || *p == '_') {
                 const char *start = p;
                 int len = 0;
-                while (*p && (isalnum(*p) || *p == '_')) { p++; len++; }
+                while (*p && (isalnum((unsigned char)*p) || *p == '_')) { p++; len++; }
                 char sym[256];
-                if (len < sizeof(sym)) {
-                    memcpy(sym, start, len);
+                if (len < (int)sizeof(sym)) {
+                    memcpy(sym, start, (size_t)len);
                     sym[len] = '\0';
                     if (strcmp(sym, word) == 0) {
                         char edit[512];
                         snprintf(edit, sizeof(edit),
                                  "{\"range\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}},\"newText\":\"%s\"},",
                                  cur_line, line_char_offset, cur_line, line_char_offset + len, new_name);
-                        strcat(edits, edit);
+                        if (strlen(edits) + strlen(edit) + 8 < sizeof(edits)) strcat(edits, edit);
                     }
                 }
                 line_char_offset += len;
@@ -1041,7 +1508,7 @@ static void HandleRename(JsonValue *id, const char *uri, int line, int character
         p++;
     }
     int elen = (int)strlen(edits);
-    if (edits[elen - 1] == ',') edits[elen - 1] = '\0';
+    if (elen > 0 && edits[elen - 1] == ',') edits[elen - 1] = '\0';
     strcat(edits, "]}}");
     SendResponse(id, edits);
 }
@@ -1244,7 +1711,6 @@ static void HandleFormatting(JsonValue *id, const char *uri) {
 }
 
 static void HandleDocumentSymbols(JsonValue *id, const char *uri) {
-    (void)uri;
     if (g_syms_count == 0) {
         SendResponse(id, "[]");
         return;
@@ -1255,13 +1721,12 @@ static void HandleDocumentSymbols(JsonValue *id, const char *uri) {
     if (!res) { SendResponse(id, "[]"); return; }
     strcpy(res, "[");
     size_t cur_len = 1;
+    int emitted = 0;
 
     for (int i = 0; i < g_syms_count; i++) {
         SymbolDef *sym = &g_syms[i];
-        int lsp_kind = 13; // Variable
-        if (sym->kind == SYM_FN) lsp_kind = 12;
-        else if (sym->kind == SYM_STRUCT) lsp_kind = 23;
-        else if (sym->kind == SYM_ENUM) lsp_kind = 10;
+        if (uri && (!sym->uri || !LspUriEqual(sym->uri, uri))) continue;
+        int lsp_kind = LspSymToDocSymbolKind(sym->kind);
 
         int line_0 = sym->line > 0 ? sym->line - 1 : 0;
         int col_0 = sym->col > 0 ? sym->col - 1 : 0;
@@ -1277,22 +1742,55 @@ static void HandleDocumentSymbols(JsonValue *id, const char *uri) {
                  "%s{\"name\":\"%s\",\"detail\":\"%s\",\"kind\":%d,"
                  "\"range\":{\"start\":{\"line\":%d,\"character\":0},\"end\":{\"line\":%d,\"character\":%d}},"
                  "\"selectionRange\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}}}",
-                 i > 0 ? "," : "",
+                 emitted > 0 ? "," : "",
                  esc_name, esc_detail, lsp_kind,
                  line_0, line_0, col_0 + name_len > 80 ? col_0 + name_len : 80,
                  line_0, col_0, line_0, col_0 + name_len);
-
-        size_t item_len = strlen(item);
-        if (cur_len + item_len + 16 > cap) {
-            cap = (cur_len + item_len + 16) * 2;
-            char *nb = realloc(res, cap);
-            if (!nb) break;
-            res = nb;
-        }
-        strcat(res, item);
-        cur_len += item_len;
+        emitted++;
+        LspBufAppend(&res, &cap, &cur_len, item);
     }
-    strcat(res, "]");
+    LspBufAppend(&res, &cap, &cur_len, "]");
+
+    SendResponse(id, res);
+    free(res);
+}
+
+static void HandleWorkspaceSymbol(JsonValue *id, JsonValue *params) {
+    const char *query = params ? JSONGetStr(params, "query") : "";
+    if (!query) query = "";
+
+    size_t cap = 16384;
+    char *res = malloc(cap);
+    if (!res) { SendResponse(id, "[]"); return; }
+    strcpy(res, "[");
+    size_t cur_len = 1;
+    int emitted = 0;
+
+    for (int i = 0; i < g_syms_count; i++) {
+        SymbolDef *sym = &g_syms[i];
+        if (query[0] != '\0' && !LspStristr(sym->name, query)) continue;
+        if (!sym->uri || sym->uri[0] == '\0') continue;
+
+        int lsp_kind = LspSymToDocSymbolKind(sym->kind);
+        int line_0 = sym->line > 0 ? sym->line - 1 : 0;
+        int col_0 = sym->col > 0 ? sym->col - 1 : 0;
+        int name_len = (int)strlen(sym->name);
+
+        char esc_name[256];
+        EscapeJson(sym->name, esc_name, sizeof(esc_name));
+        char esc_uri[2048];
+        EscapeJson(sym->uri, esc_uri, sizeof(esc_uri));
+
+        char item[2560];
+        snprintf(item, sizeof(item),
+                 "%s{\"name\":\"%s\",\"kind\":%d,\"location\":{\"uri\":\"%s\",\"range\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}}}}",
+                 emitted > 0 ? "," : "",
+                 esc_name, lsp_kind, esc_uri,
+                 line_0, col_0, line_0, col_0 + name_len);
+        emitted++;
+        LspBufAppend(&res, &cap, &cur_len, item);
+    }
+    LspBufAppend(&res, &cap, &cur_len, "]");
 
     SendResponse(id, res);
     free(res);
@@ -1324,21 +1822,18 @@ static void CollectFuncSigs(Node *n, InlayContext *ctx) {
     if (!n) return;
     if (n->type == NFNDECL && n->fn.name && ctx->func_count < 128) {
         InlayFuncSig *fs = &ctx->funcs[ctx->func_count++];
-        strncpy(fs->name, n->fn.name, sizeof(fs->name) - 1);
-        fs->name[sizeof(fs->name) - 1] = '\0';
+        snprintf(fs->name, sizeof(fs->name), "%s", n->fn.name);
         fs->param_count = 0;
         fs->ret[0] = '\0';
         int p_limit = n->fn.pc < 16 ? n->fn.pc : 16;
         for (int p = 0; p < p_limit; p++) {
             if (n->fn.pnames && n->fn.pnames[p]) {
-                strncpy(fs->pnames[fs->param_count], n->fn.pnames[p], 63);
-                fs->pnames[fs->param_count][63] = '\0';
+                snprintf(fs->pnames[fs->param_count], sizeof(fs->pnames[fs->param_count]), "%s", n->fn.pnames[p]);
                 fs->param_count++;
             }
         }
         if (n->fn.ret) {
-            strncpy(fs->ret, n->fn.ret, sizeof(fs->ret) - 1);
-            fs->ret[sizeof(fs->ret) - 1] = '\0';
+            snprintf(fs->ret, sizeof(fs->ret), "%s", n->fn.ret);
         }
     }
     switch (n->type) {
@@ -1415,8 +1910,7 @@ static void CollectInlayHints(Node *n, InlayContext *ctx) {
                 LspInlayHint *h = &ctx->hints[ctx->count++];
                 h->line = n->line > 0 ? n->line - 1 : 0;
                 h->col = col > 0 ? (col - 1 + (int)strlen(n->decl.name)) : 0;
-                strncpy(h->label, inferred, sizeof(h->label) - 1);
-                h->label[sizeof(h->label) - 1] = '\0';
+                snprintf(h->label, sizeof(h->label), "%.63s", inferred);
                 h->kind = 1; // Type
             }
         }
@@ -1660,14 +2154,9 @@ static void HandleSignatureHelp(JsonValue *id, const char *uri, int line, int ch
     const char *simple_name = strrchr(callee, '.');
     if (simple_name) simple_name++; else simple_name = callee;
 
-    SymbolDef *user_fn = NULL;
-    for (int i = 0; i < g_syms_count; i++) {
-        if (g_syms[i].kind == SYM_FN) {
-            if (strcmp(g_syms[i].name, callee) == 0 || strcmp(g_syms[i].name, simple_name) == 0) {
-                user_fn = &g_syms[i];
-                break;
-            }
-        }
+    SymbolDef *user_fn = FindBestSymbol(callee, uri, 1);
+    if (!user_fn && simple_name != callee) {
+        user_fn = FindBestSymbol(simple_name, uri, 1);
     }
 
     const BuiltinSig *builtin_fn = NULL;
@@ -1698,31 +2187,39 @@ static void HandleSignatureHelp(JsonValue *id, const char *uri, int line, int ch
 
     const char *sig_label = user_fn ? user_fn->detail : builtin_fn->label;
     const char *doc_str = user_fn ? "User-defined function" : builtin_fn->doc;
+    char esc_sig[1024];
+    EscapeJson(sig_label, esc_sig, sizeof(esc_sig));
 
     int written = snprintf(p_out, remaining,
                            "{\"signatures\":[{"
                            "\"label\":\"%s\","
                            "\"documentation\":{\"kind\":\"markdown\",\"value\":\"%s\"},"
                            "\"parameters\":[",
-                           sig_label, doc_str);
-    p_out += written;
-    remaining -= written;
-
-    for (int i = 0; i < param_count; i++) {
-        const char *plabel = user_fn ? (user_fn->params ? user_fn->params[i] : "arg") : builtin_fn->params[i];
-        written = snprintf(p_out, remaining, "%s{\"label\":\"%s\"}", (i > 0 ? "," : ""), plabel);
+                           esc_sig, doc_str);
+    if (written > 0 && written < remaining) {
         p_out += written;
         remaining -= written;
     }
 
-    snprintf(p_out, remaining,
-             "],"
-             "\"activeParameter\":%d"
-             "}],"
-             "\"activeSignature\":0,"
-             "\"activeParameter\":%d"
-             "}",
-             clamped_param, clamped_param);
+    for (int i = 0; i < param_count && remaining > 16; i++) {
+        const char *plabel = user_fn ? (user_fn->params ? user_fn->params[i] : "arg") : builtin_fn->params[i];
+        written = snprintf(p_out, remaining, "%s{\"label\":\"%s\"}", (i > 0 ? "," : ""), plabel);
+        if (written > 0 && written < remaining) {
+            p_out += written;
+            remaining -= written;
+        }
+    }
+
+    if (remaining > 0) {
+        snprintf(p_out, remaining,
+                 "],"
+                 "\"activeParameter\":%d"
+                 "}],"
+                 "\"activeSignature\":0,"
+                 "\"activeParameter\":%d"
+                 "}",
+                 clamped_param, clamped_param);
+    }
 
     SendResponse(id, res);
 }
@@ -1755,7 +2252,7 @@ int main() {
 
             if (method) {
                 if (strcmp(method, "initialize") == 0) {
-                    HandleInitialize(id);
+                    HandleInitialize(id, params);
                 } else if (strcmp(method, "textDocument/didOpen") == 0 || strcmp(method, "textDocument/didChange") == 0) {
                     JsonValue *doc_obj = JSONGet(params, "textDocument");
                     const char *uri = JSONGetStr(doc_obj, "uri");
@@ -1785,7 +2282,11 @@ int main() {
                     int character = (int)JSONGet(pos_obj, "character")->number;
                     HandleDefinition(id, uri, line, character);
                 } else if (strcmp(method, "textDocument/completion") == 0) {
-                    HandleCompletion(id);
+                    JsonValue *doc_obj = JSONGet(params, "textDocument");
+                    const char *uri = doc_obj ? JSONGetStr(doc_obj, "uri") : NULL;
+                    HandleCompletion(id, uri);
+                } else if (strcmp(method, "workspace/symbol") == 0) {
+                    HandleWorkspaceSymbol(id, params);
                 } else if (strcmp(method, "textDocument/references") == 0) {
                     JsonValue *doc_obj = JSONGet(params, "textDocument");
                     const char *uri = JSONGetStr(doc_obj, "uri");
@@ -1853,7 +2354,7 @@ int main() {
         }
     }
     
-    SymsClear();
+    SymsClearAll();
     for (int i = 0; i < g_docs_count; i++) {
         free(g_docs[i].uri);
         free(g_docs[i].text);

@@ -120,6 +120,8 @@ static void EmitMlirStmt(MLIRCtx *ctx, Node *n) {
             if (MlirDialectHas(ctx, "affine")) {
                 int s_lb = MlirSsa(ctx);
                 int s_ub = MlirSsa(ctx);
+                (void)s_lb;
+                (void)s_ub;
                 fprintf(ctx->out, "    // Affine dialect structured polyhedral loop nest\n");
                 fprintf(ctx->out, "    affine.for %%arg_idx = 0 to 1024 step 1 {\n");
                 fprintf(ctx->out, "      %%elem = affine.load %%mem_buffer[%%arg_idx] : memref<1024xf64>\n");

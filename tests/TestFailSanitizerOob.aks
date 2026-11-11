@@ -1,0 +1,4 @@
+// Expected to fail under --sanitize=address even with --no-bounds-check
+let a = [1, 2, 3];
+println(a[10]);
+

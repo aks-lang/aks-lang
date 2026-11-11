@@ -16,7 +16,7 @@ REPO_NAME="aks-lang"
 if [ -f "$(dirname "$0")/VERSION" ]; then
     DEFAULT_TAG="v$(cat "$(dirname "$0")/VERSION" | tr -d '[:space:]')"
 else
-    DEFAULT_TAG="${AKS_VERSION:-v1.2.1}"
+    DEFAULT_TAG="${AKS_VERSION:-v1.2.3}"
 fi
 VERSION="${AKS_VERSION:-$DEFAULT_TAG}"
 
@@ -98,11 +98,15 @@ main() {
                 bash ./build.sh
                 if [ -f "./aks" ]; then
                     cp ./aks "$TARGET_EXE"
+                    [ -f "./aksls" ] && cp ./aksls "$BIN_DIR/aksls" && chmod +x "$BIN_DIR/aksls"
+                    [ -f "./aksfmt" ] && cp ./aksfmt "$BIN_DIR/aksfmt" && chmod +x "$BIN_DIR/aksfmt"
+                    [ -f "./akslint" ] && cp ./akslint "$BIN_DIR/akslint" && chmod +x "$BIN_DIR/akslint"
                     DOWNLOAD_SUCCESS=1
                 fi
-            else
-                gcc -O3 -o "$TARGET_EXE" src/*.c -lm -lpthread -ldl 2>/dev/null || true
-                if [ -f "$TARGET_EXE" ]; then
+            elif [ -f "./Makefile" ] && command -v make >/dev/null 2>&1; then
+                make -j aks
+                if [ -f "./aks" ]; then
+                    cp ./aks "$TARGET_EXE"
                     DOWNLOAD_SUCCESS=1
                 fi
             fi

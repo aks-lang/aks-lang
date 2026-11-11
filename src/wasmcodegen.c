@@ -681,9 +681,9 @@ static int EmitWasmBinaryModule(Compiler *comp, Node *ast_root, const char *out_
     char wit_desc[1024];
     snprintf(wit_desc, sizeof(wit_desc), "package aks:component@0.2.0;\nworld component-target {\n  import wasi:cli/environment@0.2.0;\n  import wasi:io/streams@0.2.0;\n");
     for (int i = 0; i < fn_count; i++) {
-        if (fns[i].name && strcmp(fns[i].name, "memory") != 0) {
+        if (fns[i].name[0] != '\0' && strcmp(fns[i].name, "memory") != 0) {
             char fnbuf[128];
-            snprintf(fnbuf, sizeof(fnbuf), "  export %s: func() -> s64;\n", fns[i].name);
+            snprintf(fnbuf, sizeof(fnbuf), "  export %.96s: func() -> s64;\n", fns[i].name);
             strncat(wit_desc, fnbuf, sizeof(wit_desc) - strlen(wit_desc) - 1);
         }
     }

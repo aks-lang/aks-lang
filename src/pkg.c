@@ -13,17 +13,26 @@
 #include <direct.h>
 #include <io.h>
 #include <windows.h>
+#include <winhttp.h>
 #define MkDirNative(path) _mkdir(path)
 #define AccessNative(path, mode) _access(path, mode)
 #define PATHSEP '\\'
 #else
 #include <unistd.h>
+#include <dirent.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 #define MkDirNative(path) mkdir(path, 0777)
 #define AccessNative(path, mode) access(path, mode)
 #define PATHSEP '/'
-#define LPCWSTR const wchar_t*
-#define DWORD unsigned long
+#ifndef LPCWSTR
+typedef const wchar_t *LPCWSTR;
+#endif
+#ifndef DWORD
+typedef unsigned long DWORD;
+#endif
 #endif
 
 #ifndef BCRYPT_ECDSA_P256_ALGORITHM
@@ -240,7 +249,7 @@ static const char *GetRegIsTryDir(void) {
     const char *home = getenv("USERPROFILE"); // Windows
     if (!home) home = getenv("HOME");          // POSIX
     if (!home) home = ".";
-    snprintf(g_registrydir, sizeof(g_registrydir), "%s\\.aksregistry", home);
+    snprintf(g_registrydir, sizeof(g_registrydir), "%s/.aksregistry", home);
     return g_registrydir;
 }
 
@@ -251,8 +260,8 @@ static const char *GetCredentialsPath(void) {
     if (!home) home = getenv("HOME");
     if (!home) home = ".";
     char dir[512];
-    snprintf(dir, sizeof(dir), "%s\\.aks", home);
-    snprintf(credpath, sizeof(credpath), "%s\\.aks\\credentials", home);
+    snprintf(dir, sizeof(dir), "%s/.aks", home);
+    snprintf(credpath, sizeof(credpath), "%s/.aks/credentials", home);
     return credpath;
 }
 
@@ -295,7 +304,7 @@ int PkgLogin(const char *token, const char *registry_url) {
     if (!home) home = getenv("HOME");
     if (!home) home = ".";
     char dir[512];
-    snprintf(dir, sizeof(dir), "%s\\.aks", home);
+    snprintf(dir, sizeof(dir), "%s/.aks", home);
 #ifdef _WIN32
     CreateDirectoryA(dir, NULL);
 #else
@@ -332,7 +341,7 @@ static int MkDirp(const char *path) {
     if (len == 0) return 0;
     
     // trim trailing separators
-    if (temp[len - 1] == PATHSEP) {
+    if (temp[len - 1] == '/' || temp[len - 1] == '\\') {
         temp[len - 1] = '\0';
     }
     
@@ -377,6 +386,52 @@ int PkgCopyFile(const char *src, const char *dst) {
     fclose(in);
     fclose(out);
     return 1;
+}
+
+static int PkgCopyDirRecursive(const char *src, const char *dst) {
+    MkDirp(dst);
+#ifdef _WIN32
+    char pat[512];
+    snprintf(pat, sizeof(pat), "%s\\*", src);
+    WIN32_FIND_DATAA ffd;
+    HANDLE h = FindFirstFileA(pat, &ffd);
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    do {
+        const char *name = ffd.cFileName;
+        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+        if (strcmp(name, ".git") == 0 || strcmp(name, ".akspackages") == 0) continue;
+        char ssub[512], dsub[512];
+        snprintf(ssub, sizeof(ssub), "%s/%s", src, name);
+        snprintf(dsub, sizeof(dsub), "%s/%s", dst, name);
+        if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            PkgCopyDirRecursive(ssub, dsub);
+        } else {
+            PkgCopyFile(ssub, dsub);
+        }
+    } while (FindNextFileA(h, &ffd));
+    FindClose(h);
+    return 1;
+#else
+    DIR *d = opendir(src);
+    if (!d) return 0;
+    struct dirent *de;
+    while ((de = readdir(d)) != NULL) {
+        const char *name = de->d_name;
+        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+        if (strcmp(name, ".git") == 0 || strcmp(name, ".akspackages") == 0) continue;
+        char ssub[512], dsub[512];
+        snprintf(ssub, sizeof(ssub), "%s/%s", src, name);
+        snprintf(dsub, sizeof(dsub), "%s/%s", dst, name);
+        struct stat st;
+        if (stat(ssub, &st) == 0 && S_ISDIR(st.st_mode)) {
+            PkgCopyDirRecursive(ssub, dsub);
+        } else {
+            PkgCopyFile(ssub, dsub);
+        }
+    }
+    closedir(d);
+    return 1;
+#endif
 }
 
 // simple JSON key-value extraction helper (extracts string or nested objects)
@@ -424,64 +479,104 @@ static int JSONGetVal(const char *json, const char *key, char *outval, int maxle
     }
 }
 
-// semVer parser
+// semVer parser & constraint solver
 typedef struct {
     int major;
     int minor;
     int patch;
+    int parts;
 } SemVer;
 
 static int ParseSemver(const char *str, SemVer *ver) {
     ver->major = ver->minor = ver->patch = 0;
-    return sscanf(str, "%d.%d.%d", &ver->major, &ver->minor, &ver->patch) >= 1;
+    ver->parts = sscanf(str, "%d.%d.%d", &ver->major, &ver->minor, &ver->patch);
+    return ver->parts >= 1;
 }
 
-// version match check
-static int VersionMatch(SemVer val, const char *constraint) {
-    if (strcmp(constraint, "*") == 0 || strlen(constraint) == 0) return 1;
-    
-    // parse constraint operator
-    const char *p = constraint;
+static int CmpSemVer(SemVer a, SemVer b) {
+    if (a.major != b.major) return (a.major > b.major) ? 1 : -1;
+    if (a.minor != b.minor) return (a.minor > b.minor) ? 1 : -1;
+    if (a.patch != b.patch) return (a.patch > b.patch) ? 1 : -1;
+    return 0;
+}
+
+static int VersionMatchClause(SemVer val, const char *clause) {
+    if (!clause || clause[0] == '\0' || strcmp(clause, "*") == 0) return 1;
+    const char *p = clause;
     char op[8] = "";
     int opidx = 0;
-    while (*p && (*p == '=' || *p == '>' || *p == '<' || *p == '^' || *p == '~')) {
+    while (*p && (*p == '=' || *p == '!' || *p == '>' || *p == '<' || *p == '^' || *p == '~')) {
         if (opidx < 7) op[opidx++] = *p;
         p++;
     }
     op[opidx] = '\0';
-    
+    while (*p == ' ' || *p == '\t') p++;
+    if (strcmp(p, "*") == 0 || strcmp(p, "x") == 0 || strcmp(p, "X") == 0) return 1;
+
     SemVer target;
     if (!ParseSemver(p, &target)) return 0;
-    
-    if (strcmp(op, "==") == 0 || strcmp(op, "") == 0) {
-        return (val.major == target.major && val.minor == target.minor && val.patch == target.patch);
-    } else if (strcmp(op, ">=") == 0) {
-        if (val.major != target.major) return val.major > target.major;
-        if (val.minor != target.minor) return val.minor > target.minor;
-        return val.patch >= target.patch;
-    } else if (strcmp(op, "<=") == 0) {
-        if (val.major != target.major) return val.major < target.major;
-        if (val.minor != target.minor) return val.minor < target.minor;
-        return val.patch <= target.patch;
-    } else if (strcmp(op, ">") == 0) {
-        if (val.major != target.major) return val.major > target.major;
-        if (val.minor != target.minor) return val.minor > target.minor;
-        return val.patch > target.patch;
-    } else if (strcmp(op, "<") == 0) {
-        if (val.major != target.major) return val.major < target.major;
-        if (val.minor != target.minor) return val.minor < target.minor;
-        return val.patch < target.patch;
-    } else if (strcmp(op, "^") == 0) {
-        // compatible with target (same major version, >= minor/patch)
-        if (val.major != target.major) return 0;
-        if (val.minor != target.minor) return val.minor > target.minor;
-        return val.patch >= target.patch;
-    } else if (strcmp(op, "~") == 0) {
-        // compatible with target (same major and minor, >= patch)
-        if (val.major != target.major || val.minor != target.minor) return 0;
-        return val.patch >= target.patch;
+    int has_x = (strstr(p, ".x") != NULL || strstr(p, ".X") != NULL || strstr(p, ".*") != NULL);
+    if (op[0] == '\0' && has_x) {
+        if (target.parts == 1) return val.major == target.major;
+        if (target.parts == 2) return val.major == target.major && val.minor == target.minor;
+    }
+
+    int cmp = CmpSemVer(val, target);
+    if (strcmp(op, "==") == 0 || strcmp(op, "=") == 0 || strcmp(op, "") == 0) return cmp == 0;
+    if (strcmp(op, "!=") == 0) return cmp != 0;
+    if (strcmp(op, ">=") == 0) return cmp >= 0;
+    if (strcmp(op, "<=") == 0) return cmp <= 0;
+    if (strcmp(op, ">") == 0)  return cmp > 0;
+    if (strcmp(op, "<") == 0)  return cmp < 0;
+    if (strcmp(op, "^") == 0) {
+        if (cmp < 0) return 0;
+        if (target.major > 0) return val.major == target.major;
+        if (target.minor > 0 || target.parts < 3) return val.major == 0 && val.minor == target.minor;
+        return cmp == 0;
+    }
+    if (strcmp(op, "~") == 0) {
+        if (cmp < 0 || val.major != target.major) return 0;
+        if (target.parts >= 2) return val.minor == target.minor;
+        return 1;
     }
     return 0;
+}
+
+// version match check (supports comma/space-separated compound SemVer clauses)
+static int VersionMatch(SemVer val, const char *constraint) {
+    if (!constraint || strlen(constraint) == 0 || strcmp(constraint, "*") == 0) return 1;
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s", constraint);
+    char *p = buf;
+    int any_clause = 0;
+    while (*p) {
+        while (*p == ' ' || *p == '\t' || *p == ',') p++;
+        if (!*p) break;
+        /* Keep operator glued to version token even if space separates ">= 1.0.0" */
+        char clause[64] = "";
+        int ci = 0;
+        while (*p && (*p == '=' || *p == '!' || *p == '>' || *p == '<' || *p == '^' || *p == '~')) {
+            if (ci < 62) clause[ci++] = *p;
+            p++;
+        }
+        while (*p == ' ' || *p == '\t') p++;
+        while (*p && *p != ' ' && *p != '\t' && *p != ',') {
+            if (ci < 63) clause[ci++] = *p;
+            p++;
+        }
+        clause[ci] = '\0';
+        if (clause[0]) {
+            any_clause = 1;
+            if (!VersionMatchClause(val, clause)) return 0;
+        }
+    }
+    return any_clause ? 1 : 1;
+}
+
+int PkgVersionSatisfies(const char *version, const char *constraint) {
+    SemVer v;
+    if (!version || !ParseSemver(version, &v)) return 0;
+    return VersionMatch(v, constraint);
 }
 
 // file reading helper
@@ -491,15 +586,455 @@ static char *ReadFileContent(const char *path) {
     fseek(f, 0, SEEK_END);
     long sz = ftell(f);
     rewind(f);
-    char *buf = malloc(sz + 1);
+    if (sz < 0) { fclose(f); return NULL; }
+    char *buf = malloc((size_t)sz + 1);
     if (!buf) {
         fclose(f);
         return NULL;
     }
-    size_t readbytes = fread(buf, 1, sz, f);
+    size_t readbytes = fread(buf, 1, (size_t)sz, f);
     buf[readbytes] = '\0';
     fclose(f);
     return buf;
+}
+
+static void PkgSha256Hex(const uint8_t *data, size_t len, char *out_hex) {
+    PKGSHA256CTX ctx;
+    PkgSha256Init(&ctx);
+    if (len > 0) PkgSha256Update(&ctx, data, len);
+    uint8_t digest[32];
+    PkgSha256Final(&ctx, digest);
+    for (int i = 0; i < 32; i++) sprintf(out_hex + i * 2, "%02x", digest[i]);
+    out_hex[64] = '\0';
+}
+
+static int PkgPackWriteEntry(FILE *out, PKGSHA256CTX *sha, const char *relpath, const char *filepath) {
+    FILE *in = fopen(filepath, "rb");
+    if (!in) return 0;
+    fseek(in, 0, SEEK_END);
+    long sz = ftell(in);
+    rewind(in);
+    if (sz < 0) { fclose(in); return 0; }
+    uint8_t *buf = sz > 0 ? (uint8_t *)malloc((size_t)sz) : NULL;
+    size_t nr = (sz > 0 && buf) ? fread(buf, 1, (size_t)sz, in) : 0;
+    fclose(in);
+    if (sz > 0 && !buf) return 0;
+
+    char hdr[600];
+    int hlen = snprintf(hdr, sizeof(hdr), "FILE %s\n%zu\n", relpath, nr);
+    fwrite(hdr, 1, (size_t)hlen, out);
+    PkgSha256Update(sha, (const uint8_t *)hdr, (size_t)hlen);
+    if (nr > 0) {
+        fwrite(buf, 1, nr, out);
+        PkgSha256Update(sha, buf, nr);
+    }
+    fputc('\n', out);
+    uint8_t nl = '\n';
+    PkgSha256Update(sha, &nl, 1);
+    free(buf);
+    return 1;
+}
+
+static void PkgPackDirRecursive(FILE *out, PKGSHA256CTX *sha, const char *dir_path, const char *rel_prefix) {
+#ifdef _WIN32
+    char pat[512];
+    snprintf(pat, sizeof(pat), "%s\\*", dir_path);
+    WIN32_FIND_DATAA ffd;
+    HANDLE h = FindFirstFileA(pat, &ffd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        const char *name = ffd.cFileName;
+        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+        if (strcmp(name, ".git") == 0 || strcmp(name, ".akspackages") == 0) continue;
+        char fpath[512], rpath[512];
+        snprintf(fpath, sizeof(fpath), "%s/%s", dir_path, name);
+        snprintf(rpath, sizeof(rpath), "%s/%s", rel_prefix, name);
+        if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            PkgPackDirRecursive(out, sha, fpath, rpath);
+        } else {
+            PkgPackWriteEntry(out, sha, rpath, fpath);
+        }
+    } while (FindNextFileA(h, &ffd));
+    FindClose(h);
+#else
+    DIR *d = opendir(dir_path);
+    if (!d) return;
+    struct dirent *de;
+    while ((de = readdir(d)) != NULL) {
+        const char *name = de->d_name;
+        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+        if (strcmp(name, ".git") == 0 || strcmp(name, ".akspackages") == 0) continue;
+        char fpath[512], rpath[512];
+        snprintf(fpath, sizeof(fpath), "%s/%s", dir_path, name);
+        snprintf(rpath, sizeof(rpath), "%s/%s", rel_prefix, name);
+        struct stat st;
+        if (stat(fpath, &st) == 0 && S_ISDIR(st.st_mode)) {
+            PkgPackDirRecursive(out, sha, fpath, rpath);
+        } else {
+            PkgPackWriteEntry(out, sha, rpath, fpath);
+        }
+    }
+    closedir(d);
+#endif
+}
+
+int PkgCreateBundle(const char *base_dir, const char *entrypoint, const char *out_akspkg, char *out_sha256) {
+    if (!base_dir || !out_akspkg) return 0;
+    FILE *out = fopen(out_akspkg, "wb");
+    if (!out) return 0;
+    PKGSHA256CTX sha;
+    PkgSha256Init(&sha);
+    const char *magic = "AKSPKG1\n";
+    fwrite(magic, 1, 8, out);
+    PkgSha256Update(&sha, (const uint8_t *)magic, 8);
+
+    char pbuf[512];
+    snprintf(pbuf, sizeof(pbuf), "%s/aks.json", base_dir);
+    PkgPackWriteEntry(out, &sha, "aks.json", pbuf);
+
+    if (entrypoint && entrypoint[0] &&
+        strncmp(entrypoint, "src/", 4) != 0 && strncmp(entrypoint, "src\\", 4) != 0 &&
+        strcmp(entrypoint, "aks.json") != 0) {
+        char norm_entry[256];
+        snprintf(norm_entry, sizeof(norm_entry), "%s", entrypoint);
+        for (char *p = norm_entry; *p; p++) if (*p == '\\') *p = '/';
+        snprintf(pbuf, sizeof(pbuf), "%s/%s", base_dir, norm_entry);
+        PkgPackWriteEntry(out, &sha, norm_entry, pbuf);
+    }
+
+    snprintf(pbuf, sizeof(pbuf), "%s/src", base_dir);
+    PkgPackDirRecursive(out, &sha, pbuf, "src");
+
+    uint8_t digest[32];
+    PkgSha256Final(&sha, digest);
+    char hex[65];
+    for (int i = 0; i < 32; i++) sprintf(hex + i * 2, "%02x", digest[i]);
+    hex[64] = '\0';
+    fprintf(out, "SHA256 %s\n", hex);
+    fclose(out);
+    if (out_sha256) strcpy(out_sha256, hex);
+    return 1;
+}
+
+static int PkgIsSafeRelPath(const char *rel) {
+    if (!rel || !rel[0]) return 0;
+    if (rel[0] == '/' || rel[0] == '\\' || (rel[1] == ':')) return 0;
+    if (strstr(rel, "..") != NULL) return 0;
+    return 1;
+}
+
+int PkgExtractBundle(const char *bundle_path, const char *dest_dir, char *out_sha256) {
+    FILE *f = fopen(bundle_path, "rb");
+    if (!f) return 0;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    rewind(f);
+    if (sz < 80) { fclose(f); return 0; }
+    uint8_t *data = (uint8_t *)malloc((size_t)sz + 1);
+    if (!data) { fclose(f); return 0; }
+    size_t nr = fread(data, 1, (size_t)sz, f);
+    fclose(f);
+    data[nr] = '\0';
+    if (nr < 80 || memcmp(data, "AKSPKG1\n", 8) != 0) {
+        free(data);
+        return 0;
+    }
+    size_t pos = 8;
+    while (pos < nr) {
+        if (pos + 7 <= nr && memcmp(data + pos, "SHA256 ", 7) == 0) break;
+        if (pos + 5 > nr || memcmp(data + pos, "FILE ", 5) != 0) {
+            free(data); return 0;
+        }
+        const char *nl1 = (const char *)memchr(data + pos + 5, '\n', nr - (pos + 5));
+        if (!nl1) { free(data); return 0; }
+        size_t next_pos = (size_t)(nl1 - (const char *)data) + 1;
+        const char *nl2 = (const char *)memchr(data + next_pos, '\n', nr - next_pos);
+        if (!nl2) { free(data); return 0; }
+        size_t flen = (size_t)strtoull((const char *)(data + next_pos), NULL, 10);
+        size_t data_start = (size_t)(nl2 - (const char *)data) + 1;
+        if (data_start + flen + 1 > nr) { free(data); return 0; }
+        pos = data_start + flen + 1;
+    }
+    if (pos + 7 + 64 > nr || memcmp(data + pos, "SHA256 ", 7) != 0) {
+        free(data);
+        return 0;
+    }
+    char expected_hex[65];
+    memcpy(expected_hex, data + pos + 7, 64);
+    expected_hex[64] = '\0';
+    char actual_hex[65];
+    PkgSha256Hex(data, pos, actual_hex);
+    if (strcmp(expected_hex, actual_hex) != 0) {
+        fprintf(stderr, "Security Alert: .akspkg SHA-256 verification failed! Expected %s, got %s\n",
+                expected_hex, actual_hex);
+        free(data);
+        return 0;
+    }
+    if (out_sha256) strcpy(out_sha256, actual_hex);
+    if (!dest_dir) {
+        free(data);
+        return 1;
+    }
+
+    MkDirp(dest_dir);
+    pos = 8;
+    while (pos < nr) {
+        if (pos + 7 <= nr && memcmp(data + pos, "SHA256 ", 7) == 0) break;
+        const char *nl1 = (const char *)memchr(data + pos + 5, '\n', nr - (pos + 5));
+        size_t rlen = (size_t)(nl1 - (const char *)(data + pos + 5));
+        char rel[512];
+        if (rlen >= sizeof(rel)) rlen = sizeof(rel) - 1;
+        memcpy(rel, data + pos + 5, rlen);
+        rel[rlen] = '\0';
+        size_t next_pos = (size_t)(nl1 - (const char *)data) + 1;
+        const char *nl2 = (const char *)memchr(data + next_pos, '\n', nr - next_pos);
+        size_t flen = (size_t)strtoull((const char *)(data + next_pos), NULL, 10);
+        size_t data_start = (size_t)(nl2 - (const char *)data) + 1;
+        if (PkgIsSafeRelPath(rel)) {
+            char outpath[1024];
+            snprintf(outpath, sizeof(outpath), "%s/%s", dest_dir, rel);
+            char pdir[1024];
+            snprintf(pdir, sizeof(pdir), "%s", outpath);
+            char *sep = strrchr(pdir, '/');
+            if (sep) { *sep = '\0'; MkDirp(pdir); }
+            FILE *wf = fopen(outpath, "wb");
+            if (wf) {
+                if (flen > 0) fwrite(data + data_start, 1, flen, wf);
+                fclose(wf);
+            }
+        }
+        pos = data_start + flen + 1;
+    }
+    free(data);
+    return 1;
+}
+
+static int PkgParseHttpUrl(const char *url, int *is_https, char *host, size_t host_sz, int *port, char *path, size_t path_sz) {
+    if (!url) return 0;
+    const char *p = NULL;
+    if (strncmp(url, "http://", 7) == 0) { *is_https = 0; p = url + 7; *port = 80; }
+    else if (strncmp(url, "https://", 8) == 0) { *is_https = 1; p = url + 8; *port = 443; }
+    else return 0;
+    const char *slash = strchr(p, '/');
+    size_t hp_len = slash ? (size_t)(slash - p) : strlen(p);
+    char hostport[256];
+    if (hp_len >= sizeof(hostport)) hp_len = sizeof(hostport) - 1;
+    memcpy(hostport, p, hp_len);
+    hostport[hp_len] = '\0';
+    char *colon = strchr(hostport, ':');
+    if (colon) {
+        *colon = '\0';
+        int parsed_p = atoi(colon + 1);
+        if (parsed_p > 0) *port = parsed_p;
+    }
+    snprintf(host, host_sz, "%s", hostport);
+    snprintf(path, path_sz, "%s", slash ? slash : "/");
+    return host[0] != '\0';
+}
+
+static int PkgHttpRequest(const char *method, const char *url, const char *bearer_token,
+                          const char *extra_headers, const uint8_t *body, size_t body_len,
+                          uint8_t **out_resp, size_t *out_len, int *out_status) {
+    if (out_resp) *out_resp = NULL;
+    if (out_len) *out_len = 0;
+    if (out_status) *out_status = 0;
+    int is_https = 0, port = 80;
+    char host[256], path[1024];
+    if (!PkgParseHttpUrl(url, &is_https, host, sizeof(host), &port, path, sizeof(path))) return 0;
+
+#ifdef _WIN32
+    wchar_t whost[256], wpath[1024], wmethod[16];
+    MultiByteToWideChar(CP_UTF8, 0, host, -1, whost, 256);
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, 1024);
+    MultiByteToWideChar(CP_UTF8, 0, method, -1, wmethod, 16);
+
+    HINTERNET hSession = WinHttpOpen(L"AKS-Pkg/1.2.3", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                     WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!hSession) return 0;
+    HINTERNET hConnect = WinHttpConnect(hSession, whost, (INTERNET_PORT)port, 0);
+    if (!hConnect) { WinHttpCloseHandle(hSession); return 0; }
+    HINTERNET hRequest = WinHttpOpenRequest(hConnect, wmethod, wpath, NULL, WINHTTP_NO_REFERER,
+                                            WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                            is_https ? WINHTTP_FLAG_SECURE : 0);
+    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return 0; }
+
+    char hdr_buf[2048] = "";
+    if (bearer_token && bearer_token[0]) {
+        snprintf(hdr_buf, sizeof(hdr_buf), "Authorization: Bearer %s\r\n", bearer_token);
+    }
+    if (extra_headers && extra_headers[0]) {
+        strncat(hdr_buf, extra_headers, sizeof(hdr_buf) - strlen(hdr_buf) - 1);
+    }
+    if (hdr_buf[0]) {
+        wchar_t whdrs[2048];
+        MultiByteToWideChar(CP_UTF8, 0, hdr_buf, -1, whdrs, 2048);
+        WinHttpAddRequestHeaders(hRequest, whdrs, (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD);
+    }
+
+    BOOL ok = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                                 (LPVOID)body, (DWORD)body_len, (DWORD)body_len, 0);
+    if (ok) ok = WinHttpReceiveResponse(hRequest, NULL);
+    if (!ok) {
+        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession);
+        return 0;
+    }
+    DWORD status = 0, st_sz = sizeof(status);
+    WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                        WINHTTP_HEADER_NAME_BY_INDEX, &status, &st_sz, WINHTTP_NO_HEADER_INDEX);
+    if (out_status) *out_status = (int)status;
+
+    size_t cap = 4096, len = 0;
+    uint8_t *resp = (uint8_t *)malloc(cap);
+    DWORD avail = 0;
+    while (resp && WinHttpQueryDataAvailable(hRequest, &avail) && avail > 0) {
+        if (len + avail + 1 > cap) {
+            while (len + avail + 1 > cap) cap *= 2;
+            uint8_t *nr = (uint8_t *)realloc(resp, cap);
+            if (!nr) break;
+            resp = nr;
+        }
+        DWORD read_now = 0;
+        if (!WinHttpReadData(hRequest, resp + len, avail, &read_now) || read_now == 0) break;
+        len += read_now;
+    }
+    if (resp) {
+        resp[len] = '\0';
+        if (out_resp) *out_resp = resp; else free(resp);
+        if (out_len) *out_len = len;
+    }
+    WinHttpCloseHandle(hRequest);
+    WinHttpCloseHandle(hConnect);
+    WinHttpCloseHandle(hSession);
+    return 1;
+#else
+    if (is_https) {
+        char cmd[2048];
+        char tmpin[128], tmpout[128];
+        snprintf(tmpin, sizeof(tmpin), "/tmp/aks_http_in_%lu", (unsigned long)getpid());
+        snprintf(tmpout, sizeof(tmpout), "/tmp/aks_http_out_%lu", (unsigned long)getpid());
+        if (body && body_len > 0) {
+            FILE *bf = fopen(tmpin, "wb");
+            if (bf) { fwrite(body, 1, body_len, bf); fclose(bf); }
+        }
+        snprintf(cmd, sizeof(cmd),
+                 "curl -sS -w '\\n%%{http_code}' -X %s %s%s %s%s -o %s '%s'",
+                 method,
+                 bearer_token && bearer_token[0] ? "-H 'Authorization: Bearer " : "",
+                 bearer_token && bearer_token[0] ? bearer_token : "",
+                 (body && body_len > 0) ? "--data-binary @" : "",
+                 (body && body_len > 0) ? tmpin : "",
+                 tmpout, url);
+        /* Avoid complex quoting bugs when no token */
+        if (bearer_token && bearer_token[0]) {
+            snprintf(cmd, sizeof(cmd),
+                     "curl -sS -w '%%{http_code}' -X %s -H 'Authorization: Bearer %s' %s%s -o '%s' '%s'",
+                     method, bearer_token,
+                     (body && body_len > 0) ? "--data-binary @" : "",
+                     (body && body_len > 0) ? tmpin : "", tmpout, url);
+        } else {
+            snprintf(cmd, sizeof(cmd),
+                     "curl -sS -w '%%{http_code}' -X %s %s%s -o '%s' '%s'",
+                     method,
+                     (body && body_len > 0) ? "--data-binary @" : "",
+                     (body && body_len > 0) ? tmpin : "", tmpout, url);
+        }
+        FILE *pp = popen(cmd, "r");
+        int code = 0;
+        if (pp) {
+            if (fscanf(pp, "%d", &code) != 1) code = 0;
+            pclose(pp);
+        }
+        if (body && body_len > 0) remove(tmpin);
+        if (out_status) *out_status = code;
+        char *fdata = ReadFileContent(tmpout);
+        if (fdata) {
+            size_t fl = strlen(fdata);
+            if (out_resp) *out_resp = (uint8_t *)fdata; else free(fdata);
+            if (out_len) *out_len = fl;
+        }
+        remove(tmpout);
+        return code > 0;
+    }
+
+    char port_str[16];
+    snprintf(port_str, sizeof(port_str), "%d", port);
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    if (getaddrinfo(host, port_str, &hints, &res) != 0 || !res) return 0;
+
+    int sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (sock < 0 || connect(sock, res->ai_addr, res->ai_addrlen) != 0) {
+        if (sock >= 0) close(sock);
+        freeaddrinfo(res);
+        return 0;
+    }
+    freeaddrinfo(res);
+
+    char req_hdr[2048];
+    int hlen = snprintf(req_hdr, sizeof(req_hdr),
+                        "%s %s HTTP/1.0\r\nHost: %s:%d\r\nUser-Agent: AKS-Pkg/1.2.3\r\n"
+                        "Content-Length: %zu\r\nConnection: close\r\n"
+                        "%s%s%s%s\r\n",
+                        method, path, host, port, body_len,
+                        (bearer_token && bearer_token[0]) ? "Authorization: Bearer " : "",
+                        (bearer_token && bearer_token[0]) ? bearer_token : "",
+                        (bearer_token && bearer_token[0]) ? "\r\n" : "",
+                        (extra_headers && extra_headers[0]) ? extra_headers : "");
+    size_t sent = 0;
+    while (sent < (size_t)hlen) {
+        ssize_t w = send(sock, req_hdr + sent, (size_t)hlen - sent, 0);
+        if (w <= 0) break;
+        sent += (size_t)w;
+    }
+    sent = 0;
+    while (sent < body_len) {
+        ssize_t w = send(sock, body + sent, body_len - sent, 0);
+        if (w <= 0) break;
+        sent += (size_t)w;
+    }
+
+    size_t cap = 8192, rlen = 0;
+    uint8_t *raw = (uint8_t *)malloc(cap);
+    while (raw) {
+        if (rlen + 4096 + 1 > cap) {
+            cap *= 2;
+            uint8_t *nr = (uint8_t *)realloc(raw, cap);
+            if (!nr) break;
+            raw = nr;
+        }
+        ssize_t n = recv(sock, raw + rlen, 4096, 0);
+        if (n <= 0) break;
+        rlen += (size_t)n;
+    }
+    close(sock);
+    if (!raw || rlen == 0) { free(raw); return 0; }
+    raw[rlen] = '\0';
+
+    int status = 0;
+    const char *sp = (const char *)memchr(raw, ' ', rlen);
+    if (sp) status = atoi(sp + 1);
+    if (out_status) *out_status = status;
+
+    const char *hdr_end = strstr((const char *)raw, "\r\n\r\n");
+    size_t sep_len = 4;
+    if (!hdr_end) { hdr_end = strstr((const char *)raw, "\n\n"); sep_len = 2; }
+    if (hdr_end) {
+        size_t blen = rlen - (size_t)(hdr_end + sep_len - (const char *)raw);
+        if (out_resp) {
+            uint8_t *rbody = (uint8_t *)malloc(blen + 1);
+            if (rbody) {
+                if (blen > 0) memcpy(rbody, hdr_end + sep_len, blen);
+                rbody[blen] = '\0';
+            }
+            *out_resp = rbody;
+        }
+        if (out_len) *out_len = blen;
+    }
+    free(raw);
+    return status > 0;
+#endif
 }
 
 // package manager commands
@@ -550,8 +1085,8 @@ int PkgInit(const char *name) {
         snprintf(srcdir, sizeof(srcdir), "src");
         snprintf(testdir, sizeof(testdir), "tests");
     } else {
-        snprintf(srcdir, sizeof(srcdir), "%s\\src", target_dir);
-        snprintf(testdir, sizeof(testdir), "%s\\tests", target_dir);
+        snprintf(srcdir, sizeof(srcdir), "%s/src", target_dir);
+        snprintf(testdir, sizeof(testdir), "%s/tests", target_dir);
     }
     MkDirp(srcdir);
     MkDirp(testdir);
@@ -560,7 +1095,7 @@ int PkgInit(const char *name) {
     if (is_current_dir) {
         snprintf(manifestpath, sizeof(manifestpath), "aks.json");
     } else {
-        snprintf(manifestpath, sizeof(manifestpath), "%s\\aks.json", target_dir);
+        snprintf(manifestpath, sizeof(manifestpath), "%s/aks.json", target_dir);
     }
 
     FILE *f = fopen(manifestpath, "w");
@@ -579,9 +1114,9 @@ int PkgInit(const char *name) {
 
     char mainpath[512];
     if (is_current_dir) {
-        snprintf(mainpath, sizeof(mainpath), "src\\main.aks");
+        snprintf(mainpath, sizeof(mainpath), "src/main.aks");
     } else {
-        snprintf(mainpath, sizeof(mainpath), "%s\\src\\main.aks", target_dir);
+        snprintf(mainpath, sizeof(mainpath), "%s/src/main.aks", target_dir);
     }
     FILE *mainf = fopen(mainpath, "w");
     if (mainf) {
@@ -595,9 +1130,9 @@ int PkgInit(const char *name) {
 
     char testpath[512];
     if (is_current_dir) {
-        snprintf(testpath, sizeof(testpath), "tests\\main_test.aks");
+        snprintf(testpath, sizeof(testpath), "tests/main_test.aks");
     } else {
-        snprintf(testpath, sizeof(testpath), "%s\\tests\\main_test.aks", target_dir);
+        snprintf(testpath, sizeof(testpath), "%s/tests/main_test.aks", target_dir);
     }
     FILE *testf = fopen(testpath, "w");
     if (testf) {
@@ -614,7 +1149,7 @@ int PkgInit(const char *name) {
     if (is_current_dir) {
         snprintf(gitignorepath, sizeof(gitignorepath), ".gitignore");
     } else {
-        snprintf(gitignorepath, sizeof(gitignorepath), "%s\\.gitignore", target_dir);
+        snprintf(gitignorepath, sizeof(gitignorepath), "%s/.gitignore", target_dir);
     }
     FILE *check_gi = fopen(gitignorepath, "r");
     if (check_gi) {
@@ -689,34 +1224,88 @@ int PkgPublishTo(const char *registry_url) {
     
     printf("Publishing package '%s@%s' to local registry\n", name, version);
     
-    char destdir[512];
-    snprintf(destdir, sizeof(destdir), "%s\\%s\\%s", GetRegIsTryDir(), name, version);
+    char destdir[1024];
+    snprintf(destdir, sizeof(destdir), "%s/%s/%s", GetRegIsTryDir(), name, version);
     MkDirp(destdir);
     
     // copy manifest
-    char dstmanifest[512];
-    snprintf(dstmanifest, sizeof(dstmanifest), "%s\\aks.json", destdir);
+    char dstmanifest[1536];
+    snprintf(dstmanifest, sizeof(dstmanifest), "%s/aks.json", destdir);
     PkgCopyFile("aks.json", dstmanifest);
     
-    // copy entrypoint and src files (basic file copier for package files)
-    char dstentry[512];
-    snprintf(dstentry, sizeof(dstentry), "%s\\%s", destdir, entrypoint);
+    // copy entrypoint and src/ recursively
+    char dstentry[1536];
+    snprintf(dstentry, sizeof(dstentry), "%s/%s", destdir, entrypoint);
     PkgCopyFile(entrypoint, dstentry);
-    
-    printf("Local registry: %s\n", destdir);
+    char dstsrc[1536];
+    snprintf(dstsrc, sizeof(dstsrc), "%s/src", destdir);
+    PkgCopyDirRecursive("src", dstsrc);
 
-    const char *target_url = registry_url ? registry_url : (manifest_reg[0] != '\0' ? manifest_reg : NULL);
+    char reg_bundle[1536];
+    snprintf(reg_bundle, sizeof(reg_bundle), "%s/%s-%s.akspkg", destdir, name, version);
+    char sha_hex[65] = "";
+    PkgCreateBundle(".", entrypoint, reg_bundle, sha_hex);
+
+    printf("Local registry: %s (SHA-256: %s)\n", destdir, sha_hex);
+
+    const char *env_reg = getenv("AKS_REGISTRY_URL");
+    const char *target_url = registry_url ? registry_url :
+                             (manifest_reg[0] != '\0' ? manifest_reg :
+                             ((env_reg && env_reg[0]) ? env_reg : NULL));
     if (target_url) {
         char *auth_tok = PkgGetStoredToken(target_url);
         printf("Publishing package to remote registry: %s\n", target_url);
         if (auth_tok) {
             printf("Authenticated with bearer token: %.8s...\n", auth_tok);
-            free(auth_tok);
         } else {
             printf("Notice: Publishing anonymously. Run 'aks login <token>' to use credentials.\n");
         }
-        printf("Packaging bundle: %s-%s.akspkg\n", name, version);
-        printf("Remote upload complete. Package '%s@%s' is live on %s\n", name, version, target_url);
+        char local_bundle[512];
+        snprintf(local_bundle, sizeof(local_bundle), "%s-%s.akspkg", name, version);
+        if (!PkgCreateBundle(".", entrypoint, local_bundle, sha_hex)) {
+            fprintf(stderr, "Error: Failed to create package bundle '%s'\n", local_bundle);
+            if (auth_tok) free(auth_tok);
+            return 1;
+        }
+        printf("Packaging bundle: %s (SHA-256: %s)\n", local_bundle, sha_hex);
+
+        FILE *bf = fopen(local_bundle, "rb");
+        long bsz = 0;
+        uint8_t *bdata = NULL;
+        if (bf) {
+            fseek(bf, 0, SEEK_END);
+            bsz = ftell(bf);
+            rewind(bf);
+            if (bsz > 0) {
+                bdata = (uint8_t *)malloc((size_t)bsz);
+                if (bdata && fread(bdata, 1, (size_t)bsz, bf) != (size_t)bsz) {
+                    free(bdata);
+                    bdata = NULL;
+                }
+            }
+            fclose(bf);
+        }
+        char extra_hdrs[512];
+        snprintf(extra_hdrs, sizeof(extra_hdrs),
+                 "Content-Type: application/octet-stream\r\n"
+                 "X-Package-Name: %s\r\n"
+                 "X-Package-Version: %s\r\n"
+                 "X-Package-Sha256: %s\r\n",
+                 name, version, sha_hex);
+        uint8_t *resp = NULL;
+        size_t rlen = 0;
+        int status = 0;
+        int ok = bdata && PkgHttpRequest("POST", target_url, auth_tok, extra_hdrs,
+                                         bdata, (size_t)bsz, &resp, &rlen, &status);
+        free(bdata);
+        if (auth_tok) free(auth_tok);
+        if (resp) free(resp);
+        if (!ok || status < 200 || status >= 300) {
+            fprintf(stderr, "Error: Remote registry upload failed (HTTP %d) to %s\n", status, target_url);
+            return 1;
+        }
+        printf("Remote upload complete (HTTP %d). Package '%s@%s' is live on %s\n",
+               status, name, version, target_url);
     }
     
     printf("Package published successfully.\n");
@@ -726,50 +1315,92 @@ int PkgPublishTo(const char *registry_url) {
 int PkgSearch(const char *query) {
     printf("Searching AKS package registry for '%s'...\n\n", query ? query : "*");
     const char *regdir = GetRegIsTryDir();
-    
+    int found_count = 0;
+
+    printf("  %-24s  %-12s  %s\n", "Package", "Version", "Status");
+    printf("  %-24s  %-12s  %s\n", "------------------------", "------------", "---------");
+
 #ifdef _WIN32
     char searchpat[512];
     snprintf(searchpat, sizeof(searchpat), "%s\\*", regdir);
     WIN32_FIND_DATAA ffd;
     HANDLE hFind = FindFirstFileA(searchpat, &ffd);
-    int found_count = 0;
-    
-    printf("  %-24s  %-12s  %s\n", "Package", "Version", "Status");
-    printf("  %-24s  %-12s  %s\n", "------------------------", "------------", "---------");
-    
     if (hFind != INVALID_HANDLE_VALUE) {
         do {
-            if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-                if (strcmp(ffd.cFileName, ".") == 0 || strcmp(ffd.cFileName, "..") == 0) continue;
-                if (!query || strlen(query) == 0 || strstr(ffd.cFileName, query) != NULL) {
-                    char verpat[512];
-                    snprintf(verpat, sizeof(verpat), "%s\\%s\\*", regdir, ffd.cFileName);
-                    WIN32_FIND_DATAA vfd;
-                    HANDLE hVer = FindFirstFileA(verpat, &vfd);
-                    char latest_ver[64] = "1.0.0";
-                    if (hVer != INVALID_HANDLE_VALUE) {
-                        do {
-                            if ((vfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
-                                strcmp(vfd.cFileName, ".") != 0 && strcmp(vfd.cFileName, "..") != 0) {
-                                strncpy(latest_ver, vfd.cFileName, sizeof(latest_ver) - 1);
-                            }
-                        } while (FindNextFileA(hVer, &vfd));
-                        FindClose(hVer);
-                    }
-                    printf("  %-24s  %-12s  [installed]\n", ffd.cFileName, latest_ver);
-                    found_count++;
+            if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+            const char *pkgname = ffd.cFileName;
+#else
+    DIR *d = opendir(regdir);
+    if (d) {
+        struct dirent *de;
+        while ((de = readdir(d)) != NULL) {
+            const char *pkgname = de->d_name;
+#endif
+            if (strcmp(pkgname, ".") == 0 || strcmp(pkgname, "..") == 0) continue;
+            if (!query || strlen(query) == 0 || strstr(pkgname, query) != NULL) {
+                char latest_ver[64] = "1.0.0";
+#ifdef _WIN32
+                char verpat[512];
+                snprintf(verpat, sizeof(verpat), "%s\\%s\\*", regdir, pkgname);
+                WIN32_FIND_DATAA vfd;
+                HANDLE hVer = FindFirstFileA(verpat, &vfd);
+                if (hVer != INVALID_HANDLE_VALUE) {
+                    do {
+                        if ((vfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
+                            strcmp(vfd.cFileName, ".") != 0 && strcmp(vfd.cFileName, "..") != 0) {
+                            snprintf(latest_ver, sizeof(latest_ver), "%s", vfd.cFileName);
+                        }
+                    } while (FindNextFileA(hVer, &vfd));
+                    FindClose(hVer);
                 }
+#else
+                char pkgsub[1024];
+                snprintf(pkgsub, sizeof(pkgsub), "%s/%s", regdir, pkgname);
+                struct stat pst;
+                if (stat(pkgsub, &pst) != 0 || !S_ISDIR(pst.st_mode)) continue;
+                DIR *vd = opendir(pkgsub);
+                if (vd) {
+                    struct dirent *vde;
+                    while ((vde = readdir(vd)) != NULL) {
+                        if (strcmp(vde->d_name, ".") != 0 && strcmp(vde->d_name, "..") != 0) {
+                            snprintf(latest_ver, sizeof(latest_ver), "%.63s", vde->d_name);
+                        }
+                    }
+                    closedir(vd);
+                }
+#endif
+                printf("  %-24s  %-12s  [installed]\n", pkgname, latest_ver);
+                found_count++;
             }
+#ifdef _WIN32
         } while (FindNextFileA(hFind, &ffd));
         FindClose(hFind);
     }
+#else
+        }
+        closedir(d);
+    }
+#endif
+
+    const char *env_reg = getenv("AKS_REGISTRY_URL");
+    if (env_reg && env_reg[0]) {
+        char qurl[768];
+        snprintf(qurl, sizeof(qurl), "%s/search?q=%s", env_reg, query ? query : "");
+        uint8_t *resp = NULL;
+        size_t rlen = 0;
+        int status = 0;
+        if (PkgHttpRequest("GET", qurl, NULL, NULL, NULL, 0, &resp, &rlen, &status) &&
+            resp && status >= 200 && status < 300) {
+            printf("  Remote registry (%s): %s\n", env_reg, (const char *)resp);
+            found_count++;
+        }
+        if (resp) free(resp);
+    }
+
     if (found_count == 0) {
         printf("  (no local packages matching '%s' found in %s)\n", query ? query : "*", regdir);
     }
     printf("\nTotal matching packages: %d\n", found_count);
-#else
-    printf("Search in %s: found 0 matching packages\n", regdir);
-#endif
     return 0;
 }
 
@@ -784,15 +1415,14 @@ int PkgAdd(const char *pkgspec) {
         if (namelen > 127) namelen = 127;
         strncpy(pkgname, pkgspec, namelen);
         pkgname[namelen] = '\0';
-        strncpy(pkgversion, at + 1, sizeof(pkgversion) - 1);
+        snprintf(pkgversion, sizeof(pkgversion), "%.511s", at + 1);
     } else if (strncmp(pkgspec, "path:", 5) == 0 ||
                strncmp(pkgspec, "./", 2) == 0 || strncmp(pkgspec, ".\\", 2) == 0 ||
                strncmp(pkgspec, "../", 3) == 0 || strncmp(pkgspec, "..\\", 3) == 0) {
         const char *src = pkgspec;
         if (strncmp(src, "path:", 5) == 0) src += 5;
         char cleanpath[512];
-        strncpy(cleanpath, src, sizeof(cleanpath) - 1);
-        cleanpath[sizeof(cleanpath) - 1] = '\0';
+        snprintf(cleanpath, sizeof(cleanpath), "%.511s", src);
         size_t plen = strlen(cleanpath);
         while (plen > 0 && (cleanpath[plen - 1] == '/' || cleanpath[plen - 1] == '\\')) {
             cleanpath[--plen] = '\0';
@@ -800,11 +1430,11 @@ int PkgAdd(const char *pkgspec) {
         const char *slash = cleanpath + plen;
         while (slash > cleanpath && *(slash - 1) != '/' && *(slash - 1) != '\\') slash--;
         if (strlen(slash) > 0) {
-            strncpy(pkgname, slash, sizeof(pkgname) - 1);
+            snprintf(pkgname, sizeof(pkgname), "%.127s", slash);
         } else {
-            strncpy(pkgname, "pathpkg", sizeof(pkgname) - 1);
+            snprintf(pkgname, sizeof(pkgname), "pathpkg");
         }
-        snprintf(pkgversion, sizeof(pkgversion), "path:%s", cleanpath);
+        snprintf(pkgversion, sizeof(pkgversion), "path:%.500s", cleanpath);
     } else if (strncmp(pkgspec, "git+", 4) == 0 ||
                strncmp(pkgspec, "git@", 4) == 0 ||
                strncmp(pkgspec, "http://", 7) == 0 ||
@@ -919,9 +1549,11 @@ static int ResolvePackage(const char *name, const char *constraint) {
     
     if (strncmp(constraint, "path:", 5) == 0) {
         const char *srcpath = constraint + 5;
-        char manifestpath[512];
-        snprintf(manifestpath, sizeof(manifestpath), "%s\\aks.json", srcpath);
-        for (char *p = manifestpath; *p; p++) { if (*p == '/') *p = '\\'; }
+        char normsrc[512];
+        snprintf(normsrc, sizeof(normsrc), "%s", srcpath);
+        for (char *p = normsrc; *p; p++) { if (*p == '\\') *p = '/'; }
+        char manifestpath[1024];
+        snprintf(manifestpath, sizeof(manifestpath), "%s/aks.json", normsrc);
         
         char *srcmanifest = ReadFileContent(manifestpath);
         if (!srcmanifest) {
@@ -934,26 +1566,22 @@ static int ResolvePackage(const char *name, const char *constraint) {
         free(srcmanifest);
         
         char venvpkgdir[512];
-        snprintf(venvpkgdir, sizeof(venvpkgdir), ".akspackages\\%s", name);
+        snprintf(venvpkgdir, sizeof(venvpkgdir), ".akspackages/%s", name);
         MkDirp(".akspackages");
-        MkDirp(venvpkgdir);
+        PkgCopyDirRecursive(normsrc, venvpkgdir);
         
-        char copycmd[1024];
-        snprintf(copycmd, sizeof(copycmd), "xcopy /E /I /Y /Q \"%s\" \"%s\" >nul 2>nul", srcpath, venvpkgdir);
-        system(copycmd);
-        
-        char entrypath[512];
-        snprintf(entrypath, sizeof(entrypath), "%s\\%s", venvpkgdir, entrypoint);
-        for (char *p = entrypath; *p; p++) { if (*p == '/') *p = '\\'; }
+        char entrypath[1024];
+        snprintf(entrypath, sizeof(entrypath), "%s/%s", venvpkgdir, entrypoint);
+        for (char *p = entrypath; *p; p++) { if (*p == '\\') *p = '/'; }
         
         char computed_hash[65] = "";
         if (!Sha256File(entrypath, computed_hash)) {
-            char altpath[512];
-            snprintf(altpath, sizeof(altpath), "%s\\src\\main.aks", venvpkgdir);
+            char altpath[1024];
+            snprintf(altpath, sizeof(altpath), "%s/src/main.aks", venvpkgdir);
             if (!Sha256File(altpath, computed_hash)) {
-                snprintf(altpath, sizeof(altpath), "%s\\index.aks", venvpkgdir);
+                snprintf(altpath, sizeof(altpath), "%s/index.aks", venvpkgdir);
                 if (!Sha256File(altpath, computed_hash)) {
-                    snprintf(altpath, sizeof(altpath), "%s\\aks.json", venvpkgdir);
+                    snprintf(altpath, sizeof(altpath), "%s/aks.json", venvpkgdir);
                     Sha256File(altpath, computed_hash);
                 }
             }
@@ -970,6 +1598,47 @@ static int ResolvePackage(const char *name, const char *constraint) {
         return 1;
     }
     
+    if ((strncmp(constraint, "http://", 7) == 0 || strncmp(constraint, "https://", 8) == 0) &&
+        strstr(constraint, ".akspkg") != NULL) {
+        uint8_t *resp = NULL;
+        size_t rlen = 0;
+        int status = 0;
+        char *tok = PkgGetStoredToken(constraint);
+        int ok = PkgHttpRequest("GET", constraint, tok, NULL, NULL, 0, &resp, &rlen, &status);
+        if (tok) free(tok);
+        if (!ok || !resp || status < 200 || status >= 300 || rlen < 80) {
+            if (resp) free(resp);
+            fprintf(stderr, "Error: HTTP download failed (HTTP %d) for package '%s' from '%s'\n",
+                    status, name, constraint);
+            return 0;
+        }
+        MkDirp(".akspackages");
+        char tmp_akspkg[512];
+        snprintf(tmp_akspkg, sizeof(tmp_akspkg), ".akspackages/%s.download.akspkg", name);
+        FILE *tf = fopen(tmp_akspkg, "wb");
+        if (!tf) { free(resp); return 0; }
+        fwrite(resp, 1, rlen, tf);
+        fclose(tf);
+        free(resp);
+
+        char venvpkgdir[512];
+        snprintf(venvpkgdir, sizeof(venvpkgdir), ".akspackages/%s", name);
+        char computed_hash[65] = "";
+        int ext_ok = PkgExtractBundle(tmp_akspkg, venvpkgdir, computed_hash);
+        remove(tmp_akspkg);
+        if (!ext_ok) {
+            fprintf(stderr, "Security Error: .akspkg bundle verification failed for '%s'\n", name);
+            return 0;
+        }
+        strcpy(gresolved[gresolvedcount].name, name);
+        snprintf(gresolved[gresolvedcount].version, sizeof(gresolved[gresolvedcount].version), "%s", "http");
+        strcpy(gresolved[gresolvedcount].hash, computed_hash);
+        gresolved[gresolvedcount].is_git = 1;
+        gresolvedcount++;
+        printf("Installed HTTP bundle '%s' (SHA-256: %s) to local environment.\n", name, computed_hash);
+        return 1;
+    }
+
     if (strncmp(constraint, "git+", 4) == 0 ||
         strncmp(constraint, "git@", 4) == 0 ||
         strncmp(constraint, "http://", 7) == 0 ||
@@ -990,25 +1659,30 @@ static int ResolvePackage(const char *name, const char *constraint) {
             strncpy(giturl, src, sizeof(giturl) - 1);
         }
         char venvpkgdir[512];
-        snprintf(venvpkgdir, sizeof(venvpkgdir), ".akspackages\\%s", name);
+        snprintf(venvpkgdir, sizeof(venvpkgdir), ".akspackages/%s", name);
         MkDirp(".akspackages");
         
-        char manifestpath[512];
-        snprintf(manifestpath, sizeof(manifestpath), "%s\\aks.json", venvpkgdir);
+        char manifestpath[1024];
+        snprintf(manifestpath, sizeof(manifestpath), "%s/aks.json", venvpkgdir);
         FILE *tf = fopen(manifestpath, "r");
         if (tf) {
             fclose(tf);
         } else {
             char cmd[1024];
+#ifdef _WIN32
+            const char *devnull = "2>nul";
+#else
+            const char *devnull = "2>/dev/null";
+#endif
             if (strlen(gitref) > 0) {
-                snprintf(cmd, sizeof(cmd), "git clone --depth 1 --branch %s %s %s 2>nul", gitref, giturl, venvpkgdir);
+                snprintf(cmd, sizeof(cmd), "git clone --depth 1 --branch %s %s %s %s", gitref, giturl, venvpkgdir, devnull);
                 if (system(cmd) != 0) {
-                    snprintf(cmd, sizeof(cmd), "git clone %s %s 2>nul", giturl, venvpkgdir);
-                    system(cmd);
+                    snprintf(cmd, sizeof(cmd), "git clone %s %s %s", giturl, venvpkgdir, devnull);
+                    if (system(cmd) != 0) {}
                 }
             } else {
-                snprintf(cmd, sizeof(cmd), "git clone --depth 1 %s %s 2>nul", giturl, venvpkgdir);
-                system(cmd);
+                snprintf(cmd, sizeof(cmd), "git clone --depth 1 %s %s %s", giturl, venvpkgdir, devnull);
+                if (system(cmd) != 0) {}
             }
         }
         
@@ -1018,19 +1692,19 @@ static int ResolvePackage(const char *name, const char *constraint) {
             JSONGetVal(venvmanifest, "entrypoint", entrypoint, sizeof(entrypoint));
             free(venvmanifest);
         }
-        char entrypath[512];
-        snprintf(entrypath, sizeof(entrypath), "%s\\%s", venvpkgdir, entrypoint);
+        char entrypath[1024];
+        snprintf(entrypath, sizeof(entrypath), "%s/%s", venvpkgdir, entrypoint);
         for (char *p = entrypath; *p; p++) {
-            if (*p == '/') *p = '\\';
+            if (*p == '\\') *p = '/';
         }
         char computed_hash[65] = "";
         if (!Sha256File(entrypath, computed_hash)) {
-            char altpath[512];
-            snprintf(altpath, sizeof(altpath), "%s\\src\\main.aks", venvpkgdir);
+            char altpath[1024];
+            snprintf(altpath, sizeof(altpath), "%s/src/main.aks", venvpkgdir);
             if (!Sha256File(altpath, computed_hash)) {
-                snprintf(altpath, sizeof(altpath), "%s\\index.aks", venvpkgdir);
+                snprintf(altpath, sizeof(altpath), "%s/index.aks", venvpkgdir);
                 if (!Sha256File(altpath, computed_hash)) {
-                    snprintf(altpath, sizeof(altpath), "%s\\aks.json", venvpkgdir);
+                    snprintf(altpath, sizeof(altpath), "%s/aks.json", venvpkgdir);
                     Sha256File(altpath, computed_hash);
                 }
             }
@@ -1038,34 +1712,43 @@ static int ResolvePackage(const char *name, const char *constraint) {
         
         strcpy(gresolved[gresolvedcount].name, name);
         snprintf(gresolved[gresolvedcount].version, sizeof(gresolved[gresolvedcount].version),
-                 "git:%s", strlen(gitref) > 0 ? gitref : "HEAD");
+                 "git:%.59s", strlen(gitref) > 0 ? gitref : "HEAD");
         strcpy(gresolved[gresolvedcount].hash, computed_hash);
         gresolved[gresolvedcount].is_git = 1;
         gresolvedcount++;
         return 1;
     }
     
-    char regpkgdir[512];
-    snprintf(regpkgdir, sizeof(regpkgdir), "%s\\%s", GetRegIsTryDir(), name);
-    
+    char regpkgdir[1024];
+    snprintf(regpkgdir, sizeof(regpkgdir), "%s%c%s", GetRegIsTryDir(), PATHSEP, name);
+
     char foundversion[64] = "";
-    SemVer bestver = {-1, -1, -1};
-    
-    char searchpat[512];
+    SemVer bestver = {-1, -1, -1, 0};
+
+#ifdef _WIN32
+    char searchpat[1024];
     snprintf(searchpat, sizeof(searchpat), "%s\\*", regpkgdir);
     WIN32_FIND_DATAA ffd;
     HANDLE hfind = FindFirstFileA(searchpat, &ffd);
     if (hfind != INVALID_HANDLE_VALUE) {
         do {
             if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
-            if (strcmp(ffd.cFileName, ".") == 0 || strcmp(ffd.cFileName, "..") == 0) continue;
-            char chkpath[512];
-            snprintf(chkpath, sizeof(chkpath), "%s\\%s\\aks.json", regpkgdir, ffd.cFileName);
+            const char *cand = ffd.cFileName;
+#else
+    DIR *dir = opendir(regpkgdir);
+    if (dir) {
+        struct dirent *ent;
+        while ((ent = readdir(dir)) != NULL) {
+            const char *cand = ent->d_name;
+#endif
+            if (strcmp(cand, ".") == 0 || strcmp(cand, "..") == 0) continue;
+            char chkpath[1536];
+            snprintf(chkpath, sizeof(chkpath), "%s%c%.255s%caks.json", regpkgdir, PATHSEP, cand, PATHSEP);
             FILE *tf = fopen(chkpath, "r");
             if (!tf) continue;
             fclose(tf);
             SemVer parsed;
-            if (!ParseSemver(ffd.cFileName, &parsed)) continue;
+            if (!ParseSemver(cand, &parsed)) continue;
             if (!VersionMatch(parsed, constraint)) continue;
             int better = (bestver.major < 0) ||
                          (parsed.major > bestver.major) ||
@@ -1073,23 +1756,75 @@ static int ResolvePackage(const char *name, const char *constraint) {
                          (parsed.major == bestver.major && parsed.minor == bestver.minor && parsed.patch > bestver.patch);
             if (better) {
                 bestver = parsed;
-                snprintf(foundversion, sizeof(foundversion), "%s", ffd.cFileName);
+                snprintf(foundversion, sizeof(foundversion), "%.63s", cand);
             }
+#ifdef _WIN32
         } while (FindNextFileA(hfind, &ffd));
         FindClose(hfind);
     }
-    
+#else
+        }
+        closedir(dir);
+    }
+#endif
+
+    if (strlen(foundversion) == 0) {
+        const char *env_reg = getenv("AKS_REGISTRY_URL");
+        if (env_reg && env_reg[0]) {
+            char meta_url[768];
+            snprintf(meta_url, sizeof(meta_url), "%s/%s", env_reg, name);
+            uint8_t *mresp = NULL;
+            size_t mlen = 0;
+            int mstatus = 0;
+            if (PkgHttpRequest("GET", meta_url, NULL, NULL, NULL, 0, &mresp, &mlen, &mstatus) &&
+                mresp && mstatus >= 200 && mstatus < 300) {
+                char rver[64] = "";
+                char dl_url[768] = "";
+                JSONGetVal((const char *)mresp, "version", rver, sizeof(rver));
+                JSONGetVal((const char *)mresp, "url", dl_url, sizeof(dl_url));
+                free(mresp);
+                SemVer rv;
+                if (rver[0] && ParseSemver(rver, &rv) && VersionMatch(rv, constraint)) {
+                    if (!dl_url[0]) {
+                        snprintf(dl_url, sizeof(dl_url), "%s/%s/%s/%s-%s.akspkg",
+                                 env_reg, name, rver, name, rver);
+                    }
+                    uint8_t *bresp = NULL;
+                    size_t blen = 0;
+                    int bstatus = 0;
+                    if (PkgHttpRequest("GET", dl_url, NULL, NULL, NULL, 0, &bresp, &blen, &bstatus) &&
+                        bresp && bstatus >= 200 && bstatus < 300) {
+                        char dstdir[1024], bpath[1536];
+                        snprintf(dstdir, sizeof(dstdir), "%s/%.127s/%.63s", GetRegIsTryDir(), name, rver);
+                        MkDirp(dstdir);
+                        snprintf(bpath, sizeof(bpath), "%.1023s/%.127s-%.63s.akspkg", dstdir, name, rver);
+                        FILE *bf = fopen(bpath, "wb");
+                        if (bf) { fwrite(bresp, 1, blen, bf); fclose(bf); }
+                        free(bresp);
+                        if (PkgExtractBundle(bpath, dstdir, NULL)) {
+                            snprintf(foundversion, sizeof(foundversion), "%.63s", rver);
+                        }
+                    } else if (bresp) {
+                        free(bresp);
+                    }
+                }
+            } else if (mresp) {
+                free(mresp);
+            }
+        }
+    }
+
     if (strlen(foundversion) == 0) {
         fprintf(stderr, "Dependency Error: Could not find version matching constraint '%s' for package '%s' in registry '%s'\n", constraint, name, regpkgdir);
         return 0;
     }
-    
+
     strcpy(gresolved[gresolvedcount].name, name);
     strcpy(gresolved[gresolvedcount].version, foundversion);
     gresolvedcount++;
-    
-    char chkpath[512];
-    snprintf(chkpath, sizeof(chkpath), "%s\\%s\\aks.json", regpkgdir, foundversion);
+
+    char chkpath[1200];
+    snprintf(chkpath, sizeof(chkpath), "%s%c%s%caks.json", regpkgdir, PATHSEP, foundversion, PATHSEP);
     char *subjson = ReadFileContent(chkpath);
     if (subjson) {
         char depsblock[1024];
@@ -1219,11 +1954,11 @@ int PkgInstall(void) {
         if (gresolved[i].is_git) {
             continue;
         }
-        char regpkgdir[512];
-        snprintf(regpkgdir, sizeof(regpkgdir), "%s\\%s\\%s", GetRegIsTryDir(), gresolved[i].name, gresolved[i].version);
+        char regpkgdir[1024];
+        snprintf(regpkgdir, sizeof(regpkgdir), "%s/%.127s/%.63s", GetRegIsTryDir(), gresolved[i].name, gresolved[i].version);
         
-        char srcmanifest[512];
-        snprintf(srcmanifest, sizeof(srcmanifest), "%s\\aks.json", regpkgdir);
+        char srcmanifest[1024];
+        snprintf(srcmanifest, sizeof(srcmanifest), "%.900s/aks.json", regpkgdir);
         
         char *venvmanifest = ReadFileContent(srcmanifest);
         if (!venvmanifest) {
@@ -1235,8 +1970,8 @@ int PkgInstall(void) {
         JSONGetVal(venvmanifest, "entrypoint", entrypoint, sizeof(entrypoint));
         free(venvmanifest);
         
-        char srcentry[512];
-        snprintf(srcentry, sizeof(srcentry), "%s\\%s", regpkgdir, entrypoint);
+        char srcentry[1024];
+        snprintf(srcentry, sizeof(srcentry), "%.700s/%.255s", regpkgdir, entrypoint);
         
         char computed_hash[65] = "";
         if (!Sha256File(srcentry, computed_hash)) {
@@ -1257,17 +1992,36 @@ int PkgInstall(void) {
         }
         
         char venvpkgdir[512];
-        snprintf(venvpkgdir, sizeof(venvpkgdir), ".akspackages\\%s", gresolved[i].name);
+        snprintf(venvpkgdir, sizeof(venvpkgdir), ".akspackages/%.127s", gresolved[i].name);
         MkDirp(venvpkgdir);
-        
-        char dstmanifest[512];
-        snprintf(dstmanifest, sizeof(dstmanifest), "%s\\aks.json", venvpkgdir);
-        PkgCopyFile(srcmanifest, dstmanifest);
-        
-        char dstentry[512];
-        snprintf(dstentry, sizeof(dstentry), "%s\\%s", venvpkgdir, entrypoint);
-        PkgCopyFile(srcentry, dstentry);
-        
+
+        char bundle_file[1024];
+        snprintf(bundle_file, sizeof(bundle_file), "%.700s/%.127s-%.63s.akspkg",
+                 regpkgdir, gresolved[i].name, gresolved[i].version);
+        FILE *bfchk = fopen(bundle_file, "rb");
+        if (bfchk) {
+            fclose(bfchk);
+            char bsha[65] = "";
+            if (!PkgExtractBundle(bundle_file, venvpkgdir, bsha)) {
+                fprintf(stderr, "Security Alert: Corrupted .akspkg bundle '%s'. Install aborted.\n",
+                        bundle_file);
+                return 1;
+            }
+        } else {
+            char dstmanifest[1024];
+            snprintf(dstmanifest, sizeof(dstmanifest), "%s/aks.json", venvpkgdir);
+            PkgCopyFile(srcmanifest, dstmanifest);
+
+            char dstentry[1024];
+            snprintf(dstentry, sizeof(dstentry), "%s/%s", venvpkgdir, entrypoint);
+            PkgCopyFile(srcentry, dstentry);
+
+            char regsrc[1024], venvsrc[1024];
+            snprintf(regsrc, sizeof(regsrc), "%.900s/src", regpkgdir);
+            snprintf(venvsrc, sizeof(venvsrc), "%s/src", venvpkgdir);
+            PkgCopyDirRecursive(regsrc, venvsrc);
+        }
+
         printf("Installed package '%s@%s' (SHA-256: %s) to local environment.\n", gresolved[i].name, gresolved[i].version, computed_hash);
     }
     
@@ -1384,7 +2138,7 @@ int PkgBuild(int bundle) {
     
     if (bundle) {
         char outputfile[512];
-        snprintf(outputfile, sizeof(outputfile), "dist\\%s.aks", name);
+        snprintf(outputfile, sizeof(outputfile), "dist/%s.aks", name);
         MkDirp("dist");
         
         printf("Bundling package into '%s'\n", outputfile);
@@ -1416,28 +2170,28 @@ int PkgBuild(int bundle) {
 char *PkgResolveImport(const char *importpath, const char *currentfilepath) {
     // case 1: If import has local relative paths
     if (strncmp(importpath, "./", 2) == 0 || strncmp(importpath, "../", 3) == 0 || strstr(importpath, ".aks")) {
-        char *res = malloc(512);
+        char *res = malloc(1024);
         if (currentfilepath && currentfilepath[0] != '\0') {
             // resolve relative to current file path
             char dir[512];
-            snprintf(dir, sizeof(dir), "%s", currentfilepath);
+            snprintf(dir, sizeof(dir), "%.511s", currentfilepath);
             char *lastsep = strrchr(dir, '/');
             if (!lastsep) lastsep = strrchr(dir, '\\');
             if (lastsep) {
                 *lastsep = '\0';
-                snprintf(res, 512, "%s/%s", dir, importpath);
+                snprintf(res, 1024, "%s/%s", dir, importpath);
             } else {
-                snprintf(res, 512, "%s", importpath);
+                snprintf(res, 1024, "%.1023s", importpath);
             }
         } else {
-            snprintf(res, 512, "%s", importpath);
+            snprintf(res, 1024, "%.1023s", importpath);
         }
         return res;
     }
     
     // case 2: Virtual Environment lookup in .akspackages/
     char venvpath[512];
-    snprintf(venvpath, sizeof(venvpath), ".akspackages\\%s\\aks.json", importpath);
+    snprintf(venvpath, sizeof(venvpath), ".akspackages/%s/aks.json", importpath);
     FILE *f = fopen(venvpath, "r");
     if (f) {
         fclose(f);
@@ -1530,12 +2284,16 @@ void PkgWriteBytecodeCache(const char *sourcepath, const char *bytecodepath) {
         return;
     }
 
-    uint8_t *data = malloc(sz);
+    uint8_t *data = malloc((size_t)sz);
     if (!data) {
         fclose(in);
         return;
     }
-    fread(data, 1, sz, in);
+    if (fread(data, 1, (size_t)sz, in) != (size_t)sz) {
+        fclose(in);
+        free(data);
+        return;
+    }
     fclose(in);
 
     BcaHeader hdr;
@@ -1700,9 +2458,10 @@ int PkgSign(const char *bundle_path, const char *privkey_path) {
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    
-    uint8_t *data = malloc(size);
-    if (fread(data, 1, size, f) != size) {
+    if (size <= 0) { fclose(f); return 1; }
+
+    uint8_t *data = malloc((size_t)size);
+    if (!data || fread(data, 1, (size_t)size, f) != (size_t)size) {
         fclose(f);
         free(data);
         return 1;
@@ -1772,14 +2531,30 @@ int PkgVerify(const char *bundle_path, const char *pubkey_path) {
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    
-    uint8_t *data = malloc(size);
-    if (fread(data, 1, size, f) != size) {
+    if (size <= 0) { fclose(f); return 1; }
+
+    uint8_t *data = malloc((size_t)size);
+    if (!data || fread(data, 1, (size_t)size, f) != (size_t)size) {
         fclose(f);
         free(data);
         return 1;
     }
     fclose(f);
+
+    if (size >= 8 && memcmp(data, "AKSPKG1\n", 8) == 0 && !pubkey_path) {
+        free(data);
+        char hex[65] = "";
+        if (PkgExtractBundle(bundle_path, NULL, hex)) {
+            printf("Package bundle '%s' SHA-256 verified (%s).\n", bundle_path, hex);
+            return 0;
+        }
+        return 1;
+    }
+    if (!pubkey_path) {
+        fprintf(stderr, "Error: Public key PEM required for verifying '%s'\n", bundle_path);
+        free(data);
+        return 1;
+    }
     
     long payload_size = -1;
     const char *sig_marker = "\n[SIGNATURE]\n";
@@ -1861,11 +2636,11 @@ int PkgVerifyLock(void) {
            glockdepscount, glockdepscount == 1 ? "" : "s");
     int errors = 0;
     for (int i = 0; i < glockdepscount; i++) {
-        char pkgmanifest[512];
-        snprintf(pkgmanifest, sizeof(pkgmanifest), ".akspackages\\%s\\aks.json", glockdeps[i].name);
+        char pkgmanifest[1024];
+        snprintf(pkgmanifest, sizeof(pkgmanifest), ".akspackages\\%.200s\\aks.json", glockdeps[i].name);
         char *json = ReadFileContent(pkgmanifest);
         if (!json) {
-            snprintf(pkgmanifest, sizeof(pkgmanifest), ".akspackages/%s/aks.json", glockdeps[i].name);
+            snprintf(pkgmanifest, sizeof(pkgmanifest), ".akspackages/%.200s/aks.json", glockdeps[i].name);
             json = ReadFileContent(pkgmanifest);
         }
         if (!json) {
@@ -1879,11 +2654,11 @@ int PkgVerifyLock(void) {
         if (!entrypoint[0]) {
             strcpy(entrypoint, "index.aks");
         }
-        char pkentry[512];
-        snprintf(pkentry, sizeof(pkentry), ".akspackages\\%s\\%s", glockdeps[i].name, entrypoint);
+        char pkentry[1024];
+        snprintf(pkentry, sizeof(pkentry), ".akspackages\\%.200s\\%.255s", glockdeps[i].name, entrypoint);
         char computed_hash[65] = "";
         if (!Sha256File(pkentry, computed_hash)) {
-            snprintf(pkentry, sizeof(pkentry), ".akspackages/%s/%s", glockdeps[i].name, entrypoint);
+            snprintf(pkentry, sizeof(pkentry), ".akspackages/%.200s/%.255s", glockdeps[i].name, entrypoint);
             if (!Sha256File(pkentry, computed_hash)) {
                 fprintf(stderr, "Error: Could not calculate SHA-256 for entrypoint '%s'\n", pkentry);
                 errors++;

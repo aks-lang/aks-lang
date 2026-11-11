@@ -54,8 +54,8 @@ jobs:
           aks.exe build tests\TestNewSystemsFeatures.aks -o standalone_test.exe
           standalone_test.exe
 
-  build-and-verify-linux:
-    name: Linux Ubuntu (Syntax & Source Verification)
+  build-and-test-linux:
+    name: Linux Ubuntu x64 (GCC)
     runs-on: ubuntu-latest
 
     steps:
@@ -65,9 +65,46 @@ jobs:
       - name: Install build essentials
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc clang make liburing-dev
+          sudo apt-get install -y gcc clang make cmake liburing-dev
 
-      - name: Validate C source compilation syntax
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build runtime and developer tools
+        run: bash build.sh
+
+      - name: Run POSIX test suite
+        run: bash test.sh
+
+      - name: Verify Standalone WebAssembly Binary (.wasm)
         run: |
-          gcc -Iinclude -fsyntax-only src/ast.c src/compiler.c src/typer.c src/lexer.c src/parser.c src/wasmcodegen.c
+          ./aks wasm tests/TestWasmInput.aks -o test_module.wasm
+          node -e "const fs=require('fs'); WebAssembly.instantiate(fs.readFileSync('test_module.wasm')).then(m => { console.log('WASM add(20, 22) =', m.instance.exports.add(20n, 22n)); if (m.instance.exports.add(20n, 22n) !== 42n) process.exit(1); });"
 
+      - name: Verify CLI Version & Scaffolding
+        run: |
+          ./aks --version
+          ./aks new my_aks_app
+          ./aks run my_aks_app/src/main.aks
+          ./aks test my_aks_app/tests/main_test.aks
+
+  build-and-test-macos:
+    name: macOS ARM64 (Apple Clang)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build runtime and developer tools
+        run: CC=clang bash build.sh
+
+      - name: Run POSIX smoke and protocol tests
+        run: |
+          ./aks --version
+          ./aks test tests/TestGenerics.aks
+          ./aks test tests/TestDynTraits.aks
+          ./aks run tests/TestCrypto.aks
+          ./tests/TestProtocols

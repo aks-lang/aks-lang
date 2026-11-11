@@ -46,6 +46,7 @@ typedef struct {
     int         recursion_depth;
     /* Current function return type (for checking return stmts) */
     SType      *current_fn_ret;
+    int         has_value_return;
     /* Const-folding: non-NULL if inside a const fn */
     int         in_const_fn;
     /* Unsafe context: non-NULL if inside unsafe{} */
@@ -59,6 +60,9 @@ typedef struct {
     int         collecting_deps;
     char        current_deps[32][128];
     int         dep_count;
+    /* Visited import paths to prevent cycles */
+    char      **visited_imports;
+    int         visited_import_count;
 } TyperCtx;
 
 /* Public API (implemented in typer.c) */

@@ -111,7 +111,6 @@ void DiagnosticEmit(const Diagnostic *d) {
     const char *c_cyan    = color ? "\033[1;36m" : "";
     const char *c_blue    = color ? "\033[1;34m" : "";
     const char *c_green   = color ? "\033[1;32m" : "";
-    const char *c_dim     = color ? "\033[90m" : "";
 
     // 1. Header: level[code]: message
     const char *level_color = c_red;

@@ -468,22 +468,20 @@ static char *FormatTokens(FmtToken *tokens, int count) {
     int indent_level = 0;
     int at_line_start = 1;
     int in_for_header = 0;
-    int was_newline = 0;
-    
+
     FmtToken *prev = NULL;
-    
+
     for (int i = first_non_import_token; i < count; i++) {
         FmtToken *tok = &tokens[i];
         if (tok->type == FMT_EOF) break;
-        
+
         // Skip consecutive newlines at the very start of file if imports are handled
         if (out_len == 0 && tok->type == FMT_NEWLINE) continue;
-        
+
         // Handle indentations on newlines
         if (tok->type == FMT_NEWLINE) {
             WRITE_CHAR('\n');
             at_line_start = 1;
-            was_newline = 1;
             prev = tok;
             continue;
         }
@@ -618,20 +616,18 @@ static char *FormatTokens(FmtToken *tokens, int count) {
             if (i + 1 < count && tokens[i+1].type != FMT_NEWLINE) {
                 WRITE_CHAR('\n');
                 at_line_start = 1;
-                was_newline = 1;
             }
         }
-        
-        was_newline = 0;
+
         prev = tok;
     }
-    
+
     // Clean up trailing whitespace and collapse consecutive ending newlines to exactly one newline
     while (out_len > 0 && isspace((unsigned char)out[out_len - 1])) {
         out[--out_len] = '\0';
     }
     WRITE_CHAR('\n');
-    
+
     return out;
 }
 
@@ -643,10 +639,15 @@ static void FormatFile(const char *filename, int write_mode) {
     }
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
+    if (size < 0) size = 0;
     fseek(f, 0, SEEK_SET);
-    char *buf = malloc(size + 1);
-    fread(buf, 1, size, f);
-    buf[size] = '\0';
+    char *buf = malloc((size_t)size + 1);
+    if (!buf) {
+        fclose(f);
+        return;
+    }
+    size_t nr = fread(buf, 1, (size_t)size, f);
+    buf[nr] = '\0';
     fclose(f);
     
     int count = 0;
@@ -745,7 +746,7 @@ char *AksFormatSource(const char *src) {
     if (!src) return NULL;
     int count = 0;
     FmtToken *tokens = FmtTokenize(src, &count);
-    if (!tokens) return _strdup(src);
+    if (!tokens) return strdup(src);
     char *formatted = FormatTokens(tokens, count);
     for (int i = 0; i < count; i++) {
         free(tokens[i].val);

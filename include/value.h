@@ -24,7 +24,7 @@
 #endif
 
 #define SAFE_ALLOC(count, size) \
-    (((count) > 0 && (size) > 0 && (count) > (size_t)-1 / (size)) ? NULL : malloc((count) * (size)))
+    (((size_t)(count) > 0 && (size_t)(size) > 0 && (size_t)(count) > (size_t)-1 / (size_t)(size)) ? NULL : malloc((size_t)(count) * (size_t)(size)))
 
 typedef enum {
     VALFLOAT = 0,
@@ -383,7 +383,9 @@ AKSValue ValCastBool(AKSValue val, int *ok);
 AKSValue ValCastStr(AKSValue val);
 
 void ValFreeFunc(AKSValue *v);
-#define ValFree(v) do { if ((v) && !ValIsPrimitive(*(v))) ValFreeFunc(v); } while(0)
+static inline void ValFree(AKSValue *v) {
+    if (v && !ValIsPrimitive(*v)) ValFreeFunc(v);
+}
 void AksNotifyWeakFreed(void *ptr);
 int AksWeakNew(AKSValue target);
 int AksWeakAlive(int id);

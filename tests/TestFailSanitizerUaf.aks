@@ -1,0 +1,6 @@
+// Expected to fail under --sanitize=address (heap-use-after-free)
+let arr = [10, 20, 30];
+let alias = arr;
+free(arr);
+println(alias[0]);
+

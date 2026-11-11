@@ -25,6 +25,9 @@ int PkgSign(const char *bundle_path, const char *privkey_path);
 int PkgVerify(const char *bundle_path, const char *pubkey_path);
 int PkgVerifyLock(void);
 int PkgExportSbom(const char *output_path);
+int PkgVersionSatisfies(const char *version, const char *constraint);
+int PkgCreateBundle(const char *base_dir, const char *entrypoint, const char *out_akspkg, char *out_sha256);
+int PkgExtractBundle(const char *bundle_path, const char *dest_dir, char *out_sha256);
 
 // virtual environment & isolated package resolution
 char *PkgResolveImport(const char *importpath, const char *currentfilepath);

@@ -76,8 +76,19 @@ aks.exe test tests\TestSqlite.aks || exit /b 1
 aks.exe run tests\TestFnPatternDestructuring.aks || exit /b 1
 aks.exe test tests\TestFnPatternDestructuring.aks || exit /b 1
 aks.exe run tests\TestCHeaderImport.aks || exit /b 1
+if exist tests\c_math_helpers.h.aks exit /b 1
+aks.exe compile-exe tests\TestCHeaderImport.aks -o test_cheader_aot.exe || exit /b 1
+test_cheader_aot.exe || exit /b 1
+del /f /q test_cheader_aot.exe 2>nul
+aks.exe compile-llvm tests\TestCHeaderImport.aks -o test_cheader.ll || exit /b 1
+del /f /q test_cheader.ll 2>nul
+if exist tests\c_math_helpers.h.aks exit /b 1
 aks.exe run tests\TestDynTraits.aks || exit /b 1
 aks.exe test tests\TestDynTraits.aks || exit /b 1
+aks.exe run --sanitize=address,thread tests\TestSanitizers.aks || exit /b 1
+aks.exe run --no-bounds-check --sanitize=address tests\TestFailSanitizerOob.aks 2>nul && exit /b 1
+aks.exe run --no-borrow-check --sanitize=address tests\TestFailSanitizerUaf.aks 2>nul && exit /b 1
+aks.exe run --sanitize=thread tests\TestFailSanitizerRace.aks 2>nul && exit /b 1
 aks.exe compile-exe tests\TestComptimeExecution.aks -o test_standalone.exe || exit /b 1
 test_standalone.exe || exit /b 1
 del /f /q test_standalone.exe 2>nul
@@ -94,6 +105,8 @@ aks.exe run --strict-types tests\TestFailOpaque.aks && exit /b 1
 aks.exe run --strict-types tests\TestFailRefine.aks && exit /b 1
 aks.exe run --strict-types tests\TestFailArray.aks && exit /b 1
 aks.exe run --strict-types tests\TestFailEffect.aks && exit /b 1
+aks.exe run --strict-types tests\TestDynTraits.aks || exit /b 1
+aks.exe run --strict-types tests\TestFailDynTrait.aks 2>nul && exit /b 1
 aks.exe run --strict-types tests\TestErrorRecovery.aks 2>nul
 ver > nul
 

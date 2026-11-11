@@ -48,6 +48,40 @@ static void CheckBorrows(Compiler *c, Node *n, Node *root);
 static Module *CompilerFindModule(Compiler *c, const char *name);
 static Module *CompilerAddModule(Compiler *c, const char *name, const char *path, Node *ast);
 
+static inline void CompSafeCopy(char *dst, size_t cap, const char *src) {
+    if (!dst || cap == 0) return;
+    if (!src) { dst[0] = '\0'; return; }
+    size_t n = strlen(src);
+    if (n >= cap) n = cap - 1;
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
+static inline void CompAppendNs(char *dst, size_t cap, const char *sub) {
+    if (!dst || cap == 0 || !sub || !sub[0]) return;
+    if (dst[0] == '\0') { CompSafeCopy(dst, cap, sub); return; }
+    size_t cur = strlen(dst);
+    size_t slen = strlen(sub);
+    if (cur + 2 + slen < cap) {
+        dst[cur] = ':'; dst[cur + 1] = ':';
+        memcpy(dst + cur + 2, sub, slen + 1);
+    }
+}
+
+static inline void CompCopyProtoMeta(FnProto *dst, const FnProto *src) {
+    CompSafeCopy(dst->name, sizeof(dst->name), src->name);
+    CompSafeCopy(dst->file_name, sizeof(dst->file_name), src->file_name);
+    dst->id = src->id;
+    dst->paramcount = src->paramcount;
+    dst->localcount = src->localcount;
+    dst->scopedepth = src->scopedepth;
+    dst->isasync = src->isasync;
+    CompSafeCopy(dst->rettype, sizeof(dst->rettype), src->rettype);
+    for (int p = 0; p < src->paramcount && p < 32; p++) {
+        CompSafeCopy(dst->paramtypes[p], sizeof(dst->paramtypes[p]), src->paramtypes[p]);
+    }
+}
+
 int gContractCheck = 0;
 
 static void CompileContractCheck(Compiler *c, Node *cond, const char *err_msg, int line) {
@@ -806,6 +840,28 @@ static char *CompReadFile(const char *path) {
     return buffer;
 }
 
+static int CompIsCHeaderPath(const char *path) {
+    if (!path) return 0;
+    size_t plen = strlen(path);
+    return (plen >= 2 && strcmp(path + plen - 2, ".h") == 0);
+}
+
+static char *CompLoadImportSource(const Node *import_node, const char *finalpath) {
+    if (!finalpath) return NULL;
+    if ((import_node && import_node->single.is_c) || CompIsCHeaderPath(finalpath)) {
+        return AKSBindHeadersToStr(finalpath, 0, NULL);
+    }
+    return CompReadFile(finalpath);
+}
+
+static char *CompResolveImportSource(Compiler *c, const Node *import_node, char *out_finalpath, size_t out_sz) {
+    const char *path = import_node->single.var;
+    char *resolved = PkgResolveImport(path, c->currentfilepath);
+    snprintf(out_finalpath, out_sz, "%s", resolved ? resolved : path);
+    if (resolved) free(resolved);
+    return CompLoadImportSource(import_node, out_finalpath);
+}
+
 // Aks bytecode compiler
 // walk AST and spit out bytecodes
 
@@ -894,7 +950,7 @@ const char *CompSuggestFunction(Compiler *c, const char *name) {
     const char *best = NULL;
     int best_dist = 999;
     for (int i = 0; i < c->fncount; i++) {
-        if (!c->fns[i] || !c->fns[i]->name) continue;
+        if (!c->fns[i] || !c->fns[i]->name[0]) continue;
         if (strcmp(c->fns[i]->name, name) == 0) continue;
         int d = CompLevenshteinDistance(name, c->fns[i]->name);
         if (d > 0 && d < best_dist && d <= (strlen(name) > 3 ? 2 : 1)) {
@@ -910,7 +966,7 @@ const char *CompSuggestLocal(Compiler *c, const char *name) {
     const char *best = NULL;
     int best_dist = 999;
     for (int i = 0; i < c->current->localcount; i++) {
-        if (!c->current->locals[i].name) continue;
+        if (!c->current->locals[i].name[0]) continue;
         if (strcmp(c->current->locals[i].name, name) == 0) continue;
         int d = CompLevenshteinDistance(name, c->current->locals[i].name);
         if (d > 0 && d < best_dist && d <= (strlen(name) > 3 ? 2 : 1)) {
@@ -1069,12 +1125,10 @@ static void RegisterSymbol(Compiler *c, const char *name, int visibility,
                             const char *source_file, const char *ns) {
     if (c->mod_symbol_count >= 4096) return;
     CompilerSymbol *sym = &c->mod_symbols[c->mod_symbol_count++];
-    strncpy(sym->name, name, 255); sym->name[255] = '\0';
+    CompSafeCopy(sym->name, sizeof(sym->name), name);
     sym->visibility = visibility;
-    strncpy(sym->source_file, source_file ? source_file : "", 511);
-    sym->source_file[511] = '\0';
-    strncpy(sym->namespace_, ns ? ns : "", 255);
-    sym->namespace_[255] = '\0';
+    CompSafeCopy(sym->source_file, sizeof(sym->source_file), source_file);
+    CompSafeCopy(sym->namespace_, sizeof(sym->namespace_), ns);
 }
 
 /* Check if a symbol is visible from current context; emit error if not */
@@ -1162,19 +1216,10 @@ static void PreregisterAllUses(Compiler *c, Node *n) {
     }
     if (n->type == NMODULE) {
         char saved_ns[512];
-        strncpy(saved_ns, c->current_namespace, 511);
-        saved_ns[511] = '\0';
-        if (c->current_namespace[0] != '\0') {
-            char new_ns[512];
-            snprintf(new_ns, sizeof(new_ns), "%s::%s", c->current_namespace, n->single.var);
-            strncpy(c->current_namespace, new_ns, 511);
-        } else {
-            strncpy(c->current_namespace, n->single.var, 511);
-        }
-        c->current_namespace[511] = '\0';
+        CompSafeCopy(saved_ns, sizeof(saved_ns), c->current_namespace);
+        CompAppendNs(c->current_namespace, sizeof(c->current_namespace), n->single.var);
         PreregisterAllUses(c, n->single.expr);
-        strncpy(c->current_namespace, saved_ns, 511);
-        c->current_namespace[511] = '\0';
+        CompSafeCopy(c->current_namespace, sizeof(c->current_namespace), saved_ns);
         return;
     }
     if (n->type == NPROGRAM || n->type == NBLOCK) {
@@ -1192,8 +1237,9 @@ static void RegisterUseNode(Compiler *c, Node *n) {
     size_t tlen = strlen(target);
     if (tlen >= 3 && strcmp(target + tlen - 3, "::*") == 0) {
         char ns_prefix[256];
-        strncpy(ns_prefix, target, tlen - 3);
-        ns_prefix[tlen - 3] = '\0';
+        size_t pcopy = (tlen - 3 < sizeof(ns_prefix) - 1) ? (tlen - 3) : (sizeof(ns_prefix) - 1);
+        memcpy(ns_prefix, target, pcopy);
+        ns_prefix[pcopy] = '\0';
         size_t pfx_len = strlen(ns_prefix);
         for (int fi = 0; fi < c->fncount; fi++) {
             const char *fname = c->fns[fi]->name;
@@ -1246,14 +1292,11 @@ static void LoadLazyModule(Compiler *c, const char *filepath) {
         /* Save compiler context before compiling lazy module */
         FnProto *saved_current = c->current;
         char saved_fp[512];
-        strncpy(saved_fp, c->currentfilepath, 511);
-        saved_fp[511] = '\0';
+        CompSafeCopy(saved_fp, sizeof(saved_fp), c->currentfilepath);
         char saved_ns[512];
-        strncpy(saved_ns, c->current_namespace, 511);
-        saved_ns[511] = '\0';
+        CompSafeCopy(saved_ns, sizeof(saved_ns), c->current_namespace);
 
-        strncpy(c->currentfilepath, c->lazy_mods[i].path, 511);
-        c->currentfilepath[511] = '\0';
+        CompSafeCopy(c->currentfilepath, sizeof(c->currentfilepath), c->lazy_mods[i].path);
         c->current_namespace[0] = '\0';
 
         /* Run type pre-registration (structs etc.) then emit */
@@ -1600,16 +1643,16 @@ static void GetNodeStr(Node *n, char *buf, size_t bufsize) {
     } else if (n->type == NSTR) {
         snprintf(buf, bufsize, "\"%s\"", n->sval);
     } else if (n->type == NNULL) {
-        strncpy(buf, "null", bufsize);
+        CompSafeCopy(buf, bufsize, "null");
     } else if (n->type == NIDENT) {
-        strncpy(buf, n->sval, bufsize);
+        CompSafeCopy(buf, bufsize, n->sval);
     } else if (n->type == NBINOP) {
         char lstr[128], rstr[128];
         GetNodeStr(n->binop.left, lstr, sizeof(lstr));
         GetNodeStr(n->binop.right, rstr, sizeof(rstr));
-        snprintf(buf, bufsize, "%s %s %s", lstr, n->binop.op, rstr);
+        snprintf(buf, bufsize, "%.48s %.8s %.48s", lstr, n->binop.op ? n->binop.op : "", rstr);
     } else {
-        strncpy(buf, "?", bufsize);
+        CompSafeCopy(buf, bufsize, "?");
     }
 }
 
@@ -1934,7 +1977,6 @@ static void EmitRefCheck(Compiler *c, const char *typename, int line, Node *valn
     
     Chunk *ch = &c->current->chunk;
     ChunkWrite(ch, OPDUP, line);
-    int scope = c->current->scopedepth;
     c->current->scopedepth++;
     int slot = AddLocal(c, varname, 0);
     c->current->scopedepth--;
@@ -2704,18 +2746,7 @@ static void RunCTFE(Compiler *c, Node *expr, int line) {
     for (int i = 1; i < c->fncount; i++) {
         FnProto *srcfn = c->fns[i];
         FnProto *newproto = calloc(1, sizeof(FnProto));
-        strncpy(newproto->name, srcfn->name, 127);
-        strncpy(newproto->file_name, srcfn->file_name, sizeof(newproto->file_name) - 1);
-        newproto->file_name[sizeof(newproto->file_name) - 1] = '\0';
-        newproto->id = srcfn->id;
-        newproto->paramcount = srcfn->paramcount;
-        newproto->localcount = srcfn->localcount;
-        newproto->scopedepth = srcfn->scopedepth;
-        newproto->isasync = srcfn->isasync;
-        strncpy(newproto->rettype, srcfn->rettype, 63);
-        for (int p = 0; p < srcfn->paramcount; p++) {
-            strncpy(newproto->paramtypes[p], srcfn->paramtypes[p], 63);
-        }
+        CompCopyProtoMeta(newproto, srcfn);
         newproto->chunk.count = srcfn->chunk.count;
         newproto->chunk.cap = srcfn->chunk.cap;
         if (srcfn->chunk.count > 0) {
@@ -2775,6 +2806,92 @@ static void RunCTFE(Compiler *c, Node *expr, int line) {
     ValFree(&ctferes);
     VMFree(tmpvm);
     CompFree(tmpc);
+}
+
+static void EmitStructTraitMetadata(Compiler *c, int tmpslot, CompilerStruct *s, int line) {
+    if (!c || !s || tmpslot < 0) return;
+    Chunk *ch = &c->current->chunk;
+    if (s->ic > 0) {
+        for (int i = 0; i < s->ic; i++) {
+            int sid = AddStr(c, s->interfaces[i]);
+            ChunkWrite(ch, OPPUSHSTR, line);
+            ChunkWriteU16(ch, (uint16_t)sid, line);
+        }
+        ChunkWrite(ch, OPNEWARR, line);
+        ChunkWriteU16(ch, (uint16_t)s->ic, line);
+
+        ChunkWrite(ch, OPLOAD, line);
+        ChunkWriteU16(ch, (uint16_t)tmpslot, line);
+
+        int fid = AddStr(c, "$interfaces");
+        ChunkWrite(ch, OPSETFIELD, line);
+        ChunkWriteU16(ch, (uint16_t)fid, line);
+        ChunkWrite(ch, OPPOP, line);
+
+        for (int i = 0; i < s->ic; i++) {
+            const char *tname = s->interfaces[i];
+            int intfidx = -1;
+            for (int k = 0; k < c->interfacecount; k++) {
+                if (strcmp(c->interfaces[k].name, tname) == 0) {
+                    intfidx = k;
+                    break;
+                }
+            }
+            if (intfidx < 0) continue;
+            CompilerInterface *inf = &c->interfaces[intfidx];
+            char vttype[160];
+            snprintf(vttype, sizeof(vttype), "$vtable_%s", tname);
+            int vtid = AddStr(c, vttype);
+            ChunkWrite(ch, OPNEWSTRUCT, line);
+            ChunkWriteU16(ch, (uint16_t)vtid, line);
+            int vtslot = ResolveLocal(c, "__vtable_tmp");
+            if (vtslot < 0) vtslot = AddLocal(c, "__vtable_tmp", 0);
+            ChunkWrite(ch, OPSTORE, line);
+            ChunkWriteU16(ch, (uint16_t)vtslot, line);
+
+            for (int m = 0; m < inf->count; m++) {
+                char fnfull[256];
+                snprintf(fnfull, sizeof(fnfull), "%s.%s", s->name, inf->fnames[m]);
+                int mfnid = ResolveGlobal(c, fnfull, 0);
+                if (mfnid >= 0) {
+                    ChunkWrite(ch, OPPUSHFN, line);
+                    ChunkWriteU16(ch, (uint16_t)mfnid, line);
+                    ChunkWrite(ch, OPLOAD, line);
+                    ChunkWriteU16(ch, (uint16_t)vtslot, line);
+                    int mfid = AddStr(c, inf->fnames[m]);
+                    ChunkWrite(ch, OPSETFIELD, line);
+                    ChunkWriteU16(ch, (uint16_t)mfid, line);
+                    ChunkWrite(ch, OPPOP, line);
+                }
+            }
+            ChunkWrite(ch, OPLOAD, line);
+            ChunkWriteU16(ch, (uint16_t)vtslot, line);
+            ChunkWrite(ch, OPLOAD, line);
+            ChunkWriteU16(ch, (uint16_t)tmpslot, line);
+            int vtfid = AddStr(c, vttype);
+            ChunkWrite(ch, OPSETFIELD, line);
+            ChunkWriteU16(ch, (uint16_t)vtfid, line);
+            ChunkWrite(ch, OPPOP, line);
+        }
+    }
+
+    for (int j = 0; j < s->fc; j++) {
+        char defaultfnname[256];
+        snprintf(defaultfnname, sizeof(defaultfnname), "%s.%s", s->name, s->fnames[j]);
+        int fnid = ResolveGlobal(c, defaultfnname, 0);
+        if (fnid >= 0) {
+            ChunkWrite(ch, OPPUSHFN, line);
+            ChunkWriteU16(ch, (uint16_t)fnid, line);
+
+            ChunkWrite(ch, OPLOAD, line);
+            ChunkWriteU16(ch, (uint16_t)tmpslot, line);
+
+            int fid = AddStr(c, s->fnames[j]);
+            ChunkWrite(ch, OPSETFIELD, line);
+            ChunkWriteU16(ch, (uint16_t)fid, line);
+            ChunkWrite(ch, OPPOP, line);
+        }
+    }
 }
 
 static void EmitExpr(Compiler *c, Node *n) {
@@ -3159,7 +3276,9 @@ static void EmitExpr(Compiler *c, Node *n) {
                         char basetype[128], varname[128], condstr[512];
                         if (ParseRefParts(expectedtype, basetype, varname, condstr)) {
                             if (strncmp(varname, "_narrow_", 8) == 0) {
-                                strncpy(c->current->locals[slot].typename, basetype, 63);
+                                CompSafeCopy(c->current->locals[slot].typename,
+                                             sizeof(c->current->locals[slot].typename),
+                                             basetype);
                                 expectedtype = c->current->locals[slot].typename;
                             }
                         }
@@ -3475,18 +3594,7 @@ static void EmitExpr(Compiler *c, Node *n) {
                 for (int i = 1; i < c->fncount; i++) {
                     FnProto *srcfn = c->fns[i];
                     FnProto *newproto = calloc(1, sizeof(FnProto));
-                    strncpy(newproto->name, srcfn->name, 127);
-                    strncpy(newproto->file_name, srcfn->file_name, sizeof(newproto->file_name) - 1);
-                    newproto->file_name[sizeof(newproto->file_name) - 1] = '\0';
-                    newproto->id = srcfn->id;
-                    newproto->paramcount = srcfn->paramcount;
-                    newproto->localcount = srcfn->localcount;
-                    newproto->scopedepth = srcfn->scopedepth;
-                    newproto->isasync = srcfn->isasync;
-                    strncpy(newproto->rettype, srcfn->rettype, 63);
-                    for (int p = 0; p < srcfn->paramcount; p++) {
-                        strncpy(newproto->paramtypes[p], srcfn->paramtypes[p], 63);
-                    }
+                    CompCopyProtoMeta(newproto, srcfn);
                     newproto->chunk.count = srcfn->chunk.count;
                     newproto->chunk.cap = srcfn->chunk.cap;
                     if (srcfn->chunk.count > 0) {
@@ -3522,18 +3630,7 @@ static void EmitExpr(Compiler *c, Node *n) {
                 for (int i = 1; i < c->fncount; i++) {
                     FnProto *srcfn = c->fns[i];
                     FnProto *newproto = calloc(1, sizeof(FnProto));
-                    strncpy(newproto->name, srcfn->name, 127);
-                    strncpy(newproto->file_name, srcfn->file_name, sizeof(newproto->file_name) - 1);
-                    newproto->file_name[sizeof(newproto->file_name) - 1] = '\0';
-                    newproto->id = srcfn->id;
-                    newproto->paramcount = srcfn->paramcount;
-                    newproto->localcount = srcfn->localcount;
-                    newproto->scopedepth = srcfn->scopedepth;
-                    newproto->isasync = srcfn->isasync;
-                    strncpy(newproto->rettype, srcfn->rettype, 63);
-                    for (int p = 0; p < srcfn->paramcount; p++) {
-                        strncpy(newproto->paramtypes[p], srcfn->paramtypes[p], 63);
-                    }
+                    CompCopyProtoMeta(newproto, srcfn);
                     newproto->chunk.count = srcfn->chunk.count;
                     newproto->chunk.cap = srcfn->chunk.cap;
                     if (srcfn->chunk.count > 0) {
@@ -4040,43 +4137,7 @@ static void EmitExpr(Compiler *c, Node *n) {
                     }
                     ChunkWrite(ch, OPSTORE, n->line);
                     ChunkWriteU16(ch, (uint16_t)tmpslot, n->line);
-                    
-                    if (s->ic > 0) {
-                        for (int i = 0; i < s->ic; i++) {
-                            int sid = AddStr(c, s->interfaces[i]);
-                            ChunkWrite(ch, OPPUSHSTR, n->line);
-                            ChunkWriteU16(ch, (uint16_t)sid, n->line);
-                        }
-                        ChunkWrite(ch, OPNEWARR, n->line);
-                        ChunkWriteU16(ch, (uint16_t)s->ic, n->line);
-                        
-                        ChunkWrite(ch, OPLOAD, n->line);
-                        ChunkWriteU16(ch, (uint16_t)tmpslot, n->line);
-                        
-                        int fid = AddStr(c, "$interfaces");
-                        ChunkWrite(ch, OPSETFIELD, n->line);
-                        ChunkWriteU16(ch, (uint16_t)fid, n->line);
-                        ChunkWrite(ch, OPPOP, n->line);
-                    }
-                    
-                    for (int j = 0; j < s->fc; j++) {
-                        char defaultfnname[256];
-                        snprintf(defaultfnname, sizeof(defaultfnname), "%s.%s", s->name, s->fnames[j]);
-                        int fnid = ResolveGlobal(c, defaultfnname, 0);
-                        if (fnid >= 0) {
-                            ChunkWrite(ch, OPPUSHFN, n->line);
-                            ChunkWriteU16(ch, (uint16_t)fnid, n->line);
-                            
-                            ChunkWrite(ch, OPLOAD, n->line);
-                            ChunkWriteU16(ch, (uint16_t)tmpslot, n->line);
-                            
-                            int fid = AddStr(c, s->fnames[j]);
-                            ChunkWrite(ch, OPSETFIELD, n->line);
-                            ChunkWriteU16(ch, (uint16_t)fid, n->line);
-                            ChunkWrite(ch, OPPOP, n->line);
-                        }
-                    }
-                    
+                    EmitStructTraitMetadata(c, tmpslot, s, n->line);
                     ChunkWrite(ch, OPLOAD, n->line);
                     ChunkWriteU16(ch, (uint16_t)tmpslot, n->line);
                 }
@@ -4281,7 +4342,7 @@ static void EmitExpr(Compiler *c, Node *n) {
             }
             
             int commit_ok_jump = ChunkEmitJump(ch, OPJUMP, n->line);
-            int retry_jump = ChunkEmitJump(ch, OPJUMP, n->line);
+            (void)ChunkEmitJump(ch, OPJUMP, n->line);
             
             // Rewrite retry logic: if commit returns false, jump back to retry_label
             ChunkPatchJump(ch, commit_ok_jump);
@@ -4331,7 +4392,6 @@ static void EmitExpr(Compiler *c, Node *n) {
             break;
         }
         case NFNDECL: {
-            extern int gContractCheck;
             if (n->fn.isgen) {
                 DesugArgEn(c, n);
             }
@@ -4355,7 +4415,7 @@ static void EmitExpr(Compiler *c, Node *n) {
             FnProto *parent = c->current;
             FnProto *fn = NULL;
             for (int i = 0; i < c->fncount; i++) {
-                if (c->fns[i] && c->fns[i]->name && strcmp(c->fns[i]->name, n->fn.name) == 0) {
+                if (c->fns[i] && c->fns[i]->name[0] && strcmp(c->fns[i]->name, n->fn.name) == 0) {
                     fn = c->fns[i];
                     break;
                 }
@@ -4487,6 +4547,15 @@ static void EmitExpr(Compiler *c, Node *n) {
             /* Store clone/new struct in temp slot */
             ChunkWrite(ch, OPSTORE, n->line);
             ChunkWriteU16(ch, (uint16_t)tmpslot, n->line);
+
+            if (!n->structinit.spread && n->structinit.typename) {
+                for (int si = 0; si < c->structcount; si++) {
+                    if (strcmp(c->structs[si].name, n->structinit.typename) == 0) {
+                        EmitStructTraitMetadata(c, tmpslot, &c->structs[si], n->line);
+                        break;
+                    }
+                }
+            }
 
             /* Override / add each field */
             for (int i = 0; i < n->structinit.fc; i++) {
@@ -5242,7 +5311,6 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                 end_jumps[end_jumps_count++] = ChunkEmitJump(ch, OPJUMP, n->line);
             }
             
-            int end_pc = ch->count;
             for (int j = 0; j < end_jumps_count; j++) {
                 ChunkPatchJump(ch, end_jumps[j]);
             }
@@ -5648,16 +5716,20 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                         GetNodeStr(right, rstr, sizeof(rstr));
                         if (strcmp(rstr, "?") != 0) {
                             narrowedslot = slot;
-                            strncpy(originaltype, c->current->locals[slot].typename, sizeof(originaltype) - 1);
+                            CompSafeCopy(originaltype, sizeof(originaltype), c->current->locals[slot].typename);
                             
                             char baseclean[64];
-                            strncpy(baseclean, originaltype, sizeof(baseclean) - 1);
-                            baseclean[sizeof(baseclean) - 1] = '\0';
+                            CompSafeCopy(baseclean, sizeof(baseclean), originaltype);
                             char *brace = strchr(baseclean, '{');
                             if (brace) *brace = '\0';
                             
-                            snprintf(c->current->locals[slot].typename, 63, "%s{_narrow_%s: _narrow_%s %s %s}",
+                            char narrowed[512];
+                            snprintf(narrowed, sizeof(narrowed),
+                                     "%s{_narrow_%.63s: _narrow_%.63s %.16s %s}",
                                      baseclean, left->sval, left->sval, op, rstr);
+                            CompSafeCopy(c->current->locals[slot].typename,
+                                         sizeof(c->current->locals[slot].typename),
+                                         narrowed);
                         }
                     }
                 } else if (right->type == NIDENT) {
@@ -5667,16 +5739,20 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                         GetNodeStr(left, lstr, sizeof(lstr));
                         if (strcmp(lstr, "?") != 0) {
                             narrowedslot = slot;
-                            strncpy(originaltype, c->current->locals[slot].typename, sizeof(originaltype) - 1);
+                            CompSafeCopy(originaltype, sizeof(originaltype), c->current->locals[slot].typename);
                             
                             char baseclean[64];
-                            strncpy(baseclean, originaltype, sizeof(baseclean) - 1);
-                            baseclean[sizeof(baseclean) - 1] = '\0';
+                            CompSafeCopy(baseclean, sizeof(baseclean), originaltype);
                             char *brace = strchr(baseclean, '{');
                             if (brace) *brace = '\0';
                             
-                            snprintf(c->current->locals[slot].typename, 63, "%s{_narrow_%s: %s %s _narrow_%s}",
+                            char narrowed[512];
+                            snprintf(narrowed, sizeof(narrowed),
+                                     "%s{_narrow_%.63s: %s %.16s _narrow_%.63s}",
                                      baseclean, right->sval, lstr, op, right->sval);
+                            CompSafeCopy(c->current->locals[slot].typename,
+                                         sizeof(c->current->locals[slot].typename),
+                                         narrowed);
                         }
                     }
                 }
@@ -5685,7 +5761,9 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             EmitNode(c,n->ifn.then);
             
             if (narrowedslot >= 0) {
-                strncpy(c->current->locals[narrowedslot].typename, originaltype, 63);
+                CompSafeCopy(c->current->locals[narrowedslot].typename,
+                             sizeof(c->current->locals[narrowedslot].typename),
+                             originaltype);
             }
             if(n->ifn.els){
                 int endjump=ChunkEmitJump(ch,OPJUMP,n->line);
@@ -5698,7 +5776,6 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             break;
         }
         case NWHILE: {
-            extern int gContractCheck;
             if (c->loopdepth >= 128) {
                 fprintf(stderr, "Compiler error on line %d: maximum loop nesting depth (128) exceeded\n", n->line);
                 c->haderror = 1;
@@ -5741,7 +5818,6 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             break;
         }
         case NFOR: {
-            extern int gContractCheck;
             if (c->loopdepth >= 128) {
                 fprintf(stderr, "Compiler error on line %d: maximum loop nesting depth (128) exceeded\n", n->line);
                 c->haderror = 1;
@@ -5863,7 +5939,6 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             break;
         }
         case NRETURN: {
-            extern int gContractCheck;
             Node *fn_ast = c->current->ast;
             if (fn_ast && fn_ast->type == NFNDECL && fn_ast->fn.ens_count > 0) {
                 if (n->single.expr) {
@@ -6489,7 +6564,7 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                                         foundinstruct = 1; break;
                                     }
                                 }
-                                if (!foundinstruct && inf->hasdefault[j] && inf->defaultbodies[j]) {
+                                if (!foundinstruct && inf->hasdefault && inf->hasdefault[j] && inf->defaultbodies && inf->defaultbodies[j]) {
                                     char defaultfnname[256];
                                     snprintf(defaultfnname, sizeof(defaultfnname), "%s.%s", s->name, inf->fnames[j]);
                                     FnProto *fn = NewFn(c, defaultfnname);
@@ -6527,6 +6602,15 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                                     strcat(sig, inf->rettypes[j]);
                                     s->ftypes[s->fc] = strdup(sig);
                                     s->fc++;
+                                } else if (!foundinstruct) {
+                                    char implfn[256];
+                                    snprintf(implfn, sizeof(implfn), "%s.%s", s->name, inf->fnames[j]);
+                                    if (ResolveGlobal(c, implfn, 0) < 0 && gStrictTypes) {
+                                        char msg[512];
+                                        snprintf(msg, sizeof(msg), "TypeError: struct '%s' does not implement required method '%s' of trait '%s'",
+                                                 s->name, inf->fnames[j], inf->name);
+                                        Error(c, n->line, msg);
+                                    }
                                 }
                             }
                         }
@@ -6769,12 +6853,12 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
                     if (!fn) continue;
                     fn->paramcount = paramcount;
                     fn->localcount = paramcount + 1; // arg slots 0..N-1, slot N is struct
-                    strncpy(fn->rettype, en->name, 63);
+                    CompSafeCopy(fn->rettype, sizeof(fn->rettype), en->name);
                     for (int p = 0; p < paramcount; p++) {
                         if (n->enumdecl.membertypes[i][p]) {
-                            strncpy(fn->paramtypes[p], n->enumdecl.membertypes[i][p], 63);
+                            CompSafeCopy(fn->paramtypes[p], sizeof(fn->paramtypes[p]), n->enumdecl.membertypes[i][p]);
                         } else {
-                            strcpy(fn->paramtypes[p], "any");
+                            CompSafeCopy(fn->paramtypes[p], sizeof(fn->paramtypes[p]), "any");
                         }
                     }
                     
@@ -6998,22 +7082,12 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
         case NMODULE: {
             /* Save current namespace, build new nested namespace */
             char saved_ns[512];
-            strncpy(saved_ns, c->current_namespace, 511);
-            saved_ns[511] = '\0';
-            if (c->current_namespace[0] != '\0') {
-                /* nested: parent::child */
-                char new_ns[512];
-                snprintf(new_ns, sizeof(new_ns), "%s::%s", c->current_namespace, n->single.var);
-                strncpy(c->current_namespace, new_ns, 511);
-            } else {
-                strncpy(c->current_namespace, n->single.var, 511);
-            }
-            c->current_namespace[511] = '\0';
+            CompSafeCopy(saved_ns, sizeof(saved_ns), c->current_namespace);
+            CompAppendNs(c->current_namespace, sizeof(c->current_namespace), n->single.var);
             /* Compile the module body with the new namespace active */
             if (n->single.expr) EmitNode(c, n->single.expr);
             /* Restore namespace */
-            strncpy(c->current_namespace, saved_ns, 511);
-            c->current_namespace[511] = '\0';
+            CompSafeCopy(c->current_namespace, sizeof(c->current_namespace), saved_ns);
             break;
         }
         case NUSE: {
@@ -7026,8 +7100,9 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             if (tlen >= 3 && strcmp(target + tlen - 3, "::*") == 0) {
                 /* Extract namespace prefix */
                 char ns_prefix[256];
-                strncpy(ns_prefix, target, tlen - 3);
-                ns_prefix[tlen - 3] = '\0';
+                size_t pcopy = (tlen - 3 < sizeof(ns_prefix) - 1) ? (tlen - 3) : (sizeof(ns_prefix) - 1);
+                memcpy(ns_prefix, target, pcopy);
+                ns_prefix[pcopy] = '\0';
                 /* Scan all known functions and register aliases for public ones in that ns */
                 size_t pfx_len = strlen(ns_prefix);
                 for (int fi = 0; fi < c->fncount; fi++) {
@@ -7110,15 +7185,7 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             if (!existing_mod) existing_mod = CompilerFindModule(c, path);
             Node *importedast = (existing_mod && existing_mod->ast) ? existing_mod->ast : NULL;
             if (!importedast) {
-                char *src = NULL;
-                if (n->single.is_c || (strlen(finalpath) >= 2 && strcmp(finalpath + strlen(finalpath) - 2, ".h") == 0)) {
-                    char genpath[512];
-                    snprintf(genpath, sizeof(genpath), "%s.aks", finalpath);
-                    AKSBindHeaders(finalpath, genpath, 0, NULL);
-                    src = CompReadFile(genpath);
-                } else {
-                    src = CompReadFile(finalpath);
-                }
+                char *src = CompLoadImportSource(n, finalpath);
                 if (!src) {
                     char errbuf3[600];
                     snprintf(errbuf3, sizeof(errbuf3),
@@ -7140,24 +7207,21 @@ static void EmitNodeInternal(Compiler *c, Node *n) {
             }
             /* Push active import stack */
             if (c->import_depth < 64) {
-                strncpy(c->active_imports[c->import_depth], finalpath, 511);
-                c->active_imports[c->import_depth][511] = '\0';
+                CompSafeCopy(c->active_imports[c->import_depth],
+                             sizeof(c->active_imports[c->import_depth]), finalpath);
                 c->import_depth++;
             }
             char savedpath[512];
-            strncpy(savedpath, c->currentfilepath, sizeof(savedpath) - 1);
-            savedpath[sizeof(savedpath) - 1] = '\0';
-            strncpy(c->currentfilepath, finalpath, sizeof(c->currentfilepath) - 1);
-            c->currentfilepath[sizeof(c->currentfilepath) - 1] = '\0';
+            CompSafeCopy(savedpath, sizeof(savedpath), c->currentfilepath);
+            CompSafeCopy(c->currentfilepath, sizeof(c->currentfilepath), finalpath);
             EmitNode(c, importedast);
-            strncpy(c->currentfilepath, savedpath, sizeof(c->currentfilepath) - 1);
-            c->currentfilepath[sizeof(c->currentfilepath) - 1] = '\0';
+            CompSafeCopy(c->currentfilepath, sizeof(c->currentfilepath), savedpath);
             /* Pop active import stack */
             if (c->import_depth > 0) c->import_depth--;
             /* Mark file as compiled and track dependency in module table */
             if (c->compiled_file_count < 256) {
-                strncpy(c->compiled_files[c->compiled_file_count], finalpath, 511);
-                c->compiled_files[c->compiled_file_count][511] = '\0';
+                CompSafeCopy(c->compiled_files[c->compiled_file_count],
+                             sizeof(c->compiled_files[c->compiled_file_count]), finalpath);
                 c->compiled_file_count++;
             }
             CompilerAddModule(c, path, finalpath, importedast);
@@ -9039,6 +9103,7 @@ void CompFree(Compiler *c) {
     }
 
     StypeFreeAll(c);
+    if (c->modules) free(c->modules);
     free(c);
 }
 
@@ -9054,7 +9119,15 @@ static Module *CompilerAddModule(Compiler *c, const char *name, const char *path
     if (!c || !name) return NULL;
     Module *m = CompilerFindModule(c, name);
     if (m) return m;
-    if (c->module_count >= 256) return NULL;
+    if (c->module_count >= c->module_cap) {
+        int newcap = c->module_cap ? c->module_cap * 2 : 8;
+        if (newcap > 256) newcap = 256;
+        if (c->module_count >= newcap) return NULL;
+        Module *nm = realloc(c->modules, (size_t)newcap * sizeof(Module));
+        if (!nm) return NULL;
+        c->modules = nm;
+        c->module_cap = newcap;
+    }
     m = &c->modules[c->module_count++];
     memset(m, 0, sizeof(Module));
     strncpy(m->name, name, 255);
@@ -9130,14 +9203,14 @@ typedef struct {
     int         parse_error;
 } ParallelModuleTask;
 
-#ifdef _WIN32
-static DWORD WINAPI ParallelParseWorker(LPVOID param) {
-    ParallelModuleTask *task = (ParallelModuleTask *)param;
-    char *src = CompReadFile(task->filepath);
+static void ParallelParseRun(ParallelModuleTask *task) {
+    char *src = CompIsCHeaderPath(task->filepath)
+        ? AKSBindHeadersToStr(task->filepath, 0, NULL)
+        : CompReadFile(task->filepath);
     if (!src) {
         task->parse_error = 1;
         task->ast = NULL;
-        return 0;
+        return;
     }
     task->ast = Parse(src, &task->parse_error);
     free(src);
@@ -9145,24 +9218,17 @@ static DWORD WINAPI ParallelParseWorker(LPVOID param) {
         task->ast = NodeOpt(task->ast);
         task->ast = NodeCseOpt(task->ast);
     }
+}
+
+#ifdef _WIN32
+static DWORD WINAPI ParallelParseWorker(LPVOID param) {
+    ParallelParseRun((ParallelModuleTask *)param);
     return 0;
 }
 #else
 #include <pthread.h>
 static void *ParallelParseWorkerPOSIX(void *param) {
-    ParallelModuleTask *task = (ParallelModuleTask *)param;
-    char *src = CompReadFile(task->filepath);
-    if (!src) {
-        task->parse_error = 1;
-        task->ast = NULL;
-        return NULL;
-    }
-    task->ast = Parse(src, &task->parse_error);
-    free(src);
-    if (!task->parse_error && task->ast) {
-        task->ast = NodeOpt(task->ast);
-        task->ast = NodeCseOpt(task->ast);
-    }
+    ParallelParseRun((ParallelModuleTask *)param);
     return NULL;
 }
 #endif
@@ -9170,7 +9236,9 @@ static void *ParallelParseWorkerPOSIX(void *param) {
 int CompilerParallelCompileModules(Compiler *c, const char **module_paths, int count) {
     if (!c || !module_paths || count <= 0) return 0;
     if (count == 1) {
-        char *src = CompReadFile(module_paths[0]);
+        char *src = CompIsCHeaderPath(module_paths[0])
+            ? AKSBindHeadersToStr(module_paths[0], 0, NULL)
+            : CompReadFile(module_paths[0]);
         if (!src) return 0;
         int err = 0;
         Node *ast = Parse(src, &err);
@@ -9236,19 +9304,10 @@ static void PreregisterFns(Compiler *c, Node *n) {
     } else if (n->type == NMODULE) {
         CompilerAddModule(c, n->single.var, c->currentfilepath, n->single.expr);
         char saved_ns[512];
-        strncpy(saved_ns, c->current_namespace, 511);
-        saved_ns[511] = '\0';
-        if (c->current_namespace[0] != '\0') {
-            char new_ns[512];
-            snprintf(new_ns, sizeof(new_ns), "%s::%s", c->current_namespace, n->single.var);
-            strncpy(c->current_namespace, new_ns, 511);
-        } else {
-            strncpy(c->current_namespace, n->single.var, 511);
-        }
-        c->current_namespace[511] = '\0';
+        CompSafeCopy(saved_ns, sizeof(saved_ns), c->current_namespace);
+        CompAppendNs(c->current_namespace, sizeof(c->current_namespace), n->single.var);
         if (n->single.expr) PreregisterFns(c, n->single.expr);
-        strncpy(c->current_namespace, saved_ns, 511);
-        c->current_namespace[511] = '\0';
+        CompSafeCopy(c->current_namespace, sizeof(c->current_namespace), saved_ns);
     } else if (n->type == NFNDECL) {
         int found = -1;
         char *mangled = MangleName(c, n->fn.name);
@@ -9328,43 +9387,25 @@ static void PreregisterFns(Compiler *c, Node *n) {
         }
     } else if (n->type == NIMPORT) {
         int islazy = n->decl.isconstflag;  /* set by 'lazy import' parser */
-        const char *path = n->single.var;
-        char *resolved = PkgResolveImport(path, c->currentfilepath);
         char finalpath_buf[512];
-        strncpy(finalpath_buf, resolved ? resolved : path, 511);
-        finalpath_buf[511] = '\0';
-        if (resolved) { free(resolved); resolved = NULL; }
+        char *src = CompResolveImportSource(c, n, finalpath_buf, sizeof(finalpath_buf));
         const char *finalpath = finalpath_buf;
-        char *src = NULL;
-        if (n->single.is_c || (strlen(finalpath) >= 2 && strcmp(finalpath + strlen(finalpath) - 2, ".h") == 0)) {
-            char genpath[512];
-            snprintf(genpath, sizeof(genpath), "%s.aks", finalpath);
-            AKSBindHeaders(finalpath, genpath, 0, NULL);
-            src = CompReadFile(genpath);
-        } else {
-            src = CompReadFile(finalpath);
-        }
         if (src) {
             int parseerr = 0;
             Node *importedast = Parse(src, &parseerr);
             free(src);
             if (!parseerr && importedast) {
                 char savedpath[512];
-                strncpy(savedpath, c->currentfilepath, sizeof(savedpath) - 1);
-                savedpath[sizeof(savedpath) - 1] = '\0';
-                strncpy(c->currentfilepath, finalpath, sizeof(c->currentfilepath) - 1);
-                c->currentfilepath[sizeof(c->currentfilepath) - 1] = '\0';
+                CompSafeCopy(savedpath, sizeof(savedpath), c->currentfilepath);
+                CompSafeCopy(c->currentfilepath, sizeof(c->currentfilepath), finalpath);
                 PreregisterFns(c, importedast);
-                strncpy(c->currentfilepath, savedpath, sizeof(c->currentfilepath) - 1);
-                c->currentfilepath[sizeof(c->currentfilepath) - 1] = '\0';
+                CompSafeCopy(c->currentfilepath, sizeof(c->currentfilepath), savedpath);
                 if (islazy) {
                     /* Lazy: store AST for on-demand compilation later */
                     if (c->lazy_mod_count < 64) {
                         int li = c->lazy_mod_count++;
-                        strncpy(c->lazy_mods[li].path, finalpath, 511);
-                        c->lazy_mods[li].path[511] = '\0';
-                        strncpy(c->lazy_mods[li].savedpath, savedpath, 511);
-                        c->lazy_mods[li].savedpath[511] = '\0';
+                        CompSafeCopy(c->lazy_mods[li].path, sizeof(c->lazy_mods[li].path), finalpath);
+                        CompSafeCopy(c->lazy_mods[li].savedpath, sizeof(c->lazy_mods[li].savedpath), savedpath);
                         c->lazy_mods[li].ast = importedast;
                         c->lazy_mods[li].loaded = 0;
                         /* Mark all stubs from this file as lazy */
@@ -10024,22 +10065,22 @@ static Node *SpecializeCall(Compiler *c, Node *program, Node *callnode) {
         char **newptypes = newpc > 0 ? malloc(newpc * sizeof(char*)) : NULL;
         Node **newpdefaults = newpc > 0 ? malloc(newpc * sizeof(Node*)) : NULL;
         int constcount = fndecl->fn.pc - newpc;
-        Node **conststmts = malloc(constcount * sizeof(Node*));
+        Node **conststmts = constcount > 0 ? malloc((size_t)constcount * sizeof(Node*)) : NULL;
         int constidx = 0;
         int pidx = 0;
         for (int i = 0; i < fndecl->fn.pc; i++) {
             Node *arg = (i < callnode->call.argc) ? callnode->call.args[i] : NULL;
             if (arg && (arg->type == NINT || arg->type == NFLOAT || arg->type == NBOOL || arg->type == NSTR || arg->type == NNULL)) {
                 Node *decl = NodeNew(NCONSTDECL, fndecl->line);
-                decl->decl.name = strdup(fndecl->fn.pnames[i]);
+                decl->decl.name = strdup((fndecl->fn.pnames && fndecl->fn.pnames[i]) ? fndecl->fn.pnames[i] : "");
                 decl->decl.tname = strdup("");
                 decl->decl.init = NodeCopy(arg);
                 decl->decl.isconstflag = 1;
-                conststmts[constidx++] = decl;
+                if (conststmts && constidx < constcount) conststmts[constidx++] = decl;
             } else {
-                if (i < fndecl->fn.pc) {
-                    newpnames[pidx] = strdup(fndecl->fn.pnames[i]);
-                    newptypes[pidx] = strdup(fndecl->fn.ptypes[i]);
+                if (i < fndecl->fn.pc && newpnames && newptypes && newpdefaults && pidx < newpc) {
+                    newpnames[pidx] = (fndecl->fn.pnames && fndecl->fn.pnames[i]) ? strdup(fndecl->fn.pnames[i]) : NULL;
+                    newptypes[pidx] = (fndecl->fn.ptypes && fndecl->fn.ptypes[i]) ? strdup(fndecl->fn.ptypes[i]) : NULL;
                     newpdefaults[pidx] = (fndecl->fn.pdefaults && fndecl->fn.pdefaults[i]) ? NodeCopy(fndecl->fn.pdefaults[i]) : NULL;
                     pidx++;
                 }
@@ -11369,35 +11410,19 @@ static void PreregisterTypes(Compiler *c, Node *n) {
         }
         case NIMPORT: {
             if (n->decl.isconstflag) break;  /* Skip lazy imports  -  pre-registered when loaded */
-            const char *path = n->single.var;
-            char *resolved = PkgResolveImport(path, c->currentfilepath);
             char finalpath_buf[512];
-            strncpy(finalpath_buf, resolved ? resolved : path, 511);
-            finalpath_buf[511] = '\0';
-            if (resolved) { free(resolved); resolved = NULL; }
+            char *src = CompResolveImportSource(c, n, finalpath_buf, sizeof(finalpath_buf));
             const char *finalpath = finalpath_buf;
-            char *src = NULL;
-        if (n->single.is_c || (strlen(finalpath) >= 2 && strcmp(finalpath + strlen(finalpath) - 2, ".h") == 0)) {
-            char genpath[512];
-            snprintf(genpath, sizeof(genpath), "%s.aks", finalpath);
-            AKSBindHeaders(finalpath, genpath, 0, NULL);
-            src = CompReadFile(genpath);
-        } else {
-            src = CompReadFile(finalpath);
-        }
             if (src) {
                 int parseerr = 0;
                 Node *importedast = Parse(src, &parseerr);
                 free(src);
                 if (!parseerr && importedast) {
                     char savedpath[512];
-                    strncpy(savedpath, c->currentfilepath, sizeof(savedpath) - 1);
-                    savedpath[sizeof(savedpath) - 1] = '\0';
-                    strncpy(c->currentfilepath, finalpath, sizeof(c->currentfilepath) - 1);
-                    c->currentfilepath[sizeof(c->currentfilepath) - 1] = '\0';
+                    CompSafeCopy(savedpath, sizeof(savedpath), c->currentfilepath);
+                    CompSafeCopy(c->currentfilepath, sizeof(c->currentfilepath), finalpath);
                     PreregisterTypes(c, importedast);
-                    strncpy(c->currentfilepath, savedpath, sizeof(c->currentfilepath) - 1);
-                    c->currentfilepath[sizeof(c->currentfilepath) - 1] = '\0';
+                    CompSafeCopy(c->currentfilepath, sizeof(c->currentfilepath), savedpath);
                     if (c->imported_ast_count < 1024) {
                         c->imported_asts[c->imported_ast_count++] = importedast;
                     } else {
@@ -11409,19 +11434,10 @@ static void PreregisterTypes(Compiler *c, Node *n) {
         }
         case NMODULE: {
             char saved_ns[512];
-            strncpy(saved_ns, c->current_namespace, 511);
-            saved_ns[511] = '\0';
-            if (c->current_namespace[0] != '\0') {
-                char new_ns[512];
-                snprintf(new_ns, sizeof(new_ns), "%s::%s", c->current_namespace, n->single.var);
-                strncpy(c->current_namespace, new_ns, 511);
-            } else {
-                strncpy(c->current_namespace, n->single.var, 511);
-            }
-            c->current_namespace[511] = '\0';
+            CompSafeCopy(saved_ns, sizeof(saved_ns), c->current_namespace);
+            CompAppendNs(c->current_namespace, sizeof(c->current_namespace), n->single.var);
             if (n->single.expr) PreregisterTypes(c, n->single.expr);
-            strncpy(c->current_namespace, saved_ns, 511);
-            c->current_namespace[511] = '\0';
+            CompSafeCopy(c->current_namespace, sizeof(c->current_namespace), saved_ns);
             break;
         }
         case NUSE:
@@ -11651,14 +11667,14 @@ int CompWrt(Compiler *c, const char *path) {
         fwrite(&isasync, 1, 1, f);
 
         for (int p = 0; p < fn->paramcount; p++) {
-            const char *locname = (p < fn->localcount && fn->locals[p].name) ? fn->locals[p].name : "";
+            const char *locname = (p < fn->localcount && fn->locals[p].name[0]) ? fn->locals[p].name : "";
             uint32_t plen = (uint32_t)strlen(locname);
             fwrite(&plen, 4, 1, f);
             if (plen > 0) fwrite(locname, 1, plen, f);
         }
 
         // Write file_name
-        const char *fname = fn->file_name ? fn->file_name : "";
+        const char *fname = fn->file_name[0] ? fn->file_name : "";
         uint32_t flen = (uint32_t)strlen(fname);
         fwrite(&flen, 4, 1, f);
         if (flen > 0) {
@@ -11684,7 +11700,7 @@ int CompWrt(Compiler *c, const char *path) {
         CompilerStruct *s = &c->structs[i];
         
         // Write struct name
-        const char *sname = s->name ? s->name : "";
+        const char *sname = s->name[0] ? s->name : "";
         uint32_t nlen = (uint32_t)strlen(sname);
         fwrite(&nlen, 4, 1, f);
         if (nlen > 0) fwrite(sname, 1, nlen, f);
@@ -11748,7 +11764,7 @@ static const char *GetEnvType(SymbolEnv *env, const char *name) {
     if (!name) return NULL;
     for (SymbolEnv *e = env; e != NULL; e = e->parent) {
         for (int i = 0; i < e->count; i++) {
-            if (e->bindings[i].name && strcmp(e->bindings[i].name, name) == 0) {
+            if (e->bindings[i].name[0] && strcmp(e->bindings[i].name, name) == 0) {
                 return e->bindings[i].typename;
             }
         }
@@ -11760,9 +11776,8 @@ static void SetEnvType(SymbolEnv *env, const char *name, const char *type) {
     if (!name) return;
     if (!type) type = "any";
     for (int i = 0; i < env->count; i++) {
-        if (env->bindings[i].name && strcmp(env->bindings[i].name, name) == 0) {
-            strncpy(env->bindings[i].typename, type, 127);
-            env->bindings[i].typename[127] = '\0';
+        if (env->bindings[i].name[0] && strcmp(env->bindings[i].name, name) == 0) {
+            CompSafeCopy(env->bindings[i].typename, sizeof(env->bindings[i].typename), type);
             return;
         }
     }
@@ -11770,10 +11785,8 @@ static void SetEnvType(SymbolEnv *env, const char *name, const char *type) {
         env->cap = env->cap == 0 ? 8 : env->cap * 2;
         env->bindings = realloc(env->bindings, env->cap * sizeof(TypeBinding));
     }
-    strncpy(env->bindings[env->count].name, name, 127);
-    env->bindings[env->count].name[127] = '\0';
-    strncpy(env->bindings[env->count].typename, type, 127);
-    env->bindings[env->count].typename[127] = '\0';
+    CompSafeCopy(env->bindings[env->count].name, sizeof(env->bindings[env->count].name), name);
+    CompSafeCopy(env->bindings[env->count].typename, sizeof(env->bindings[env->count].typename), type);
     env->bindings[env->count].isconst = 0;
     env->bindings[env->count].ismoved = 0;
     env->count++;
@@ -11783,7 +11796,7 @@ static int GetEnvConst(SymbolEnv *env, const char *name) {
     if (!name) return 0;
     for (SymbolEnv *e = env; e != NULL; e = e->parent) {
         for (int i = 0; i < e->count; i++) {
-            if (e->bindings[i].name && strcmp(e->bindings[i].name, name) == 0) {
+            if (e->bindings[i].name[0] && strcmp(e->bindings[i].name, name) == 0) {
                 return e->bindings[i].isconst;
             }
         }
@@ -11794,7 +11807,7 @@ static int GetEnvConst(SymbolEnv *env, const char *name) {
 static void SetEnvConst(SymbolEnv *env, const char *name, int isconst) {
     if (!name) return;
     for (int i = 0; i < env->count; i++) {
-        if (env->bindings[i].name && strcmp(env->bindings[i].name, name) == 0) {
+        if (env->bindings[i].name[0] && strcmp(env->bindings[i].name, name) == 0) {
             env->bindings[i].isconst = isconst;
             return;
         }
@@ -11807,7 +11820,7 @@ static int GetEnvMoved(SymbolEnv *env, const char *name) {
     if (!name) return 0;
     for (SymbolEnv *e = env; e != NULL; e = e->parent) {
         for (int i = 0; i < e->count; i++) {
-            if (e->bindings[i].name && strcmp(e->bindings[i].name, name) == 0) {
+            if (e->bindings[i].name[0] && strcmp(e->bindings[i].name, name) == 0) {
                 return e->bindings[i].ismoved;
             }
         }
@@ -11818,7 +11831,7 @@ static int GetEnvMoved(SymbolEnv *env, const char *name) {
 static void SetEnvMoved(SymbolEnv *env, const char *name, int ismoved) {
     if (!name) return;
     for (int i = 0; i < env->count; i++) {
-        if (env->bindings[i].name && strcmp(env->bindings[i].name, name) == 0) {
+        if (env->bindings[i].name[0] && strcmp(env->bindings[i].name, name) == 0) {
             env->bindings[i].ismoved = ismoved;
             return;
         }
@@ -12224,8 +12237,7 @@ static void TypeCheckStmt(Compiler *c, TypeContext *ctx, Node *n, SymbolEnv *env
             
             if (fnid >= 0 && fnid < c->fncount && c->fns[fnid]) {
                 if (c->fns[fnid]->rettype[0] == '\0' || strcmp(c->fns[fnid]->rettype, "any") == 0) {
-                    strncpy(c->fns[fnid]->rettype, inferredret, 63);
-                    c->fns[fnid]->rettype[63] = '\0';
+                    CompSafeCopy(c->fns[fnid]->rettype, sizeof(c->fns[fnid]->rettype), inferredret);
                 }
             }
             
@@ -12430,7 +12442,7 @@ static void NodeCheck(Compiler *c, TypeContext *ctx, Node *n, SymbolEnv *env, ch
             if (len + 1 < (int)sizeof(buf)) {
                 strcat(buf, ")");
             }
-            strncpy(outtype, buf, outsize);
+            CompSafeCopy(outtype, outsize, buf);
             break;
         }
         case NMAPLIT: strncpy(outtype, "Object", outsize); break;
@@ -12546,11 +12558,11 @@ static void NodeCheck(Compiler *c, TypeContext *ctx, Node *n, SymbolEnv *env, ch
             const char *field = n->member.field ? n->member.field : "";
             
             for (int i = 0; i < c->structcount; i++) {
-                if (c->structs[i].name && strcmp(c->structs[i].name, cleantype) == 0) {
+                if (c->structs[i].name[0] && strcmp(c->structs[i].name, cleantype) == 0) {
                     for (int j = 0; j < c->structs[i].fc; j++) {
                         if (c->structs[i].fnames && c->structs[i].fnames[j] && strcmp(c->structs[i].fnames[j], field) == 0) {
                             const char *ft = (c->structs[i].ftypes && c->structs[i].ftypes[j]) ? c->structs[i].ftypes[j] : "any";
-                            strncpy(outtype, ft, outsize);
+                            CompSafeCopy(outtype, outsize, ft);
                             return;
                         }
                     }
