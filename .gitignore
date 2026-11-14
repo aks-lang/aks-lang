@@ -17,6 +17,7 @@ tests/*.exe
 /aksls
 /aksfmt
 /akslint
+aks-linux-x64
 /obj/
 /tests/TestProtocols
 

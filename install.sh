@@ -16,7 +16,7 @@ REPO_NAME="aks-lang"
 if [ -f "$(dirname "$0")/VERSION" ]; then
     DEFAULT_TAG="v$(cat "$(dirname "$0")/VERSION" | tr -d '[:space:]')"
 else
-    DEFAULT_TAG="${AKS_VERSION:-v1.2.3}"
+    DEFAULT_TAG="${AKS_VERSION:-v1.2.4}"
 fi
 VERSION="${AKS_VERSION:-$DEFAULT_TAG}"
 

@@ -2,6 +2,7 @@
 #include "value.h"
 #include "learning.h"
 #include "lexer.h"
+#include "version.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1232,7 +1233,7 @@ void LearnPlayground(int port) {
             const char *opt_resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nConnection: close\r\n\r\n";
             send(clientfd, opt_resp, (int)strlen(opt_resp), 0);
         } else if (strncmp(requestbuffer, "GET /health", 11) == 0) {
-            const char *hresp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"status\":\"ok\",\"service\":\"aks-playground\",\"version\":\"1.2.3\"}\r\n";
+            const char *hresp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"status\":\"ok\",\"service\":\"aks-playground\",\"version\":\"" AKS_VERSION_STRING "\"}\r\n";
             send(clientfd, hresp, (int)strlen(hresp), 0);
         } else if (strncmp(requestbuffer, "GET /", 5) == 0) {
             char hdr[256];

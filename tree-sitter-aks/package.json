@@ -1,6 +1,6 @@
 {
   "name": "tree-sitter-aks",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Tree-sitter grammar for the AKS programming language",
   "main": "bindings/node",
   "types": "bindings/node",

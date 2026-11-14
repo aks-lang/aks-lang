@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
 #include "value.h"
 #include "pkg.h"
+#include "version.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -848,7 +849,7 @@ static int PkgHttpRequest(const char *method, const char *url, const char *beare
     MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, 1024);
     MultiByteToWideChar(CP_UTF8, 0, method, -1, wmethod, 16);
 
-    HINTERNET hSession = WinHttpOpen(L"AKS-Pkg/1.2.3", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+    HINTERNET hSession = WinHttpOpen(L"AKS-Pkg/" AKS_VERSION_WIDE, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                                      WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!hSession) return 0;
     HINTERNET hConnect = WinHttpConnect(hSession, whost, (INTERNET_PORT)port, 0);
@@ -974,7 +975,7 @@ static int PkgHttpRequest(const char *method, const char *url, const char *beare
 
     char req_hdr[2048];
     int hlen = snprintf(req_hdr, sizeof(req_hdr),
-                        "%s %s HTTP/1.0\r\nHost: %s:%d\r\nUser-Agent: AKS-Pkg/1.2.3\r\n"
+                        "%s %s HTTP/1.0\r\nHost: %s:%d\r\nUser-Agent: AKS-Pkg/" AKS_VERSION_STRING "\r\n"
                         "Content-Length: %zu\r\nConnection: close\r\n"
                         "%s%s%s%s\r\n",
                         method, path, host, port, body_len,
