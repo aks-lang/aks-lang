@@ -507,12 +507,14 @@ int ExecuteStdlibCore(VM *vm, VMTask *task, const char *name, int argc,
     if (strcmp(name, "TimerNowNanos") == 0) {
       int64_t nanos = 0;
 #ifdef _WIN32
-      LARGE_INTEGER freq, cnt;
-      QueryPerformanceFrequency(&freq);
+      static LARGE_INTEGER freq = {0};
+      LARGE_INTEGER cnt;
+      if (freq.QuadPart == 0) {
+        QueryPerformanceFrequency(&freq);
+      }
       QueryPerformanceCounter(&cnt);
       if (freq.QuadPart > 0) {
-        nanos = (int64_t)(((double)cnt.QuadPart / (double)freq.QuadPart) *
-                          1000000000.0);
+        nanos = (int64_t)((cnt.QuadPart * 1000000000LL) / freq.QuadPart);
       }
 #else
       struct timespec ts;

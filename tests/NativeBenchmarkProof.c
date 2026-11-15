@@ -76,16 +76,15 @@ static void RunBenchmarkSuite(void) {
     GenerateData(A, dim * dim, 42);
     GenerateData(B, dim * dim, 84);
 
-    // Transpose B for contiguous memory layout
-    for (int r = 0; r < dim; r++) {
-        for (int c = 0; c < dim; c++) {
-            BT[c * dim + r] = B[r * dim + c];
-        }
-    }
-
     double best_matmul_ms = 1e9;
     for (int run = 0; run < 5; run++) {
         double t0 = GetTimeSeconds();
+        // Transpose B for contiguous memory layout
+        for (int r = 0; r < dim; r++) {
+            for (int c = 0; c < dim; c++) {
+                BT[c * dim + r] = B[r * dim + c];
+            }
+        }
         for (int i = 0; i < dim; i++) {
             const double *a_row = &A[i * dim];
             for (int j = 0; j < dim; j++) {

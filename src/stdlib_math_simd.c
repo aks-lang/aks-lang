@@ -1,13 +1,20 @@
 // Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
 #include "vm_stdlib.h"
 
-
 int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
-            AKSValue **stacktopptr) {
+                          AKSValue **stacktopptr) {
   AKSValue *stacktop = *stacktopptr;
-  AKSValue *stacklimit = task->stack + (task->stackcap > 0 ? task->stackcap : MAXSTACK);
+  AKSValue *stacklimit =
+      task->stack + (task->stackcap > 0 ? task->stackcap : MAXSTACK);
 #define PUSH(val) AKS_STDLIB_PUSH(val)
 #define POP() AKS_STDLIB_POP()
+
+  if (name[0] == 'F' && name[1] == 'a' && name[2] == 's' && name[3] == 't') {
+    if (strcmp(name, "FastDotProduct") == 0) goto FAST_DOT_PRODUCT;
+    if (strcmp(name, "FastMatMul2D") == 0) goto FAST_MAT_MUL;
+    if (strcmp(name, "FastArraySort") == 0) goto FAST_ARRAY_SORT;
+    if (strcmp(name, "FastParallelReduce") == 0) goto FAST_PARALLEL_REDUCE;
+  }
 
   if (strcmp(name, "SimdVec8fNew") == 0) {
     if (argc != 1) {
@@ -450,7 +457,8 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
         _mm256_storeu_ps(outFloats, r);
 #else
         for (int i = 0; i < 8; i++)
-          outFloats[i] = (inFloats[i] > 0.0f) ? (1.0f / sqrtf(inFloats[i])) : 0.0f;
+          outFloats[i] =
+              (inFloats[i] > 0.0f) ? (1.0f / sqrtf(inFloats[i])) : 0.0f;
 #endif
         res = ValArr(8);
         AKSArray *res_arr = ValToArr(res);
@@ -882,8 +890,8 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
        strcmp(name + 9, "BitwiseOr") == 0 ||
        strcmp(name + 9, "BitwiseXor") == 0)) {
     if (argc != 2) {
-      fprintf(stderr, "Runtime error: %s() expects 2 arguments (vec_a, vec_b)\n",
-              name);
+      fprintf(stderr,
+              "Runtime error: %s() expects 2 arguments (vec_a, vec_b)\n", name);
       return -1;
     }
     const char *suf = name + 9;
@@ -916,23 +924,47 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
       __m256i Vb = _mm256_loadu_si256((const __m256i *)DataB);
       __m256i Vres = Va;
       switch (vec8i_op) {
-      case 0: Vres = _mm256_add_epi32(Va, Vb); break;
-      case 1: Vres = _mm256_sub_epi32(Va, Vb); break;
-      case 2: Vres = _mm256_mullo_epi32(Va, Vb); break;
-      case 3: Vres = _mm256_and_si256(Va, Vb); break;
-      case 4: Vres = _mm256_or_si256(Va, Vb); break;
-      case 5: Vres = _mm256_xor_si256(Va, Vb); break;
+      case 0:
+        Vres = _mm256_add_epi32(Va, Vb);
+        break;
+      case 1:
+        Vres = _mm256_sub_epi32(Va, Vb);
+        break;
+      case 2:
+        Vres = _mm256_mullo_epi32(Va, Vb);
+        break;
+      case 3:
+        Vres = _mm256_and_si256(Va, Vb);
+        break;
+      case 4:
+        Vres = _mm256_or_si256(Va, Vb);
+        break;
+      case 5:
+        Vres = _mm256_xor_si256(Va, Vb);
+        break;
       }
       _mm256_storeu_si256((__m256i *)DataRes, Vres);
 #else
       for (int i = 0; i < 8; i++) {
         switch (vec8i_op) {
-        case 0: DataRes[i] = (int32_t)((uint32_t)DataA[i] + (uint32_t)DataB[i]); break;
-        case 1: DataRes[i] = (int32_t)((uint32_t)DataA[i] - (uint32_t)DataB[i]); break;
-        case 2: DataRes[i] = (int32_t)((uint32_t)DataA[i] * (uint32_t)DataB[i]); break;
-        case 3: DataRes[i] = DataA[i] & DataB[i]; break;
-        case 4: DataRes[i] = DataA[i] | DataB[i]; break;
-        case 5: DataRes[i] = DataA[i] ^ DataB[i]; break;
+        case 0:
+          DataRes[i] = (int32_t)((uint32_t)DataA[i] + (uint32_t)DataB[i]);
+          break;
+        case 1:
+          DataRes[i] = (int32_t)((uint32_t)DataA[i] - (uint32_t)DataB[i]);
+          break;
+        case 2:
+          DataRes[i] = (int32_t)((uint32_t)DataA[i] * (uint32_t)DataB[i]);
+          break;
+        case 3:
+          DataRes[i] = DataA[i] & DataB[i];
+          break;
+        case 4:
+          DataRes[i] = DataA[i] | DataB[i];
+          break;
+        case 5:
+          DataRes[i] = DataA[i] ^ DataB[i];
+          break;
         }
       }
 #endif
@@ -946,14 +978,18 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     return 1;
   }
   int vec4d_op = -1;
-  if (strcmp(name, "SimdVec4dAdd") == 0) vec4d_op = 0;
-  else if (strcmp(name, "SimdVec4dSub") == 0) vec4d_op = 1;
-  else if (strcmp(name, "SimdVec4dMul") == 0) vec4d_op = 2;
-  else if (strcmp(name, "SimdVec4dDiv") == 0) vec4d_op = 3;
+  if (strcmp(name, "SimdVec4dAdd") == 0)
+    vec4d_op = 0;
+  else if (strcmp(name, "SimdVec4dSub") == 0)
+    vec4d_op = 1;
+  else if (strcmp(name, "SimdVec4dMul") == 0)
+    vec4d_op = 2;
+  else if (strcmp(name, "SimdVec4dDiv") == 0)
+    vec4d_op = 3;
   if (vec4d_op >= 0) {
     if (argc != 2) {
-      fprintf(stderr, "Runtime error: %s() expects 2 arguments (vec_a, vec_b)\n",
-              name);
+      fprintf(stderr,
+              "Runtime error: %s() expects 2 arguments (vec_a, vec_b)\n", name);
       return -1;
     }
     AKSValue BVal = POP();
@@ -973,19 +1009,35 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
       __m256d Vb = _mm256_loadu_pd(DataB);
       __m256d Vres = Va;
       switch (vec4d_op) {
-      case 0: Vres = _mm256_add_pd(Va, Vb); break;
-      case 1: Vres = _mm256_sub_pd(Va, Vb); break;
-      case 2: Vres = _mm256_mul_pd(Va, Vb); break;
-      case 3: Vres = _mm256_div_pd(Va, Vb); break;
+      case 0:
+        Vres = _mm256_add_pd(Va, Vb);
+        break;
+      case 1:
+        Vres = _mm256_sub_pd(Va, Vb);
+        break;
+      case 2:
+        Vres = _mm256_mul_pd(Va, Vb);
+        break;
+      case 3:
+        Vres = _mm256_div_pd(Va, Vb);
+        break;
       }
       _mm256_storeu_pd(DataRes, Vres);
 #else
       for (int i = 0; i < 4; i++) {
         switch (vec4d_op) {
-        case 0: DataRes[i] = DataA[i] + DataB[i]; break;
-        case 1: DataRes[i] = DataA[i] - DataB[i]; break;
-        case 2: DataRes[i] = DataA[i] * DataB[i]; break;
-        case 3: DataRes[i] = (DataB[i] == 0.0) ? 0.0 : (DataA[i] / DataB[i]); break;
+        case 0:
+          DataRes[i] = DataA[i] + DataB[i];
+          break;
+        case 1:
+          DataRes[i] = DataA[i] - DataB[i];
+          break;
+        case 2:
+          DataRes[i] = DataA[i] * DataB[i];
+          break;
+        case 3:
+          DataRes[i] = (DataB[i] == 0.0) ? 0.0 : (DataA[i] / DataB[i]);
+          break;
         }
       }
 #endif
@@ -1052,15 +1104,20 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     return 1;
   }
   int vec16s_op = -1;
-  if (strcmp(name, "SimdVec16sAdd") == 0) vec16s_op = 0;
-  else if (strcmp(name, "SimdVec16sSub") == 0) vec16s_op = 1;
-  else if (strcmp(name, "SimdVec16sMul") == 0) vec16s_op = 2;
-  else if (strcmp(name, "SimdVec16sAddSaturated") == 0) vec16s_op = 3;
-  else if (strcmp(name, "SimdVec16sSubSaturated") == 0) vec16s_op = 4;
+  if (strcmp(name, "SimdVec16sAdd") == 0)
+    vec16s_op = 0;
+  else if (strcmp(name, "SimdVec16sSub") == 0)
+    vec16s_op = 1;
+  else if (strcmp(name, "SimdVec16sMul") == 0)
+    vec16s_op = 2;
+  else if (strcmp(name, "SimdVec16sAddSaturated") == 0)
+    vec16s_op = 3;
+  else if (strcmp(name, "SimdVec16sSubSaturated") == 0)
+    vec16s_op = 4;
   if (vec16s_op >= 0) {
     if (argc != 2) {
-      fprintf(stderr, "Runtime error: %s() expects 2 arguments (vec_a, vec_b)\n",
-              name);
+      fprintf(stderr,
+              "Runtime error: %s() expects 2 arguments (vec_a, vec_b)\n", name);
       return -1;
     }
     AKSValue BVal = POP();
@@ -1080,20 +1137,36 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
       __m256i Vb = _mm256_loadu_si256((const __m256i *)DataB);
       __m256i Vres = Va;
       switch (vec16s_op) {
-      case 0: Vres = _mm256_add_epi16(Va, Vb); break;
-      case 1: Vres = _mm256_sub_epi16(Va, Vb); break;
-      case 2: Vres = _mm256_mullo_epi16(Va, Vb); break;
-      case 3: Vres = _mm256_adds_epi16(Va, Vb); break;
-      case 4: Vres = _mm256_subs_epi16(Va, Vb); break;
+      case 0:
+        Vres = _mm256_add_epi16(Va, Vb);
+        break;
+      case 1:
+        Vres = _mm256_sub_epi16(Va, Vb);
+        break;
+      case 2:
+        Vres = _mm256_mullo_epi16(Va, Vb);
+        break;
+      case 3:
+        Vres = _mm256_adds_epi16(Va, Vb);
+        break;
+      case 4:
+        Vres = _mm256_subs_epi16(Va, Vb);
+        break;
       }
       _mm256_storeu_si256((__m256i *)DataRes, Vres);
 #else
       for (int i = 0; i < 16; i++) {
         int32_t s = 0;
         switch (vec16s_op) {
-        case 0: DataRes[i] = (int16_t)(DataA[i] + DataB[i]); break;
-        case 1: DataRes[i] = (int16_t)(DataA[i] - DataB[i]); break;
-        case 2: DataRes[i] = (int16_t)(DataA[i] * DataB[i]); break;
+        case 0:
+          DataRes[i] = (int16_t)(DataA[i] + DataB[i]);
+          break;
+        case 1:
+          DataRes[i] = (int16_t)(DataA[i] - DataB[i]);
+          break;
+        case 2:
+          DataRes[i] = (int16_t)(DataA[i] * DataB[i]);
+          break;
         case 3:
           s = (int32_t)DataA[i] + (int32_t)DataB[i];
           DataRes[i] = (int16_t)(s > 32767 ? 32767 : (s < -32768 ? -32768 : s));
@@ -1115,15 +1188,20 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     return 1;
   }
   int vec32u8_op = -1;
-  if (strcmp(name, "SimdVec32u8AddSaturated") == 0) vec32u8_op = 0;
-  else if (strcmp(name, "SimdVec32u8SubSaturated") == 0) vec32u8_op = 1;
-  else if (strcmp(name, "SimdVec32u8Average") == 0) vec32u8_op = 2;
-  else if (strcmp(name, "SimdVec32u8Min") == 0) vec32u8_op = 3;
-  else if (strcmp(name, "SimdVec32u8Max") == 0) vec32u8_op = 4;
+  if (strcmp(name, "SimdVec32u8AddSaturated") == 0)
+    vec32u8_op = 0;
+  else if (strcmp(name, "SimdVec32u8SubSaturated") == 0)
+    vec32u8_op = 1;
+  else if (strcmp(name, "SimdVec32u8Average") == 0)
+    vec32u8_op = 2;
+  else if (strcmp(name, "SimdVec32u8Min") == 0)
+    vec32u8_op = 3;
+  else if (strcmp(name, "SimdVec32u8Max") == 0)
+    vec32u8_op = 4;
   if (vec32u8_op >= 0) {
     if (argc != 2) {
-      fprintf(stderr, "Runtime error: %s() expects 2 arguments (vec_a, vec_b)\n",
-              name);
+      fprintf(stderr,
+              "Runtime error: %s() expects 2 arguments (vec_a, vec_b)\n", name);
       return -1;
     }
     AKSValue BVal = POP();
@@ -1143,22 +1221,45 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
       __m256i Vb = _mm256_loadu_si256((const __m256i *)DataB);
       __m256i Vres = Va;
       switch (vec32u8_op) {
-      case 0: Vres = _mm256_adds_epu8(Va, Vb); break;
-      case 1: Vres = _mm256_subs_epu8(Va, Vb); break;
-      case 2: Vres = _mm256_avg_epu8(Va, Vb); break;
-      case 3: Vres = _mm256_min_epu8(Va, Vb); break;
-      case 4: Vres = _mm256_max_epu8(Va, Vb); break;
+      case 0:
+        Vres = _mm256_adds_epu8(Va, Vb);
+        break;
+      case 1:
+        Vres = _mm256_subs_epu8(Va, Vb);
+        break;
+      case 2:
+        Vres = _mm256_avg_epu8(Va, Vb);
+        break;
+      case 3:
+        Vres = _mm256_min_epu8(Va, Vb);
+        break;
+      case 4:
+        Vres = _mm256_max_epu8(Va, Vb);
+        break;
       }
       _mm256_storeu_si256((__m256i *)DataRes, Vres);
 #else
       for (int i = 0; i < 32; i++) {
         int s = 0;
         switch (vec32u8_op) {
-        case 0: s = (int)DataA[i] + (int)DataB[i]; DataRes[i] = (uint8_t)(s > 255 ? 255 : s); break;
-        case 1: s = (int)DataA[i] - (int)DataB[i]; DataRes[i] = (uint8_t)(s < 0 ? 0 : s); break;
-        case 2: DataRes[i] = (uint8_t)(((unsigned)DataA[i] + (unsigned)DataB[i] + 1u) >> 1); break;
-        case 3: DataRes[i] = DataA[i] < DataB[i] ? DataA[i] : DataB[i]; break;
-        case 4: DataRes[i] = DataA[i] > DataB[i] ? DataA[i] : DataB[i]; break;
+        case 0:
+          s = (int)DataA[i] + (int)DataB[i];
+          DataRes[i] = (uint8_t)(s > 255 ? 255 : s);
+          break;
+        case 1:
+          s = (int)DataA[i] - (int)DataB[i];
+          DataRes[i] = (uint8_t)(s < 0 ? 0 : s);
+          break;
+        case 2:
+          DataRes[i] =
+              (uint8_t)(((unsigned)DataA[i] + (unsigned)DataB[i] + 1u) >> 1);
+          break;
+        case 3:
+          DataRes[i] = DataA[i] < DataB[i] ? DataA[i] : DataB[i];
+          break;
+        case 4:
+          DataRes[i] = DataA[i] > DataB[i] ? DataA[i] : DataB[i];
+          break;
         }
       }
 #endif
@@ -1283,7 +1384,8 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
       size_t StartOff = (size_t)ValToInt(OffsetVal);
       if (N->len == 0) {
         FoundIdx = (int64_t)StartOff;
-      } else if (StartOff < (size_t)H->len && (size_t)N->len <= ((size_t)H->len - StartOff)) {
+      } else if (StartOff < (size_t)H->len &&
+                 (size_t)N->len <= ((size_t)H->len - StartOff)) {
         const char *Haystack = H->data + StartOff;
         size_t HaystackLen = (size_t)H->len - StartOff;
         const char *Needle = N->data;
@@ -2787,10 +2889,14 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     _mm256_storeu_pd(rv4, vc4);
 #else
     for (int i = 0; i < 4; i++) {
-      if (name[10] == 'A') rv4[i] = av4[i] + bv4[i];
-      else if (name[10] == 'M') rv4[i] = av4[i] * bv4[i];
-      else if (name[10] == 'S') rv4[i] = av4[i] - bv4[i];
-      else rv4[i] = (bv4[i] == 0.0) ? 0.0 : av4[i] / bv4[i];
+      if (name[10] == 'A')
+        rv4[i] = av4[i] + bv4[i];
+      else if (name[10] == 'M')
+        rv4[i] = av4[i] * bv4[i];
+      else if (name[10] == 'S')
+        rv4[i] = av4[i] - bv4[i];
+      else
+        rv4[i] = (bv4[i] == 0.0) ? 0.0 : av4[i] / bv4[i];
     }
 #endif
     AKSValue r4 = ValArr(4);
@@ -4307,6 +4413,7 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
+FAST_DOT_PRODUCT:
   if (strcmp(name, "FastDotProduct") == 0) {
     if (argc < 2) {
       fprintf(stderr,
@@ -4329,36 +4436,12 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     double total = 0.0;
     int i = 0;
 #if defined(__AVX2__) || defined(_M_X64)
-    __m256d acc0 = _mm256_setzero_pd();
-    __m256d acc1 = _mm256_setzero_pd();
-
     /* Direct SIMD streaming when both arrays consist of native IEEE floats */
-    if (n >= 16 && ValIsFloat(arrA->items[0]) && ValIsFloat(arrB->items[0])) {
+    if (n >= 8 && ValIsFloat(arrA->items[0]) && ValIsFloat(arrB->items[0])) {
       const double *pA = (const double *)arrA->items;
       const double *pB = (const double *)arrB->items;
-      __m256d acc2 = _mm256_setzero_pd();
-      __m256d acc3 = _mm256_setzero_pd();
-      for (; i + 15 < n; i += 16) {
-        __m256d va0 = _mm256_loadu_pd(&pA[i]);
-        __m256d vb0 = _mm256_loadu_pd(&pB[i]);
-        __m256d va1 = _mm256_loadu_pd(&pA[i + 4]);
-        __m256d vb1 = _mm256_loadu_pd(&pB[i + 4]);
-        __m256d va2 = _mm256_loadu_pd(&pA[i + 8]);
-        __m256d vb2 = _mm256_loadu_pd(&pB[i + 8]);
-        __m256d va3 = _mm256_loadu_pd(&pA[i + 12]);
-        __m256d vb3 = _mm256_loadu_pd(&pB[i + 12]);
-#if defined(_WIN32) || defined(__FMA__)
-        acc0 = _mm256_fmadd_pd(va0, vb0, acc0);
-        acc1 = _mm256_fmadd_pd(va1, vb1, acc1);
-        acc2 = _mm256_fmadd_pd(va2, vb2, acc2);
-        acc3 = _mm256_fmadd_pd(va3, vb3, acc3);
-#else
-        acc0 = _mm256_add_pd(_mm256_mul_pd(va0, vb0), acc0);
-        acc1 = _mm256_add_pd(_mm256_mul_pd(va1, vb1), acc1);
-        acc2 = _mm256_add_pd(_mm256_mul_pd(va2, vb2), acc2);
-        acc3 = _mm256_add_pd(_mm256_mul_pd(va3, vb3), acc3);
-#endif
-      }
+      __m256d acc0 = _mm256_setzero_pd();
+      __m256d acc1 = _mm256_setzero_pd();
       for (; i + 7 < n; i += 8) {
         __m256d va0 = _mm256_loadu_pd(&pA[i]);
         __m256d vb0 = _mm256_loadu_pd(&pB[i]);
@@ -4372,25 +4455,16 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
         acc1 = _mm256_add_pd(_mm256_mul_pd(va1, vb1), acc1);
 #endif
       }
-      acc0 = _mm256_add_pd(acc0, acc2);
-      acc1 = _mm256_add_pd(acc1, acc3);
-    } else if (n >= 8 && ValIsFloat(arrA->items[0]) && ValIsFloat(arrB->items[0])) {
-      const double *pA = (const double *)arrA->items;
-      const double *pB = (const double *)arrB->items;
-      for (; i + 7 < n; i += 8) {
-        __m256d va0 = _mm256_loadu_pd(&pA[i]);
-        __m256d vb0 = _mm256_loadu_pd(&pB[i]);
-        __m256d va1 = _mm256_loadu_pd(&pA[i + 4]);
-        __m256d vb1 = _mm256_loadu_pd(&pB[i + 4]);
-#if defined(_WIN32) || defined(__FMA__)
-        acc0 = _mm256_fmadd_pd(va0, vb0, acc0);
-        acc1 = _mm256_fmadd_pd(va1, vb1, acc1);
-#else
-        acc0 = _mm256_add_pd(_mm256_mul_pd(va0, vb0), acc0);
-        acc1 = _mm256_add_pd(_mm256_mul_pd(va1, vb1), acc1);
-#endif
+      acc0 = _mm256_add_pd(acc0, acc1);
+      double lanes[4];
+      _mm256_storeu_pd(lanes, acc0);
+      total = lanes[0] + lanes[1] + lanes[2] + lanes[3];
+      for (; i < n; i++) {
+        total += pA[i] * pB[i];
       }
     } else {
+      __m256d acc0 = _mm256_setzero_pd();
+      __m256d acc1 = _mm256_setzero_pd();
       for (; i + 7 < n; i += 8) {
         double d0[4], d1[4], e0[4], e1[4];
         for (int k = 0; k < 4; k++) {
@@ -4413,15 +4487,17 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
         acc0 = _mm256_fmadd_pd(_mm256_loadu_pd(d0), _mm256_loadu_pd(e0), acc0);
         acc1 = _mm256_fmadd_pd(_mm256_loadu_pd(d1), _mm256_loadu_pd(e1), acc1);
 #else
-        acc0 = _mm256_add_pd(_mm256_mul_pd(_mm256_loadu_pd(d0), _mm256_loadu_pd(e0)), acc0);
-        acc1 = _mm256_add_pd(_mm256_mul_pd(_mm256_loadu_pd(d1), _mm256_loadu_pd(e1)), acc1);
+        acc0 = _mm256_add_pd(
+            _mm256_mul_pd(_mm256_loadu_pd(d0), _mm256_loadu_pd(e0)), acc0);
+        acc1 = _mm256_add_pd(
+            _mm256_mul_pd(_mm256_loadu_pd(d1), _mm256_loadu_pd(e1)), acc1);
 #endif
       }
+      __m256d sum_acc = _mm256_add_pd(acc0, acc1);
+      double res_lanes[4];
+      _mm256_storeu_pd(res_lanes, sum_acc);
+      total += res_lanes[0] + res_lanes[1] + res_lanes[2] + res_lanes[3];
     }
-    __m256d sum_acc = _mm256_add_pd(acc0, acc1);
-    double res_lanes[4];
-    _mm256_storeu_pd(res_lanes, sum_acc);
-    total = res_lanes[0] + res_lanes[1] + res_lanes[2] + res_lanes[3];
 #endif
     for (; i < n; i++) {
       AKSValue va = arrA->items[i];
@@ -4439,6 +4515,7 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
+FAST_MAT_MUL:
   if (strcmp(name, "FastMatMul2D") == 0) {
     if (argc < 2) {
       fprintf(stderr,
@@ -4476,17 +4553,19 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
 
     /* Extract dense contiguous buffers for cache locality */
 #if defined(_MSC_VER)
-    #define AKS_TL_SCRATCH static __declspec(thread)
+#define AKS_TL_SCRATCH static __declspec(thread)
 #else
-    #define AKS_TL_SCRATCH static __thread
+#define AKS_TL_SCRATCH static __thread
 #endif
-    #define SCRATCH_DENSE_LIMIT 32768
+#define SCRATCH_DENSE_LIMIT 32768
     AKS_TL_SCRATCH double tl_denseA[SCRATCH_DENSE_LIMIT];
     AKS_TL_SCRATCH double tl_denseBT[SCRATCH_DENSE_LIMIT];
 
     int needA = rowsA * colsA;
     int needBT = colsB * rowsB;
-    double *denseA = (needA <= SCRATCH_DENSE_LIMIT) ? tl_denseA : (double *)malloc(needA * sizeof(double));
+    double *denseA = (needA <= SCRATCH_DENSE_LIMIT)
+                         ? tl_denseA
+                         : (double *)malloc(needA * sizeof(double));
     if (!denseA) {
       ValFree(&a_val);
       ValFree(&b_val);
@@ -4507,176 +4586,257 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
 
     /* Transpose matrix B into denseBT (colsB x rowsB) to ensure streaming
      * contiguous reads */
-    double *denseBT = (needBT <= SCRATCH_DENSE_LIMIT) ? tl_denseBT : (double *)malloc(needBT * sizeof(double));
+    double *denseBT = (needBT <= SCRATCH_DENSE_LIMIT)
+                          ? tl_denseBT
+                          : (double *)malloc(needBT * sizeof(double));
     if (!denseBT) {
-      if (denseA != tl_denseA) free(denseA);
+      if (denseA != tl_denseA)
+        free(denseA);
       ValFree(&a_val);
       ValFree(&b_val);
       return -1;
     }
-    for (int r = 0; r < rowsB; r++) {
-      AKSArray *row = ValToArr(B->items[r]);
-      if (row->count > 0 && ValIsFloat(row->items[0])) {
-        const double *src_row = (const double *)row->items;
-        for (int c = 0; c < colsB; c++) {
-          denseBT[c * rowsB + r] = src_row[c];
-        }
-      } else {
-        for (int c = 0; c < colsB; c++) {
-          AKSValue v = row->items[c];
-          denseBT[c * rowsB + r] =
-              (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+    /* Transpose matrix B into denseBT using cache-blocking for streaming reads
+     */
+    for (int r_blk = 0; r_blk < rowsB; r_blk += 32) {
+      int r_max = r_blk + 32 < rowsB ? r_blk + 32 : rowsB;
+      for (int c_blk = 0; c_blk < colsB; c_blk += 32) {
+        int c_max = c_blk + 32 < colsB ? c_blk + 32 : colsB;
+        for (int r = r_blk; r < r_max; r++) {
+          AKSArray *row = ValToArr(B->items[r]);
+          if (row->count > 0 && ValIsFloat(row->items[0])) {
+            const double *src_row = (const double *)row->items;
+            for (int c = c_blk; c < c_max; c++) {
+              denseBT[c * rowsB + r] = src_row[c];
+            }
+          } else {
+            for (int c = c_blk; c < c_max; c++) {
+              AKSValue v = row->items[c];
+              denseBT[c * rowsB + r] = (ValKind(v) == VALFLOAT)
+                                           ? ValToFloat(v)
+                                           : (double)ValToInt(v);
+            }
+          }
         }
       }
     }
 
-    /* Create destination array */
+    /* Preallocate destination array and row wrappers */
     AKSValue C_val = ValArr(rowsA);
     AKSArray *C = ValToArr(C_val);
-
-    for (int i = 0; i < rowsA; i++) {
+    C->count = rowsA;
+    for (int r = 0; r < rowsA; r++) {
       AKSValue row_val = ValArr(colsB);
       AKSArray *row = ValToArr(row_val);
-      const double *a_row = &denseA[i * colsA];
+      row->count = colsB;
+      C->items[r] = row_val;
+    }
+
+    int i = 0;
+#if defined(__AVX2__) || defined(_M_X64)
+    for (; i + 1 < rowsA; i += 2) {
+      AKSArray *row0 = ValToArr(C->items[i]);
+      AKSArray *row1 = ValToArr(C->items[i + 1]);
+      const double *a_row0 = &denseA[i * colsA];
+      const double *a_row1 = &denseA[(i + 1) * colsA];
 
       int j = 0;
-#if defined(__AVX2__) || defined(_M_X64)
       for (; j + 3 < colsB; j += 4) {
         const double *b_col0 = &denseBT[j * rowsB];
         const double *b_col1 = &denseBT[(j + 1) * rowsB];
         const double *b_col2 = &denseBT[(j + 2) * rowsB];
         const double *b_col3 = &denseBT[(j + 3) * rowsB];
-        __m256d acc0 = _mm256_setzero_pd();
-        __m256d acc1 = _mm256_setzero_pd();
-        __m256d acc2 = _mm256_setzero_pd();
-        __m256d acc3 = _mm256_setzero_pd();
+
+        __m256d acc00 = _mm256_setzero_pd();
+        __m256d acc01 = _mm256_setzero_pd();
+        __m256d acc02 = _mm256_setzero_pd();
+        __m256d acc03 = _mm256_setzero_pd();
+        __m256d acc10 = _mm256_setzero_pd();
+        __m256d acc11 = _mm256_setzero_pd();
+        __m256d acc12 = _mm256_setzero_pd();
+        __m256d acc13 = _mm256_setzero_pd();
+
         int k = 0;
         for (; k + 7 < colsA; k += 8) {
-          __m256d va0 = _mm256_loadu_pd(&a_row[k]);
-          __m256d va1 = _mm256_loadu_pd(&a_row[k + 4]);
+          __m256d va0_0 = _mm256_loadu_pd(&a_row0[k]);
+          __m256d va1_0 = _mm256_loadu_pd(&a_row1[k]);
+          __m256d vb0_0 = _mm256_loadu_pd(&b_col0[k]);
+          __m256d vb1_0 = _mm256_loadu_pd(&b_col1[k]);
+          __m256d vb2_0 = _mm256_loadu_pd(&b_col2[k]);
+          __m256d vb3_0 = _mm256_loadu_pd(&b_col3[k]);
+
 #if defined(_WIN32) || defined(__FMA__)
-          acc0 = _mm256_fmadd_pd(va0, _mm256_loadu_pd(&b_col0[k]), acc0);
-          acc1 = _mm256_fmadd_pd(va0, _mm256_loadu_pd(&b_col1[k]), acc1);
-          acc2 = _mm256_fmadd_pd(va0, _mm256_loadu_pd(&b_col2[k]), acc2);
-          acc3 = _mm256_fmadd_pd(va0, _mm256_loadu_pd(&b_col3[k]), acc3);
-          acc0 = _mm256_fmadd_pd(va1, _mm256_loadu_pd(&b_col0[k + 4]), acc0);
-          acc1 = _mm256_fmadd_pd(va1, _mm256_loadu_pd(&b_col1[k + 4]), acc1);
-          acc2 = _mm256_fmadd_pd(va1, _mm256_loadu_pd(&b_col2[k + 4]), acc2);
-          acc3 = _mm256_fmadd_pd(va1, _mm256_loadu_pd(&b_col3[k + 4]), acc3);
+          acc00 = _mm256_fmadd_pd(va0_0, vb0_0, acc00);
+          acc10 = _mm256_fmadd_pd(va1_0, vb0_0, acc10);
+          acc01 = _mm256_fmadd_pd(va0_0, vb1_0, acc01);
+          acc11 = _mm256_fmadd_pd(va1_0, vb1_0, acc11);
+          acc02 = _mm256_fmadd_pd(va0_0, vb2_0, acc02);
+          acc12 = _mm256_fmadd_pd(va1_0, vb2_0, acc12);
+          acc03 = _mm256_fmadd_pd(va0_0, vb3_0, acc03);
+          acc13 = _mm256_fmadd_pd(va1_0, vb3_0, acc13);
+
+          __m256d va0_1 = _mm256_loadu_pd(&a_row0[k + 4]);
+          __m256d va1_1 = _mm256_loadu_pd(&a_row1[k + 4]);
+          __m256d vb0_1 = _mm256_loadu_pd(&b_col0[k + 4]);
+          __m256d vb1_1 = _mm256_loadu_pd(&b_col1[k + 4]);
+          __m256d vb2_1 = _mm256_loadu_pd(&b_col2[k + 4]);
+          __m256d vb3_1 = _mm256_loadu_pd(&b_col3[k + 4]);
+
+          acc00 = _mm256_fmadd_pd(va0_1, vb0_1, acc00);
+          acc10 = _mm256_fmadd_pd(va1_1, vb0_1, acc10);
+          acc01 = _mm256_fmadd_pd(va0_1, vb1_1, acc01);
+          acc11 = _mm256_fmadd_pd(va1_1, vb1_1, acc11);
+          acc02 = _mm256_fmadd_pd(va0_1, vb2_1, acc02);
+          acc12 = _mm256_fmadd_pd(va1_1, vb2_1, acc12);
+          acc03 = _mm256_fmadd_pd(va0_1, vb3_1, acc03);
+          acc13 = _mm256_fmadd_pd(va1_1, vb3_1, acc13);
 #else
-          acc0 = _mm256_add_pd(_mm256_mul_pd(va0, _mm256_loadu_pd(&b_col0[k])), acc0);
-          acc1 = _mm256_add_pd(_mm256_mul_pd(va0, _mm256_loadu_pd(&b_col1[k])), acc1);
-          acc2 = _mm256_add_pd(_mm256_mul_pd(va0, _mm256_loadu_pd(&b_col2[k])), acc2);
-          acc3 = _mm256_add_pd(_mm256_mul_pd(va0, _mm256_loadu_pd(&b_col3[k])), acc3);
-          acc0 = _mm256_add_pd(_mm256_mul_pd(va1, _mm256_loadu_pd(&b_col0[k + 4])), acc0);
-          acc1 = _mm256_add_pd(_mm256_mul_pd(va1, _mm256_loadu_pd(&b_col1[k + 4])), acc1);
-          acc2 = _mm256_add_pd(_mm256_mul_pd(va1, _mm256_loadu_pd(&b_col2[k + 4])), acc2);
-          acc3 = _mm256_add_pd(_mm256_mul_pd(va1, _mm256_loadu_pd(&b_col3[k + 4])), acc3);
+          acc00 = _mm256_add_pd(_mm256_mul_pd(va0_0, vb0_0), acc00);
+          acc10 = _mm256_add_pd(_mm256_mul_pd(va1_0, vb0_0), acc10);
+          acc01 = _mm256_add_pd(_mm256_mul_pd(va0_0, vb1_0), acc01);
+          acc11 = _mm256_add_pd(_mm256_mul_pd(va1_0, vb1_0), acc11);
+          acc02 = _mm256_add_pd(_mm256_mul_pd(va0_0, vb2_0), acc02);
+          acc12 = _mm256_add_pd(_mm256_mul_pd(va1_0, vb2_0), acc12);
+          acc03 = _mm256_add_pd(_mm256_mul_pd(va0_0, vb3_0), acc03);
+          acc13 = _mm256_add_pd(_mm256_mul_pd(va1_0, vb3_0), acc13);
+
+          __m256d va0_1 = _mm256_loadu_pd(&a_row0[k + 4]);
+          __m256d va1_1 = _mm256_loadu_pd(&a_row1[k + 4]);
+          __m256d vb0_1 = _mm256_loadu_pd(&b_col0[k + 4]);
+          __m256d vb1_1 = _mm256_loadu_pd(&b_col1[k + 4]);
+          __m256d vb2_1 = _mm256_loadu_pd(&b_col2[k + 4]);
+          __m256d vb3_1 = _mm256_loadu_pd(&b_col3[k + 4]);
+
+          acc00 = _mm256_add_pd(_mm256_mul_pd(va0_1, vb0_1), acc00);
+          acc10 = _mm256_add_pd(_mm256_mul_pd(va1_1, vb0_1), acc10);
+          acc01 = _mm256_add_pd(_mm256_mul_pd(va0_1, vb1_1), acc01);
+          acc11 = _mm256_add_pd(_mm256_mul_pd(va1_1, vb1_1), acc11);
+          acc02 = _mm256_add_pd(_mm256_mul_pd(va0_1, vb2_1), acc02);
+          acc12 = _mm256_add_pd(_mm256_mul_pd(va1_1, vb2_1), acc12);
+          acc03 = _mm256_add_pd(_mm256_mul_pd(va0_1, vb3_1), acc03);
+          acc13 = _mm256_add_pd(_mm256_mul_pd(va1_1, vb3_1), acc13);
 #endif
         }
         for (; k + 3 < colsA; k += 4) {
-          __m256d va = _mm256_loadu_pd(&a_row[k]);
+          __m256d va0 = _mm256_loadu_pd(&a_row0[k]);
+          __m256d va1 = _mm256_loadu_pd(&a_row1[k]);
+          __m256d vb0 = _mm256_loadu_pd(&b_col0[k]);
+          __m256d vb1 = _mm256_loadu_pd(&b_col1[k]);
+          __m256d vb2 = _mm256_loadu_pd(&b_col2[k]);
+          __m256d vb3 = _mm256_loadu_pd(&b_col3[k]);
 #if defined(_WIN32) || defined(__FMA__)
-          acc0 = _mm256_fmadd_pd(va, _mm256_loadu_pd(&b_col0[k]), acc0);
-          acc1 = _mm256_fmadd_pd(va, _mm256_loadu_pd(&b_col1[k]), acc1);
-          acc2 = _mm256_fmadd_pd(va, _mm256_loadu_pd(&b_col2[k]), acc2);
-          acc3 = _mm256_fmadd_pd(va, _mm256_loadu_pd(&b_col3[k]), acc3);
+          acc00 = _mm256_fmadd_pd(va0, vb0, acc00);
+          acc10 = _mm256_fmadd_pd(va1, vb0, acc10);
+          acc01 = _mm256_fmadd_pd(va0, vb1, acc01);
+          acc11 = _mm256_fmadd_pd(va1, vb1, acc11);
+          acc02 = _mm256_fmadd_pd(va0, vb2, acc02);
+          acc12 = _mm256_fmadd_pd(va1, vb2, acc12);
+          acc03 = _mm256_fmadd_pd(va0, vb3, acc03);
+          acc13 = _mm256_fmadd_pd(va1, vb3, acc13);
 #else
-          acc0 = _mm256_add_pd(_mm256_mul_pd(va, _mm256_loadu_pd(&b_col0[k])), acc0);
-          acc1 = _mm256_add_pd(_mm256_mul_pd(va, _mm256_loadu_pd(&b_col1[k])), acc1);
-          acc2 = _mm256_add_pd(_mm256_mul_pd(va, _mm256_loadu_pd(&b_col2[k])), acc2);
-          acc3 = _mm256_add_pd(_mm256_mul_pd(va, _mm256_loadu_pd(&b_col3[k])), acc3);
+          acc00 = _mm256_add_pd(_mm256_mul_pd(va0, vb0), acc00);
+          acc10 = _mm256_add_pd(_mm256_mul_pd(va1, vb0), acc10);
+          acc01 = _mm256_add_pd(_mm256_mul_pd(va0, vb1), acc01);
+          acc11 = _mm256_add_pd(_mm256_mul_pd(va1, vb1), acc11);
+          acc02 = _mm256_add_pd(_mm256_mul_pd(va0, vb2), acc02);
+          acc12 = _mm256_add_pd(_mm256_mul_pd(va1, vb2), acc12);
+          acc03 = _mm256_add_pd(_mm256_mul_pd(va0, vb3), acc03);
+          acc13 = _mm256_add_pd(_mm256_mul_pd(va1, vb3), acc13);
 #endif
         }
-        __m256d r01 = _mm256_hadd_pd(acc0, acc1);
-        __m256d r23 = _mm256_hadd_pd(acc2, acc3);
-        __m128d lo01 = _mm256_castpd256_pd128(r01);
-        __m128d hi01 = _mm256_extractf128_pd(r01, 1);
-        __m128d s01 = _mm_add_pd(lo01, hi01);
-        __m128d lo23 = _mm256_castpd256_pd128(r23);
-        __m128d hi23 = _mm256_extractf128_pd(r23, 1);
-        __m128d s23 = _mm_add_pd(lo23, hi23);
-        __m256d all4 = _mm256_set_m128d(s23, s01);
+
+        __m256d r00_01 = _mm256_hadd_pd(acc00, acc01);
+        __m256d r02_03 = _mm256_hadd_pd(acc02, acc03);
+        __m128d lo00_01 = _mm256_castpd256_pd128(r00_01);
+        __m128d hi00_01 = _mm256_extractf128_pd(r00_01, 1);
+        __m128d s00_01 = _mm_add_pd(lo00_01, hi00_01);
+        __m128d lo02_03 = _mm256_castpd256_pd128(r02_03);
+        __m128d hi02_03 = _mm256_extractf128_pd(r02_03, 1);
+        __m128d s02_03 = _mm_add_pd(lo02_03, hi02_03);
+        __m256d all4_row0 = _mm256_set_m128d(s02_03, s00_01);
+
+        __m256d r10_11 = _mm256_hadd_pd(acc10, acc11);
+        __m256d r12_13 = _mm256_hadd_pd(acc12, acc13);
+        __m128d lo10_11 = _mm256_castpd256_pd128(r10_11);
+        __m128d hi10_11 = _mm256_extractf128_pd(r10_11, 1);
+        __m128d s10_11 = _mm_add_pd(lo10_11, hi10_11);
+        __m128d lo12_13 = _mm256_castpd256_pd128(r12_13);
+        __m128d hi12_13 = _mm256_extractf128_pd(r12_13, 1);
+        __m128d s12_13 = _mm_add_pd(lo12_13, hi12_13);
+        __m256d all4_row1 = _mm256_set_m128d(s12_13, s10_11);
+
         if (k < colsA) {
-          double lanes[4];
-          _mm256_storeu_pd(lanes, all4);
+          double lanes0[4], lanes1[4];
+          _mm256_storeu_pd(lanes0, all4_row0);
+          _mm256_storeu_pd(lanes1, all4_row1);
           for (; k < colsA; k++) {
-            double a = a_row[k];
-            lanes[0] += a * b_col0[k];
-            lanes[1] += a * b_col1[k];
-            lanes[2] += a * b_col2[k];
-            lanes[3] += a * b_col3[k];
+            double a0 = a_row0[k];
+            double a1 = a_row1[k];
+            double b0 = b_col0[k];
+            double b1 = b_col1[k];
+            double b2 = b_col2[k];
+            double b3 = b_col3[k];
+            lanes0[0] += a0 * b0;
+            lanes0[1] += a0 * b1;
+            lanes0[2] += a0 * b2;
+            lanes0[3] += a0 * b3;
+            lanes1[0] += a1 * b0;
+            lanes1[1] += a1 * b1;
+            lanes1[2] += a1 * b2;
+            lanes1[3] += a1 * b3;
           }
-          all4 = _mm256_loadu_pd(lanes);
+          all4_row0 = _mm256_loadu_pd(lanes0);
+          all4_row1 = _mm256_loadu_pd(lanes1);
         }
-        _mm256_storeu_pd((double*)&row->items[j], all4);
+        _mm256_storeu_pd((double *)&row0->items[j], all4_row0);
+        _mm256_storeu_pd((double *)&row1->items[j], all4_row1);
       }
       for (; j + 1 < colsB; j += 2) {
         const double *b_col0 = &denseBT[j * rowsB];
         const double *b_col1 = &denseBT[(j + 1) * rowsB];
-        __m256d acc00 = _mm256_setzero_pd();
-        __m256d acc01 = _mm256_setzero_pd();
-        int k = 0;
-        for (; k + 7 < colsA; k += 8) {
-          __m256d va0 = _mm256_loadu_pd(&a_row[k]);
-          __m256d vb00 = _mm256_loadu_pd(&b_col0[k]);
-          __m256d vb01 = _mm256_loadu_pd(&b_col1[k]);
-          __m256d va1 = _mm256_loadu_pd(&a_row[k + 4]);
-          __m256d vb10 = _mm256_loadu_pd(&b_col0[k + 4]);
-          __m256d vb11 = _mm256_loadu_pd(&b_col1[k + 4]);
-#if defined(_WIN32) || defined(__FMA__)
-          acc00 = _mm256_fmadd_pd(va0, vb00, acc00);
-          acc01 = _mm256_fmadd_pd(va0, vb01, acc01);
-          acc00 = _mm256_fmadd_pd(va1, vb10, acc00);
-          acc01 = _mm256_fmadd_pd(va1, vb11, acc01);
-#else
-          acc00 = _mm256_add_pd(_mm256_mul_pd(va0, vb00), acc00);
-          acc01 = _mm256_add_pd(_mm256_mul_pd(va0, vb01), acc01);
-          acc00 = _mm256_add_pd(_mm256_mul_pd(va1, vb10), acc00);
-          acc01 = _mm256_add_pd(_mm256_mul_pd(va1, vb11), acc01);
-#endif
+        double sum00 = 0.0, sum01 = 0.0, sum10 = 0.0, sum11 = 0.0;
+        for (int k = 0; k < colsA; k++) {
+          double b0 = b_col0[k], b1 = b_col1[k];
+          sum00 += a_row0[k] * b0;
+          sum01 += a_row0[k] * b1;
+          sum10 += a_row1[k] * b0;
+          sum11 += a_row1[k] * b1;
         }
-        for (; k + 3 < colsA; k += 4) {
-          __m256d va = _mm256_loadu_pd(&a_row[k]);
-          __m256d vb0 = _mm256_loadu_pd(&b_col0[k]);
-          __m256d vb1 = _mm256_loadu_pd(&b_col1[k]);
-#if defined(_WIN32) || defined(__FMA__)
-          acc00 = _mm256_fmadd_pd(va, vb0, acc00);
-          acc01 = _mm256_fmadd_pd(va, vb1, acc01);
-#else
-          acc00 = _mm256_add_pd(_mm256_mul_pd(va, vb0), acc00);
-          acc01 = _mm256_add_pd(_mm256_mul_pd(va, vb1), acc01);
-#endif
-        }
-        double lanes0[4], lanes1[4];
-        _mm256_storeu_pd(lanes0, acc00);
-        _mm256_storeu_pd(lanes1, acc01);
-        double sum0 = lanes0[0] + lanes0[1] + lanes0[2] + lanes0[3];
-        double sum1 = lanes1[0] + lanes1[1] + lanes1[2] + lanes1[3];
-        for (; k < colsA; k++) {
-          sum0 += a_row[k] * b_col0[k];
-          sum1 += a_row[k] * b_col1[k];
-        }
-        row->items[j] = ValFloat(sum0);
-        row->items[j + 1] = ValFloat(sum1);
+        row0->items[j] = ValFloat(sum00);
+        row0->items[j + 1] = ValFloat(sum01);
+        row1->items[j] = ValFloat(sum10);
+        row1->items[j + 1] = ValFloat(sum11);
       }
-#endif
       for (; j < colsB; j++) {
         const double *b_col = &denseBT[j * rowsB];
+        double sum0 = 0.0, sum1 = 0.0;
+        for (int k = 0; k < colsA; k++) {
+          sum0 += a_row0[k] * b_col[k];
+          sum1 += a_row1[k] * b_col[k];
+        }
+        row0->items[j] = ValFloat(sum0);
+        row1->items[j] = ValFloat(sum1);
+      }
+    }
+#endif
+    for (; i < rowsA; i++) {
+      AKSArray *row = ValToArr(C->items[i]);
+      const double *a_row = &denseA[i * colsA];
+      for (int j = 0; j < colsB; j++) {
+        const double *b_col = &denseBT[j * rowsB];
         double sum = 0.0;
-        int k = 0;
-        for (; k < colsA; k++) {
+        for (int k = 0; k < colsA; k++) {
           sum += a_row[k] * b_col[k];
         }
         row->items[j] = ValFloat(sum);
       }
-      row->count = colsB;
-      C->items[i] = row_val;
     }
     C->count = rowsA;
 
-    if (denseA != tl_denseA) free(denseA);
-    if (denseBT != tl_denseBT) free(denseBT);
+    if (denseA != tl_denseA)
+      free(denseA);
+    if (denseBT != tl_denseBT)
+      free(denseBT);
     ValFree(&a_val);
     ValFree(&b_val);
 
@@ -4684,6 +4844,7 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
+FAST_ARRAY_SORT:
   if (strcmp(name, "FastArraySort") == 0) {
     if (argc < 1) {
       fprintf(stderr, "Runtime error: FastArraySort expects an array\n");
@@ -4715,7 +4876,8 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     } else {
       for (int i = 0; i < count; i++) {
         AKSValue v = arr->items[i];
-        dense[i] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+        dense[i] =
+            (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
       }
     }
 
@@ -4812,6 +4974,7 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     *stacktopptr = stacktop;
     return 1;
   }
+FAST_PARALLEL_REDUCE:
   if (strcmp(name, "FastParallelReduce") == 0) {
     if (argc < 2) {
       fprintf(stderr, "Runtime error: FastParallelReduce expects (arr, op)\n");
@@ -4843,62 +5006,53 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     int i = 0;
 #if defined(__AVX2__) || defined(_M_X64)
     if (strcmp(op, "+") == 0) {
-      __m256d acc0 = _mm256_setzero_pd();
-      __m256d acc1 = _mm256_setzero_pd();
-      if (count >= 16 && ValIsFloat(arr->items[0])) {
+      if (count >= 8 && ValIsFloat(arr->items[0])) {
         const double *p = (const double *)arr->items;
-        __m256d acc2 = _mm256_setzero_pd();
-        __m256d acc3 = _mm256_setzero_pd();
-        for (; i + 15 < count; i += 16) {
-          acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(&p[i]));
-          acc1 = _mm256_add_pd(acc1, _mm256_loadu_pd(&p[i + 4]));
-          acc2 = _mm256_add_pd(acc2, _mm256_loadu_pd(&p[i + 8]));
-          acc3 = _mm256_add_pd(acc3, _mm256_loadu_pd(&p[i + 12]));
-        }
+        __m256d acc0 = _mm256_setzero_pd();
+        __m256d acc1 = _mm256_setzero_pd();
         for (; i + 7 < count; i += 8) {
           acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(&p[i]));
           acc1 = _mm256_add_pd(acc1, _mm256_loadu_pd(&p[i + 4]));
         }
-        acc0 = _mm256_add_pd(acc0, acc2);
-        acc1 = _mm256_add_pd(acc1, acc3);
-      } else if (count >= 8 && ValIsFloat(arr->items[0])) {
-        const double *p = (const double *)arr->items;
-        for (; i + 7 < count; i += 8) {
-          acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(&p[i]));
-          acc1 = _mm256_add_pd(acc1, _mm256_loadu_pd(&p[i + 4]));
+        acc0 = _mm256_add_pd(acc0, acc1);
+        double lanes[4];
+        _mm256_storeu_pd(lanes, acc0);
+        accum += lanes[0] + lanes[1] + lanes[2] + lanes[3];
+        for (; i < count; i++) {
+          accum += p[i];
         }
       } else {
+        __m256d acc0 = _mm256_setzero_pd();
+        __m256d acc1 = _mm256_setzero_pd();
         for (; i + 7 < count; i += 8) {
           double d0[4], d1[4];
           for (int k = 0; k < 4; k++) {
             AKSValue v = arr->items[i + k];
-            d0[k] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+            d0[k] =
+                (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
           }
           for (int k = 0; k < 4; k++) {
             AKSValue v = arr->items[i + 4 + k];
-            d1[k] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+            d1[k] =
+                (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
           }
           acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(d0));
           acc1 = _mm256_add_pd(acc1, _mm256_loadu_pd(d1));
         }
-      }
-      acc0 = _mm256_add_pd(acc0, acc1);
-      for (; i + 3 < count; i += 4) {
-        if (ValIsFloat(arr->items[0])) {
-          const double *p = (const double *)arr->items;
-          acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(&p[i]));
-        } else {
+        acc0 = _mm256_add_pd(acc0, acc1);
+        for (; i + 3 < count; i += 4) {
           double d[4];
           for (int k = 0; k < 4; k++) {
             AKSValue v = arr->items[i + k];
-            d[k] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+            d[k] =
+                (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
           }
           acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(d));
         }
+        double lanes[4];
+        _mm256_storeu_pd(lanes, acc0);
+        accum += lanes[0] + lanes[1] + lanes[2] + lanes[3];
       }
-      double lanes[4];
-      _mm256_storeu_pd(lanes, acc0);
-      accum += lanes[0] + lanes[1] + lanes[2] + lanes[3];
     }
 #endif
     for (; i < count; i++) {
