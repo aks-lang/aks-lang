@@ -142,6 +142,48 @@ static AKSValue JITArm64HelperEq(AKSValue a, AKSValue b) {
     return ValBool(a == b);
 }
 
+static AKSValue JITArm64HelperInc(AKSValue a) {
+    if (ValKind(a) == VALINT) return ValInt(ValToInt(a) + 1);
+    if (ValKind(a) == VALFLOAT) return ValFloat(ValToFloat(a) + 1.0);
+    return a;
+}
+
+static AKSValue JITArm64HelperDec(AKSValue a) {
+    if (ValKind(a) == VALINT) return ValInt(ValToInt(a) - 1);
+    if (ValKind(a) == VALFLOAT) return ValFloat(ValToFloat(a) - 1.0);
+    return a;
+}
+
+static AKSValue JITArm64HelperLte(AKSValue a, AKSValue b) {
+    if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
+        return ValBool(ValToInt(a) <= ValToInt(b));
+    }
+    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
+    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
+    return ValBool(fa <= fb);
+}
+
+static AKSValue JITArm64HelperGte(AKSValue a, AKSValue b) {
+    if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
+        return ValBool(ValToInt(a) >= ValToInt(b));
+    }
+    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
+    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
+    return ValBool(fa >= fb);
+}
+
+static AKSValue JITArm64HelperNeq(AKSValue a, AKSValue b) {
+    AKSValue eq = JITArm64HelperEq(a, b);
+    return ValBool(!ValToBool(eq));
+}
+
+static int JITArm64HelperIsTruthy(AKSValue v) {
+    return (ValKind(v) != VALNULL && 
+            !(ValKind(v) == VALBOOL && !ValToBool(v)) && 
+            !(ValKind(v) == VALINT && ValToInt(v) == 0) && 
+            !(ValKind(v) == VALFLOAT && ValToFloat(v) == 0.0));
+}
+
 // AArch64 instruction builders
 static inline void EmitMovImm64(JITArm64Buffer *buf, int rd, uint64_t val) {
     // MOVZ Xd, imm16, LSL 0
@@ -182,6 +224,12 @@ static inline void EmitBlr(JITArm64Buffer *buf, int rn) {
     JITArm64Emit32(buf, inst);
 }
 
+static inline void EmitB(JITArm64Buffer *buf, int imm26) {
+    // B imm26
+    uint32_t inst = 0x14000000 | (imm26 & 0x03FFFFFF);
+    JITArm64Emit32(buf, inst);
+}
+
 static int IsArm64SupportedOp(uint8_t op) {
     switch (op) {
         case OPPUSHINT:
@@ -195,10 +243,18 @@ static int IsArm64SupportedOp(uint8_t op) {
         case OPMUL:
         case OPDIV:
         case OPMOD:
+        case OPINC:
+        case OPDEC:
         case OPLT:
         case OPGT:
+        case OPLTE:
+        case OPGTE:
         case OPEQ:
+        case OPNEQ:
+        case OPDUP:
+        case OPPOP:
         case OPJUMP:
+        case OPJUMPIFFALSE:
             return 1;
         default:
             return 0;
@@ -235,6 +291,10 @@ void *CompileArm64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, 
     JITArm64Emit32(&buf, 0xAA0303F6);
 
     int vtop = startdepth;
+    int loop_body_start = buf.size;
+
+    int patches[256];
+    int patchcount = 0;
 
     for (int i = 0; i < stepcount; i++) {
         TraceStep *step = &trace[i];
@@ -320,6 +380,20 @@ void *CompileArm64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, 
                 EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
                 break;
             }
+            case OPINC: {
+                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperInc);
+                EmitBlr(&buf, 9);
+                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                break;
+            }
+            case OPDEC: {
+                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperDec);
+                EmitBlr(&buf, 9);
+                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                break;
+            }
             case OPLT: {
                 vtop--;
                 EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
@@ -338,6 +412,24 @@ void *CompileArm64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, 
                 EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
                 break;
             }
+            case OPLTE: {
+                vtop--;
+                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperLte);
+                EmitBlr(&buf, 9);
+                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                break;
+            }
+            case OPGTE: {
+                vtop--;
+                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperGte);
+                EmitBlr(&buf, 9);
+                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                break;
+            }
             case OPEQ: {
                 vtop--;
                 EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
@@ -347,24 +439,76 @@ void *CompileArm64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, 
                 EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
                 break;
             }
+            case OPNEQ: {
+                vtop--;
+                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperNeq);
+                EmitBlr(&buf, 9);
+                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                break;
+            }
+            case OPDUP: {
+                EmitLdr64(&buf, 9, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 9, 19, vtop * 8);
+                vtop++;
+                break;
+            }
+            case OPPOP: {
+                vtop--;
+                break;
+            }
+            case OPJUMP: {
+                int targetoffset = step->jumpoffset < 0 ? (step->ipoffset + 5 + step->jumpoffset) : (step->ipoffset + 5);
+                if (step->jumpoffset < 0 && targetoffset == startoffset && loop_body_start >= 0) {
+                    int rel_bytes = loop_body_start - buf.size;
+                    int imm26 = rel_bytes / 4;
+                    EmitB(&buf, imm26);
+                } else {
+                    EmitMovImm64(&buf, 9, (uint64_t)vtop);
+                    EmitStr32(&buf, 9, 20, 0);
+                    EmitMovImm64(&buf, 0, (uint64_t)targetoffset);
+                    patches[patchcount++] = buf.size;
+                    EmitB(&buf, 0);
+                }
+                break;
+            }
+            case OPJUMPIFFALSE: {
+                vtop--;
+                EmitLdr64(&buf, 0, 19, vtop * 8);
+                EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperIsTruthy);
+                EmitBlr(&buf, 9);
+                int targetoffset = (step->guardoutcome == 1) ? (step->ipoffset + 5) : (step->ipoffset + 5 + step->jumpoffset);
+                // If truthy (W0 != 0), jump over bailout block
+                // Bailout block length: 6 instructions (24 bytes) -> imm19 = 7
+                uint32_t cbnz = 0x35000000 | ((7 & 0x7FFFF) << 5) | 0;
+                JITArm64Emit32(&buf, cbnz);
+
+                // Bailout block:
+                EmitMovImm64(&buf, 9, (uint64_t)vtop);
+                EmitStr32(&buf, 9, 20, 0);
+                EmitMovImm64(&buf, 0, (uint64_t)targetoffset);
+                patches[patchcount++] = buf.size;
+                EmitB(&buf, 0);
+                break;
+            }
             default:
                 break;
         }
     }
 
-    // Write back vtop to *vtopptr:
-    // MOV W9, #vtop
+    // Default exit path (success return)
     EmitMovImm64(&buf, 9, (uint64_t)vtop);
     EmitStr32(&buf, 9, 20, 0);
 
-    // Return offset in W0/X0
     int lastoffset = startoffset;
     if (stepcount > 0) {
         lastoffset = trace[stepcount - 1].ipoffset + 1;
     }
     EmitMovImm64(&buf, 0, (uint64_t)lastoffset);
 
-    // Epilogue:
+    // Epilogue label:
+    int epilogue_offset = buf.size;
     // LDP X29, X30, [SP, #32]
     JITArm64Emit32(&buf, 0xA9427BFD);
     // LDP X21, X22, [SP, #16]
@@ -373,6 +517,16 @@ void *CompileArm64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, 
     JITArm64Emit32(&buf, 0xA8C353F3);
     // RET
     JITArm64Emit32(&buf, 0xD65F03C0);
+
+    // Patch forward branches to epilogue
+    for (int p = 0; p < patchcount; p++) {
+        int pos = patches[p];
+        int rel_bytes = epilogue_offset - pos;
+        int imm26 = rel_bytes / 4;
+        uint32_t inst = 0x14000000 | (imm26 & 0x03FFFFFF);
+        uint32_t *slot = (uint32_t *)(buf.code + pos);
+        *slot = inst;
+    }
 
     uint8_t *exec = (uint8_t *)AllocExecMem(buf.size);
     if (exec) {

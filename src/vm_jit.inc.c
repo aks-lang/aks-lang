@@ -49,12 +49,13 @@ static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
 #endif
   if (effective_jitmode > 0 && fn->chunk.code && fn->chunk.count > 0) {
     int stepcount = 0;
-    int looplen = endoffset - startoffset + 1;
+    int end_len = (endoffset >= 0 && endoffset < fn->chunk.count) ? GetInstrLen(fn->chunk.code[endoffset], &fn->chunk.code[endoffset]) : 1;
+    int limit = (endoffset > startoffset && endoffset + end_len <= fn->chunk.count) ? (endoffset + end_len) : fn->chunk.count;
+    int looplen = limit - startoffset + 32;
     if (looplen <= 0 || looplen > 2048) looplen = 256;
     TraceStep *trace = (TraceStep *)malloc(sizeof(TraceStep) * (looplen + 16));
     if (trace) {
       int ip = startoffset;
-      int limit = (endoffset > startoffset && endoffset <= fn->chunk.count) ? endoffset : fn->chunk.count;
       int can_jit = 1;
       while (ip < limit && stepcount < looplen) {
         uint8_t op = fn->chunk.code[ip];

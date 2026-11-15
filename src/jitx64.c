@@ -30,6 +30,9 @@ typedef struct {
     void *helperlt;
     void *helpergt;
     void *helpereq;
+    void *helperlte;
+    void *helpergte;
+    void *helperneq;
     void *helperistruthy;
     void *jitcleanupframe;
 } JITHelperTable;
@@ -471,6 +474,449 @@ static void JITEmitStoreAbsoluteVtop(JITBuffer *buf, int vtop) {
     JITEmitBytes(buf, (const uint8_t[]){0x41, 0x89, 0x07}, 3);
 }
 
+// Inlined fast integer addition with overflow guard and helper fallback
+static void JITEmitInlineAdd(JITBuffer *buf, int regA, int regB) {
+    // mov rax, [r13 + regA * 8]
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x8B, 0x85}, 3);
+    JITEmitDword(buf, (uint32_t)(regA * 8));
+    // mov rdx, [r13 + regB * 8]
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x8B, 0x95}, 3);
+    JITEmitDword(buf, (uint32_t)(regB * 8));
+
+    // Verify both operands are tagged integers:
+    // mov rcx, rax; shr rcx, 48; cmp cx, 0xFFF1; jne fallback
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xC1, 0x48, 0xC1, 0xE9, 0x30, 0x66, 0x81, 0xF9, 0xF1, 0xFF}, 12);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_fallback1 = buf->size;
+    JITEmitDword(buf, 0);
+
+    // mov rcx, rdx; shr rcx, 48; cmp cx, 0xFFF1; jne fallback
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xD1, 0x48, 0xC1, 0xE9, 0x30, 0x66, 0x81, 0xF9, 0xF1, 0xFF}, 12);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_fallback2 = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Sign-extend 48-bit integers to full 64-bit:
+    // shl rax, 16; sar rax, 16; shl rdx, 16; sar rdx, 16
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xF8, 0x10,
+                                        0x48, 0xC1, 0xE2, 0x10, 0x48, 0xC1, 0xFA, 0x10}, 16);
+    // add rax, rdx
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x01, 0xD0}, 3);
+
+    // Ensure sum still fits in 48 bits signed:
+    // mov rcx, rax; shl rcx, 16; sar rcx, 16; cmp rax, rcx; jne fallback
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xC1, 0x48, 0xC1, 0xE1, 0x10, 0x48, 0xC1, 0xF9, 0x10, 0x48, 0x39, 0xC8}, 14);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_ovf = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Repack tagged integer with 0xFFF1 tag:
+    // shl rax, 16; shr rax, 16
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xE8, 0x10}, 8);
+    // mov rdx, 0xFFF1000000000000
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xBA}, 2);
+    JITEmitQword(buf, 0xFFF1000000000000ULL);
+    // or rax, rdx
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x09, 0xD0}, 3);
+    // mov [r13 + regA * 8], rax
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x89, 0x85}, 3);
+    JITEmitDword(buf, (uint32_t)(regA * 8));
+    // jmp done
+    JITEmitByte(buf, 0xE9);
+    int patch_done = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Fallback: call helper function
+    int fallback_target = buf->size;
+    *(int*)(buf->code + patch_fallback1) = fallback_target - patch_fallback1 - 4;
+    *(int*)(buf->code + patch_fallback2) = fallback_target - patch_fallback2 - 4;
+    *(int*)(buf->code + patch_ovf) = fallback_target - patch_ovf - 4;
+    JITEmitLoadArg(buf, regA, 0);
+    JITEmitLoadArg(buf, regB, 1);
+    JITEmitCall(buf, (void*)JITHelperAdd);
+    JITEmitSaveRax(buf, regA);
+
+    int done_target = buf->size;
+    *(int*)(buf->code + patch_done) = done_target - patch_done - 4;
+}
+
+// Inlined fast integer subtraction with overflow guard and helper fallback
+static void JITEmitInlineSub(JITBuffer *buf, int regA, int regB) {
+    // mov rax, [r13 + regA * 8]
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x8B, 0x85}, 3);
+    JITEmitDword(buf, (uint32_t)(regA * 8));
+    // mov rdx, [r13 + regB * 8]
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x8B, 0x95}, 3);
+    JITEmitDword(buf, (uint32_t)(regB * 8));
+
+    // Verify both operands are tagged integers:
+    // mov rcx, rax; shr rcx, 48; cmp cx, 0xFFF1; jne fallback
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xC1, 0x48, 0xC1, 0xE9, 0x30, 0x66, 0x81, 0xF9, 0xF1, 0xFF}, 12);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_fallback1 = buf->size;
+    JITEmitDword(buf, 0);
+
+    // mov rcx, rdx; shr rcx, 48; cmp cx, 0xFFF1; jne fallback
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xD1, 0x48, 0xC1, 0xE9, 0x30, 0x66, 0x81, 0xF9, 0xF1, 0xFF}, 12);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_fallback2 = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Sign-extend 48-bit integers to full 64-bit:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xF8, 0x10,
+                                        0x48, 0xC1, 0xE2, 0x10, 0x48, 0xC1, 0xFA, 0x10}, 16);
+    // sub rax, rdx
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x29, 0xD0}, 3);
+
+    // Ensure difference fits in 48 bits signed:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xC1, 0x48, 0xC1, 0xE1, 0x10, 0x48, 0xC1, 0xF9, 0x10, 0x48, 0x39, 0xC8}, 14);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_ovf = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Repack tagged integer with 0xFFF1 tag:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xE8, 0x10}, 8);
+    // mov rdx, 0xFFF1000000000000
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xBA}, 2);
+    JITEmitQword(buf, 0xFFF1000000000000ULL);
+    // or rax, rdx
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x09, 0xD0}, 3);
+    // mov [r13 + regA * 8], rax
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x89, 0x85}, 3);
+    JITEmitDword(buf, (uint32_t)(regA * 8));
+    // jmp done
+    JITEmitByte(buf, 0xE9);
+    int patch_done = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Fallback: call helper function
+    int fallback_target = buf->size;
+    *(int*)(buf->code + patch_fallback1) = fallback_target - patch_fallback1 - 4;
+    *(int*)(buf->code + patch_fallback2) = fallback_target - patch_fallback2 - 4;
+    *(int*)(buf->code + patch_ovf) = fallback_target - patch_ovf - 4;
+    JITEmitLoadArg(buf, regA, 0);
+    JITEmitLoadArg(buf, regB, 1);
+    JITEmitCall(buf, (void*)JITHelperSub);
+    JITEmitSaveRax(buf, regA);
+
+    int done_target = buf->size;
+    *(int*)(buf->code + patch_done) = done_target - patch_done - 4;
+}
+
+// Inlined fast integer multiplication with overflow guard and helper fallback
+static void JITEmitInlineMul(JITBuffer *buf, int regA, int regB) {
+    // mov rax, [r13 + regA * 8]
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x8B, 0x85}, 3);
+    JITEmitDword(buf, (uint32_t)(regA * 8));
+    // mov rdx, [r13 + regB * 8]
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x8B, 0x95}, 3);
+    JITEmitDword(buf, (uint32_t)(regB * 8));
+
+    // Verify both operands are tagged integers:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xC1, 0x48, 0xC1, 0xE9, 0x30, 0x66, 0x81, 0xF9, 0xF1, 0xFF}, 12);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_fallback1 = buf->size;
+    JITEmitDword(buf, 0);
+
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xD1, 0x48, 0xC1, 0xE9, 0x30, 0x66, 0x81, 0xF9, 0xF1, 0xFF}, 12);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_fallback2 = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Sign-extend 48-bit integers to full 64-bit:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xF8, 0x10,
+                                        0x48, 0xC1, 0xE2, 0x10, 0x48, 0xC1, 0xFA, 0x10}, 16);
+    // imul rax, rdx
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x0F, 0xAF, 0xC2}, 4);
+
+    // Ensure product fits in 48 bits signed:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xC1, 0x48, 0xC1, 0xE1, 0x10, 0x48, 0xC1, 0xF9, 0x10, 0x48, 0x39, 0xC8}, 14);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_ovf = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Repack tagged integer with 0xFFF1 tag:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xE8, 0x10}, 8);
+    // mov rdx, 0xFFF1000000000000
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xBA}, 2);
+    JITEmitQword(buf, 0xFFF1000000000000ULL);
+    // or rax, rdx
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x09, 0xD0}, 3);
+    // mov [r13 + regA * 8], rax
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x89, 0x85}, 3);
+    JITEmitDword(buf, (uint32_t)(regA * 8));
+    // jmp done
+    JITEmitByte(buf, 0xE9);
+    int patch_done = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Fallback: call helper function
+    int fallback_target = buf->size;
+    *(int*)(buf->code + patch_fallback1) = fallback_target - patch_fallback1 - 4;
+    *(int*)(buf->code + patch_fallback2) = fallback_target - patch_fallback2 - 4;
+    *(int*)(buf->code + patch_ovf) = fallback_target - patch_ovf - 4;
+    JITEmitLoadArg(buf, regA, 0);
+    JITEmitLoadArg(buf, regB, 1);
+    JITEmitCall(buf, (void*)JITHelperMul);
+    JITEmitSaveRax(buf, regA);
+
+    int done_target = buf->size;
+    *(int*)(buf->code + patch_done) = done_target - patch_done - 4;
+}
+
+// Inlined fast integer increment with overflow guard and helper fallback
+static void JITEmitInlineInc(JITBuffer *buf, int vreg) {
+    // mov rax, [r13 + vreg * 8]
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x8B, 0x85}, 3);
+    JITEmitDword(buf, (uint32_t)(vreg * 8));
+    // mov rdx, rax; shr rdx, 48; cmp dx, 0xFFF1; jne fallback
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xC2, 0x48, 0xC1, 0xEA, 0x30, 0x66, 0x81, 0xFA, 0xF1, 0xFF}, 12);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_fallback = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Sign-extend 48-bit integer:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xF8, 0x10}, 8);
+    // inc rax
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xFF, 0xC0}, 3);
+
+    // Check overflow:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xC1, 0x48, 0xC1, 0xE1, 0x10, 0x48, 0xC1, 0xF9, 0x10, 0x48, 0x39, 0xC8}, 14);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_ovf = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Repack tagged integer with 0xFFF1 tag:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xE8, 0x10}, 8);
+    // mov rdx, 0xFFF1000000000000
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xBA}, 2);
+    JITEmitQword(buf, 0xFFF1000000000000ULL);
+    // or rax, rdx
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x09, 0xD0}, 3);
+    // mov [r13 + vreg * 8], rax
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x89, 0x85}, 3);
+    JITEmitDword(buf, (uint32_t)(vreg * 8));
+    // jmp done
+    JITEmitByte(buf, 0xE9);
+    int patch_done = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Fallback: call helper function
+    int fallback_target = buf->size;
+    *(int*)(buf->code + patch_fallback) = fallback_target - patch_fallback - 4;
+    *(int*)(buf->code + patch_ovf) = fallback_target - patch_ovf - 4;
+    JITEmitLoadArg(buf, vreg, 0);
+    JITEmitCall(buf, (void*)JITHelperInc);
+    JITEmitSaveRax(buf, vreg);
+
+    int done_target = buf->size;
+    *(int*)(buf->code + patch_done) = done_target - patch_done - 4;
+}
+
+// Inlined fast integer decrement with overflow guard and helper fallback
+static void JITEmitInlineDec(JITBuffer *buf, int vreg) {
+    // mov rax, [r13 + vreg * 8]
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x8B, 0x85}, 3);
+    JITEmitDword(buf, (uint32_t)(vreg * 8));
+    // mov rdx, rax; shr rdx, 48; cmp dx, 0xFFF1; jne fallback
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xC2, 0x48, 0xC1, 0xEA, 0x30, 0x66, 0x81, 0xFA, 0xF1, 0xFF}, 12);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_fallback = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Sign-extend 48-bit integer:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xF8, 0x10}, 8);
+    // dec rax
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xFF, 0xC8}, 3);
+
+    // Check overflow:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xC1, 0x48, 0xC1, 0xE1, 0x10, 0x48, 0xC1, 0xF9, 0x10, 0x48, 0x39, 0xC8}, 14);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_ovf = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Repack tagged integer with 0xFFF1 tag:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xE8, 0x10}, 8);
+    // mov rdx, 0xFFF1000000000000
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xBA}, 2);
+    JITEmitQword(buf, 0xFFF1000000000000ULL);
+    // or rax, rdx
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x09, 0xD0}, 3);
+    // mov [r13 + vreg * 8], rax
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x89, 0x85}, 3);
+    JITEmitDword(buf, (uint32_t)(vreg * 8));
+    // jmp done
+    JITEmitByte(buf, 0xE9);
+    int patch_done = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Fallback: call helper function
+    int fallback_target = buf->size;
+    *(int*)(buf->code + patch_fallback) = fallback_target - patch_fallback - 4;
+    *(int*)(buf->code + patch_ovf) = fallback_target - patch_ovf - 4;
+    JITEmitLoadArg(buf, vreg, 0);
+    JITEmitCall(buf, (void*)JITHelperDec);
+    JITEmitSaveRax(buf, vreg);
+
+    int done_target = buf->size;
+    *(int*)(buf->code + patch_done) = done_target - patch_done - 4;
+}
+
+// Inlined fast integer comparisons with helper fallback
+static void JITEmitInlineCmp(JITBuffer *buf, int regA, int regB, uint8_t setcc_byte, void *helper_fn) {
+    // mov rax, [r13 + regA * 8]
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x8B, 0x85}, 3);
+    JITEmitDword(buf, (uint32_t)(regA * 8));
+    // mov rdx, [r13 + regB * 8]
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x8B, 0x95}, 3);
+    JITEmitDword(buf, (uint32_t)(regB * 8));
+
+    // Verify both operands are tagged integers:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xC1, 0x48, 0xC1, 0xE9, 0x30, 0x66, 0x81, 0xF9, 0xF1, 0xFF}, 12);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_fallback1 = buf->size;
+    JITEmitDword(buf, 0);
+
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xD1, 0x48, 0xC1, 0xE9, 0x30, 0x66, 0x81, 0xF9, 0xF1, 0xFF}, 12);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_fallback2 = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Sign-extend 48-bit integers to full 64-bit:
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xF8, 0x10,
+                                        0x48, 0xC1, 0xE2, 0x10, 0x48, 0xC1, 0xFA, 0x10}, 16);
+    // cmp rax, rdx
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x39, 0xD0}, 3);
+    // setcc al
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, setcc_byte, 0xC0}, 3);
+    // movzx rax, al
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x0F, 0xB6, 0xC0}, 4);
+    // Tag boolean: mov rdx, 0xFFF2000000000000; or rax, rdx
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xBA}, 2);
+    JITEmitQword(buf, 0xFFF2000000000000ULL);
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x09, 0xD0}, 3);
+    // mov [r13 + regA * 8], rax
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x89, 0x85}, 3);
+    JITEmitDword(buf, (uint32_t)(regA * 8));
+    // jmp done
+    JITEmitByte(buf, 0xE9);
+    int patch_done = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Fallback: call helper function
+    int fallback_target = buf->size;
+    *(int*)(buf->code + patch_fallback1) = fallback_target - patch_fallback1 - 4;
+    *(int*)(buf->code + patch_fallback2) = fallback_target - patch_fallback2 - 4;
+    JITEmitLoadArg(buf, regA, 0);
+    JITEmitLoadArg(buf, regB, 1);
+    JITEmitCall(buf, helper_fn);
+    JITEmitSaveRax(buf, regA);
+
+    int done_target = buf->size;
+    *(int*)(buf->code + patch_done) = done_target - patch_done - 4;
+}
+
+// Fused comparison and branch evaluation for fast native loop guards
+static void JITEmitFusedCmpBranch(JITBuffer *buf, uint8_t cmp_op, TraceStep *jump_step, int regA, int regB, int *patches, int *patchcount, int vtop_after) {
+    // mov rax, [r13 + regA * 8]
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x8B, 0x85}, 3);
+    JITEmitDword(buf, (uint32_t)(regA * 8));
+    // mov rdx, [r13 + regB * 8]
+    JITEmitBytes(buf, (const uint8_t[]){0x49, 0x8B, 0x95}, 3);
+    JITEmitDword(buf, (uint32_t)(regB * 8));
+
+    // Verify both operands are tagged integers (tag 0xFFF1 in bits 48-63)
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xC1, 0x48, 0xC1, 0xE9, 0x30, 0x66, 0x81, 0xF9, 0xF1, 0xFF}, 12);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_fallback1 = buf->size;
+    JITEmitDword(buf, 0);
+
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x89, 0xD1, 0x48, 0xC1, 0xE9, 0x30, 0x66, 0x81, 0xF9, 0xF1, 0xFF}, 12);
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_fallback2 = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Sign-extend 48-bit integers to full 64-bit
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xF8, 0x10,
+                                        0x48, 0xC1, 0xE2, 0x10, 0x48, 0xC1, 0xFA, 0x10}, 16);
+    // cmp rax, rdx
+    JITEmitBytes(buf, (const uint8_t[]){0x48, 0x39, 0xD0}, 3);
+
+    // Pick near conditional jump opcode (0x0F, cc, disp32) to skip bailout when loop condition continues
+    uint8_t cc = 0x85;
+    switch (cmp_op) {
+        case OPLT:  cc = 0x8C; break; // jl
+        case OPLTE: cc = 0x8E; break; // jle
+        case OPGT:  cc = 0x8F; break; // jg
+        case OPGTE: cc = 0x8D; break; // jge
+        case OPEQ:  cc = 0x84; break; // je
+        case OPNEQ: cc = 0x85; break; // jne
+        default: break;
+    }
+
+    JITEmitByte(buf, 0x0F);
+    JITEmitByte(buf, cc);
+    int patch_ok = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Bailout path for fast integer comparison:
+    int targetoffset = jump_step->jumpoffset < 0 ? (jump_step->ipoffset + 5 + jump_step->jumpoffset) : (jump_step->ipoffset + 5 + jump_step->jumpoffset);
+    JITEmitStoreAbsoluteVtop(buf, vtop_after);
+    JITEmitByte(buf, 0xB8);
+    JITEmitDword(buf, (uint32_t)targetoffset);
+    JITEmitByte(buf, 0xE9);
+    patches[(*patchcount)++] = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Target for label_ok:
+    int ok_target = buf->size;
+    *(int*)(buf->code + patch_ok) = ok_target - patch_ok - 4;
+
+    // Skip past the fallback handler:
+    JITEmitByte(buf, 0xE9);
+    int patch_done = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Fallback path:
+    int fallback_target = buf->size;
+    *(int*)(buf->code + patch_fallback1) = fallback_target - patch_fallback1 - 4;
+    *(int*)(buf->code + patch_fallback2) = fallback_target - patch_fallback2 - 4;
+
+    JITEmitLoadArg(buf, regA, 0);
+    JITEmitLoadArg(buf, regB, 1);
+    void *helper = NULL;
+    switch (cmp_op) {
+        case OPLT:  helper = (void*)JITHelperLt; break;
+        case OPGT:  helper = (void*)JITHelperGt; break;
+        case OPEQ:  helper = (void*)JITHelperEq; break;
+        case OPNEQ: helper = (void*)JITHelperNeq; break;
+        case OPLTE: helper = (void*)JITHelperLte; break;
+        case OPGTE: helper = (void*)JITHelperGte; break;
+        default: break;
+    }
+    JITEmitCall(buf, helper);
+    // Test boolean truthiness: test al, 1
+    JITEmitBytes(buf, (const uint8_t[]){0xA8, 0x01}, 2);
+    // When truthy: jne (0x0F 0x85) skips bailout to continue loop
+    JITEmitBytes(buf, (const uint8_t[]){0x0F, 0x85}, 2);
+    int patch_fb_ok = buf->size;
+    JITEmitDword(buf, 0);
+
+    // Bailout path for fallback:
+    JITEmitStoreAbsoluteVtop(buf, vtop_after);
+    JITEmitByte(buf, 0xB8);
+    JITEmitDword(buf, (uint32_t)targetoffset);
+    JITEmitByte(buf, 0xE9);
+    patches[(*patchcount)++] = buf->size;
+    JITEmitDword(buf, 0);
+
+    int fb_ok_target = buf->size;
+    *(int*)(buf->code + patch_fb_ok) = fb_ok_target - patch_fb_ok - 4;
+
+    int done_target = buf->size;
+    *(int*)(buf->code + patch_done) = done_target - patch_done - 4;
+}
+
 static int IsX64SupportedOp(uint8_t op) {
     switch (op) {
         case OPPUSHINT:
@@ -556,20 +1002,13 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
     JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x89, 0xD5}, 3); // mov r13, rdx
 #endif
 
-    // r14: vm (fourth arg)
-#ifdef _WIN32
-    JITEmitBytes(&buf, (const uint8_t[]){0x4D, 0x89, 0xCE}, 3); // mov r14, r9
-#else
-    JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x89, 0xCE}, 3); // mov r14, rcx
-#endif
-
-    int patches[256];
+    int patches[2048];
     int patchcount = 0;
 
     int vtop = startdepth;
 
     // Linear scan register allocation:
-    // Determine the hottest local slot accessed across the trace
+    // Determine the top 2 hottest local slots accessed across the trace
     int slot_freq[256];
     memset(slot_freq, 0, sizeof(slot_freq));
     for (int i = 0; i < stepcount; i++) {
@@ -577,23 +1016,47 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
             slot_freq[trace[i].slot]++;
         }
     }
-    int hot_slot = -1;
-    int max_freq = 1;
+    int hot_slots[2] = { -1, -1 };
+    int max_freq0 = 1;
     for (int s = 0; s < 256; s++) {
-        if (slot_freq[s] > max_freq) {
-            max_freq = slot_freq[s];
-            hot_slot = s;
+        if (slot_freq[s] > max_freq0) {
+            max_freq0 = slot_freq[s];
+            hot_slots[0] = s;
         }
     }
-    if (hot_slot >= 0) {
-        // Pre-load hot slot into rbx: mov rbx, [r13 + hot_slot * 8]
-        JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x8B, 0x9D}, 3);
-        JITEmitDword(&buf, (uint32_t)(hot_slot * 8));
+    int max_freq1 = 1;
+    for (int s = 0; s < 256; s++) {
+        if (s != hot_slots[0] && slot_freq[s] > max_freq1) {
+            max_freq1 = slot_freq[s];
+            hot_slots[1] = s;
+        }
     }
+    if (hot_slots[0] >= 0) {
+        // Pre-load primary hot slot into rbx: mov rbx, [r13 + hot_slots[0] * 8]
+        JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x8B, 0x9D}, 3);
+        JITEmitDword(&buf, (uint32_t)(hot_slots[0] * 8));
+    }
+    if (hot_slots[1] >= 0) {
+        // Pre-load secondary hot slot into r14: mov r14, [r13 + hot_slots[1] * 8]
+        JITEmitBytes(&buf, (const uint8_t[]){0x4D, 0x8B, 0xB5}, 3);
+        JITEmitDword(&buf, (uint32_t)(hot_slots[1] * 8));
+    }
+    int loop_body_start = buf.size;
     
     // Process trace steps
     for (int i = 0; i < stepcount; i++) {
         TraceStep *step = &trace[i];
+
+        // Peephole comparison-branch fusion
+        if ((step->op == OPLT || step->op == OPLTE || step->op == OPGT || 
+             step->op == OPGTE || step->op == OPEQ || step->op == OPNEQ) &&
+            (i + 1 < stepcount) && (trace[i + 1].op == OPJUMPIFFALSE)) {
+            vtop -= 2;
+            JITEmitFusedCmpBranch(&buf, step->op, &trace[i + 1], vtop, vtop + 1, patches, &patchcount, vtop);
+            i++; // Consume the jump instruction
+            continue;
+        }
+
         switch (step->op) {
             case OPPUSHINT:
                 JITEmitPushConst(&buf, ValInt(step->pushival), vtop);
@@ -612,9 +1075,13 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                 vtop++;
                 break;
             case OPLOAD:
-                if (step->slot == hot_slot) {
+                if (step->slot == hot_slots[0]) {
                     // mov [r13 + vtop * 8], rbx
                     JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x89, 0x9D}, 3);
+                    JITEmitDword(&buf, (uint32_t)(vtop * 8));
+                } else if (step->slot == hot_slots[1]) {
+                    // mov [r13 + vtop * 8], r14
+                    JITEmitBytes(&buf, (const uint8_t[]){0x4D, 0x89, 0xB5}, 3);
                     JITEmitDword(&buf, (uint32_t)(vtop * 8));
                 } else {
                     JITEmitLoadLocal(&buf, step->slot, vtop);
@@ -623,37 +1090,29 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                 break;
             case OPSTORE:
                 vtop--;
-                if (step->slot == hot_slot) {
+                if (step->slot == hot_slots[0]) {
                     // mov rbx, [r13 + vtop * 8]
                     JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x8B, 0x9D}, 3);
                     JITEmitDword(&buf, (uint32_t)(vtop * 8));
-                    // mov [r13 + hot_slot * 8], rbx
-                    JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x89, 0x9D}, 3);
-                    JITEmitDword(&buf, (uint32_t)(hot_slot * 8));
+                } else if (step->slot == hot_slots[1]) {
+                    // mov r14, [r13 + vtop * 8]
+                    JITEmitBytes(&buf, (const uint8_t[]){0x4D, 0x8B, 0xB5}, 3);
+                    JITEmitDword(&buf, (uint32_t)(vtop * 8));
                 } else {
                     JITEmitStoreLocal(&buf, step->slot, vtop);
                 }
                 break;
             case OPADD:
                 vtop--;
-                JITEmitLoadArg(&buf, vtop - 1, 0);
-                JITEmitLoadArg(&buf, vtop, 1);
-                JITEmitCall(&buf, (void*)JITHelperAdd);
-                JITEmitSaveRax(&buf, vtop - 1);
+                JITEmitInlineAdd(&buf, vtop - 1, vtop);
                 break;
             case OPSUB:
                 vtop--;
-                JITEmitLoadArg(&buf, vtop - 1, 0);
-                JITEmitLoadArg(&buf, vtop, 1);
-                JITEmitCall(&buf, (void*)JITHelperSub);
-                JITEmitSaveRax(&buf, vtop - 1);
+                JITEmitInlineSub(&buf, vtop - 1, vtop);
                 break;
             case OPMUL:
                 vtop--;
-                JITEmitLoadArg(&buf, vtop - 1, 0);
-                JITEmitLoadArg(&buf, vtop, 1);
-                JITEmitCall(&buf, (void*)JITHelperMul);
-                JITEmitSaveRax(&buf, vtop - 1);
+                JITEmitInlineMul(&buf, vtop - 1, vtop);
                 break;
             case OPDIV:
                 vtop--;
@@ -710,56 +1169,34 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                 JITEmitSaveRax(&buf, vtop - 1);
                 break;
             case OPINC:
-                JITEmitLoadArg(&buf, vtop - 1, 0);
-                JITEmitCall(&buf, (void*)JITHelperInc);
-                JITEmitSaveRax(&buf, vtop - 1);
+                JITEmitInlineInc(&buf, vtop - 1);
                 break;
             case OPDEC:
-                JITEmitLoadArg(&buf, vtop - 1, 0);
-                JITEmitCall(&buf, (void*)JITHelperDec);
-                JITEmitSaveRax(&buf, vtop - 1);
+                JITEmitInlineDec(&buf, vtop - 1);
                 break;
             case OPLT:
                 vtop--;
-                JITEmitLoadArg(&buf, vtop - 1, 0);
-                JITEmitLoadArg(&buf, vtop, 1);
-                JITEmitCall(&buf, (void*)JITHelperLt);
-                JITEmitSaveRax(&buf, vtop - 1);
+                JITEmitInlineCmp(&buf, vtop - 1, vtop, 0x9C, (void*)JITHelperLt);
                 break;
             case OPGT:
                 vtop--;
-                JITEmitLoadArg(&buf, vtop - 1, 0);
-                JITEmitLoadArg(&buf, vtop, 1);
-                JITEmitCall(&buf, (void*)JITHelperGt);
-                JITEmitSaveRax(&buf, vtop - 1);
+                JITEmitInlineCmp(&buf, vtop - 1, vtop, 0x9F, (void*)JITHelperGt);
                 break;
             case OPEQ:
                 vtop--;
-                JITEmitLoadArg(&buf, vtop - 1, 0);
-                JITEmitLoadArg(&buf, vtop, 1);
-                JITEmitCall(&buf, (void*)JITHelperEq);
-                JITEmitSaveRax(&buf, vtop - 1);
+                JITEmitInlineCmp(&buf, vtop - 1, vtop, 0x94, (void*)JITHelperEq);
                 break;
             case OPNEQ:
                 vtop--;
-                JITEmitLoadArg(&buf, vtop - 1, 0);
-                JITEmitLoadArg(&buf, vtop, 1);
-                JITEmitCall(&buf, (void*)JITHelperNeq);
-                JITEmitSaveRax(&buf, vtop - 1);
+                JITEmitInlineCmp(&buf, vtop - 1, vtop, 0x95, (void*)JITHelperNeq);
                 break;
             case OPLTE:
                 vtop--;
-                JITEmitLoadArg(&buf, vtop - 1, 0);
-                JITEmitLoadArg(&buf, vtop, 1);
-                JITEmitCall(&buf, (void*)JITHelperLte);
-                JITEmitSaveRax(&buf, vtop - 1);
+                JITEmitInlineCmp(&buf, vtop - 1, vtop, 0x9E, (void*)JITHelperLte);
                 break;
             case OPGTE:
                 vtop--;
-                JITEmitLoadArg(&buf, vtop - 1, 0);
-                JITEmitLoadArg(&buf, vtop, 1);
-                JITEmitCall(&buf, (void*)JITHelperGte);
-                JITEmitSaveRax(&buf, vtop - 1);
+                JITEmitInlineCmp(&buf, vtop - 1, vtop, 0x9D, (void*)JITHelperGte);
                 break;
             case OPDUP:
                 JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x8B, 0x85}, 3);
@@ -773,18 +1210,46 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                 break;
             case OPJUMP: {
                 int targetoffset = step->jumpoffset < 0 ? (step->ipoffset + 5 + step->jumpoffset) : (step->ipoffset + 5);
-                JITEmitStoreAbsoluteVtop(&buf, vtop);
-                JITEmitByte(&buf, 0xB8);
-                JITEmitDword(&buf, (uint32_t)targetoffset);
-                JITEmitByte(&buf, 0xE9);
-                patches[patchcount++] = buf.size;
-                JITEmitDword(&buf, 0);
+                if (step->jumpoffset < 0 && targetoffset == startoffset && loop_body_start >= 0) {
+                    int next_ip = buf.size + 5;
+                    int rel = loop_body_start - next_ip;
+                    JITEmitByte(&buf, 0xE9);
+                    JITEmitDword(&buf, (uint32_t)rel);
+                } else {
+                    JITEmitStoreAbsoluteVtop(&buf, vtop);
+                    JITEmitByte(&buf, 0xB8);
+                    JITEmitDword(&buf, (uint32_t)targetoffset);
+                    JITEmitByte(&buf, 0xE9);
+                    patches[patchcount++] = buf.size;
+                    JITEmitDword(&buf, 0);
+                }
                 break;
             }
             case OPJUMPIFFALSE: {
                 vtop--;
+                // Fast-path boolean verification
+                JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x8B, 0x85}, 3);
+                JITEmitDword(&buf, (uint32_t)(vtop * 8));
+                JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x89, 0xC2, 0x48, 0xC1, 0xEA, 0x30, 0x66, 0x81, 0xFA, 0xF2, 0xFF}, 12);
+                JITEmitBytes(&buf, (const uint8_t[]){0x0F, 0x85}, 2);
+                int patch_nonbool = buf.size;
+                JITEmitDword(&buf, 0);
+
+                // Pure boolean test: test al, 1; setnz al; movzx eax, al
+                JITEmitBytes(&buf, (const uint8_t[]){0xA8, 0x01, 0x0F, 0x95, 0xC0, 0x0F, 0xB6, 0xC0}, 8);
+                JITEmitBytes(&buf, (const uint8_t[]){0xEB}, 1);
+                int patch_after = buf.size;
+                JITEmitByte(&buf, 0);
+
+                // Fallback for non-boolean types:
+                int nonbool_target = buf.size;
+                *(int*)(buf.code + patch_nonbool) = nonbool_target - patch_nonbool - 4;
                 JITEmitLoadArg(&buf, vtop, 0);
                 JITEmitCall(&buf, (void*)JITHelperIsTruthy);
+
+                int after_target = buf.size;
+                buf.code[patch_after] = (uint8_t)(after_target - patch_after - 1);
+
                 JITEmitBytes(&buf, (const uint8_t[]){0x83, 0xF8, 0x00}, 3);
                 
                 int targetoffset = (step->guardoutcome == 1) ? (step->ipoffset + 5) : (step->ipoffset + 5 + step->jumpoffset);
@@ -934,10 +1399,15 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
 
     // Epilogue label/block
     int epilogueoffset = buf.size;
-    if (hot_slot >= 0) {
-        // Flush rbx back to memory slot: mov [r13 + hot_slot * 8], rbx
+    if (hot_slots[0] >= 0) {
+        // Flush rbx back to memory slot: mov [r13 + hot_slots[0] * 8], rbx
         JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x89, 0x9D}, 3);
-        JITEmitDword(&buf, (uint32_t)(hot_slot * 8));
+        JITEmitDword(&buf, (uint32_t)(hot_slots[0] * 8));
+    }
+    if (hot_slots[1] >= 0) {
+        // Flush r14 back to memory slot: mov [r13 + hot_slots[1] * 8], r14
+        JITEmitBytes(&buf, (const uint8_t[]){0x4D, 0x89, 0xB5}, 3);
+        JITEmitDword(&buf, (uint32_t)(hot_slots[1] * 8));
     }
     // add rsp, 40
     JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x83, 0xC4, 0x28}, 4);
@@ -970,6 +1440,7 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
                 (void*)JITHelperMod, (void*)JITHelperShl, (void*)JITHelperShr, (void*)JITHelperBitAnd,
                 (void*)JITHelperBitOr, (void*)JITHelperBitXor, (void*)JITHelperBitNot, (void*)JITHelperInc,
                 (void*)JITHelperDec, (void*)JITHelperLt, (void*)JITHelperGt, (void*)JITHelperEq,
+                (void*)JITHelperLte, (void*)JITHelperGte, (void*)JITHelperNeq,
                 (void*)JITHelperIsTruthy, (void*)JITCleanupFrame
             };
             fwrite(&table, sizeof(table), 1, cf);
@@ -1059,6 +1530,7 @@ void *LoadX64TraceFromCache(const char *cachefile, int *outsize) {
         (void*)JITHelperMod, (void*)JITHelperShl, (void*)JITHelperShr, (void*)JITHelperBitAnd,
         (void*)JITHelperBitOr, (void*)JITHelperBitXor, (void*)JITHelperBitNot, (void*)JITHelperInc,
         (void*)JITHelperDec, (void*)JITHelperLt, (void*)JITHelperGt, (void*)JITHelperEq,
+        (void*)JITHelperLte, (void*)JITHelperGte, (void*)JITHelperNeq,
         (void*)JITHelperIsTruthy, (void*)JITCleanupFrame
     };
     
