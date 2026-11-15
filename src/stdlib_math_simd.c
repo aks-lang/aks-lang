@@ -4333,7 +4333,48 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     __m256d acc1 = _mm256_setzero_pd();
 
     /* Direct SIMD streaming when both arrays consist of native IEEE floats */
-    if (n >= 8 && ValIsFloat(arrA->items[0]) && ValIsFloat(arrB->items[0])) {
+    if (n >= 16 && ValIsFloat(arrA->items[0]) && ValIsFloat(arrB->items[0])) {
+      const double *pA = (const double *)arrA->items;
+      const double *pB = (const double *)arrB->items;
+      __m256d acc2 = _mm256_setzero_pd();
+      __m256d acc3 = _mm256_setzero_pd();
+      for (; i + 15 < n; i += 16) {
+        __m256d va0 = _mm256_loadu_pd(&pA[i]);
+        __m256d vb0 = _mm256_loadu_pd(&pB[i]);
+        __m256d va1 = _mm256_loadu_pd(&pA[i + 4]);
+        __m256d vb1 = _mm256_loadu_pd(&pB[i + 4]);
+        __m256d va2 = _mm256_loadu_pd(&pA[i + 8]);
+        __m256d vb2 = _mm256_loadu_pd(&pB[i + 8]);
+        __m256d va3 = _mm256_loadu_pd(&pA[i + 12]);
+        __m256d vb3 = _mm256_loadu_pd(&pB[i + 12]);
+#if defined(_WIN32) || defined(__FMA__)
+        acc0 = _mm256_fmadd_pd(va0, vb0, acc0);
+        acc1 = _mm256_fmadd_pd(va1, vb1, acc1);
+        acc2 = _mm256_fmadd_pd(va2, vb2, acc2);
+        acc3 = _mm256_fmadd_pd(va3, vb3, acc3);
+#else
+        acc0 = _mm256_add_pd(_mm256_mul_pd(va0, vb0), acc0);
+        acc1 = _mm256_add_pd(_mm256_mul_pd(va1, vb1), acc1);
+        acc2 = _mm256_add_pd(_mm256_mul_pd(va2, vb2), acc2);
+        acc3 = _mm256_add_pd(_mm256_mul_pd(va3, vb3), acc3);
+#endif
+      }
+      for (; i + 7 < n; i += 8) {
+        __m256d va0 = _mm256_loadu_pd(&pA[i]);
+        __m256d vb0 = _mm256_loadu_pd(&pB[i]);
+        __m256d va1 = _mm256_loadu_pd(&pA[i + 4]);
+        __m256d vb1 = _mm256_loadu_pd(&pB[i + 4]);
+#if defined(_WIN32) || defined(__FMA__)
+        acc0 = _mm256_fmadd_pd(va0, vb0, acc0);
+        acc1 = _mm256_fmadd_pd(va1, vb1, acc1);
+#else
+        acc0 = _mm256_add_pd(_mm256_mul_pd(va0, vb0), acc0);
+        acc1 = _mm256_add_pd(_mm256_mul_pd(va1, vb1), acc1);
+#endif
+      }
+      acc0 = _mm256_add_pd(acc0, acc2);
+      acc1 = _mm256_add_pd(acc1, acc3);
+    } else if (n >= 8 && ValIsFloat(arrA->items[0]) && ValIsFloat(arrB->items[0])) {
       const double *pA = (const double *)arrA->items;
       const double *pB = (const double *)arrB->items;
       for (; i + 7 < n; i += 8) {
@@ -4434,7 +4475,18 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     }
 
     /* Extract dense contiguous buffers for cache locality */
-    double *denseA = (double *)malloc(rowsA * colsA * sizeof(double));
+#if defined(_MSC_VER)
+    #define AKS_TL_SCRATCH static __declspec(thread)
+#else
+    #define AKS_TL_SCRATCH static __thread
+#endif
+    #define SCRATCH_DENSE_LIMIT 32768
+    AKS_TL_SCRATCH double tl_denseA[SCRATCH_DENSE_LIMIT];
+    AKS_TL_SCRATCH double tl_denseBT[SCRATCH_DENSE_LIMIT];
+
+    int needA = rowsA * colsA;
+    int needBT = colsB * rowsB;
+    double *denseA = (needA <= SCRATCH_DENSE_LIMIT) ? tl_denseA : (double *)malloc(needA * sizeof(double));
     if (!denseA) {
       ValFree(&a_val);
       ValFree(&b_val);
@@ -4455,9 +4507,9 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
 
     /* Transpose matrix B into denseBT (colsB x rowsB) to ensure streaming
      * contiguous reads */
-    double *denseBT = (double *)malloc(colsB * rowsB * sizeof(double));
+    double *denseBT = (needBT <= SCRATCH_DENSE_LIMIT) ? tl_denseBT : (double *)malloc(needBT * sizeof(double));
     if (!denseBT) {
-      free(denseA);
+      if (denseA != tl_denseA) free(denseA);
       ValFree(&a_val);
       ValFree(&b_val);
       return -1;
@@ -4487,40 +4539,132 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
       AKSArray *row = ValToArr(row_val);
       const double *a_row = &denseA[i * colsA];
 
-      for (int j = 0; j < colsB; j++) {
+      int j = 0;
+#if defined(__AVX2__) || defined(_M_X64)
+      for (; j + 3 < colsB; j += 4) {
+        const double *b_col0 = &denseBT[j * rowsB];
+        const double *b_col1 = &denseBT[(j + 1) * rowsB];
+        const double *b_col2 = &denseBT[(j + 2) * rowsB];
+        const double *b_col3 = &denseBT[(j + 3) * rowsB];
+        __m256d acc0 = _mm256_setzero_pd();
+        __m256d acc1 = _mm256_setzero_pd();
+        __m256d acc2 = _mm256_setzero_pd();
+        __m256d acc3 = _mm256_setzero_pd();
+        int k = 0;
+        for (; k + 7 < colsA; k += 8) {
+          __m256d va0 = _mm256_loadu_pd(&a_row[k]);
+          __m256d va1 = _mm256_loadu_pd(&a_row[k + 4]);
+#if defined(_WIN32) || defined(__FMA__)
+          acc0 = _mm256_fmadd_pd(va0, _mm256_loadu_pd(&b_col0[k]), acc0);
+          acc1 = _mm256_fmadd_pd(va0, _mm256_loadu_pd(&b_col1[k]), acc1);
+          acc2 = _mm256_fmadd_pd(va0, _mm256_loadu_pd(&b_col2[k]), acc2);
+          acc3 = _mm256_fmadd_pd(va0, _mm256_loadu_pd(&b_col3[k]), acc3);
+          acc0 = _mm256_fmadd_pd(va1, _mm256_loadu_pd(&b_col0[k + 4]), acc0);
+          acc1 = _mm256_fmadd_pd(va1, _mm256_loadu_pd(&b_col1[k + 4]), acc1);
+          acc2 = _mm256_fmadd_pd(va1, _mm256_loadu_pd(&b_col2[k + 4]), acc2);
+          acc3 = _mm256_fmadd_pd(va1, _mm256_loadu_pd(&b_col3[k + 4]), acc3);
+#else
+          acc0 = _mm256_add_pd(_mm256_mul_pd(va0, _mm256_loadu_pd(&b_col0[k])), acc0);
+          acc1 = _mm256_add_pd(_mm256_mul_pd(va0, _mm256_loadu_pd(&b_col1[k])), acc1);
+          acc2 = _mm256_add_pd(_mm256_mul_pd(va0, _mm256_loadu_pd(&b_col2[k])), acc2);
+          acc3 = _mm256_add_pd(_mm256_mul_pd(va0, _mm256_loadu_pd(&b_col3[k])), acc3);
+          acc0 = _mm256_add_pd(_mm256_mul_pd(va1, _mm256_loadu_pd(&b_col0[k + 4])), acc0);
+          acc1 = _mm256_add_pd(_mm256_mul_pd(va1, _mm256_loadu_pd(&b_col1[k + 4])), acc1);
+          acc2 = _mm256_add_pd(_mm256_mul_pd(va1, _mm256_loadu_pd(&b_col2[k + 4])), acc2);
+          acc3 = _mm256_add_pd(_mm256_mul_pd(va1, _mm256_loadu_pd(&b_col3[k + 4])), acc3);
+#endif
+        }
+        for (; k + 3 < colsA; k += 4) {
+          __m256d va = _mm256_loadu_pd(&a_row[k]);
+#if defined(_WIN32) || defined(__FMA__)
+          acc0 = _mm256_fmadd_pd(va, _mm256_loadu_pd(&b_col0[k]), acc0);
+          acc1 = _mm256_fmadd_pd(va, _mm256_loadu_pd(&b_col1[k]), acc1);
+          acc2 = _mm256_fmadd_pd(va, _mm256_loadu_pd(&b_col2[k]), acc2);
+          acc3 = _mm256_fmadd_pd(va, _mm256_loadu_pd(&b_col3[k]), acc3);
+#else
+          acc0 = _mm256_add_pd(_mm256_mul_pd(va, _mm256_loadu_pd(&b_col0[k])), acc0);
+          acc1 = _mm256_add_pd(_mm256_mul_pd(va, _mm256_loadu_pd(&b_col1[k])), acc1);
+          acc2 = _mm256_add_pd(_mm256_mul_pd(va, _mm256_loadu_pd(&b_col2[k])), acc2);
+          acc3 = _mm256_add_pd(_mm256_mul_pd(va, _mm256_loadu_pd(&b_col3[k])), acc3);
+#endif
+        }
+        __m256d r01 = _mm256_hadd_pd(acc0, acc1);
+        __m256d r23 = _mm256_hadd_pd(acc2, acc3);
+        __m128d lo01 = _mm256_castpd256_pd128(r01);
+        __m128d hi01 = _mm256_extractf128_pd(r01, 1);
+        __m128d s01 = _mm_add_pd(lo01, hi01);
+        __m128d lo23 = _mm256_castpd256_pd128(r23);
+        __m128d hi23 = _mm256_extractf128_pd(r23, 1);
+        __m128d s23 = _mm_add_pd(lo23, hi23);
+        __m256d all4 = _mm256_set_m128d(s23, s01);
+        if (k < colsA) {
+          double lanes[4];
+          _mm256_storeu_pd(lanes, all4);
+          for (; k < colsA; k++) {
+            double a = a_row[k];
+            lanes[0] += a * b_col0[k];
+            lanes[1] += a * b_col1[k];
+            lanes[2] += a * b_col2[k];
+            lanes[3] += a * b_col3[k];
+          }
+          all4 = _mm256_loadu_pd(lanes);
+        }
+        _mm256_storeu_pd((double*)&row->items[j], all4);
+      }
+      for (; j + 1 < colsB; j += 2) {
+        const double *b_col0 = &denseBT[j * rowsB];
+        const double *b_col1 = &denseBT[(j + 1) * rowsB];
+        __m256d acc00 = _mm256_setzero_pd();
+        __m256d acc01 = _mm256_setzero_pd();
+        int k = 0;
+        for (; k + 7 < colsA; k += 8) {
+          __m256d va0 = _mm256_loadu_pd(&a_row[k]);
+          __m256d vb00 = _mm256_loadu_pd(&b_col0[k]);
+          __m256d vb01 = _mm256_loadu_pd(&b_col1[k]);
+          __m256d va1 = _mm256_loadu_pd(&a_row[k + 4]);
+          __m256d vb10 = _mm256_loadu_pd(&b_col0[k + 4]);
+          __m256d vb11 = _mm256_loadu_pd(&b_col1[k + 4]);
+#if defined(_WIN32) || defined(__FMA__)
+          acc00 = _mm256_fmadd_pd(va0, vb00, acc00);
+          acc01 = _mm256_fmadd_pd(va0, vb01, acc01);
+          acc00 = _mm256_fmadd_pd(va1, vb10, acc00);
+          acc01 = _mm256_fmadd_pd(va1, vb11, acc01);
+#else
+          acc00 = _mm256_add_pd(_mm256_mul_pd(va0, vb00), acc00);
+          acc01 = _mm256_add_pd(_mm256_mul_pd(va0, vb01), acc01);
+          acc00 = _mm256_add_pd(_mm256_mul_pd(va1, vb10), acc00);
+          acc01 = _mm256_add_pd(_mm256_mul_pd(va1, vb11), acc01);
+#endif
+        }
+        for (; k + 3 < colsA; k += 4) {
+          __m256d va = _mm256_loadu_pd(&a_row[k]);
+          __m256d vb0 = _mm256_loadu_pd(&b_col0[k]);
+          __m256d vb1 = _mm256_loadu_pd(&b_col1[k]);
+#if defined(_WIN32) || defined(__FMA__)
+          acc00 = _mm256_fmadd_pd(va, vb0, acc00);
+          acc01 = _mm256_fmadd_pd(va, vb1, acc01);
+#else
+          acc00 = _mm256_add_pd(_mm256_mul_pd(va, vb0), acc00);
+          acc01 = _mm256_add_pd(_mm256_mul_pd(va, vb1), acc01);
+#endif
+        }
+        double lanes0[4], lanes1[4];
+        _mm256_storeu_pd(lanes0, acc00);
+        _mm256_storeu_pd(lanes1, acc01);
+        double sum0 = lanes0[0] + lanes0[1] + lanes0[2] + lanes0[3];
+        double sum1 = lanes1[0] + lanes1[1] + lanes1[2] + lanes1[3];
+        for (; k < colsA; k++) {
+          sum0 += a_row[k] * b_col0[k];
+          sum1 += a_row[k] * b_col1[k];
+        }
+        row->items[j] = ValFloat(sum0);
+        row->items[j + 1] = ValFloat(sum1);
+      }
+#endif
+      for (; j < colsB; j++) {
         const double *b_col = &denseBT[j * rowsB];
         double sum = 0.0;
         int k = 0;
-#if defined(__AVX2__) || defined(_M_X64)
-        __m256d acc0 = _mm256_setzero_pd();
-        __m256d acc1 = _mm256_setzero_pd();
-        for (; k + 7 < colsA; k += 8) {
-          __m256d va0 = _mm256_loadu_pd(&a_row[k]);
-          __m256d vb0 = _mm256_loadu_pd(&b_col[k]);
-          __m256d va1 = _mm256_loadu_pd(&a_row[k + 4]);
-          __m256d vb1 = _mm256_loadu_pd(&b_col[k + 4]);
-#if defined(_WIN32) || defined(__FMA__)
-          acc0 = _mm256_fmadd_pd(va0, vb0, acc0);
-          acc1 = _mm256_fmadd_pd(va1, vb1, acc1);
-#else
-          acc0 = _mm256_add_pd(_mm256_mul_pd(va0, vb0), acc0);
-          acc1 = _mm256_add_pd(_mm256_mul_pd(va1, vb1), acc1);
-#endif
-        }
-        acc0 = _mm256_add_pd(acc0, acc1);
-        for (; k + 3 < colsA; k += 4) {
-          __m256d va = _mm256_loadu_pd(&a_row[k]);
-          __m256d vb = _mm256_loadu_pd(&b_col[k]);
-#if defined(_WIN32) || defined(__FMA__)
-          acc0 = _mm256_fmadd_pd(va, vb, acc0);
-#else
-          acc0 = _mm256_add_pd(_mm256_mul_pd(va, vb), acc0);
-#endif
-        }
-        double lanes[4];
-        _mm256_storeu_pd(lanes, acc0);
-        sum = lanes[0] + lanes[1] + lanes[2] + lanes[3];
-#endif
         for (; k < colsA; k++) {
           sum += a_row[k] * b_col[k];
         }
@@ -4531,8 +4675,8 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     }
     C->count = rowsA;
 
-    free(denseA);
-    free(denseBT);
+    if (denseA != tl_denseA) free(denseA);
+    if (denseBT != tl_denseBT) free(denseBT);
     ValFree(&a_val);
     ValFree(&b_val);
 
@@ -4701,7 +4845,23 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     if (strcmp(op, "+") == 0) {
       __m256d acc0 = _mm256_setzero_pd();
       __m256d acc1 = _mm256_setzero_pd();
-      if (count >= 8 && ValIsFloat(arr->items[0])) {
+      if (count >= 16 && ValIsFloat(arr->items[0])) {
+        const double *p = (const double *)arr->items;
+        __m256d acc2 = _mm256_setzero_pd();
+        __m256d acc3 = _mm256_setzero_pd();
+        for (; i + 15 < count; i += 16) {
+          acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(&p[i]));
+          acc1 = _mm256_add_pd(acc1, _mm256_loadu_pd(&p[i + 4]));
+          acc2 = _mm256_add_pd(acc2, _mm256_loadu_pd(&p[i + 8]));
+          acc3 = _mm256_add_pd(acc3, _mm256_loadu_pd(&p[i + 12]));
+        }
+        for (; i + 7 < count; i += 8) {
+          acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(&p[i]));
+          acc1 = _mm256_add_pd(acc1, _mm256_loadu_pd(&p[i + 4]));
+        }
+        acc0 = _mm256_add_pd(acc0, acc2);
+        acc1 = _mm256_add_pd(acc1, acc3);
+      } else if (count >= 8 && ValIsFloat(arr->items[0])) {
         const double *p = (const double *)arr->items;
         for (; i + 7 < count; i += 8) {
           acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(&p[i]));
@@ -4724,12 +4884,17 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
       }
       acc0 = _mm256_add_pd(acc0, acc1);
       for (; i + 3 < count; i += 4) {
-        double d[4];
-        for (int k = 0; k < 4; k++) {
-          AKSValue v = arr->items[i + k];
-          d[k] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+        if (ValIsFloat(arr->items[0])) {
+          const double *p = (const double *)arr->items;
+          acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(&p[i]));
+        } else {
+          double d[4];
+          for (int k = 0; k < 4; k++) {
+            AKSValue v = arr->items[i + k];
+            d[k] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+          }
+          acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(d));
         }
-        acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(d));
       }
       double lanes[4];
       _mm256_storeu_pd(lanes, acc0);

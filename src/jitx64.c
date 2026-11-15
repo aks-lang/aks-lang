@@ -1047,6 +1047,197 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
     for (int i = 0; i < stepcount; i++) {
         TraceStep *step = &trace[i];
 
+        // Fused loop guard with register slot: OPLOAD + OPLOAD/OPPUSHINT + Relational CMP + OPJUMPIFFALSE
+        if (i + 3 < stepcount &&
+            trace[i].op == OPLOAD &&
+            (trace[i + 1].op == OPLOAD || trace[i + 1].op == OPPUSHINT) &&
+            (trace[i + 2].op == OPLT || trace[i + 2].op == OPLTE || trace[i + 2].op == OPGT ||
+             trace[i + 2].op == OPGTE || trace[i + 2].op == OPEQ || trace[i + 2].op == OPNEQ) &&
+            trace[i + 3].op == OPJUMPIFFALSE) {
+
+            int slotA = trace[i].slot;
+            uint8_t cmp_op = trace[i + 2].op;
+            TraceStep *jump_step = &trace[i + 3];
+
+            if (slotA == hot_slots[0]) {
+                if (trace[i + 1].op == OPLOAD) {
+                    int slotB = trace[i + 1].slot;
+                    if (slotB == hot_slots[1]) {
+                        // Compare rbx with r14
+                        JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x39, 0xF3}, 3);
+                    } else {
+                        // Compare rbx with local slot memory
+                        JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x3B, 0x9D}, 3);
+                        JITEmitDword(&buf, (uint32_t)(slotB * 8));
+                    }
+                } else {
+                    // Compare rbx with tagged constant in rax
+                    uint64_t tagged_val = ValInt(trace[i + 1].pushival);
+                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0xB8}, 2);
+                    JITEmitQword(&buf, tagged_val);
+                    // cmp rbx, rax
+                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x39, 0xC3}, 3);
+                }
+
+                // Branch to continue the loop body when the relational condition holds
+                uint8_t stay_cc = 0x82; // jb
+                switch (cmp_op) {
+                    case OPLT:  stay_cc = 0x82; break; // jb
+                    case OPLTE: stay_cc = 0x86; break; // jbe
+                    case OPGT:  stay_cc = 0x87; break; // ja
+                    case OPGTE: stay_cc = 0x83; break; // jae
+                    case OPEQ:  stay_cc = 0x84; break; // je
+                    case OPNEQ: stay_cc = 0x85; break; // jne
+                }
+                JITEmitByte(&buf, 0x0F);
+                JITEmitByte(&buf, stay_cc);
+                int patch_stay = buf.size;
+                JITEmitDword(&buf, 0);
+
+                // Bailout block executed when the loop termination condition is met
+                int targetoffset = jump_step->jumpoffset < 0 ? (jump_step->ipoffset + 5 + jump_step->jumpoffset) : (jump_step->ipoffset + 5 + jump_step->jumpoffset);
+                JITEmitStoreAbsoluteVtop(&buf, vtop);
+                JITEmitByte(&buf, 0xB8);
+                JITEmitDword(&buf, (uint32_t)targetoffset);
+                JITEmitByte(&buf, 0xE9);
+                patches[patchcount++] = buf.size;
+                JITEmitDword(&buf, 0);
+
+                int stay_target = buf.size;
+                *(int*)(buf.code + patch_stay) = stay_target - patch_stay - 4;
+
+                i += 3;
+                continue;
+            }
+        }
+
+        // Fused accumulator pattern: OPLOAD + OPLOAD + (OPADD | OPSUB) + OPSTORE (same target slot)
+        if (i + 3 < stepcount &&
+            trace[i].op == OPLOAD &&
+            trace[i + 1].op == OPLOAD &&
+            (trace[i + 2].op == OPADD || trace[i + 2].op == OPSUB) &&
+            trace[i + 3].op == OPSTORE &&
+            trace[i + 3].slot == trace[i].slot) {
+
+            int slotA = trace[i].slot;
+            int slotB = trace[i + 1].slot;
+            uint8_t arith_op = trace[i + 2].op;
+
+            if (slotA == hot_slots[1] && slotB == hot_slots[0]) {
+                // Sign-extend 48-bit integer from rbx into rax
+                JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x89, 0xD8, 0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xF8, 0x10}, 11);
+                if (arith_op == OPADD) {
+                    // add r14, rax
+                    JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x01, 0xC6}, 3);
+                } else {
+                    // sub r14, rax
+                    JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x29, 0xC6}, 3);
+                }
+                i += 3;
+                continue;
+            } else if (slotA == hot_slots[0] && slotB == hot_slots[1]) {
+                // Sign-extend 48-bit integer from r14 into rax
+                JITEmitBytes(&buf, (const uint8_t[]){0x4C, 0x89, 0xF0, 0x48, 0xC1, 0xE0, 0x10, 0x48, 0xC1, 0xF8, 0x10}, 11);
+                if (arith_op == OPADD) {
+                    // add rbx, rax
+                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x01, 0xC3}, 3);
+                } else {
+                    // sub rbx, rax
+                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x29, 0xC3}, 3);
+                }
+                i += 3;
+                continue;
+            }
+        }
+
+        // Fused induction increment/decrement: OPLOAD + (OPINC | OPDEC) + OPSTORE (same target slot)
+        if (i + 2 < stepcount &&
+            trace[i].op == OPLOAD &&
+            (trace[i + 1].op == OPINC || trace[i + 1].op == OPDEC) &&
+            trace[i + 2].op == OPSTORE &&
+            trace[i + 2].slot == trace[i].slot) {
+
+            int slotA = trace[i].slot;
+            uint8_t inc_op = trace[i + 1].op;
+
+            if (slotA == hot_slots[0]) {
+                if (inc_op == OPINC) {
+                    // Direct 1-cycle integer increment on register rbx
+                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0xFF, 0xC3}, 3);
+                } else {
+                    // Direct 1-cycle integer decrement on register rbx
+                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0xFF, 0xCB}, 3);
+                }
+                i += 2;
+                continue;
+            } else if (slotA == hot_slots[1]) {
+                if (inc_op == OPINC) {
+                    // Direct 1-cycle integer increment on register r14
+                    JITEmitBytes(&buf, (const uint8_t[]){0x49, 0xFF, 0xC6}, 3);
+                } else {
+                    // Direct 1-cycle integer decrement on register r14
+                    JITEmitBytes(&buf, (const uint8_t[]){0x49, 0xFF, 0xCE}, 3);
+                }
+                i += 2;
+                continue;
+            }
+        }
+
+        // Fused in-place update with constant: OPLOAD + OPPUSHINT + (OPADD | OPSUB) + OPSTORE
+        if (i + 3 < stepcount &&
+            trace[i].op == OPLOAD &&
+            trace[i + 1].op == OPPUSHINT &&
+            (trace[i + 2].op == OPADD || trace[i + 2].op == OPSUB) &&
+            trace[i + 3].op == OPSTORE &&
+            trace[i + 3].slot == trace[i].slot) {
+
+            int slotA = trace[i].slot;
+            int64_t kval = trace[i + 1].pushival;
+            uint8_t arith_op = trace[i + 2].op;
+
+            if (slotA == hot_slots[0]) {
+                if (arith_op == OPADD && kval == 1) {
+                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0xFF, 0xC3}, 3); // inc rbx
+                    i += 3;
+                    continue;
+                } else if (arith_op == OPSUB && kval == 1) {
+                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0xFF, 0xCB}, 3); // dec rbx
+                    i += 3;
+                    continue;
+                } else if (arith_op == OPADD && kval > 0 && kval <= 0x7FFFFFFF) {
+                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x81, 0xC3}, 3); // add rbx, imm32
+                    JITEmitDword(&buf, (uint32_t)kval);
+                    i += 3;
+                    continue;
+                } else if (arith_op == OPSUB && kval > 0 && kval <= 0x7FFFFFFF) {
+                    JITEmitBytes(&buf, (const uint8_t[]){0x48, 0x81, 0xEB}, 3); // sub rbx, imm32
+                    JITEmitDword(&buf, (uint32_t)kval);
+                    i += 3;
+                    continue;
+                }
+            } else if (slotA == hot_slots[1]) {
+                if (arith_op == OPADD && kval == 1) {
+                    JITEmitBytes(&buf, (const uint8_t[]){0x49, 0xFF, 0xC6}, 3); // inc r14
+                    i += 3;
+                    continue;
+                } else if (arith_op == OPSUB && kval == 1) {
+                    JITEmitBytes(&buf, (const uint8_t[]){0x49, 0xFF, 0xCE}, 3); // dec r14
+                    i += 3;
+                    continue;
+                } else if (arith_op == OPADD && kval > 0 && kval <= 0x7FFFFFFF) {
+                    JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x81, 0xC6}, 3); // add r14, imm32
+                    JITEmitDword(&buf, (uint32_t)kval);
+                    i += 3;
+                    continue;
+                } else if (arith_op == OPSUB && kval > 0 && kval <= 0x7FFFFFFF) {
+                    JITEmitBytes(&buf, (const uint8_t[]){0x49, 0x81, 0xEE}, 3); // sub r14, imm32
+                    JITEmitDword(&buf, (uint32_t)kval);
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+
         // Peephole comparison-branch fusion
         if ((step->op == OPLT || step->op == OPLTE || step->op == OPGT || 
              step->op == OPGTE || step->op == OPEQ || step->op == OPNEQ) &&
