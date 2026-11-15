@@ -172,14 +172,35 @@ static inline double AksA_elem(int i, int j) {
   return 1.0 / (double)((i + j) * (i + j + 1) / 2 + i + 1);
 }
 
+#ifdef _WIN32
+typedef struct {
+  int n;
+  int start;
+  int end;
+  const double *v;
+  double *out;
+  int is_transposed;
+} AksSpectralTask;
+
+static DWORD WINAPI AksSpectralWorker(LPVOID param) {
+  AksSpectralTask *t = (AksSpectralTask *)param;
+  int n = t->n;
+  int start = t->start;
+  int end = t->end;
+  const double *v = t->v;
+  double *out = t->out;
+  int transposed = t->is_transposed;
+
+  for (int i = start; i < end; i++) {
 #if defined(__AVX2__) || defined(_M_X64)
-static void AksMultiplyAv(int n, const double *v, double *Av) {
-  for (int i = 0; i < n; i++) {
     __m256d sum0 = _mm256_setzero_pd();
     int j = 0;
     for (; j + 3 < n; j += 4) {
-      __m256d a = _mm256_set_pd(AksA_elem(i, j + 3), AksA_elem(i, j + 2),
-                                AksA_elem(i, j + 1), AksA_elem(i, j));
+      __m256d a = transposed
+                      ? _mm256_set_pd(AksA_elem(j + 3, i), AksA_elem(j + 2, i),
+                                      AksA_elem(j + 1, i), AksA_elem(j, i))
+                      : _mm256_set_pd(AksA_elem(i, j + 3), AksA_elem(i, j + 2),
+                                      AksA_elem(i, j + 1), AksA_elem(i, j));
       __m256d u = _mm256_loadu_pd(&v[j]);
       sum0 = _mm256_fmadd_pd(a, u, sum0);
     }
@@ -187,65 +208,74 @@ static void AksMultiplyAv(int n, const double *v, double *Av) {
     _mm256_storeu_pd(lanes, sum0);
     double s = lanes[0] + lanes[1] + lanes[2] + lanes[3];
     for (; j < n; j++) {
-      s += AksA_elem(i, j) * v[j];
+      s += (transposed ? AksA_elem(j, i) : AksA_elem(i, j)) * v[j];
     }
-    Av[i] = s;
-  }
-}
-
-static void AksMultiplyAtv(int n, const double *v, double *Atv) {
-  for (int i = 0; i < n; i++) {
-    __m256d sum0 = _mm256_setzero_pd();
-    int j = 0;
-    for (; j + 3 < n; j += 4) {
-      __m256d a = _mm256_set_pd(AksA_elem(j + 3, i), AksA_elem(j + 2, i),
-                                AksA_elem(j + 1, i), AksA_elem(j, i));
-      __m256d u = _mm256_loadu_pd(&v[j]);
-      sum0 = _mm256_fmadd_pd(a, u, sum0);
-    }
-    double lanes[4];
-    _mm256_storeu_pd(lanes, sum0);
-    double s = lanes[0] + lanes[1] + lanes[2] + lanes[3];
-    for (; j < n; j++) {
-      s += AksA_elem(j, i) * v[j];
-    }
-    Atv[i] = s;
-  }
-}
+    out[i] = s;
 #else
-static void AksMultiplyAv(int n, const double *v, double *Av) {
-  for (int i = 0; i < n; i++) {
     double s = 0.0;
     for (int j = 0; j < n; j++) {
-      s += AksA_elem(i, j) * v[j];
+      s += (transposed ? AksA_elem(j, i) : AksA_elem(i, j)) * v[j];
     }
-    Av[i] = s;
+    out[i] = s;
+#endif
   }
-}
-
-static void AksMultiplyAtv(int n, const double *v, double *Atv) {
-  for (int i = 0; i < n; i++) {
-    double s = 0.0;
-    for (int j = 0; j < n; j++) {
-      s += AksA_elem(j, i) * v[j];
-    }
-    Atv[i] = s;
-  }
+  return 0;
 }
 #endif
+
+static void AksParallelMultiplyAv(int n, const double *v, double *out, int transposed) {
+#ifdef _WIN32
+  SYSTEM_INFO sysInfo;
+  GetSystemInfo(&sysInfo);
+  int num_threads = (int)sysInfo.dwNumberOfProcessors;
+  if (num_threads > 16) num_threads = 16;
+  if (num_threads > 1 && n >= 64) {
+    HANDLE threads[16];
+    AksSpectralTask tasks[16];
+    int chunk = n / num_threads;
+    for (int t = 0; t < num_threads; t++) {
+      tasks[t].n = n;
+      tasks[t].start = t * chunk;
+      tasks[t].end = (t == num_threads - 1) ? n : (t + 1) * chunk;
+      tasks[t].v = v;
+      tasks[t].out = out;
+      tasks[t].is_transposed = transposed;
+      threads[t] = CreateThread(NULL, 0, AksSpectralWorker, &tasks[t], 0, NULL);
+    }
+    WaitForMultipleObjects((DWORD)num_threads, threads, TRUE, INFINITE);
+    for (int t = 0; t < num_threads; t++) {
+      CloseHandle(threads[t]);
+    }
+    return;
+  }
+#endif
+  for (int i = 0; i < n; i++) {
+    double s = 0.0;
+    for (int j = 0; j < n; j++) {
+      s += (transposed ? AksA_elem(j, i) : AksA_elem(i, j)) * v[j];
+    }
+    out[i] = s;
+  }
+}
 
 static double AksSpectralNorm(int n) {
   if (n <= 0) return 0.0;
   double *u = (double *)malloc(n * sizeof(double));
   double *v = (double *)malloc(n * sizeof(double));
   double *tmp = (double *)malloc(n * sizeof(double));
+  if (!u || !v || !tmp) {
+    if (u) free(u);
+    if (v) free(v);
+    if (tmp) free(tmp);
+    return 0.0;
+  }
   for (int i = 0; i < n; i++) u[i] = 1.0;
 
   for (int it = 0; it < 10; it++) {
-    AksMultiplyAv(n, u, tmp);
-    AksMultiplyAtv(n, tmp, v);
-    AksMultiplyAv(n, v, tmp);
-    AksMultiplyAtv(n, tmp, u);
+    AksParallelMultiplyAv(n, u, tmp, 0);
+    AksParallelMultiplyAv(n, tmp, v, 1);
+    AksParallelMultiplyAv(n, v, tmp, 0);
+    AksParallelMultiplyAv(n, tmp, u, 1);
   }
   double vBv = 0.0, vv = 0.0;
   for (int i = 0; i < n; i++) {
@@ -258,99 +288,122 @@ static double AksSpectralNorm(int n) {
   return sqrt(vBv / vv);
 }
 
-typedef struct {
-  double x, y, z;
-  double vx, vy, vz;
-  double mass;
-} AksNBodyObj;
-
 static double AksRunNBody(int steps) {
   const double pi = 3.141592653589793;
   const double days_per_year = 365.24;
   const double solar_mass = 4.0 * pi * pi;
 
-  AksNBodyObj bodies[5] = {
-      {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, solar_mass},
-      {4.84143144246472090e+00, -1.16032004402742839e+00,
-       -1.03622044471123109e-01, 1.66007664274403694e-03 * days_per_year,
-       7.69901118481405026e-03 * days_per_year,
-       -6.90460016972063023e-05 * days_per_year,
-       9.54791938424326609e-04 * solar_mass},
-      {8.34336671824457987e+00, 4.12479856412430479e+00,
-       -4.03523417114321381e-01, -2.76742510726862411e-03 * days_per_year,
-       4.99852801234917238e-03 * days_per_year,
-       2.30417297573763929e-05 * days_per_year,
-       2.85885672722241763e-04 * solar_mass},
-      {1.28943695621391310e+01, -1.51111514016986312e+01,
-       -2.23307578892655734e-01, 2.96460137564761618e-03 * days_per_year,
-       2.37847173959480950e-03 * days_per_year,
-       -2.96589568540237556e-05 * days_per_year,
-       4.36624404335156298e-05 * solar_mass},
-      {1.53796971148509165e+01, -2.59193146099879641e+01,
-       1.79258772950371181e-01, 2.68067772490389322e-03 * days_per_year,
-       1.62824170038242295e-03 * days_per_year,
-       -9.51592254519715870e-05 * days_per_year,
-       5.15138902046611451e-05 * solar_mass}};
+  double x0 = 0.0, y0 = 0.0, z0 = 0.0, vx0 = 0.0, vy0 = 0.0, vz0 = 0.0, m0 = solar_mass;
+  double x1 = 4.84143144246472090e+00, y1 = -1.16032004402742839e+00, z1 = -1.03622044471123109e-01;
+  double vx1 = 1.66007664274403694e-03 * days_per_year, vy1 = 7.69901118481405026e-03 * days_per_year, vz1 = -6.90460016972063023e-05 * days_per_year;
+  double m1 = 9.54791938424326609e-04 * solar_mass;
 
-  double px = 0.0, py = 0.0, pz = 0.0;
-  for (int i = 0; i < 5; i++) {
-    px += bodies[i].vx * bodies[i].mass;
-    py += bodies[i].vy * bodies[i].mass;
-    pz += bodies[i].vz * bodies[i].mass;
-  }
-  bodies[0].vx = -px / solar_mass;
-  bodies[0].vy = -py / solar_mass;
-  bodies[0].vz = -pz / solar_mass;
+  double x2 = 8.34336671824457987e+00, y2 = 4.12479856412430479e+00, z2 = -4.03523417114321381e-01;
+  double vx2 = -2.76742510726862411e-03 * days_per_year, vy2 = 4.99852801234917238e-03 * days_per_year, vz2 = 2.30417297573763929e-05 * days_per_year;
+  double m2 = 2.85885672722241763e-04 * solar_mass;
+
+  double x3 = 1.28943695621391310e+01, y3 = -1.51111514016986312e+01, z3 = -2.23307578892655734e-01;
+  double vx3 = 2.96460137564761618e-03 * days_per_year, vy3 = 2.37847173959480950e-03 * days_per_year, vz3 = -2.96589568540237556e-05 * days_per_year;
+  double m3 = 4.36624404335156298e-05 * solar_mass;
+
+  double x4 = 1.53796971148509165e+01, y4 = -2.59193146099879641e+01, z4 = 1.79258772950371181e-01;
+  double vx4 = 2.68067772490389322e-03 * days_per_year, vy4 = 1.62824170038242295e-03 * days_per_year, vz4 = -9.51592254519715870e-05 * days_per_year;
+  double m4 = 5.15138902046611451e-05 * solar_mass;
+
+  double px = vx1 * m1 + vx2 * m2 + vx3 * m3 + vx4 * m4;
+  double py = vy1 * m1 + vy2 * m2 + vy3 * m3 + vy4 * m4;
+  double pz = vz1 * m1 + vz2 * m2 + vz3 * m3 + vz4 * m4;
+  vx0 = -px / solar_mass;
+  vy0 = -py / solar_mass;
+  vz0 = -pz / solar_mass;
 
   const double dt = 0.01;
+
+#define BODY_INTERACT(xa, ya, za, vxa, vya, vza, ma, xb, yb, zb, vxb, vyb, vzb, mb) do { \
+    double dx = (xa) - (xb); \
+    double dy = (ya) - (yb); \
+    double dz = (za) - (zb); \
+    double dsq = dx * dx + dy * dy + dz * dz; \
+    double dist = sqrt(dsq); \
+    double mag = dt / (dsq * dist); \
+    (vxa) -= dx * (mb) * mag; \
+    (vya) -= dy * (mb) * mag; \
+    (vza) -= dz * (mb) * mag; \
+    (vxb) += dx * (ma) * mag; \
+    (vyb) += dy * (ma) * mag; \
+    (vzb) += dz * (ma) * mag; \
+} while(0)
+
   for (int s = 0; s < steps; s++) {
-    for (int i = 0; i < 5; i++) {
-      for (int j = i + 1; j < 5; j++) {
-        double dx = bodies[i].x - bodies[j].x;
-        double dy = bodies[i].y - bodies[j].y;
-        double dz = bodies[i].z - bodies[j].z;
-        double dsq = dx * dx + dy * dy + dz * dz;
-        double dist = sqrt(dsq);
-        double mag = dt / (dsq * dist);
+    BODY_INTERACT(x0, y0, z0, vx0, vy0, vz0, m0, x1, y1, z1, vx1, vy1, vz1, m1);
+    BODY_INTERACT(x0, y0, z0, vx0, vy0, vz0, m0, x2, y2, z2, vx2, vy2, vz2, m2);
+    BODY_INTERACT(x0, y0, z0, vx0, vy0, vz0, m0, x3, y3, z3, vx3, vy3, vz3, m3);
+    BODY_INTERACT(x0, y0, z0, vx0, vy0, vz0, m0, x4, y4, z4, vx4, vy4, vz4, m4);
+    BODY_INTERACT(x1, y1, z1, vx1, vy1, vz1, m1, x2, y2, z2, vx2, vy2, vz2, m2);
+    BODY_INTERACT(x1, y1, z1, vx1, vy1, vz1, m1, x3, y3, z3, vx3, vy3, vz3, m3);
+    BODY_INTERACT(x1, y1, z1, vx1, vy1, vz1, m1, x4, y4, z4, vx4, vy4, vz4, m4);
+    BODY_INTERACT(x2, y2, z2, vx2, vy2, vz2, m2, x3, y3, z3, vx3, vy3, vz3, m3);
+    BODY_INTERACT(x2, y2, z2, vx2, vy2, vz2, m2, x4, y4, z4, vx4, vy4, vz4, m4);
+    BODY_INTERACT(x3, y3, z3, vx3, vy3, vz3, m3, x4, y4, z4, vx4, vy4, vz4, m4);
 
-        bodies[i].vx -= dx * bodies[j].mass * mag;
-        bodies[i].vy -= dy * bodies[j].mass * mag;
-        bodies[i].vz -= dz * bodies[j].mass * mag;
-
-        bodies[j].vx += dx * bodies[i].mass * mag;
-        bodies[j].vy += dy * bodies[i].mass * mag;
-        bodies[j].vz += dz * bodies[i].mass * mag;
-      }
-    }
-    for (int i = 0; i < 5; i++) {
-      bodies[i].x += dt * bodies[i].vx;
-      bodies[i].y += dt * bodies[i].vy;
-      bodies[i].z += dt * bodies[i].vz;
-    }
+    x0 += dt * vx0; y0 += dt * vy0; z0 += dt * vz0;
+    x1 += dt * vx1; y1 += dt * vy1; z1 += dt * vz1;
+    x2 += dt * vx2; y2 += dt * vy2; z2 += dt * vz2;
+    x3 += dt * vx3; y3 += dt * vy3; z3 += dt * vz3;
+    x4 += dt * vx4; y4 += dt * vy4; z4 += dt * vz4;
   }
+#undef BODY_INTERACT
 
-  double e = 0.0;
-  for (int i = 0; i < 5; i++) {
-    e += 0.5 * bodies[i].mass *
-         (bodies[i].vx * bodies[i].vx + bodies[i].vy * bodies[i].vy +
-          bodies[i].vz * bodies[i].vz);
-    for (int j = i + 1; j < 5; j++) {
-      double dx = bodies[i].x - bodies[j].x;
-      double dy = bodies[i].y - bodies[j].y;
-      double dz = bodies[i].z - bodies[j].z;
-      double dist = sqrt(dx * dx + dy * dy + dz * dz);
-      e -= (bodies[i].mass * bodies[j].mass) / dist;
-    }
-  }
+  double e = 0.5 * (m0 * (vx0 * vx0 + vy0 * vy0 + vz0 * vz0) +
+                    m1 * (vx1 * vx1 + vy1 * vy1 + vz1 * vz1) +
+                    m2 * (vx2 * vx2 + vy2 * vy2 + vz2 * vz2) +
+                    m3 * (vx3 * vx3 + vy3 * vy3 + vz3 * vz3) +
+                    m4 * (vx4 * vx4 + vy4 * vy4 + vz4 * vz4));
+
+#define POTENTIAL(xa, ya, za, ma, xb, yb, zb, mb) do { \
+    double dx = (xa) - (xb); \
+    double dy = (ya) - (yb); \
+    double dz = (za) - (zb); \
+    e -= ((ma) * (mb)) / sqrt(dx * dx + dy * dy + dz * dz); \
+} while(0)
+
+  POTENTIAL(x0, y0, z0, m0, x1, y1, z1, m1);
+  POTENTIAL(x0, y0, z0, m0, x2, y2, z2, m2);
+  POTENTIAL(x0, y0, z0, m0, x3, y3, z3, m3);
+  POTENTIAL(x0, y0, z0, m0, x4, y4, z4, m4);
+  POTENTIAL(x1, y1, z1, m1, x2, y2, z2, m2);
+  POTENTIAL(x1, y1, z1, m1, x3, y3, z3, m3);
+  POTENTIAL(x1, y1, z1, m1, x4, y4, z4, m4);
+  POTENTIAL(x2, y2, z2, m2, x3, y3, z3, m3);
+  POTENTIAL(x2, y2, z2, m2, x4, y4, z4, m4);
+  POTENTIAL(x3, y3, z3, m3, x4, y4, z4, m4);
+#undef POTENTIAL
+
   return e;
 }
 
-static int64_t AksMandelbrot(int width, int height, int max_iters) {
-  int64_t total = 0;
+#ifdef _WIN32
+typedef struct {
+  int width;
+  int height;
+  int max_iters;
+  int y_start;
+  int y_end;
+  int64_t total;
+} AksMandelTask;
+
+static DWORD WINAPI AksMandelWorker(LPVOID param) {
+  AksMandelTask *t = (AksMandelTask *)param;
+  int width = t->width;
+  int height = t->height;
+  int max_iters = t->max_iters;
+  int y_start = t->y_start;
+  int y_end = t->y_end;
   double dx = 2.5 / (double)width;
   double dy = 2.5 / (double)height;
+  int64_t total = 0;
 
-  for (int y = 0; y < height; y++) {
+  for (int y = y_start; y < y_end; y++) {
     double ci = -1.25 + (double)y * dy;
     int x = 0;
 #if defined(__AVX2__) || defined(_M_X64)
@@ -401,7 +454,151 @@ static int64_t AksMandelbrot(int width, int height, int max_iters) {
       total += it;
     }
   }
+  t->total = total;
+  return 0;
+}
+#endif
+
+static int64_t AksMandelbrot(int width, int height, int max_iters) {
+#ifdef _WIN32
+  SYSTEM_INFO sysInfo;
+  GetSystemInfo(&sysInfo);
+  int num_threads = (int)sysInfo.dwNumberOfProcessors;
+  if (num_threads > 16) num_threads = 16;
+  if (num_threads > 1 && height >= 32) {
+    HANDLE threads[16];
+    AksMandelTask tasks[16];
+    int rows_per_th = height / num_threads;
+    for (int t = 0; t < num_threads; t++) {
+      tasks[t].width = width;
+      tasks[t].height = height;
+      tasks[t].max_iters = max_iters;
+      tasks[t].y_start = t * rows_per_th;
+      tasks[t].y_end = (t == num_threads - 1) ? height : (t + 1) * rows_per_th;
+      tasks[t].total = 0;
+      threads[t] = CreateThread(NULL, 0, AksMandelWorker, &tasks[t], 0, NULL);
+    }
+    WaitForMultipleObjects((DWORD)num_threads, threads, TRUE, INFINITE);
+    int64_t grand_total = 0;
+    for (int t = 0; t < num_threads; t++) {
+      grand_total += tasks[t].total;
+      CloseHandle(threads[t]);
+    }
+    return grand_total;
+  }
+#endif
+  double dx = 2.5 / (double)width;
+  double dy = 2.5 / (double)height;
+  int64_t total = 0;
+
+  for (int y = 0; y < height; y++) {
+    double ci = -1.25 + (double)y * dy;
+    for (int x = 0; x < width; x++) {
+      double cr = -2.0 + (double)x * dx;
+      double zr = 0.0, zi = 0.0;
+      int it = 0;
+      for (; it < max_iters; it++) {
+        double zr2 = zr * zr;
+        double zi2 = zi * zi;
+        if (zr2 + zi2 > 4.0) break;
+        zi = 2.0 * zr * zi + ci;
+        zr = zr2 - zi2 + cr;
+      }
+      total += it;
+    }
+  }
   return total;
+}
+
+static void AksFastFFTTransform(double *real, double *imag, int n, int inverse) {
+  int j = 0;
+  for (int i = 0; i < n - 1; i++) {
+    if (i < j) {
+      double tr = real[i]; real[i] = real[j]; real[j] = tr;
+      double ti = imag[i]; imag[i] = imag[j]; imag[j] = ti;
+    }
+    int k = n >> 1;
+    while (k <= j) {
+      j -= k;
+      k >>= 1;
+    }
+    j += k;
+  }
+  const double pi = 3.141592653589793;
+  for (int len = 2; len <= n; len <<= 1) {
+    double ang = (inverse ? 2.0 : -2.0) * pi / (double)len;
+    double wlen_r = cos(ang), wlen_i = sin(ang);
+    int half = len >> 1;
+    for (int i = 0; i < n; i += len) {
+      double w_r = 1.0, w_i = 0.0;
+      for (int k = 0; k < half; k++) {
+        double u_r = real[i + k];
+        double u_i = imag[i + k];
+        double v_r = real[i + k + half] * w_r - imag[i + k + half] * w_i;
+        double v_i = real[i + k + half] * w_i + imag[i + k + half] * w_r;
+        real[i + k] = u_r + v_r;
+        imag[i + k] = u_i + v_i;
+        real[i + k + half] = u_r - v_r;
+        imag[i + k + half] = u_i - v_i;
+        double next_wr = w_r * wlen_r - w_i * wlen_i;
+        double next_wi = w_r * wlen_i + w_i * wlen_r;
+        w_r = next_wr; w_i = next_wi;
+      }
+    }
+  }
+  if (inverse) {
+    double inv_n = 1.0 / (double)n;
+    for (int i = 0; i < n; i++) {
+      real[i] *= inv_n;
+      imag[i] *= inv_n;
+    }
+  }
+}
+
+typedef struct AksTreeNode {
+  int item;
+  struct AksTreeNode *left;
+  struct AksTreeNode *right;
+} AksTreeNode;
+
+typedef struct {
+  AksTreeNode *nodes;
+  size_t count;
+  size_t cap;
+} AksTreePool;
+
+static AksTreeNode *AksMakeTreePool(AksTreePool *pool, int item, int depth) {
+  if (pool->count >= pool->cap) return NULL;
+  AksTreeNode *node = &pool->nodes[pool->count++];
+  node->item = item;
+  if (depth <= 0) {
+    node->left = NULL;
+    node->right = NULL;
+  } else {
+    node->left = AksMakeTreePool(pool, 2 * item - 1, depth - 1);
+    node->right = AksMakeTreePool(pool, 2 * item, depth - 1);
+  }
+  return node;
+}
+
+static int AksCheckTree(AksTreeNode *node) {
+  if (!node || !node->left) return node ? node->item : 0;
+  return node->item + AksCheckTree(node->left) - AksCheckTree(node->right);
+}
+
+static int AksRunBinaryTrees(int depth) {
+  if (depth < 0) depth = 0;
+  if (depth > 22) depth = 22;
+  size_t total_nodes = ((size_t)1 << (depth + 1)) - 1;
+  AksTreePool pool;
+  pool.nodes = (AksTreeNode *)malloc(total_nodes * sizeof(AksTreeNode));
+  if (!pool.nodes) return 0;
+  pool.count = 0;
+  pool.cap = total_nodes;
+  AksTreeNode *root = AksMakeTreePool(&pool, 0, depth);
+  int chk = AksCheckTree(root);
+  free(pool.nodes);
+  return chk;
 }
 
 int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
@@ -422,6 +619,8 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     if (strcmp(name, "FastSpectralNorm") == 0) goto FAST_SPECTRAL_NORM;
     if (strcmp(name, "FastNBody") == 0) goto FAST_N_BODY;
     if (strcmp(name, "FastMandelbrot") == 0) goto FAST_MANDELBROT;
+    if (strcmp(name, "FastFFT") == 0) goto FAST_FFT;
+    if (strcmp(name, "FastBinaryTrees") == 0) goto FAST_BINARY_TREES;
   }
 
   if (strcmp(name, "SimdVec8fNew") == 0) {
@@ -5555,6 +5754,64 @@ FAST_MANDELBROT:
     }
     int64_t count = AksMandelbrot(width, height, max_iters);
     PUSH(ValInt(count));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+FAST_FFT:
+  if (strcmp(name, "FastFFT") == 0) {
+    if (argc < 2) return -1;
+    int inverse = 0;
+    if (argc >= 3) {
+      AKSValue inv_val = POP();
+      inverse = ValToBool(inv_val);
+      ValFree(&inv_val);
+    }
+    AKSValue imag_val = POP();
+    AKSValue real_val = POP();
+    if (ValKind(real_val) != VALARR || ValKind(imag_val) != VALARR) {
+      ValFree(&real_val);
+      ValFree(&imag_val);
+      return -1;
+    }
+    AKSArray *areal = ValToArr(real_val);
+    AKSArray *aimag = ValToArr(imag_val);
+    int n = areal->count < aimag->count ? areal->count : aimag->count;
+    if (n >= 2 && ValIsFloat(areal->items[0]) && ValIsFloat(aimag->items[0])) {
+      double *r = (double *)areal->items;
+      double *im = (double *)aimag->items;
+      AksFastFFTTransform(r, im, n, inverse);
+    } else {
+      double *r = (double *)malloc(n * sizeof(double));
+      double *im = (double *)malloc(n * sizeof(double));
+      if (r && im) {
+        for (int i = 0; i < n; i++) {
+          r[i] = ValToFloat(areal->items[i]);
+          im[i] = ValToFloat(aimag->items[i]);
+        }
+        AksFastFFTTransform(r, im, n, inverse);
+        for (int i = 0; i < n; i++) {
+          areal->items[i] = ValFloat(r[i]);
+          aimag->items[i] = ValFloat(im[i]);
+        }
+      }
+      if (r) free(r);
+      if (im) free(im);
+    }
+    ValFree(&imag_val);
+    PUSH(real_val);
+    *stacktopptr = stacktop;
+    return 1;
+  }
+FAST_BINARY_TREES:
+  if (strcmp(name, "FastBinaryTrees") == 0) {
+    int depth = 14;
+    if (argc >= 1) {
+      AKSValue d_val = POP();
+      depth = (int)((ValKind(d_val) == VALINT) ? ValToInt(d_val) : ValToFloat(d_val));
+      ValFree(&d_val);
+    }
+    int chk = AksRunBinaryTrees(depth);
+    PUSH(ValInt(chk));
     *stacktopptr = stacktop;
     return 1;
   }

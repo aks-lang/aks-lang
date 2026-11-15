@@ -35,4 +35,14 @@ echo ""
 ./aks run tests/TestPiProof.aks
 
 echo ""
+echo "Step 6: Executing industry standard native benchmarks..."
+echo ""
+./tests/IndustryBenchmarksNative
+
+echo ""
+echo "Step 7: Executing AKS industry standard benchmarks..."
+echo ""
+./aks run tests/IndustryBenchmarks.aks
+
+echo ""
 echo "Reproducible benchmark verification completed successfully."

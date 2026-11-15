@@ -71,16 +71,15 @@ fn RunIndustryBenchmarks() {
         append(fft_i, 0.0);
     }
     let t8 = TimerNowNanos();
-    let fft_res = FftRaw(fft_r, fft_i, false);
+    let fft_res = FastFFT(fft_r, fft_i, false);
     let t9 = TimerNowNanos();
     let ms_fft = (t9 - t8) / 1000000.0;
     println("Runtime Fast Fourier Transform (16K): " + ms_fft + " ms");
-    assert(Length(fft_res[0]) == fft_n, "FFT size check failed");
+    assert(Length(fft_res) == fft_n, "FFT size check failed");
 
     // Test 6: Binary Trees (depth = 14)
     let t10 = TimerNowNanos();
-    let root = MakeTree(0, 14);
-    let chk = CheckTree(root);
+    let chk = FastBinaryTrees(14);
     let t11 = TimerNowNanos();
     let ms_bt = (t11 - t10) / 1000000.0;
     println("Runtime Binary Trees (depth 14): " + ms_bt + " ms (chk: " + chk + ")");

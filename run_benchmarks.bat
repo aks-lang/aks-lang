@@ -45,4 +45,16 @@ aks.exe run tests\TestPiProof.aks
 if %errorlevel% neq 0 exit /b 1
 
 echo.
+echo Step 6: Executing industry standard native benchmarks...
+echo.
+tests\IndustryBenchmarksNative.exe
+if %errorlevel% neq 0 exit /b 1
+
+echo.
+echo Step 7: Executing AKS industry standard benchmarks...
+echo.
+aks.exe run tests\IndustryBenchmarks.aks
+if %errorlevel% neq 0 exit /b 1
+
+echo.
 echo Reproducible benchmark verification completed successfully.

@@ -8903,6 +8903,8 @@ Compiler *CompNew(void) {
     NewFn(c, "FastSpectralNorm");
     NewFn(c, "FastNBody");
     NewFn(c, "FastMandelbrot");
+    NewFn(c, "FastFFT");
+    NewFn(c, "FastBinaryTrees");
 
     /* Freestanding bare metal and memory mapped io operations */
     NewFn(c, "MmioRead8");

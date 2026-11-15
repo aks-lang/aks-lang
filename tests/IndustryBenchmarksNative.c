@@ -15,7 +15,9 @@ static int64_t GetTimeNanos(void) {
     LARGE_INTEGER freq, counter;
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&counter);
-    return (counter.QuadPart * 1000000000LL) / freq.QuadPart;
+    int64_t sec = counter.QuadPart / freq.QuadPart;
+    int64_t rem = counter.QuadPart % freq.QuadPart;
+    return sec * 1000000000LL + (rem * 1000000000LL) / freq.QuadPart;
 }
 #else
 #include <time.h>
@@ -330,27 +332,43 @@ int main(void) {
     printf("Starting Industry Standard Native Benchmark Suite\n\n");
 
     // Test 1: Pi numerical integration (1,000,000,000 steps)
+    _mm_mfence();
     int64_t t0 = GetTimeNanos();
-    double pi = BenchmarkPiMidpoint(1000000000LL);
+    _mm_mfence();
+    volatile double pi = BenchmarkPiMidpoint(1000000000LL);
+    _mm_mfence();
     int64_t t1 = GetTimeNanos();
+    _mm_mfence();
     printf("Native Pi Numerical Integration (1B): %.4f ms (pi: %.10f)\n", (double)(t1 - t0) / 1000000.0, pi);
 
     // Test 2: Spectral Norm (n = 1000)
+    _mm_mfence();
     t0 = GetTimeNanos();
-    double sn = BenchmarkSpectralNorm(1000);
+    _mm_mfence();
+    volatile double sn = BenchmarkSpectralNorm(1000);
+    _mm_mfence();
     t1 = GetTimeNanos();
+    _mm_mfence();
     printf("Native Spectral Norm (N=1000): %.4f ms (norm: %.9f)\n", (double)(t1 - t0) / 1000000.0, sn);
 
     // Test 3: N-Body Simulation (500,000 steps)
+    _mm_mfence();
     t0 = GetTimeNanos();
-    double energy = BenchmarkNBody(500000);
+    _mm_mfence();
+    volatile double energy = BenchmarkNBody(500000);
+    _mm_mfence();
     t1 = GetTimeNanos();
+    _mm_mfence();
     printf("Native N-Body Gravitational (500K): %.4f ms (energy: %.9f)\n", (double)(t1 - t0) / 1000000.0, energy);
 
     // Test 4: Mandelbrot Set (500x500)
+    _mm_mfence();
     t0 = GetTimeNanos();
-    int64_t mandel = BenchmarkMandelbrot(500, 500, 50);
+    _mm_mfence();
+    volatile int64_t mandel = BenchmarkMandelbrot(500, 500, 50);
+    _mm_mfence();
     t1 = GetTimeNanos();
+    _mm_mfence();
     printf("Native Mandelbrot Set (500x500): %.4f ms (chk: %lld)\n", (double)(t1 - t0) / 1000000.0, (long long)mandel);
 
     // Test 5: Fast Fourier Transform (16,384 samples)
@@ -361,19 +379,27 @@ int main(void) {
         fft_r[i] = sin((double)i * 0.05);
         fft_i[i] = 0.0;
     }
+    _mm_mfence();
     t0 = GetTimeNanos();
+    _mm_mfence();
     BenchmarkFFT(fft_r, fft_i, fft_n);
+    _mm_mfence();
     t1 = GetTimeNanos();
+    _mm_mfence();
     printf("Native Fast Fourier Transform (16K): %.4f ms (r0: %.4f)\n", (double)(t1 - t0) / 1000000.0, fft_r[0]);
     free(fft_r);
     free(fft_i);
 
     // Test 6: Binary Trees (depth = 14)
+    _mm_mfence();
     t0 = GetTimeNanos();
+    _mm_mfence();
     TreeNode *root = MakeTreeNode(0, 14);
     int chk = CheckTreeNode(root);
     FreeTreeNode(root);
+    _mm_mfence();
     t1 = GetTimeNanos();
+    _mm_mfence();
     printf("Native Binary Trees (depth 14): %.4f ms (chk: %d)\n\n", (double)(t1 - t0) / 1000000.0, chk);
 
     printf("Industry standard native execution completed cleanly.\n");

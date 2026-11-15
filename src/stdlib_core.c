@@ -514,7 +514,9 @@ int ExecuteStdlibCore(VM *vm, VMTask *task, const char *name, int argc,
       }
       QueryPerformanceCounter(&cnt);
       if (freq.QuadPart > 0) {
-        nanos = (int64_t)((cnt.QuadPart * 1000000000LL) / freq.QuadPart);
+        int64_t sec = cnt.QuadPart / freq.QuadPart;
+        int64_t rem = cnt.QuadPart % freq.QuadPart;
+        nanos = sec * 1000000000LL + (rem * 1000000000LL) / freq.QuadPart;
       }
 #else
       struct timespec ts;

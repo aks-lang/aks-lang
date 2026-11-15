@@ -177,6 +177,9 @@ rm -f sample_temp.* sample_doc.*
 echo "Running Editor Protocol tests (LSP and DAP)..."
 ./tests/TestProtocols
 
+echo "Running Industry Standard Benchmarks..."
+./aks run tests/IndustryBenchmarks.aks
+
 rm -f akscoredump.json jittrace* compilejit_* jitloop* *.svg tests/*.svg
 rm -rf LibraryTestDir templibrarydir
 
