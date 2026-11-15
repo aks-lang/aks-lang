@@ -361,14 +361,24 @@ int EmitNoStdCModule(Compiler *comp, Node *ast_root, const char *out_filepath) {
     fprintf(f, "static inline void cpu_pause(void) {\n");
     fprintf(f, "#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))\n");
     fprintf(f, "    _mm_pause();\n");
+    fprintf(f, "#elif defined(_MSC_VER) && (defined(_M_ARM64) || defined(_M_ARM))\n");
+    fprintf(f, "    __yield();\n");
     fprintf(f, "#elif defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "# if defined(__x86_64__) || defined(__i386__)\n");
     fprintf(f, "    __asm__ __volatile__(\"pause\");\n");
+    fprintf(f, "# elif defined(__aarch64__) || defined(__arm64__) || defined(__arm__)\n");
+    fprintf(f, "    __asm__ __volatile__(\"yield\");\n");
+    fprintf(f, "# endif\n");
     fprintf(f, "#endif\n");
     fprintf(f, "}\n\n");
 
     fprintf(f, "static inline void cpu_halt(void) {\n");
     fprintf(f, "#if defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "# if defined(__x86_64__) || defined(__i386__)\n");
     fprintf(f, "    __asm__ __volatile__(\"hlt\");\n");
+    fprintf(f, "# elif defined(__aarch64__) || defined(__arm64__) || defined(__arm__)\n");
+    fprintf(f, "    __asm__ __volatile__(\"wfi\");\n");
+    fprintf(f, "# endif\n");
     fprintf(f, "#elif defined(_MSC_VER)\n");
     fprintf(f, "    __halt();\n");
     fprintf(f, "#endif\n");

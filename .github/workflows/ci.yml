@@ -106,5 +106,5 @@ jobs:
           ./aks --version
           ./aks test tests/TestGenerics.aks
           ./aks test tests/TestDynTraits.aks
-          ./aks run tests/TestCrypto.aks
+          ./aks run tests/testCrypto.aks
           ./tests/TestProtocols

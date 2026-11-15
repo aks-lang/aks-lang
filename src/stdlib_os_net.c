@@ -7758,6 +7758,7 @@ int ExecuteStdlibOsNet(VM *vm, VMTask *task, const char *name, int argc,
   if (strcmp(name, "OsProcessSnapshotC") == 0) {
     AKSValue ps_arr = ValArr(32);
     AKSArray *ps_a = ValToArr(ps_arr);
+    (void)ps_a;
 #ifdef _WIN32
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap != INVALID_HANDLE_VALUE) {
@@ -12841,8 +12842,16 @@ int ExecuteStdlibOsNet(VM *vm, VMTask *task, const char *name, int argc,
   if (strcmp(name, "CpuPause") == 0) {
 #if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
     _mm_pause();
-#elif defined(__GNUC__)
+#elif defined(_MSC_VER) && (defined(_M_ARM64) || defined(_M_ARM))
+    __yield();
+#elif defined(__GNUC__) || defined(__clang__)
+# if defined(__x86_64__) || defined(__i386__)
     __asm__ __volatile__("pause");
+# elif defined(__aarch64__) || defined(__arm64__) || defined(__arm__)
+    __asm__ __volatile__("yield");
+# else
+    /* spin-loop hint fallback */
+# endif
 #endif
     PUSH(ValNull());
     *stacktopptr = stacktop;

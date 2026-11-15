@@ -7,25 +7,25 @@ echo "Building compiler (POSIX)..."
 bash build.sh
 
 echo "Running core VM & compiler tests..."
-./aks run tests/TestNullPtr.aks
-./aks run tests/TestBounds.aks
-./aks run --no-bounds-check tests/TestBounds.aks
-./aks run tests/TestOverflow.aks
-./aks run --strict-overflow tests/TestOverflow.aks >/dev/null 2>&1 || true
-./aks run tests/TestUaf.aks
-! ./aks run tests/TestTypeError.aks >/dev/null 2>&1
-! ./aks run --immutable-by-default tests/TestConstError.aks >/dev/null 2>&1
-! ./aks run tests/TestBorrowError.aks >/dev/null 2>&1
-! ./aks run tests/TestStaticRecursion.aks >/dev/null 2>&1
-./aks run tests/TestOpts.aks
-./aks run tests/TestRaii.aks
-./aks run tests/SecurityTest.aks
-./aks run tests/PlatformTest.aks
-./aks run tests/TestCollections.aks
-./aks run tests/TestCrypto.aks
-./aks run tests/TestSerialization.aks
-./aks run tests/TestStringUnicode.aks
-./aks run tests/TestNewFeatures.aks
+./aks run tests/testNullPtr.aks
+./aks run tests/testBounds.aks
+./aks run --no-bounds-check tests/testBounds.aks
+./aks run tests/testOverflow.aks
+./aks run --strict-overflow tests/testOverflow.aks >/dev/null 2>&1 || true
+./aks run tests/testUaf.aks
+! ./aks run tests/testTypeError.aks >/dev/null 2>&1
+! ./aks run --immutable-by-default tests/testConstError.aks >/dev/null 2>&1
+! ./aks run tests/testBorrowError.aks >/dev/null 2>&1
+! ./aks run tests/testStaticRecursion.aks >/dev/null 2>&1
+./aks run tests/testopts.aks
+./aks run tests/testRaii.aks
+./aks run tests/securityTest.aks
+./aks run tests/platformTest.aks
+./aks run tests/testCollections.aks
+./aks run tests/testCrypto.aks
+./aks run tests/testSerialization.aks
+./aks run tests/testStringUnicode.aks
+./aks run tests/testNewFeatures.aks
 ./aks run tests/TestSimdSwizzle.aks
 ./aks run tests/TestPhysicalUnits.aks
 ./aks run tests/TestActorModel.aks
@@ -119,14 +119,14 @@ test -f tests/TestDifferentialSuite.ll
 rm -f tests/TestDifferentialSuite.ll
 
 echo "Running strict type tests..."
-./aks run --strict-types tests/TestStrict.aks
-! ./aks run --strict-types tests/TestStrictFail.aks >/dev/null 2>&1
-./aks run --strict-types tests/TestAdvancedTypes.aks
+./aks run --strict-types tests/teststrict.aks
+! ./aks run --strict-types tests/teststrictfail.aks >/dev/null 2>&1
+./aks run --strict-types tests/testadvancedtypes.aks
 ./aks run --incremental tests/TestIncrementalTyping.aks
-! ./aks run --strict-types tests/TestFailOpaque.aks >/dev/null 2>&1
-! ./aks run --strict-types tests/TestFailRefine.aks >/dev/null 2>&1
-! ./aks run --strict-types tests/TestFailArray.aks >/dev/null 2>&1
-! ./aks run --strict-types tests/TestFailEffect.aks >/dev/null 2>&1
+! ./aks run --strict-types tests/testfailopaque.aks >/dev/null 2>&1
+! ./aks run --strict-types tests/testfailrefine.aks >/dev/null 2>&1
+! ./aks run --strict-types tests/testfailarray.aks >/dev/null 2>&1
+! ./aks run --strict-types tests/testfaileffect.aks >/dev/null 2>&1
 ./aks run --strict-types tests/TestDynTraits.aks
 ! ./aks run --strict-types tests/TestFailDynTrait.aks >/dev/null 2>&1
 ./aks run --strict-types tests/TestErrorRecovery.aks >/dev/null 2>&1 || true
