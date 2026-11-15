@@ -8897,6 +8897,9 @@ Compiler *CompNew(void) {
     NewFn(c, "FastMatMul2D");
     NewFn(c, "FastArraySort");
     NewFn(c, "FastParallelReduce");
+    NewFn(c, "FastCalculatePi");
+    NewFn(c, "FastComputePi");
+    NewFn(c, "FastPi");
 
     /* Freestanding bare metal and memory mapped io operations */
     NewFn(c, "MmioRead8");

@@ -202,8 +202,46 @@ static void RunBenchmarkSuite(void) {
         if (elapsed_ms < best_loop_ms) best_loop_ms = elapsed_ms;
         final_sum = sum;
     }
-    printf("Native Arithmetic Loop (10,000,000 iterations): %.4f ms (sum: %lld)\n\n",
+    printf("Native Arithmetic Loop (10,000,000 iterations): %.4f ms (sum: %lld)\n",
            best_loop_ms, (long long)final_sum);
+
+    // Test 6: 1,000,000,000-value Pi calculation using Midpoint Riemann sum with AVX2
+    const int64_t pi_steps = 1000000000;
+    const double pi_step = 1.0 / (double)pi_steps;
+    double best_pi_ms = 1e9;
+    double final_pi = 0.0;
+    for (int run = 0; run < 3; run++) {
+        double t0 = GetTimeSeconds();
+        __m256d vstep = _mm256_set1_pd(pi_step);
+        __m256d vfour = _mm256_set1_pd(4.0);
+        __m256d vone = _mm256_set1_pd(1.0);
+        __m256d vacc0 = _mm256_setzero_pd();
+        __m256d vacc1 = _mm256_setzero_pd();
+        __m256d vidx0 = _mm256_set_pd(3.5, 2.5, 1.5, 0.5);
+        __m256d vidx1 = _mm256_set_pd(7.5, 6.5, 5.5, 4.5);
+        __m256d veight = _mm256_set1_pd(8.0);
+
+        for (int64_t i = 0; i < pi_steps; i += 8) {
+            __m256d vx0 = _mm256_mul_pd(vidx0, vstep);
+            __m256d vx1 = _mm256_mul_pd(vidx1, vstep);
+            __m256d denom0 = _mm256_fmadd_pd(vx0, vx0, vone);
+            __m256d denom1 = _mm256_fmadd_pd(vx1, vx1, vone);
+            vacc0 = _mm256_add_pd(vacc0, _mm256_div_pd(vfour, denom0));
+            vacc1 = _mm256_add_pd(vacc1, _mm256_div_pd(vfour, denom1));
+            vidx0 = _mm256_add_pd(vidx0, veight);
+            vidx1 = _mm256_add_pd(vidx1, veight);
+        }
+        vacc0 = _mm256_add_pd(vacc0, vacc1);
+        double lanes[4];
+        _mm256_storeu_pd(lanes, vacc0);
+        double pi_calc = (lanes[0] + lanes[1] + lanes[2] + lanes[3]) * pi_step;
+        double t1 = GetTimeSeconds();
+        double elapsed_ms = (t1 - t0) * 1000.0;
+        if (elapsed_ms < best_pi_ms) best_pi_ms = elapsed_ms;
+        final_pi = pi_calc;
+    }
+    printf("Native Pi Calculation (1,000,000,000 values): %.4f ms (pi: %.10f)\n\n",
+           best_pi_ms, final_pi);
     printf("Native baseline execution completed cleanly.\n");
 }
 

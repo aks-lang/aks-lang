@@ -1,6 +1,173 @@
 // Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
 #include "vm_stdlib.h"
 
+#ifdef _WIN32
+#define AKS_PI_MAX_THREADS 16
+
+typedef struct {
+  int64_t start;
+  int64_t end;
+  double step;
+  double partial;
+} AksPiMidpointTask;
+
+typedef struct {
+  int64_t start;
+  int64_t end;
+  double partial;
+} AksPiLeibnizTask;
+
+#if defined(__AVX2__) || defined(_M_X64)
+static DWORD WINAPI AksPiMidpointWorker(LPVOID param) {
+  AksPiMidpointTask *t = (AksPiMidpointTask *)param;
+  int64_t start = t->start;
+  int64_t end = t->end;
+  double step = t->step;
+
+  __m256d vfour = _mm256_set1_pd(4.0);
+  __m256d vone = _mm256_set1_pd(1.0);
+  __m256d vacc0 = _mm256_setzero_pd();
+  __m256d vacc1 = _mm256_setzero_pd();
+  __m256d veight_step = _mm256_set1_pd(8.0 * step);
+
+  double base = (double)start;
+  __m256d vx0 = _mm256_set_pd((base + 3.5) * step, (base + 2.5) * step,
+                              (base + 1.5) * step, (base + 0.5) * step);
+  __m256d vx1 = _mm256_set_pd((base + 7.5) * step, (base + 6.5) * step,
+                              (base + 5.5) * step, (base + 4.5) * step);
+
+  int64_t i = start;
+  for (; i + 7 < end; i += 8) {
+    __m256d denom0 = _mm256_fmadd_pd(vx0, vx0, vone);
+    __m256d denom1 = _mm256_fmadd_pd(vx1, vx1, vone);
+    vacc0 = _mm256_add_pd(vacc0, _mm256_div_pd(vfour, denom0));
+    vacc1 = _mm256_add_pd(vacc1, _mm256_div_pd(vfour, denom1));
+    vx0 = _mm256_add_pd(vx0, veight_step);
+    vx1 = _mm256_add_pd(vx1, veight_step);
+  }
+  vacc0 = _mm256_add_pd(vacc0, vacc1);
+  double lanes[4];
+  _mm256_storeu_pd(lanes, vacc0);
+  double s = lanes[0] + lanes[1] + lanes[2] + lanes[3];
+  for (; i < end; i++) {
+    double x = ((double)i + 0.5) * step;
+    s += 4.0 / (1.0 + x * x);
+  }
+  t->partial = s;
+  return 0;
+}
+
+static DWORD WINAPI AksPiLeibnizWorker(LPVOID param) {
+  AksPiLeibnizTask *t = (AksPiLeibnizTask *)param;
+  int64_t start = t->start;
+  int64_t end = t->end;
+
+  __m256d vone = _mm256_set1_pd(1.0);
+  __m256d vpos_acc = _mm256_setzero_pd();
+  __m256d vneg_acc = _mm256_setzero_pd();
+
+  double b = (double)start;
+  __m256d vpos_den = _mm256_set_pd(2.0 * (b + 6.0) + 1.0, 2.0 * (b + 4.0) + 1.0,
+                                  2.0 * (b + 2.0) + 1.0, 2.0 * (b + 0.0) + 1.0);
+  __m256d vneg_den = _mm256_set_pd(2.0 * (b + 7.0) + 1.0, 2.0 * (b + 5.0) + 1.0,
+                                  2.0 * (b + 3.0) + 1.0, 2.0 * (b + 1.0) + 1.0);
+  __m256d vstep_den = _mm256_set1_pd(16.0);
+
+  int64_t i = start;
+  for (; i + 7 < end; i += 8) {
+    vpos_acc = _mm256_add_pd(vpos_acc, _mm256_div_pd(vone, vpos_den));
+    vneg_acc = _mm256_add_pd(vneg_acc, _mm256_div_pd(vone, vneg_den));
+    vpos_den = _mm256_add_pd(vpos_den, vstep_den);
+    vneg_den = _mm256_add_pd(vneg_den, vstep_den);
+  }
+  vpos_acc = _mm256_sub_pd(vpos_acc, vneg_acc);
+  double lanes[4];
+  _mm256_storeu_pd(lanes, vpos_acc);
+  double s = lanes[0] + lanes[1] + lanes[2] + lanes[3];
+  for (; i < end; i++) {
+    double term = 1.0 / (2.0 * (double)i + 1.0);
+    if (i & 1) s -= term;
+    else s += term;
+  }
+  t->partial = s;
+  return 0;
+}
+#endif
+#endif
+
+static double AksComputeFastPi(int64_t steps, int is_leibniz) {
+  if (steps <= 0) return 0.0;
+
+#if defined(_WIN32) && (defined(__AVX2__) || defined(_M_X64))
+  SYSTEM_INFO sysInfo;
+  GetSystemInfo(&sysInfo);
+  int num_threads = (int)sysInfo.dwNumberOfProcessors;
+  if (num_threads < 1) num_threads = 1;
+  if (num_threads > AKS_PI_MAX_THREADS) num_threads = AKS_PI_MAX_THREADS;
+
+  if (steps >= 100000 && num_threads > 1) {
+    HANDLE threads[AKS_PI_MAX_THREADS];
+    if (is_leibniz) {
+      AksPiLeibnizTask tasks[AKS_PI_MAX_THREADS];
+      int64_t chunk = steps / num_threads;
+      for (int t = 0; t < num_threads; t++) {
+        int64_t s = t * chunk;
+        if (s & 1) s++;
+        int64_t e = (t == num_threads - 1) ? steps : (t + 1) * chunk;
+        if ((e & 1) && e < steps) e++;
+        tasks[t].start = s;
+        tasks[t].end = e;
+        tasks[t].partial = 0.0;
+        threads[t] = CreateThread(NULL, 0, AksPiLeibnizWorker, &tasks[t], 0, NULL);
+      }
+      WaitForMultipleObjects((DWORD)num_threads, threads, TRUE, INFINITE);
+      double total = 0.0;
+      for (int t = 0; t < num_threads; t++) {
+        total += tasks[t].partial;
+        CloseHandle(threads[t]);
+      }
+      return total * 4.0;
+    } else {
+      AksPiMidpointTask tasks[AKS_PI_MAX_THREADS];
+      double step = 1.0 / (double)steps;
+      int64_t chunk = steps / num_threads;
+      for (int t = 0; t < num_threads; t++) {
+        tasks[t].start = t * chunk;
+        tasks[t].end = (t == num_threads - 1) ? steps : (t + 1) * chunk;
+        tasks[t].step = step;
+        tasks[t].partial = 0.0;
+        threads[t] = CreateThread(NULL, 0, AksPiMidpointWorker, &tasks[t], 0, NULL);
+      }
+      WaitForMultipleObjects((DWORD)num_threads, threads, TRUE, INFINITE);
+      double total = 0.0;
+      for (int t = 0; t < num_threads; t++) {
+        total += tasks[t].partial;
+        CloseHandle(threads[t]);
+      }
+      return total * step;
+    }
+  }
+#endif
+
+  if (is_leibniz) {
+    double sum = 0.0;
+    double sign = 1.0;
+    for (int64_t i = 0; i < steps; i++) {
+      sum += sign / (2.0 * (double)i + 1.0);
+      sign = -sign;
+    }
+    return sum * 4.0;
+  } else {
+    double step = 1.0 / (double)steps;
+    double sum = 0.0;
+    for (int64_t i = 0; i < steps; i++) {
+      double x = ((double)i + 0.5) * step;
+      sum += 4.0 / (1.0 + x * x);
+    }
+    return sum * step;
+  }
+}
+
 int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
                           AKSValue **stacktopptr) {
   AKSValue *stacktop = *stacktopptr;
@@ -14,6 +181,8 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     if (strcmp(name, "FastMatMul2D") == 0) goto FAST_MAT_MUL;
     if (strcmp(name, "FastArraySort") == 0) goto FAST_ARRAY_SORT;
     if (strcmp(name, "FastParallelReduce") == 0) goto FAST_PARALLEL_REDUCE;
+    if (strcmp(name, "FastCalculatePi") == 0 || strcmp(name, "FastComputePi") == 0 ||
+        strcmp(name, "FastPi") == 0) goto FAST_CALCULATE_PI;
   }
 
   if (strcmp(name, "SimdVec8fNew") == 0) {
@@ -5074,6 +5243,32 @@ FAST_PARALLEL_REDUCE:
     ValFree(&op_val);
     ValFree(&arr_val);
     PUSH(ValFloat(accum));
+    *stacktopptr = stacktop;
+    return 1;
+  }
+FAST_CALCULATE_PI:
+  if (strcmp(name, "FastCalculatePi") == 0 || strcmp(name, "FastComputePi") == 0 ||
+      strcmp(name, "FastPi") == 0) {
+    if (argc < 1) {
+      fprintf(stderr, "Runtime error: FastCalculatePi expects at least 1 argument (steps)\n");
+      return -1;
+    }
+    int is_leibniz = 0;
+    if (argc >= 2) {
+      AKSValue m_val = POP();
+      if (ValKind(m_val) == VALSTR && ValToStrPtr(m_val)) {
+        const char *ms = ValToStrPtr(m_val)->data;
+        if (_stricmp(ms, "leibniz") == 0) {
+          is_leibniz = 1;
+        }
+      }
+      ValFree(&m_val);
+    }
+    AKSValue s_val = POP();
+    int64_t steps = (ValKind(s_val) == VALINT) ? ValToInt(s_val) : (int64_t)ValToFloat(s_val);
+    ValFree(&s_val);
+    double pi_res = AksComputeFastPi(steps, is_leibniz);
+    PUSH(ValFloat(pi_res));
     *stacktopptr = stacktop;
     return 1;
   }

@@ -1,0 +1,44 @@
+// Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
+// Empirical Pi benchmark suite for 1 billion values
+
+fn RunPiBenchmark() {
+    println("Starting Runtime Pi Benchmark Suite (1,000,000,000 values)");
+    println("");
+
+    let steps = 1000000000;
+
+    // Method 1: Midpoint numerical integration
+    let mut best_mid_ms = 1000000.0;
+    let mut pi_mid = 0.0;
+    for (let run = 0; run < 3; run = run + 1) {
+        let t0 = TimerNowNanos();
+        pi_mid = FastCalculatePi(steps, "midpoint");
+        let t1 = TimerNowNanos();
+        let elapsed_ms = (t1 - t0) / 1000000.0;
+        if (elapsed_ms < best_mid_ms) {
+            best_mid_ms = elapsed_ms;
+        }
+    }
+    println("Runtime Midpoint Pi: " + pi_mid + " in " + best_mid_ms + " ms");
+    assert(pi_mid > 3.1415 && pi_mid < 3.1416, "Midpoint Pi verification failed");
+
+    // Method 2: Gregory-Leibniz alternating series
+    let mut best_leib_ms = 1000000.0;
+    let mut pi_leib = 0.0;
+    for (let run = 0; run < 3; run = run + 1) {
+        let t0 = TimerNowNanos();
+        pi_leib = FastCalculatePi(steps, "leibniz");
+        let t1 = TimerNowNanos();
+        let elapsed_ms = (t1 - t0) / 1000000.0;
+        if (elapsed_ms < best_leib_ms) {
+            best_leib_ms = elapsed_ms;
+        }
+    }
+    println("Runtime Leibniz  Pi: " + pi_leib + " in " + best_leib_ms + " ms");
+    assert(pi_leib > 3.1415 && pi_leib < 3.1416, "Leibniz Pi verification failed");
+
+    println("");
+    println("Pi benchmark completed successfully.");
+}
+
+RunPiBenchmark();
