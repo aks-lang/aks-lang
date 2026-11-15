@@ -7,7 +7,20 @@
 #include <stdint.h>
 #include <math.h>
 #include <string.h>
+
+#if (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)) && !defined(__aarch64__) && !defined(__arm64__)
+#define HAS_X86_AVX2 1
 #include <immintrin.h>
+#define HARDWARE_BARRIER() _mm_mfence()
+#else
+#define HAS_X86_AVX2 0
+#if defined(_MSC_VER)
+#include <intrin.h>
+#define HARDWARE_BARRIER() MemoryBarrier()
+#else
+#define HARDWARE_BARRIER() __sync_synchronize()
+#endif
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -31,6 +44,7 @@ static int64_t GetTimeNanos(void) {
 // 1. Numerical Integration (Pi Midpoint Riemann Sum)
 static double BenchmarkPiMidpoint(int64_t steps) {
     const double step = 1.0 / (double)steps;
+#if HAS_X86_AVX2
     __m256d vstep = _mm256_set1_pd(step);
     __m256d vfour = _mm256_set1_pd(4.0);
     __m256d vone = _mm256_set1_pd(1.0);
@@ -54,6 +68,14 @@ static double BenchmarkPiMidpoint(int64_t steps) {
     double lanes[4];
     _mm256_storeu_pd(lanes, vacc0);
     return (lanes[0] + lanes[1] + lanes[2] + lanes[3]) * step;
+#else
+    double s = 0.0;
+    for (int64_t i = 0; i < steps; i++) {
+        double x = ((double)i + 0.5) * step;
+        s += 4.0 / (1.0 + x * x);
+    }
+    return s * step;
+#endif
 }
 
 // 2. Spectral Norm
@@ -62,6 +84,7 @@ static inline double A_val(int i, int j) {
 }
 
 static void MultiplyAv(int n, const double *v, double *Av) {
+#if HAS_X86_AVX2
     for (int i = 0; i < n; i++) {
         __m256d sum0 = _mm256_setzero_pd();
         int j = 0;
@@ -78,9 +101,19 @@ static void MultiplyAv(int n, const double *v, double *Av) {
         }
         Av[i] = s;
     }
+#else
+    for (int i = 0; i < n; i++) {
+        double s = 0.0;
+        for (int j = 0; j < n; j++) {
+            s += A_val(i, j) * v[j];
+        }
+        Av[i] = s;
+    }
+#endif
 }
 
 static void MultiplyAtv(int n, const double *v, double *Atv) {
+#if HAS_X86_AVX2
     for (int i = 0; i < n; i++) {
         __m256d sum0 = _mm256_setzero_pd();
         int j = 0;
@@ -97,6 +130,15 @@ static void MultiplyAtv(int n, const double *v, double *Atv) {
         }
         Atv[i] = s;
     }
+#else
+    for (int i = 0; i < n; i++) {
+        double s = 0.0;
+        for (int j = 0; j < n; j++) {
+            s += A_val(j, i) * v[j];
+        }
+        Atv[i] = s;
+    }
+#endif
 }
 
 static double BenchmarkSpectralNorm(int n) {
@@ -208,6 +250,7 @@ static int64_t BenchmarkMandelbrot(int width, int height, int max_iters) {
 
     for (int y = 0; y < height; y++) {
         double ci = -1.25 + (double)y * dy;
+#if HAS_X86_AVX2
         int x = 0;
         for (; x + 3 < width; x += 4) {
             __m256d cr = _mm256_set_pd(-2.0 + (double)(x + 3) * dx,
@@ -254,6 +297,21 @@ static int64_t BenchmarkMandelbrot(int width, int height, int max_iters) {
             }
             total += it;
         }
+#else
+        for (int x = 0; x < width; x++) {
+            double cr = -2.0 + (double)x * dx;
+            double zr = 0.0, zi = 0.0;
+            int it = 0;
+            for (; it < max_iters; it++) {
+                double zr2 = zr * zr;
+                double zi2 = zi * zi;
+                if (zr2 + zi2 > 4.0) break;
+                zi = 2.0 * zr * zi + ci;
+                zr = zr2 - zi2 + cr;
+            }
+            total += it;
+        }
+#endif
     }
     return total;
 }
@@ -332,43 +390,43 @@ int main(void) {
     printf("Starting Industry Standard Native Benchmark Suite\n\n");
 
     // Test 1: Pi numerical integration (1,000,000,000 steps)
-    _mm_mfence();
+    HARDWARE_BARRIER();
     int64_t t0 = GetTimeNanos();
-    _mm_mfence();
+    HARDWARE_BARRIER();
     volatile double pi = BenchmarkPiMidpoint(1000000000LL);
-    _mm_mfence();
+    HARDWARE_BARRIER();
     int64_t t1 = GetTimeNanos();
-    _mm_mfence();
+    HARDWARE_BARRIER();
     printf("Native Pi Numerical Integration (1B): %.4f ms (pi: %.10f)\n", (double)(t1 - t0) / 1000000.0, pi);
 
     // Test 2: Spectral Norm (n = 1000)
-    _mm_mfence();
+    HARDWARE_BARRIER();
     t0 = GetTimeNanos();
-    _mm_mfence();
+    HARDWARE_BARRIER();
     volatile double sn = BenchmarkSpectralNorm(1000);
-    _mm_mfence();
+    HARDWARE_BARRIER();
     t1 = GetTimeNanos();
-    _mm_mfence();
+    HARDWARE_BARRIER();
     printf("Native Spectral Norm (N=1000): %.4f ms (norm: %.9f)\n", (double)(t1 - t0) / 1000000.0, sn);
 
     // Test 3: N-Body Simulation (500,000 steps)
-    _mm_mfence();
+    HARDWARE_BARRIER();
     t0 = GetTimeNanos();
-    _mm_mfence();
+    HARDWARE_BARRIER();
     volatile double energy = BenchmarkNBody(500000);
-    _mm_mfence();
+    HARDWARE_BARRIER();
     t1 = GetTimeNanos();
-    _mm_mfence();
+    HARDWARE_BARRIER();
     printf("Native N-Body Gravitational (500K): %.4f ms (energy: %.9f)\n", (double)(t1 - t0) / 1000000.0, energy);
 
     // Test 4: Mandelbrot Set (500x500)
-    _mm_mfence();
+    HARDWARE_BARRIER();
     t0 = GetTimeNanos();
-    _mm_mfence();
+    HARDWARE_BARRIER();
     volatile int64_t mandel = BenchmarkMandelbrot(500, 500, 50);
-    _mm_mfence();
+    HARDWARE_BARRIER();
     t1 = GetTimeNanos();
-    _mm_mfence();
+    HARDWARE_BARRIER();
     printf("Native Mandelbrot Set (500x500): %.4f ms (chk: %lld)\n", (double)(t1 - t0) / 1000000.0, (long long)mandel);
 
     // Test 5: Fast Fourier Transform (16,384 samples)
@@ -379,27 +437,27 @@ int main(void) {
         fft_r[i] = sin((double)i * 0.05);
         fft_i[i] = 0.0;
     }
-    _mm_mfence();
+    HARDWARE_BARRIER();
     t0 = GetTimeNanos();
-    _mm_mfence();
+    HARDWARE_BARRIER();
     BenchmarkFFT(fft_r, fft_i, fft_n);
-    _mm_mfence();
+    HARDWARE_BARRIER();
     t1 = GetTimeNanos();
-    _mm_mfence();
+    HARDWARE_BARRIER();
     printf("Native Fast Fourier Transform (16K): %.4f ms (r0: %.4f)\n", (double)(t1 - t0) / 1000000.0, fft_r[0]);
     free(fft_r);
     free(fft_i);
 
     // Test 6: Binary Trees (depth = 14)
-    _mm_mfence();
+    HARDWARE_BARRIER();
     t0 = GetTimeNanos();
-    _mm_mfence();
+    HARDWARE_BARRIER();
     TreeNode *root = MakeTreeNode(0, 14);
     int chk = CheckTreeNode(root);
     FreeTreeNode(root);
-    _mm_mfence();
+    HARDWARE_BARRIER();
     t1 = GetTimeNanos();
-    _mm_mfence();
+    HARDWARE_BARRIER();
     printf("Native Binary Trees (depth 14): %.4f ms (chk: %d)\n\n", (double)(t1 - t0) / 1000000.0, chk);
 
     printf("Industry standard native execution completed cleanly.\n");

@@ -4,7 +4,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+
+#if (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)) && !defined(__aarch64__) && !defined(__arm64__)
+#define HAS_X86_AVX2 1
 #include <immintrin.h>
+#else
+#define HAS_X86_AVX2 0
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -34,6 +40,7 @@ int main(void) {
     double final_mid_pi = 0.0;
     for (int run = 0; run < 3; run++) {
         double t0 = GetTimeSeconds();
+#if HAS_X86_AVX2
         __m256d vstep = _mm256_set1_pd(step);
         __m256d vfour = _mm256_set1_pd(4.0);
         __m256d vone = _mm256_set1_pd(1.0);
@@ -57,6 +64,14 @@ int main(void) {
         double lanes[4];
         _mm256_storeu_pd(lanes, vacc0);
         double pi_calc = (lanes[0] + lanes[1] + lanes[2] + lanes[3]) * step;
+#else
+        double sum = 0.0;
+        for (int64_t i = 0; i < steps; i++) {
+            double x = ((double)i + 0.5) * step;
+            sum += 4.0 / (1.0 + x * x);
+        }
+        double pi_calc = sum * step;
+#endif
         double t1 = GetTimeSeconds();
         double elapsed_ms = (t1 - t0) * 1000.0;
         if (elapsed_ms < best_mid_ms) best_mid_ms = elapsed_ms;
@@ -69,6 +84,7 @@ int main(void) {
     double final_leib_pi = 0.0;
     for (int run = 0; run < 3; run++) {
         double t0 = GetTimeSeconds();
+#if HAS_X86_AVX2
         __m256d vone = _mm256_set1_pd(1.0);
         __m256d vpos_acc = _mm256_setzero_pd();
         __m256d vneg_acc = _mm256_setzero_pd();
@@ -86,6 +102,14 @@ int main(void) {
         double lanes[4];
         _mm256_storeu_pd(lanes, vpos_acc);
         double pi_calc = (lanes[0] + lanes[1] + lanes[2] + lanes[3]) * 4.0;
+#else
+        double pos_acc = 0.0, neg_acc = 0.0;
+        for (int64_t i = 0; i < steps; i += 2) {
+            pos_acc += 1.0 / (double)(2 * i + 1);
+            neg_acc += 1.0 / (double)(2 * (i + 1) + 1);
+        }
+        double pi_calc = (pos_acc - neg_acc) * 4.0;
+#endif
         double t1 = GetTimeSeconds();
         double elapsed_ms = (t1 - t0) * 1000.0;
         if (elapsed_ms < best_leib_ms) best_leib_ms = elapsed_ms;

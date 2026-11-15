@@ -6,7 +6,13 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+
+#if (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)) && !defined(__aarch64__) && !defined(__arm64__)
+#define HAS_X86_AVX2 1
 #include <immintrin.h>
+#else
+#define HAS_X86_AVX2 0
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -89,6 +95,7 @@ static void RunBenchmarkSuite(void) {
             const double *a_row = &A[i * dim];
             for (int j = 0; j < dim; j++) {
                 const double *b_col = &BT[j * dim];
+#if HAS_X86_AVX2
                 __m256d acc0 = _mm256_setzero_pd();
                 __m256d acc1 = _mm256_setzero_pd();
                 int k = 0;
@@ -108,6 +115,13 @@ static void RunBenchmarkSuite(void) {
                     sum += a_row[k] * b_col[k];
                 }
                 C[i * dim + j] = sum;
+#else
+                double sum = 0.0;
+                for (int k = 0; k < dim; k++) {
+                    sum += a_row[k] * b_col[k];
+                }
+                C[i * dim + j] = sum;
+#endif
             }
         }
         double t1 = GetTimeSeconds();
@@ -132,6 +146,7 @@ static void RunBenchmarkSuite(void) {
     double final_dot = 0.0;
     for (int run = 0; run < 5; run++) {
         double t0 = GetTimeSeconds();
+#if HAS_X86_AVX2
         __m256d acc0 = _mm256_setzero_pd();
         __m256d acc1 = _mm256_setzero_pd();
         int k = 0;
@@ -150,6 +165,12 @@ static void RunBenchmarkSuite(void) {
         for (; k < dot_count; k++) {
             dot += v1[k] * v2[k];
         }
+#else
+        double dot = 0.0;
+        for (int k = 0; k < dot_count; k++) {
+            dot += v1[k] * v2[k];
+        }
+#endif
         double t1 = GetTimeSeconds();
         double elapsed_ms = (t1 - t0) * 1000.0;
         if (elapsed_ms < best_dot_ms) best_dot_ms = elapsed_ms;
@@ -164,6 +185,7 @@ static void RunBenchmarkSuite(void) {
     double final_red = 0.0;
     for (int run = 0; run < 5; run++) {
         double t0 = GetTimeSeconds();
+#if HAS_X86_AVX2
         __m256d acc0 = _mm256_setzero_pd();
         __m256d acc1 = _mm256_setzero_pd();
         int k = 0;
@@ -178,6 +200,12 @@ static void RunBenchmarkSuite(void) {
         for (; k < dot_count; k++) {
             sum += v1[k];
         }
+#else
+        double sum = 0.0;
+        for (int k = 0; k < dot_count; k++) {
+            sum += v1[k];
+        }
+#endif
         double t1 = GetTimeSeconds();
         double elapsed_ms = (t1 - t0) * 1000.0;
         if (elapsed_ms < best_red_ms) best_red_ms = elapsed_ms;
@@ -212,6 +240,7 @@ static void RunBenchmarkSuite(void) {
     double final_pi = 0.0;
     for (int run = 0; run < 3; run++) {
         double t0 = GetTimeSeconds();
+#if HAS_X86_AVX2
         __m256d vstep = _mm256_set1_pd(pi_step);
         __m256d vfour = _mm256_set1_pd(4.0);
         __m256d vone = _mm256_set1_pd(1.0);
@@ -235,6 +264,14 @@ static void RunBenchmarkSuite(void) {
         double lanes[4];
         _mm256_storeu_pd(lanes, vacc0);
         double pi_calc = (lanes[0] + lanes[1] + lanes[2] + lanes[3]) * pi_step;
+#else
+        double sum = 0.0;
+        for (int64_t i = 0; i < pi_steps; i++) {
+            double x = ((double)i + 0.5) * pi_step;
+            sum += 4.0 / (1.0 + x * x);
+        }
+        double pi_calc = sum * pi_step;
+#endif
         double t1 = GetTimeSeconds();
         double elapsed_ms = (t1 - t0) * 1000.0;
         if (elapsed_ms < best_pi_ms) best_pi_ms = elapsed_ms;

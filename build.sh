@@ -2,9 +2,16 @@
 # Cross-platform POSIX build script for AKS Programming Language (Linux & macOS)
 set -euo pipefail
 
-CC="${CC:-gcc}"
 UNAME_S="$(uname -s)"
 UNAME_M="$(uname -m)"
+
+if [ -z "${CC:-}" ]; then
+    if [ "$UNAME_S" = "Darwin" ]; then
+        CC="clang"
+    else
+        CC="gcc"
+    fi
+fi
 
 ARCH_FLAGS=""
 if [ "$UNAME_M" = "x86_64" ] || [ "$UNAME_M" = "amd64" ]; then

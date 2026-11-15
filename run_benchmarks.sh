@@ -5,15 +5,25 @@ echo "Reproducible Empirical Benchmark Suite"
 echo ""
 
 echo "Step 1: Compiling native baselines with optimizing compiler..."
-if command -v gcc >/dev/null 2>&1; then
-    gcc -O3 -mavx2 -mfma -DNDEBUG -Wno-unused-result tests/NativeBenchmarkProof.c -o tests/NativeBenchmarkProof -lm 2>/dev/null || gcc -O3 -DNDEBUG tests/NativeBenchmarkProof.c -o tests/NativeBenchmarkProof -lm
-    gcc -O3 -mavx2 -mfma -DNDEBUG -Wno-unused-result tests/NativePiProof.c -o tests/NativePiProof -lm 2>/dev/null || gcc -O3 -DNDEBUG tests/NativePiProof.c -o tests/NativePiProof -lm
-    gcc -O3 -mavx2 -mfma -DNDEBUG -Wno-unused-result tests/IndustryBenchmarksNative.c -o tests/IndustryBenchmarksNative -lm 2>/dev/null || gcc -O3 -DNDEBUG tests/IndustryBenchmarksNative.c -o tests/IndustryBenchmarksNative -lm
-elif command -v clang >/dev/null 2>&1; then
-    clang -O3 -DNDEBUG tests/NativeBenchmarkProof.c -o tests/NativeBenchmarkProof -lm
-    clang -O3 -DNDEBUG tests/NativePiProof.c -o tests/NativePiProof -lm
-    clang -O3 -DNDEBUG tests/IndustryBenchmarksNative.c -o tests/IndustryBenchmarksNative -lm
+ARCH_FLAGS=""
+UNAME_M="$(uname -m 2>/dev/null || echo unknown)"
+if [ "$UNAME_M" = "x86_64" ] || [ "$UNAME_M" = "amd64" ]; then
+    ARCH_FLAGS="-mavx2 -mfma"
 fi
+
+if [ -z "${CC:-}" ]; then
+    if command -v clang >/dev/null 2>&1; then
+        CC=clang
+    elif command -v gcc >/dev/null 2>&1; then
+        CC=gcc
+    else
+        CC=cc
+    fi
+fi
+
+$CC -O3 $ARCH_FLAGS -DNDEBUG tests/NativeBenchmarkProof.c -o tests/NativeBenchmarkProof -lm 2>/dev/null || $CC -O3 -DNDEBUG tests/NativeBenchmarkProof.c -o tests/NativeBenchmarkProof -lm
+$CC -O3 $ARCH_FLAGS -DNDEBUG tests/NativePiProof.c -o tests/NativePiProof -lm 2>/dev/null || $CC -O3 -DNDEBUG tests/NativePiProof.c -o tests/NativePiProof -lm
+$CC -O3 $ARCH_FLAGS -DNDEBUG tests/IndustryBenchmarksNative.c -o tests/IndustryBenchmarksNative -lm 2>/dev/null || $CC -O3 -DNDEBUG tests/IndustryBenchmarksNative.c -o tests/IndustryBenchmarksNative -lm
 
 echo "Step 2: Executing compiled native baseline benchmarks..."
 echo ""
