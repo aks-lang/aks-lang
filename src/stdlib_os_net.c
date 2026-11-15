@@ -11140,10 +11140,12 @@ int ExecuteStdlibOsNet(VM *vm, VMTask *task, const char *name, int argc,
     ctx->buffer = buf;
     ctx->op_type = 2;
     ctx->extra = src_addr;
+    ctx->io_len = max_bytes;
+    ctx->is_udp = 1;
+    free(addr_len);
 
     struct io_uring_sqe *sqe = io_uring_get_sqe(&vm->ring);
-    io_uring_prep_recvfrom(sqe, (int)sock, buf, max_bytes, 0,
-                           (struct sockaddr *)src_addr, (socklen_t *)addr_len);
+    io_uring_prep_recv(sqe, (int)sock, buf, max_bytes, 0);
     io_uring_sqe_set_data(sqe, ctx);
     io_uring_submit(&vm->ring);
 #else

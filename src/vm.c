@@ -8,6 +8,9 @@
 #if defined(__GLIBC__) || defined(__APPLE__)
 #include <execinfo.h>
 #endif
+#if defined(__APPLE__)
+#include <xlocale.h>
+#endif
 #endif
 
 #ifdef _WIN32
@@ -104,9 +107,8 @@ int AksRxMatchLen(const char *p, const char *t, int *out_len) {
     return 0;
   }
   if (p[0] == '\\' && p[1] == 'd' && p[2] == '*') {
-    int count = 0;
     const char *cur = t;
-    while (*cur >= '0' && *cur <= '9') { cur++; count++; }
+    while (*cur >= '0' && *cur <= '9') { cur++; }
     for (const char *cand = cur; cand >= t; cand--) {
       int sub = 0;
       if (AksRxMatchLen(p + 3, cand, &sub)) { *out_len = (int)(cand - t) + sub; return 1; }

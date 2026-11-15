@@ -13,6 +13,12 @@ endif
 CFLAGS ?= -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -DAKS_RELEASE_BUILD -DNDEBUG -Iinclude $(ARCH_FLAGS) -fPIC
 DEPFLAGS = -MMD -MP
 LIBS = -lm -lpthread -ldl
+ifeq ($(UNAME_S),Linux)
+  HAS_URING := $(shell $(CC) -x c -E - -include liburing.h </dev/null >/dev/null 2>&1 && echo 1)
+  ifeq ($(HAS_URING),1)
+    LIBS += -luring
+  endif
+endif
 
 ifeq ($(UNAME_S),Darwin)
   SHLIB_EXT = dylib

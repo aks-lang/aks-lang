@@ -15,6 +15,11 @@ fi
 
 CFLAGS="-O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -DAKS_RELEASE_BUILD -DNDEBUG -Iinclude $ARCH_FLAGS -fPIC"
 LIBS="-lm -lpthread -ldl"
+if [ "$UNAME_S" = "Linux" ]; then
+    if $CC -x c -E - -include liburing.h </dev/null >/dev/null 2>&1; then
+        LIBS="$LIBS -luring"
+    fi
+fi
 SHLIB_EXT="so"
 SHLIB_FLAG="-shared"
 if [ "$UNAME_S" = "Darwin" ]; then

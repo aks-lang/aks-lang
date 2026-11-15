@@ -18,6 +18,9 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
+#ifndef _DARWIN_C_SOURCE
+#define _DARWIN_C_SOURCE 1
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -27,6 +30,9 @@
 #include <strings.h>
 #include <wchar.h>
 #include <locale.h>
+#ifdef __APPLE__
+#include <xlocale.h>
+#endif
 #include <dlfcn.h>
 #include <pthread.h>
 #include <unistd.h>
