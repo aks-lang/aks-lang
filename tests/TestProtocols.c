@@ -286,7 +286,7 @@ static int test_dap(void) {
     ZeroMemory(&pi, sizeof(PROCESS_INFORMATION));
     ZeroMemory(&si, sizeof(STARTUPINFOA));
     si.cb = sizeof(STARTUPINFOA);
-    char cmdLine[] = ".\\aks.exe dap tests/DebugTarget.aks 4711";
+    char cmdLine[] = ".\\aks.exe dap tests/debugTarget.aks 4711";
     if (!CreateProcessA(NULL, cmdLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
         printf("FAIL: Failed to spawn aks.exe dap\n");
         return 1;
@@ -296,12 +296,12 @@ static int test_dap(void) {
 #else
     pid_t pid = fork();
     if (pid == 0) {
-        execl("./aks", "./aks", "dap", "tests/DebugTarget.aks", "4711", (char *)NULL);
+        execl("./aks", "./aks", "dap", "tests/debugTarget.aks", "4711", (char *)NULL);
         _exit(127);
     }
 #endif
 
-    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+    SOCKET sock = INVALID_SOCKET;
     struct sockaddr_in server;
     memset(&server, 0, sizeof(server));
     server.sin_family = AF_INET;
@@ -309,8 +309,13 @@ static int test_dap(void) {
     server.sin_port = htons(4711);
 
     int conn = -1;
-    for (int retry = 0; retry < 25; retry++) {
+    for (int retry = 0; retry < 40; retry++) {
         Sleep(100);
+        if (sock != INVALID_SOCKET) {
+            closesocket(sock);
+        }
+        sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock == INVALID_SOCKET) continue;
         conn = connect(sock, (struct sockaddr *)&server, sizeof(server));
         if (conn == 0) break;
     }
@@ -330,7 +335,7 @@ static int test_dap(void) {
     }
 
     send_dap_req(sock, "{\"jsonrpc\":\"2.0\",\"id\":1,\"type\":\"request\",\"command\":\"initialize\"}");
-    send_dap_req(sock, "{\"jsonrpc\":\"2.0\",\"id\":2,\"type\":\"request\",\"command\":\"setBreakpoints\",\"arguments\":{\"source\":{\"path\":\"tests/DebugTarget.aks\"},\"breakpoints\":[{\"line\":2}]}}");
+    send_dap_req(sock, "{\"jsonrpc\":\"2.0\",\"id\":2,\"type\":\"request\",\"command\":\"setBreakpoints\",\"arguments\":{\"source\":{\"path\":\"tests/debugTarget.aks\"},\"breakpoints\":[{\"line\":2}]}}");
     send_dap_req(sock, "{\"jsonrpc\":\"2.0\",\"id\":3,\"type\":\"request\",\"command\":\"threads\"}");
     send_dap_req(sock, "{\"jsonrpc\":\"2.0\",\"id\":4,\"type\":\"request\",\"command\":\"scopes\",\"arguments\":{\"frameId\":0}}");
 

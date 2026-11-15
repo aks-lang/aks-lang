@@ -666,7 +666,7 @@ static AKSExample EXAMPLES[] = {
      "print(\"Metric result: \" + String(compute_metric(10)));\n"},
 
     {"modules", "Demonstrates module dependency import and execution",
-     "import \"tests/Math.aks\";\n"
+     "import \"tests/math.aks\";\n"
      "let even = iseven(42);\n"
      "print(\"Math iseven(42): \" + String(even));\n"},
 

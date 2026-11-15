@@ -943,6 +943,9 @@ DWORD WINAPI DapThreadFunc(LPVOID LpParam) {
     // Allow address reuse
     int OptVal = 1;
     setsockopt(Server, SOL_SOCKET, SO_REUSEADDR, (const char*)&OptVal, sizeof(OptVal));
+#ifdef SO_REUSEPORT
+    setsockopt(Server, SOL_SOCKET, SO_REUSEPORT, (const char*)&OptVal, sizeof(OptVal));
+#endif
     
     struct sockaddr_in Addr;
     Addr.sin_family = AF_INET;
