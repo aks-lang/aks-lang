@@ -57,6 +57,8 @@ cl.exe %CFLAGS% /Fosrc\ /Fe:tests\TypeSystemTests.exe tests\TypeSystemTests.c %C
 if errorlevel 1 exit /b 1
 cl.exe %CFLAGS% /Fosrc\ /Fe:tests\PerformanceTests.exe tests\PerformanceTests.c %COMMON_OBJS% %LIBS% /link /STACK:16777216
 if errorlevel 1 exit /b 1
+cl.exe %CFLAGS% /Fe:tests\NativeBenchmarkProof.exe tests\NativeBenchmarkProof.c
+if errorlevel 1 exit /b 1
 cl.exe %CFLAGS% /Fosrc\ /Fe:tests\StdlibTests.exe tests\StdlibTests.c %COMMON_OBJS% %LIBS% /link /STACK:16777216
 if errorlevel 1 exit /b 1
 cl.exe %CFLAGS% /Fosrc\ /Fe:tests\EcosystemTests.exe tests\EcosystemTests.c %COMMON_OBJS% %LIBS% /link /STACK:16777216

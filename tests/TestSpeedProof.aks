@@ -1,0 +1,133 @@
+// Copyright (c) 2026 Anoop Kumar Sharma. All rights reserved.
+// Automated performance and speed empirical proof test suite
+
+fn GenerateRandomArray(size, seed) {
+    let arr = [];
+    let state = seed;
+    for (let i = 0; i < size; i = i + 1) {
+        state = (state * 1103515245 + 12345) % 2147483647;
+        if (state < 0) { state = -state; }
+        let val = (state % 10000) / 10.0;
+        append(arr, val);
+    }
+    return arr;
+}
+
+fn GenerateMatrix(n, seed) {
+    let mat = [];
+    let state = seed;
+    for (let i = 0; i < n; i = i + 1) {
+        let row = [];
+        for (let j = 0; j < n; j = j + 1) {
+            state = (state * 1103515245 + 12345) % 2147483647;
+            if (state < 0) { state = -state; }
+            let val = (state % 10000) / 10.0;
+            append(row, val);
+        }
+        append(mat, row);
+    }
+    return mat;
+}
+
+fn ArithmeticLoop(n) {
+    let mut sum = 0;
+    let mut i = 0;
+    while (i < n) {
+        sum = sum + i;
+        i = i + 1;
+    }
+    return sum;
+}
+
+fn RunProofSuite() {
+    println("Starting Runtime Empirical Proof Suite");
+    println("");
+
+    // Benchmark 1: 50,000-element array sort
+    let sort_data = GenerateRandomArray(50000, 9999);
+    let mut best_sort_ms = 1000000.0;
+    let mut sorted_arr = [];
+    for (let run = 0; run < 5; run = run + 1) {
+        let s0 = TimerNowNanos();
+        sorted_arr = FastArraySort(sort_data);
+        let s1 = TimerNowNanos();
+        let elapsed_ms = (s1 - s0) / 1000000.0;
+        if (elapsed_ms < best_sort_ms) {
+            best_sort_ms = elapsed_ms;
+        }
+    }
+    println("Runtime Sort (50,000 elements): " + best_sort_ms + " ms (first: " + sorted_arr[0] + ", last: " + sorted_arr[49999] + ")");
+    assert(sorted_arr[0] <= sorted_arr[1], "Sort verification failed at index 0");
+    assert(sorted_arr[49998] <= sorted_arr[49999], "Sort verification failed at last index");
+
+    // Benchmark 2: 128x128 dense matrix multiplication
+    let dim = 128;
+    let matA = GenerateMatrix(dim, 42);
+    let matB = GenerateMatrix(dim, 84);
+    let mut best_mat_ms = 1000000.0;
+    let mut matC = [];
+    for (let run = 0; run < 5; run = run + 1) {
+        let m0 = TimerNowNanos();
+        matC = FastMatMul2D(matA, matB);
+        let m1 = TimerNowNanos();
+        let elapsed_ms = (m1 - m0) / 1000000.0;
+        if (elapsed_ms < best_mat_ms) {
+            best_mat_ms = elapsed_ms;
+        }
+    }
+    println("Runtime Matrix Multiply (" + dim + "x" + dim + "): " + best_mat_ms + " ms (C[0][0]: " + matC[0][0] + ")");
+    assert(matC[0][0] > 0.0, "Matrix multiplication check failed");
+
+    // Benchmark 3: 100,000-element vector dot product
+    let size = 100000;
+    let vec1 = GenerateRandomArray(size, 1234);
+    let vec2 = GenerateRandomArray(size, 5678);
+    let mut best_dot_ms = 1000000.0;
+    let mut dot_result = 0.0;
+    for (let run = 0; run < 5; run = run + 1) {
+        let d0 = TimerNowNanos();
+        dot_result = FastDotProduct(vec1, vec2);
+        let d1 = TimerNowNanos();
+        let elapsed_ms = (d1 - d0) / 1000000.0;
+        if (elapsed_ms < best_dot_ms) {
+            best_dot_ms = elapsed_ms;
+        }
+    }
+    println("Runtime Dot Product (" + size + " elements): " + best_dot_ms + " ms (dot: " + dot_result + ")");
+    assert(dot_result > 0.0, "Dot product check failed");
+
+    // Benchmark 4: 100,000-element parallel sum reduction
+    let mut best_red_ms = 1000000.0;
+    let mut red_result = 0.0;
+    for (let run = 0; run < 5; run = run + 1) {
+        let r0 = TimerNowNanos();
+        red_result = FastParallelReduce(vec1, "+");
+        let r1 = TimerNowNanos();
+        let elapsed_ms = (r1 - r0) / 1000000.0;
+        if (elapsed_ms < best_red_ms) {
+            best_red_ms = elapsed_ms;
+        }
+    }
+    println("Runtime Parallel Reduction (" + size + " elements): " + best_red_ms + " ms (sum: " + red_result + ")");
+    assert(red_result > 0.0, "Reduction check failed");
+
+    // Benchmark 5: 10,000,000-iteration arithmetic induction loop
+    let mut best_loop_ms = 1000000.0;
+    let mut loop_sum = 0;
+    for (let run = 0; run < 5; run = run + 1) {
+        let l0 = TimerNowNanos();
+        loop_sum = ArithmeticLoop(10000000);
+        let l1 = TimerNowNanos();
+        let elapsed_ms = (l1 - l0) / 1000000.0;
+        if (elapsed_ms < best_loop_ms) {
+            best_loop_ms = elapsed_ms;
+        }
+    }
+    println("Runtime Arithmetic Loop (10,000,000 iterations): " + best_loop_ms + " ms (sum: " + loop_sum + ")");
+    assert(loop_sum == 49999995000000, "Loop sum check failed");
+
+    println("");
+    println("Empirical proof suite execution completed successfully.");
+}
+
+RunProofSuite();

@@ -42,6 +42,8 @@ aks.exe run tests\TestContractsVerified.aks || exit /b 1
 aks.exe run tests\TestAlgebraicEffects.aks || exit /b 1
 aks.exe run --jit tests\TestJitHotLoop.aks || exit /b 1
 aks.exe run --jit tests\TestJitRegisterHotLoop.aks || exit /b 1
+tests\NativeBenchmarkProof.exe || exit /b 1
+aks.exe run --jit tests\TestSpeedProof.aks || exit /b 1
 aks.exe run --parallel tests\TestParallelCompilation.aks || exit /b 1
 aks.exe run tests\TestReverseModeAutodiff.aks || exit /b 1
 aks.exe run tests\TestTensorAutodiff.aks || exit /b 1
@@ -124,6 +126,8 @@ del /f /q jittrace*.* 2>nul
 del /f /q compilejit_*.* 2>nul
 del /f /q jitloop*.* 2>nul
 del /f /q outtarget.c.map 2>nul
+del /f /q tests\NativeBenchmarkProof.exe 2>nul
+del /f /q tests\NativeBenchmarkProof.obj 2>nul
 del /f /q *.svg 2>nul
 del /f /q tests\*.svg 2>nul
 rd /s /q LibraryTestDir 2>nul

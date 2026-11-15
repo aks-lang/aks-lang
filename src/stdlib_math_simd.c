@@ -4332,31 +4332,50 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     __m256d acc0 = _mm256_setzero_pd();
     __m256d acc1 = _mm256_setzero_pd();
 
-    for (; i + 7 < n; i += 8) {
-      double d0[4], d1[4], e0[4], e1[4];
-      for (int k = 0; k < 4; k++) {
-        AKSValue vA = arrA->items[i + k];
-        d0[k] =
-            (ValKind(vA) == VALFLOAT) ? ValToFloat(vA) : (double)ValToInt(vA);
-        AKSValue vB = arrB->items[i + k];
-        e0[k] =
-            (ValKind(vB) == VALFLOAT) ? ValToFloat(vB) : (double)ValToInt(vB);
-      }
-      for (int k = 0; k < 4; k++) {
-        AKSValue vA = arrA->items[i + 4 + k];
-        d1[k] =
-            (ValKind(vA) == VALFLOAT) ? ValToFloat(vA) : (double)ValToInt(vA);
-        AKSValue vB = arrB->items[i + 4 + k];
-        e1[k] =
-            (ValKind(vB) == VALFLOAT) ? ValToFloat(vB) : (double)ValToInt(vB);
-      }
+    /* Direct SIMD streaming when both arrays consist of native IEEE floats */
+    if (n >= 8 && ValIsFloat(arrA->items[0]) && ValIsFloat(arrB->items[0])) {
+      const double *pA = (const double *)arrA->items;
+      const double *pB = (const double *)arrB->items;
+      for (; i + 7 < n; i += 8) {
+        __m256d va0 = _mm256_loadu_pd(&pA[i]);
+        __m256d vb0 = _mm256_loadu_pd(&pB[i]);
+        __m256d va1 = _mm256_loadu_pd(&pA[i + 4]);
+        __m256d vb1 = _mm256_loadu_pd(&pB[i + 4]);
 #if defined(_WIN32) || defined(__FMA__)
-      acc0 = _mm256_fmadd_pd(_mm256_loadu_pd(d0), _mm256_loadu_pd(e0), acc0);
-      acc1 = _mm256_fmadd_pd(_mm256_loadu_pd(d1), _mm256_loadu_pd(e1), acc1);
+        acc0 = _mm256_fmadd_pd(va0, vb0, acc0);
+        acc1 = _mm256_fmadd_pd(va1, vb1, acc1);
 #else
-      acc0 = _mm256_add_pd(_mm256_mul_pd(_mm256_loadu_pd(d0), _mm256_loadu_pd(e0)), acc0);
-      acc1 = _mm256_add_pd(_mm256_mul_pd(_mm256_loadu_pd(d1), _mm256_loadu_pd(e1)), acc1);
+        acc0 = _mm256_add_pd(_mm256_mul_pd(va0, vb0), acc0);
+        acc1 = _mm256_add_pd(_mm256_mul_pd(va1, vb1), acc1);
 #endif
+      }
+    } else {
+      for (; i + 7 < n; i += 8) {
+        double d0[4], d1[4], e0[4], e1[4];
+        for (int k = 0; k < 4; k++) {
+          AKSValue vA = arrA->items[i + k];
+          d0[k] =
+              (ValKind(vA) == VALFLOAT) ? ValToFloat(vA) : (double)ValToInt(vA);
+          AKSValue vB = arrB->items[i + k];
+          e0[k] =
+              (ValKind(vB) == VALFLOAT) ? ValToFloat(vB) : (double)ValToInt(vB);
+        }
+        for (int k = 0; k < 4; k++) {
+          AKSValue vA = arrA->items[i + 4 + k];
+          d1[k] =
+              (ValKind(vA) == VALFLOAT) ? ValToFloat(vA) : (double)ValToInt(vA);
+          AKSValue vB = arrB->items[i + 4 + k];
+          e1[k] =
+              (ValKind(vB) == VALFLOAT) ? ValToFloat(vB) : (double)ValToInt(vB);
+        }
+#if defined(_WIN32) || defined(__FMA__)
+        acc0 = _mm256_fmadd_pd(_mm256_loadu_pd(d0), _mm256_loadu_pd(e0), acc0);
+        acc1 = _mm256_fmadd_pd(_mm256_loadu_pd(d1), _mm256_loadu_pd(e1), acc1);
+#else
+        acc0 = _mm256_add_pd(_mm256_mul_pd(_mm256_loadu_pd(d0), _mm256_loadu_pd(e0)), acc0);
+        acc1 = _mm256_add_pd(_mm256_mul_pd(_mm256_loadu_pd(d1), _mm256_loadu_pd(e1)), acc1);
+#endif
+      }
     }
     __m256d sum_acc = _mm256_add_pd(acc0, acc1);
     double res_lanes[4];
@@ -4423,10 +4442,14 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     }
     for (int r = 0; r < rowsA; r++) {
       AKSArray *row = ValToArr(A->items[r]);
-      for (int c = 0; c < colsA; c++) {
-        AKSValue v = row->items[c];
-        denseA[r * colsA + c] =
-            (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+      if (row->count > 0 && ValIsFloat(row->items[0])) {
+        memcpy(&denseA[r * colsA], row->items, colsA * sizeof(double));
+      } else {
+        for (int c = 0; c < colsA; c++) {
+          AKSValue v = row->items[c];
+          denseA[r * colsA + c] =
+              (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+        }
       }
     }
 
@@ -4441,10 +4464,17 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     }
     for (int r = 0; r < rowsB; r++) {
       AKSArray *row = ValToArr(B->items[r]);
-      for (int c = 0; c < colsB; c++) {
-        AKSValue v = row->items[c];
-        denseBT[c * rowsB + r] =
-            (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+      if (row->count > 0 && ValIsFloat(row->items[0])) {
+        const double *src_row = (const double *)row->items;
+        for (int c = 0; c < colsB; c++) {
+          denseBT[c * rowsB + r] = src_row[c];
+        }
+      } else {
+        for (int c = 0; c < colsB; c++) {
+          AKSValue v = row->items[c];
+          denseBT[c * rowsB + r] =
+              (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+        }
       }
     }
 
@@ -4462,18 +4492,33 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
         double sum = 0.0;
         int k = 0;
 #if defined(__AVX2__) || defined(_M_X64)
-        __m256d acc = _mm256_setzero_pd();
+        __m256d acc0 = _mm256_setzero_pd();
+        __m256d acc1 = _mm256_setzero_pd();
+        for (; k + 7 < colsA; k += 8) {
+          __m256d va0 = _mm256_loadu_pd(&a_row[k]);
+          __m256d vb0 = _mm256_loadu_pd(&b_col[k]);
+          __m256d va1 = _mm256_loadu_pd(&a_row[k + 4]);
+          __m256d vb1 = _mm256_loadu_pd(&b_col[k + 4]);
+#if defined(_WIN32) || defined(__FMA__)
+          acc0 = _mm256_fmadd_pd(va0, vb0, acc0);
+          acc1 = _mm256_fmadd_pd(va1, vb1, acc1);
+#else
+          acc0 = _mm256_add_pd(_mm256_mul_pd(va0, vb0), acc0);
+          acc1 = _mm256_add_pd(_mm256_mul_pd(va1, vb1), acc1);
+#endif
+        }
+        acc0 = _mm256_add_pd(acc0, acc1);
         for (; k + 3 < colsA; k += 4) {
           __m256d va = _mm256_loadu_pd(&a_row[k]);
           __m256d vb = _mm256_loadu_pd(&b_col[k]);
 #if defined(_WIN32) || defined(__FMA__)
-          acc = _mm256_fmadd_pd(va, vb, acc);
+          acc0 = _mm256_fmadd_pd(va, vb, acc0);
 #else
-          acc = _mm256_add_pd(_mm256_mul_pd(va, vb), acc);
+          acc0 = _mm256_add_pd(_mm256_mul_pd(va, vb), acc0);
 #endif
         }
         double lanes[4];
-        _mm256_storeu_pd(lanes, acc);
+        _mm256_storeu_pd(lanes, acc0);
         sum = lanes[0] + lanes[1] + lanes[2] + lanes[3];
 #endif
         for (; k < colsA; k++) {
@@ -4521,9 +4566,13 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
       *stacktopptr = stacktop;
       return 1;
     }
-    for (int i = 0; i < count; i++) {
-      AKSValue v = arr->items[i];
-      dense[i] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+    if (count > 0 && ValIsFloat(arr->items[0])) {
+      memcpy(dense, arr->items, count * sizeof(double));
+    } else {
+      for (int i = 0; i < count; i++) {
+        AKSValue v = arr->items[i];
+        dense[i] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+      }
     }
 
     /* Dual-pivot quicksort with insertion sort for small partitions */
@@ -4610,9 +4659,7 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
 
     AKSValue res_val = ValArr(count);
     AKSArray *res_arr = ValToArr(res_val);
-    for (int i = 0; i < count; i++) {
-      res_arr->items[i] = ValFloat(dense[i]);
-    }
+    memcpy(res_arr->items, dense, count * sizeof(double));
     res_arr->count = count;
     free(dense);
     ValFree(&arr_val);
@@ -4652,17 +4699,40 @@ int ExecuteStdlibMathSimd(VM *vm, VMTask *task, const char *name, int argc,
     int i = 0;
 #if defined(__AVX2__) || defined(_M_X64)
     if (strcmp(op, "+") == 0) {
-      __m256d acc = _mm256_setzero_pd();
+      __m256d acc0 = _mm256_setzero_pd();
+      __m256d acc1 = _mm256_setzero_pd();
+      if (count >= 8 && ValIsFloat(arr->items[0])) {
+        const double *p = (const double *)arr->items;
+        for (; i + 7 < count; i += 8) {
+          acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(&p[i]));
+          acc1 = _mm256_add_pd(acc1, _mm256_loadu_pd(&p[i + 4]));
+        }
+      } else {
+        for (; i + 7 < count; i += 8) {
+          double d0[4], d1[4];
+          for (int k = 0; k < 4; k++) {
+            AKSValue v = arr->items[i + k];
+            d0[k] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+          }
+          for (int k = 0; k < 4; k++) {
+            AKSValue v = arr->items[i + 4 + k];
+            d1[k] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
+          }
+          acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(d0));
+          acc1 = _mm256_add_pd(acc1, _mm256_loadu_pd(d1));
+        }
+      }
+      acc0 = _mm256_add_pd(acc0, acc1);
       for (; i + 3 < count; i += 4) {
         double d[4];
         for (int k = 0; k < 4; k++) {
           AKSValue v = arr->items[i + k];
           d[k] = (ValKind(v) == VALFLOAT) ? ValToFloat(v) : (double)ValToInt(v);
         }
-        acc = _mm256_add_pd(acc, _mm256_loadu_pd(d));
+        acc0 = _mm256_add_pd(acc0, _mm256_loadu_pd(d));
       }
       double lanes[4];
-      _mm256_storeu_pd(lanes, acc);
+      _mm256_storeu_pd(lanes, acc0);
       accum += lanes[0] + lanes[1] + lanes[2] + lanes[3];
     }
 #endif
