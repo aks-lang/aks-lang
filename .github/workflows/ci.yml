@@ -108,3 +108,78 @@ jobs:
           ./aks test tests/TestDynTraits.aks
           ./aks run tests/testCrypto.aks
           ./tests/TestProtocols
+
+  performance-proof-matrix:
+    name: Performance Proof Matrix (${{ matrix.name }})
+    needs: [build-and-test-windows, build-and-test-linux, build-and-test-macos]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64 AVX2
+            os: windows-latest
+            runner: windows
+          - name: Ubuntu Linux x64 AVX2
+            os: ubuntu-latest
+            runner: linux
+          - name: macOS ARM64 Apple Silicon
+            os: macos-latest
+            runner: macos
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Windows MSVC environment
+        if: matrix.runner == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Set up Linux build dependencies
+        if: matrix.runner == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc clang make cmake liburing-dev
+
+      - name: Build AKS runtime and developer tools (Windows)
+        if: matrix.runner == 'windows'
+        shell: cmd
+        run: build.bat
+
+      - name: Build AKS runtime and developer tools (POSIX)
+        if: matrix.runner != 'windows'
+        run: bash build.sh
+
+      - name: Execute reproducible benchmark suite (Windows)
+        if: matrix.runner == 'windows'
+        shell: cmd
+        run: run_benchmarks.bat
+
+      - name: Execute reproducible benchmark suite (POSIX)
+        if: matrix.runner != 'windows'
+        run: bash run_benchmarks.sh
+
+      - name: Execute industry standard benchmark suite (Windows)
+        if: matrix.runner == 'windows'
+        shell: cmd
+        run: |
+          tests\IndustryBenchmarksNative.exe
+          aks.exe run tests\IndustryBenchmarks.aks
+
+      - name: Execute industry standard benchmark suite (POSIX)
+        if: matrix.runner != 'windows'
+        run: |
+          ./tests/IndustryBenchmarksNative
+          ./aks run tests/IndustryBenchmarks.aks
+
+      - name: Upload performance benchmark logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ matrix.os }}
+          path: |
+            tests/NativeBenchmarkProof*
+            tests/TestSpeedProof*
+            tests/TestPiProof*
+            tests/IndustryBenchmarks*

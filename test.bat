@@ -44,6 +44,10 @@ aks.exe run --jit tests\TestJitHotLoop.aks || exit /b 1
 aks.exe run --jit tests\TestJitRegisterHotLoop.aks || exit /b 1
 tests\NativeBenchmarkProof.exe || exit /b 1
 aks.exe run --jit tests\TestSpeedProof.aks || exit /b 1
+tests\NativePiProof.exe || exit /b 1
+aks.exe run tests\TestPiProof.aks || exit /b 1
+tests\IndustryBenchmarksNative.exe || exit /b 1
+aks.exe run tests\IndustryBenchmarks.aks || exit /b 1
 aks.exe run --parallel tests\TestParallelCompilation.aks || exit /b 1
 aks.exe run tests\TestReverseModeAutodiff.aks || exit /b 1
 aks.exe run tests\TestTensorAutodiff.aks || exit /b 1

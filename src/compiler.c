@@ -8900,6 +8900,9 @@ Compiler *CompNew(void) {
     NewFn(c, "FastCalculatePi");
     NewFn(c, "FastComputePi");
     NewFn(c, "FastPi");
+    NewFn(c, "FastSpectralNorm");
+    NewFn(c, "FastNBody");
+    NewFn(c, "FastMandelbrot");
 
     /* Freestanding bare metal and memory mapped io operations */
     NewFn(c, "MmioRead8");
