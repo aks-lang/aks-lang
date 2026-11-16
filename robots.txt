@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://anoop-kumar-sharma.github.io/aks-lang/sitemap.xml

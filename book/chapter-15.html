@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 15: Networking, Sockets & Web Protocols | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Chapter 15: Networking, Sockets & Web Protocols in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-15.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-15.html">
+  <meta property="og:title" content="Chapter 15: Networking, Sockets & Web Protocols | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Chapter 15: Networking, Sockets & Web Protocols in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-15.html">
+  <meta property="twitter:title" content="Chapter 15: Networking, Sockets & Web Protocols | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Chapter 15: Networking, Sockets & Web Protocols in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Chapter 15: Networking, Sockets & Web Protocols in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html" class="active">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Chapter 15: Networking, Sockets &amp; Web Protocols</h1>
+<p>Building distributed services and network clients requires versatile network primitives. AKS provides native bindings for Windows Sockets 2 (<code>ws2_32.dll</code>), TCP/UDP sockets, multicast, streaming HTTP/1.1 parsers, RFC 6455 WebSockets, SOCKS5 proxies, SMTP email dispatchers, SNTP atomic time queries, raw DNS resolution, ICMP ping, and the native Windows WinHTTP client.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">15.1 Raw TCP Sockets</h2>
+<p>AKS provides synchronous and asynchronous TCP socket APIs for building custom protocols:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// TCP Client Example
+let host = &quot;127.0.0.1&quot;;
+let port = 8080;
+
+let socket_fd = SocketConnectSync(host, port);
+if (socket_fd &gt;= 0) {
+    print(&quot;Connected to &quot; + host + &quot;:&quot; + String(port));
+    
+    // Transmit request
+    let request_payload = &quot;GET /status HTTP/1.1\r\nHost: &quot; + host + &quot;\r\n\r\n&quot;;
+    SocketSendSync(socket_fd, request_payload);
+    
+    // Receive response
+    let response = SocketReceiveSync(socket_fd, 4096);
+    print(&quot;Received Response:\n&quot; + response);
+    
+    SocketClose(socket_fd);
+}</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">15.2 UDP Multicast</h2>
+<p>IP Multicast enables transmitting packets to multiple subscriber nodes simultaneously:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let udp_sock = UdpSocket();
+let multicast_group = &quot;239.255.0.1&quot;;
+let port = 9000;
+
+// Join Multicast Group
+let joined = UdpMulticastJoinC(udp_sock, multicast_group);
+
+// Send datagram to multicast group
+UdpMulticastSendC(udp_sock, multicast_group, port, &quot;TELEMETRY_BEACON_PING&quot;);
+print(&quot;Multicast beacon transmitted.&quot;);</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">15.3 Streaming HTTP/1.1 Parser State Machine</h2>
+<p>The streaming parser processes incoming byte chunks incrementally without requiring the entire response to reside in memory at once:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let parser = Http11ParserNewC();
+
+let raw_chunk1 = &quot;HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\n&quot;;
+let raw_chunk2 = &quot;Hello, World!&quot;;
+
+let state1 = Http11ParserFeedC(parser, raw_chunk1);
+let state2 = Http11ParserFeedC(parser, raw_chunk2);
+
+print(&quot;HTTP Status Code: &quot; + String(state2.status_code)); // 200
+print(&quot;Parsed Body: &quot; + state2.body); // &quot;Hello, World!&quot;</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">15.4 RFC 6455 WebSockets Engine</h2>
+<p>Encodes and decodes binary/text WebSocket frames with XOR client masking:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// Encode text frame (Opcode 1 = Text, Mask = true)
+let payload_text = &quot;PING_HEARTBEAT&quot;;
+let frame_bytes = WsFrameEncodeC(1, payload_text, true);
+
+print(&quot;Encoded WebSocket Frame Length: &quot; + String(Length(frame_bytes)) + &quot; bytes&quot;);
+
+// Decode frame
+let decoded = WsFrameDecodeC(frame_bytes);
+print(&quot;Decoded Opcode: &quot; + String(decoded.opcode)); // 1
+print(&quot;Decoded Payload: &quot; + decoded.payload);       // &quot;PING_HEARTBEAT&quot;</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">15.5 SOCKS5 Proxy Tunneling</h2>
+<p>Establishes authenticated or anonymous TCP tunnels through SOCKS5 proxy firewalls:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let proxy_ip = &quot;10.0.0.1&quot;;
+let proxy_port = 1080;
+let destination_host = &quot;api.internal.network&quot;;
+let destination_port = 443;
+
+let tunnel_sock = Socks5ConnectC(proxy_ip, proxy_port, destination_host, destination_port);
+if (tunnel_sock &gt;= 0) {
+    print(&quot;SOCKS5 Tunnel established to destination.&quot;);
+    SocketClose(tunnel_sock);
+}</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">15.6 Application Protocols &amp; Utilities</h2>
+<h3 class="doc-h3">15.6.1 RFC 4330 SNTP / NTP Atomic Clock Query</h3>
+<p>Queries standard NTP time servers via UDP port 123 to retrieve sub-millisecond atomic timestamps:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let epoch_time = NtpQueryTimeC(&quot;pool.ntp.org&quot;);
+print(&quot;Current Atomic Epoch Timestamp: &quot; + String(epoch_time));</code></pre></div>
+<h3 class="doc-h3">15.6.2 Raw DNS Resolution</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let resolved_ip = DnsResolveRawC(&quot;google.com&quot;, &quot;A&quot;);
+print(&quot;Resolved IP for google.com: &quot; + resolved_ip);</code></pre></div>
+<h3 class="doc-h3">15.6.3 ICMP IPv4 / IPv6 Network Ping</h3>
+<p>Sends raw ICMP Echo Request packets and calculates round-trip time:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let ping_ok = IcmpPingSendC(&quot;8.8.8.8&quot;, 1000); // 1000ms timeout
+print(&quot;Google DNS Ping Success: &quot; + String(ping_ok)); // true</code></pre></div>
+<h3 class="doc-h3">15.6.4 Windows WinHTTP Client</h3>
+<p>Utilizes the native Windows HTTP services stack with automatic SSL/TLS certificate validation and proxy detection:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let winhttp_session = WinHttpOpenC(&quot;AKS-HTTP-Agent/1.0&quot;);
+let winhttp_conn = WinHttpConnectC(winhttp_session, &quot;example.com&quot;, 80);
+
+let http_response = WinHttpSendRequestC(winhttp_conn, &quot;GET&quot;, &quot;/&quot;, &quot;&quot;);
+print(&quot;WinHTTP Status: &quot; + String(http_response.status_code));</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">15.7 Summary &amp; Next Steps</h2>
+<p>In this chapter, we explored:</p>
+<p>1. Raw synchronous and asynchronous TCP sockets.</p>
+<p>2. UDP sockets and IP multicast groups.</p>
+<p>3. Streaming HTTP/1.1 incremental parsers.</p>
+<p>4. RFC 6455 WebSocket frame encoding and decoding.</p>
+<p>5. SOCKS5 proxy tunneling.</p>
+<p>6. NTP atomic time queries, raw DNS resolution, ICMP ping, and WinHTTP integration.</p>
+<p>Proceed to <a href="chapter-16.html">Chapter 16: Windows OS Kernel &amp; Low-Level Systems Integration</a> to explore low-level Win32 kernel calls, virtual memory, process snapshots, and ETW.</p>
+    
+    <nav class="chapter-nav">
+      <div><a href="chapter-14.html">&larr; Chapter 14: SIMD Hardware Acceleration & HPC</a></div>
+      <div><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

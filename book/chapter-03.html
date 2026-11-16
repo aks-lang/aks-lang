@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 03: Control Flow, Loops & Pattern Matching | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Chapter 03: Control Flow, Loops & Pattern Matching in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-03.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-03.html">
+  <meta property="og:title" content="Chapter 03: Control Flow, Loops & Pattern Matching | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Chapter 03: Control Flow, Loops & Pattern Matching in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-03.html">
+  <meta property="twitter:title" content="Chapter 03: Control Flow, Loops & Pattern Matching | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Chapter 03: Control Flow, Loops & Pattern Matching in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Chapter 03: Control Flow, Loops & Pattern Matching in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html" class="active">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Chapter 03: Control Flow, Loops &amp; Pattern Matching</h1>
+<p>Control flow structures dictate how programs execute across branches, iterations, and pattern-matching decision trees. This chapter covers conditional branching, loops, pattern matching mechanics, jump offset back-patching, and VM bytecode generation.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">3.1 Conditional Branching (<code>if</code>, <code>else if</code>, <code>else</code>)</h2>
+<p>AKS provides standard structured conditional branching:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let cpu_temperature = 78.5;
+
+if (cpu_temperature &gt; 90.0) {
+    print(&quot;CRITICAL: Thermal throttling activated!&quot;);
+} else if (cpu_temperature &gt; 75.0) {
+    print(&quot;WARNING: Increasing fan speed to maximum.&quot;);
+} else {
+    print(&quot;Normal operating temperature.&quot;);
+}</code></pre></div>
+<h3 class="doc-h3">3.1.1 Ternary Conditional Expressions</h3>
+<p>For inline value selection based on a condition, the ternary operator <code>cond ? true_val : false_val</code> is supported:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let buffer_capacity = is_high_throughput ? 65536 : 4096;</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">3.2 Iteration &amp; Loop Structures</h2>
+<p>AKS provides four distinct loop constructs tailored for different algorithmic workflows:</p>
+<h3 class="doc-h3">3.2.1 The <code>while</code> Loop</h3>
+<p>Executes a block continuously as long as the boolean condition evaluates to truthy:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let counter = 0;
+while (counter &lt; 5) {
+    print(&quot;Iteration: &quot; + String(counter));
+    counter += 1;
+}</code></pre></div>
+<h3 class="doc-h3">3.2.2 The 3-Clause C-Style <code>for</code> Loop</h3>
+<p>Provides structured loop initialization, condition evaluation, and post-iteration step expressions:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">for (let i = 0; i &lt; 10; i += 2) {
+    print(&quot;Even index: &quot; + String(i));
+}</code></pre></div>
+<h3 class="doc-h3">3.2.3 The Collection Iteration <code>for..in</code> Loop</h3>
+<p>Iterates directly over elements in dynamic arrays, strings, or keys in hash maps:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let core_frequencies = [3.2, 3.6, 4.0, 4.2];
+
+for (freq in core_frequencies) {
+    print(&quot;Core Frequency: &quot; + String(freq) + &quot; GHz&quot;);
+}</code></pre></div>
+<h3 class="doc-h3">3.2.4 The Unconditional <code>loop</code> Construct</h3>
+<p>Creates an infinite loop, ideal for server event loops, worker threads, and fiber schedulers:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let attempts = 0;
+loop {
+    attempts += 1;
+    if (attempts &gt;= 3) {
+        print(&quot;Maximum retry limit reached. Breaking loop.&quot;);
+        break;
+    }
+}</code></pre></div>
+<h3 class="doc-h3">3.2.5 Loop Control Statements (<code>break</code> and <code>continue</code>)</h3>
+<ul class="doc-list">
+<li><strong><code>break</code></strong>: Immediately terminates the innermost enclosing loop and jumps to the statement following the loop.</li>
+<li><strong><code>continue</code></strong>: Skips the remainder of the current iteration and jumps to the condition evaluation or step clause.</li>
+</ul>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">for (let i = 1; i &lt;= 10; i += 1) {
+    if (i % 2 != 0) {
+        continue; // Skip odd numbers
+    }
+    if (i &gt; 6) {
+        break; // Stop after reaching 6
+    }
+    print(&quot;Even number: &quot; + String(i));
+}</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">3.3 Bytecode Generation &amp; Jump Back-Patching</h2>
+<p>To appreciate how the AKS compiler emits machine-efficient bytecode for control flow, let us inspect the jump mechanics.</p>
+<h3 class="doc-h3">3.3.1 How <code>if</code> Statements are Compiled</h3>
+<p>When compiling an <code>if</code> statement, the compiler cannot know ahead of time how many bytecode bytes the <code>then</code> block will occupy. It emits a provisional <code>OPJUMPIFFALSE</code> instruction with a placeholder offset. Once the entire <code>then</code> block is compiled, the compiler calculates the exact byte distance and <strong>back-patches</strong> the offset into the jump instruction:</p>
+<div class="mermaid">
+flowchart TD
+    Cond[&quot;Evaluate Condition Expression&quot;]
+    JumpIfFalse[&quot;OPJUMPIFFALSE (provisional offset)&quot;]
+    ThenBlock[&quot;Compile Then Block&quot;]
+    JumpOverElse[&quot;OPJUMP (provisional offset)&quot;]
+    ElseBlock[&quot;Compile Else Block&quot;]
+    End[&quot;Next Statement&quot;]
+    
+    Cond --&gt; JumpIfFalse
+    JumpIfFalse -- True --&gt; ThenBlock --&gt; JumpOverElse --&gt; End
+    JumpIfFalse -- False (Back-patched) --&gt; ElseBlock --&gt; End
+</div>
+<h3 class="doc-h3">3.3.2 Bytecode Disassembly of a Loop</h3>
+<p>Consider this loop:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let i = 0;
+while (i &lt; 3) {
+    i += 1;
+}</code></pre></div>
+<p>The disassembled bytecode output (<code>aks run --debug</code>):</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">Bytecode Chunk: while_loop
+0000    OPPUSHINT           0
+0009    OPSTORE             0
+0012    OPLOAD              0
+0015    OPPUSHINT           3
+0024    OPLT
+0025    OPJUMPIFFALSE       +28
+0030    OPLOAD              0
+0033    OPPUSHINT           1
+0042    OPADD
+0043    OPSTORE             0
+0046    OPPOP
+0047    OPJUMP              -39
+0052    OPRETURN</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">3.4 Pattern Matching (<code>match</code>)</h2>
+<p>AKS features a first-class, pattern-matching engine capable of matching literals, variables, ranges, tuples, arrays, structs, and guard conditions.</p>
+<h3 class="doc-h3">3.4.1 Basic Literal &amp; Wildcard Matching</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let status_code = 404;
+
+let response_message = match (status_code) {
+    200 =&gt; &quot;OK: Request succeeded&quot;,
+    301 =&gt; &quot;Moved Permanently&quot;,
+    400 =&gt; &quot;Bad Request&quot;,
+    404 =&gt; &quot;Not Found: Resource does not exist&quot;,
+    500 =&gt; &quot;Internal Server Error&quot;,
+    _   =&gt; &quot;Unknown HTTP Status Code&quot;
+};
+
+print(response_message);</code></pre></div>
+<h3 class="doc-h3">3.4.2 Pattern Guards (<code>if</code> Clauses)</h3>
+<p>Pattern arms can include guard expressions that must evaluate to truthy for the arm to match:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let packet_size = 1500;
+
+match (packet_size) {
+    s if s &lt;= 64   =&gt; print(&quot;Small TCP Control Packet&quot;),
+    s if s &lt;= 1500 =&gt; print(&quot;Standard Ethernet MTU Frame&quot;),
+    s if s &gt; 9000  =&gt; print(&quot;Jumbo Frame&quot;),
+    _              =&gt; print(&quot;Custom Frame Size&quot;)
+};</code></pre></div>
+<h3 class="doc-h3">3.4.3 Destructuring Arrays and Structs</h3>
+<p>Pattern matching can decompose composite structures directly into named variables:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let coordinate = [10, 20];
+
+match (coordinate) {
+    [0, 0]   =&gt; print(&quot;Origin point&quot;),
+    [x, 0]   =&gt; print(&quot;On X-axis at &quot; + String(x)),
+    [0, y]   =&gt; print(&quot;On Y-axis at &quot; + String(y)),
+    [x, y]   =&gt; print(&quot;Cartesian point (&quot; + String(x) + &quot;, &quot; + String(y) + &quot;)&quot;),
+    _        =&gt; print(&quot;Invalid coordinate dimensions&quot;)
+};</code></pre></div>
+<h3 class="doc-h3">3.4.4 Exhaustiveness Checking</h3>
+<p>In static mode (<code>--strict-types</code>), the compiler performs exhaustiveness analysis over <code>match</code> expressions. When matching on enums, Algebraic Data Types, or boolean conditions, all variants must either be explicitly covered or a fallback wildcard <code>_</code> must be provided:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">enum Status { Pending, Active, Suspended }
+
+// Compile error if any variant is omitted without a wildcard:
+match (status) {
+    Status.Pending   =&gt; &quot;Job queued&quot;,
+    Status.Active    =&gt; &quot;Job running&quot;,
+    Status.Suspended =&gt; &quot;Job paused&quot;
+};</code></pre></div>
+<h3 class="doc-h3">3.4.5 Multiple Alternative Patterns (OR Patterns)</h3>
+<p>Multiple discrete patterns can be combined on a single branch using the pipe <code>|</code> operator, avoiding repetitive arms:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let status_code = 404;
+
+let category = match (status_code) {
+    200 | 201 | 204 =&gt; &quot;Success&quot;,
+    301 | 302 | 307 =&gt; &quot;Redirection&quot;,
+    400 | 401 | 403 | 404 =&gt; &quot;Client Error&quot;,
+    500 | 502 | 503 =&gt; &quot;Server Error&quot;,
+    _ =&gt; &quot;Unknown Status&quot;
+};</code></pre></div>
+<h3 class="doc-h3">3.4.6 Struct Pattern Matching</h3>
+<p>Struct instances can be destructured directly in pattern arms, inspecting specific fields while extracting others:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">struct Message { topic: string, priority: int, payload: any }
+
+let msg = Message { topic: &quot;alerts&quot;, priority: 1, payload: &quot;High CPU&quot; };
+
+match (msg) {
+    Message { topic: &quot;alerts&quot;, priority: 1, payload } =&gt; print(&quot;Critical alert: &quot; + String(payload)),
+    Message { topic: &quot;telemetry&quot;, payload }           =&gt; print(&quot;Telemetry data received&quot;),
+    _ =&gt; print(&quot;Standard message&quot;)
+};</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">3.5 Modern Syntactic Expressiveness</h2>
+<p>AKS incorporates contemporary syntactic constructs designed to maximize ergonomics without sacrificing execution speed:</p>
+<h3 class="doc-h3">3.5.1 Formatted String Interpolation &amp; Specifiers</h3>
+<p>Formatted string literals evaluate expressions directly inside <code>{...}</code> braces, with optional format specifiers for precision, base conversion, and alignment:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let username = &quot;AksDev&quot;;
+let latency = 4.2568;
+let count = 255;
+
+// Basic interpolation
+print(f&quot;User {username} ping response: {latency}ms (Status: {latency &lt; 10.0})&quot;);
+
+// Precision specifiers: floating-point rounding
+print(f&quot;Formatted latency: {latency:.2f}ms&quot;); // 4.26ms
+
+// Numeric base formatting: hex and binary
+print(f&quot;Hex: {count:x}, Binary: {count:b}&quot;); // Hex: ff, Binary: 11111111
+
+// Width and padding
+print(f&quot;Padded ID: {count:06d}&quot;); // 000255</code></pre></div>
+<h3 class="doc-h3">3.5.2 Range Literals &amp; Iteration</h3>
+<p>The <code>..</code> operator creates zero-allocation range sequences with <code>.start</code>, <code>.end</code>, and <code>Length()</code> support:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let r = 1..10;
+print(&quot;Range count: &quot; + String(Length(r))); // 9 elements
+
+for (i in 0..5) {
+    print(&quot;Iteration index: &quot; + String(i));
+}</code></pre></div>
+<h3 class="doc-h3">3.5.3 Chained Comparison Operators</h3>
+<p>Comparisons can be naturally chained together without redundant <code>&amp;&amp;</code> conjunctions:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let temperature = 72;
+if (65 &lt;= temperature &lt; 80) {
+    print(&quot;Room temperature is optimal&quot;);
+}</code></pre></div>
+<h3 class="doc-h3">3.5.4 Struct Update Syntax (<code>...</code>)</h3>
+<p>Copy-and-update creates new struct instances from existing objects, overriding specific fields:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">struct Config { host: string, port: int, ssl: bool }
+let base_cfg = Config { host: &quot;localhost&quot;, port: 8080, ssl: false };
+let prod_cfg = Config { ...base_cfg, port: 443, ssl: true };</code></pre></div>
+<h3 class="doc-h3">3.5.5 Trailing Lambdas</h3>
+<p>When the final argument of a function is a callback or lambda, it can be passed following the parameter list:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn filter_records(records, predicate) { ... }
+
+let valid = filter_records(user_db) fn(user) {
+    return user.active &amp;&amp; user.verified;
+};</code></pre></div>
+<h3 class="doc-h3">3.5.6 The Try-Propagation Operator (<code>?</code>)</h3>
+<p>For ergonomic error handling, postfix <code>?</code> unwraps <code>Result.Ok</code> or <code>Option.Some</code> values, immediately returning <code>Err</code> or <code>None</code> from the enclosing function upon failure:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn parse_and_process(raw: string) -&gt; Result {
+    let json = parse_json(raw)?;
+    let host = json.host?;
+    let port = json.port?;
+    return Ok(f&quot;Connecting to {host}:{port}&quot;);
+}</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">3.6 Summary &amp; Next Steps</h2>
+<p>In this chapter, we explored:</p>
+<p>1. <code>if</code>, <code>else if</code>, <code>else</code>, and ternary expressions.</p>
+<p>2. The four loop constructs: <code>while</code>, 3-clause <code>for</code>, collection <code>for..in</code>, and <code>loop</code>.</p>
+<p>3. Bytecode jump offset back-patching and loop disassemblies.</p>
+<p>4. <code>match</code> pattern matching with literal values, wildcards, guards, composite destructuring, and static exhaustiveness verification.</p>
+<p>5. Modern syntactic features: string interpolation, range literals, chained comparisons, struct updates, and trailing lambdas.</p>
+<p>Proceed to <a href="chapter-04.html">Chapter 04: Functions, Closures, Stack Frames &amp; Error Handling</a> to explore stack frames, algebraic effects, verified contracts, and error handling models.</p>
+    
+    <nav class="chapter-nav">
+      <div><a href="chapter-02.html">&larr; Chapter 02: Language Basics & Lexical Structure</a></div>
+      <div><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

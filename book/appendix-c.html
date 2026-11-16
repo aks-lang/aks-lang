@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Appendix C: Compiler Flags & CLI Diagnostics Reference | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Appendix C: Compiler Flags & CLI Diagnostics Reference in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/appendix-c.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/appendix-c.html">
+  <meta property="og:title" content="Appendix C: Compiler Flags & CLI Diagnostics Reference | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Appendix C: Compiler Flags & CLI Diagnostics Reference in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/appendix-c.html">
+  <meta property="twitter:title" content="Appendix C: Compiler Flags & CLI Diagnostics Reference | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Appendix C: Compiler Flags & CLI Diagnostics Reference in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Appendix C: Compiler Flags & CLI Diagnostics Reference in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html" class="active">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Appendix C: Compiler Flags, CLI Options &amp; Diagnostics Reference</h1>
+<p>This appendix provides a comprehensive reference for the AKS command-line driver (<code>aks.exe</code>), compilation flags, diagnostic error codes, and runtime environment options.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">C.1 Command-Line Interface (CLI) Syntax</h2>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">Usage:
+  aks &lt;command&gt; [options] [arguments]
+
+Commands:
+  run &lt;file&gt;         Executes an AKS source script using the virtual machine.
+  repl               Launches the interactive Read-Eval-Print Loop.
+  test [filter]      Executes the automated regression test suite.
+  bench &lt;file&gt;       Runs execution benchmarks with microsecond hardware timing.
+  fmt &lt;file&gt;         Formats AKS source code in-place according to style standards.
+  lint &lt;file&gt;        Performs static analysis to detect bugs and code smells.
+  emit-ir &lt;file&gt;     Emits unboxed LLVM Intermediate Representation (.ll).
+  emit-wat &lt;file&gt;    Emits WebAssembly Text representation (.wat).
+  pkg &lt;subcommand&gt;   Manages packages and dependencies (init, install, pack).
+  debug &lt;file&gt;       Launches script under the DAP interactive debugger.
+  help [topic]       Displays built-in documentation across 12 systems topics.
+  examples [action]  Browses and copies from 13 curated real-world system examples.
+  tutorial [action]  Runs 8 progressive interactive lessons with automated verification.
+  tour [step]        Guided 7-step interactive language architecture tour.
+  explain &lt;code&gt;     Explains borrow checker diagnostics (E0382..E0596) and errors.
+  cheatsheet [out]   Generates the master markdown syntax and standard library cheatsheet.
+  playground [port]  Starts local dark-mode interactive web IDE and execution console.
+  doc &lt;in&gt; [out]     Generates API markdown documentation from doc-comments (///).
+  highlight &lt;in&gt;     Syntax highlights AKS code in ANSI terminal or standalone HTML.
+  migrate &lt;file&gt;     Upgrades legacy syntax patterns automatically.</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">C.2 Compiler &amp; Runtime Flags</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Flag</th><th>Category</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>--strict-types</code></td><td>Type Safety</td><td>Activates Hindley-Milner type inference, rejecting ill-typed code at compile time.</td></tr>
+<tr><td><code>--borrow-check</code></td><td>Memory Safety</td><td>Activates affine borrow checker, validating ownership and reference lifetimes.</td></tr>
+<tr><td><code>--static</code></td><td>AOT Compilation</td><td>Enables strict static mode, monomorphization, and direct unboxed LLVM IR generation.</td></tr>
+<tr><td><code>--jit</code></td><td>JIT Acceleration</td><td>Activates dynamic tracing JIT compiler; compiles hot loops (&gt;= 50 backedges) and hot call-sites to native x64 in executable memory.</td></tr>
+<tr><td><code>--incremental</code></td><td>Fast Compilation</td><td>Enables persistent signature caching in <code>.akscache/signatures.bin</code>, skipping re-inference of unchanged AST bodies (50-80% speedup).</td></tr>
+<tr><td><code>--parallel</code></td><td>Multicore Scaling</td><td>Concurrently optimizes ASTs (NodeOpt, NodeCseOpt) and bytecode chunks across worker threads using topological DAG scheduling. Auto-detects core count.</td></tr>
+<tr><td><code>-j [N]</code>, <code>--jobs [N]</code></td><td>Multicore Scaling</td><td>Sets the exact number of worker threads for parallel compilation (e.g. <code>-j 4</code>, <code>-j4</code>, <code>--jobs 8</code>, <code>--jobs=8</code>). Also controlled via <code>AKSPARALLEL=1</code> and <code>AKS_JOBS=N</code>.</td></tr>
+<tr><td><code>--trace-mem</code></td><td>Memory Diagnostics</td><td>Enables allocation tracking, verifying clean reference deallocation and 0 memory leaks on exit.</td></tr>
+<tr><td><code>--debug</code></td><td>Debugger</td><td>Automatically breaks into the DAP debugger upon encountering an unhandled exception or panic.</td></tr>
+<tr><td><code>--watch</code></td><td>Hot Reload</td><td>Watches target file and imported dependencies, re-executing automatically on file change.</td></tr>
+<tr><td><code>--immutable-by-default</code></td><td>Immutability</td><td>Enforces that all <code>let</code> variable bindings are immutable constants unless explicitly marked <code>mut</code>.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">C.3 Compile-Time Borrow Checker Error Codes</h2>
+<p>When <code>--borrow-check</code> or <code>--static</code> is enabled, the compiler performs dataflow lifetime analysis and emits diagnostic error codes:</p>
+<h3 class="doc-h3">1. <code>error[E0382]</code>: Use of Moved Value</h3>
+<p>Occurs when a non-<code>Copy</code> value is accessed after its ownership has been transferred to another variable binding or function parameter:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">Compiler error on line 4: error[E0382]: Use of moved value `buffer`
+  --&gt; src/main.aks:4:11
+   |
+ 2 | let new_owner = buffer;
+   |     --------- value moved here
+ 4 | print(buffer);
+   |       ^^^^^^ value used here after move
+   |
+note: `buffer` was moved because it does not implement the `Copy` trait.
+suggestion: Borrow the value using `&amp;buffer` instead of transferring ownership.</code></pre></div>
+<h3 class="doc-h3">2. <code>error[E0499]</code>: Multiple Simultaneous Mutable Borrows</h3>
+<p>Occurs when attempting to create a second mutable reference (<code>&amp;mut</code>) to a variable while an existing mutable borrow is active:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">Compiler error on line 3: error[E0499]: Cannot borrow `data` mutably while it is already mutably borrowed
+  --&gt; src/main.aks:3:14
+   |
+ 1 | let r1 = &amp;mut data;
+   |     -- first mutable borrow occurs here
+ 3 | let r2 = &amp;mut data;
+   |     ^^^^^^^^ second mutable borrow occurs here</code></pre></div>
+<h3 class="doc-h3">3. <code>error[E0502]</code>: Simultaneous Mutable &amp; Immutable Borrows</h3>
+<p>Violates the fundamental rule: <em>Aliasing XOR Mutability</em>. A variable cannot be mutably borrowed while immutable read references exist:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">Compiler error on line 3: error[E0502]: Cannot borrow `state` mutably while it is immutably borrowed
+  --&gt; src/main.aks:3:14
+   |
+ 1 | let r1 = &amp;state;
+   |     -- immutable borrow occurs here
+ 3 | let r2 = &amp;mut state;
+   |     ^^^^^^^^^ mutable borrow occurs here
+ 5 | print(r1);
+   |       -- immutable borrow later used here</code></pre></div>
+<h3 class="doc-h3">4. <code>error[E0515]</code>: Returning Reference to Local Stack Variable</h3>
+<p>Prevents dangling pointer corruption by ensuring references never outlive the data they point to:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">Compiler error on line 4: LifetimeError: cannot return reference to local variable &#x27;temp_array&#x27;
+  --&gt; src/main.aks:4:12
+   |
+ 2 | let temp_array = [1, 2, 3];
+ 4 | return &amp;temp_array;
+   |        ^^^^^^^^^^^ reference escapes local stack frame</code></pre></div>
+<h3 class="doc-h3">5. <code>error[E0596]</code>: Mutation Through Immutable Reference</h3>
+<p>Occurs when attempting to modify a data structure through a read-only borrow (<code>&amp;T</code>):</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">Compiler error on line 3: error[E0596]: Cannot mutate `config` while it is immutably borrowed
+  --&gt; src/main.aks:3:5
+   |
+ 1 | let r = &amp;config;
+ 3 | config.port = 9000;
+   | ^^^^^^^^^^^ assignment to borrowed variable occurs here</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">C.4 Process Exit Codes</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Exit Code</th><th>Meaning</th><th>Cause</th></tr></thead><tbody>
+<tr><td><code>0</code></td><td>Success</td><td>Normal termination without errors; all memory references cleaned with 0 leaks.</td></tr>
+<tr><td><code>1</code></td><td>Runtime Error</td><td>Unhandled exception, standard library assertion failure, or type error in dynamic mode.</td></tr>
+<tr><td><code>2</code></td><td>Syntax / Lexer Error</td><td>Source file failed lexical tokenization or recursive-descent parsing.</td></tr>
+<tr><td><code>3</code></td><td>Type Error</td><td>Unification failure in strict static mode (<code>--strict-types</code> or <code>--static</code>).</td></tr>
+<tr><td><code>101</code></td><td>Panic Exit</td><td>Explicit <code>panic()</code> invocation with backtrace dump.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">C.5 C Public API Result Codes (<code>AKSResult</code>)</h2>
+<p>When embedding AKS via the native C interface (<code>include/aks.h</code>), all public execution APIs return standardized <code>AKSResult</code> status codes:</p>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Enum Constant</th><th>Value</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>AKS_OK</code></td><td><code>0</code></td><td>Execution completed successfully without error.</td></tr>
+<tr><td><code>AKS_PARSE_ERROR</code></td><td><code>1</code></td><td>Lexical tokenization or syntax parsing failure.</td></tr>
+<tr><td><code>AKS_COMPILE_ERROR</code></td><td><code>2</code></td><td>Semantic analysis, type checking, or bytecode generation failure.</td></tr>
+<tr><td><code>AKS_RUNTIME_ERROR</code></td><td><code>3</code></td><td>Uncaught runtime exception, fiber panic, or assertion failure.</td></tr>
+<tr><td><code>AKS_MEMORY_ERROR</code></td><td><code>4</code></td><td>Heap memory allocation failure / out of memory.</td></tr>
+<tr><td><code>AKS_FATAL</code></td><td><code>-1</code></td><td>Unrecoverable engine error.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">C.6 Incremental Signature Cache Format (<code>.akscache/signatures.bin</code>)</h2>
+<p>When running with incremental typing enabled, the compiler serializes function type signatures and dependency graphs into <code>.akscache/signatures.bin</code>:</p>
+<ul class="doc-list">
+<li><strong>Magic Header</strong>: <code>AKSIG1\0</code> (8 bytes) validating binary version and architecture endianness.</li>
+<li><strong>Entry Structure</strong>:</li>
+<li><code>name</code>: Mangled function identifier.</li>
+<li><code>body_hash</code>: 64-bit FNV-1a hash of the parsed AST body statements.</li>
+<li><code>param_types</code>: Inferred parameter types vector.</li>
+<li><code>ret_type</code>: Inferred return type.</li>
+<li><code>dep_count</code> &amp; <code>deps</code>: Array of symbol names called by this function.</li>
+<li><strong>Cache Invalidation</strong>: If any callee&#x27;s signature changes or a source file&#x27;s body hash differs, the entry is invalidated and re-inferred automatically.</li>
+</ul>
+<div class="section-divider"></div>
+<h2 class="doc-h2">C.7 Multi-Error Diagnostics, Synchronization &amp; Fuzzy Suggestions</h2>
+<p>The compiler collects up to <strong>50 errors</strong> before halting execution, utilizing intelligent statement synchronization, source caret lines, and Levenshtein distance suggestions:</p>
+<h3 class="doc-h3">1. Statement Synchronization (<code>ParseSynchronize</code>)</h3>
+<p>When a syntax error occurs, the parser skips tokens until reaching a synchronization boundary (<code>;</code>, <code>}</code>, or a keyword such as <code>let</code>, <code>fn</code>, <code>struct</code>, <code>if</code>, <code>while</code>, <code>return</code>), preventing cascade failures and allowing multiple independent errors to be diagnosed in a single run:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">Error in tests/TestErrorRecovery.aks:4:11: Expected &#x27;;&#x27; after statement
+    let x = 10 let y = 20;
+               ^~~~</code></pre></div>
+<h3 class="doc-h3">2. Source-Line Context &amp; Carets (<code>^~~~</code>)</h3>
+<p>Diagnostics render the exact line of offending code and a visual caret underline pointing to the column location and token width.</p>
+<h3 class="doc-h3">3. Fuzzy &quot;Did you mean?&quot; Symbol Suggestions</h3>
+<p>Unrecognized identifiers, calls, types, or struct fields trigger a Levenshtein edit-distance search:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">Error in script.aks:8:14: Unknown identifier &#x27;user_cont&#x27;. Did you mean &#x27;user_count&#x27;?
+    print(user_cont);
+          ^~~~~~~~~</code></pre></div>
+<ul class="doc-list">
+<li><strong>Functions</strong>: e.g., calling <code>SquareRot(16.0)</code> suggests <code>SquareRoot</code>.</li>
+<li><strong>Types</strong>: e.g., <code>floatt</code> suggests <code>float</code>.</li>
+<li><strong>Struct Fields</strong>: e.g., <code>point.x_cord</code> suggests <code>point.x</code>.</li>
+</ul>
+    
+    <nav class="chapter-nav">
+      <div><a href="appendix-b.html">&larr; Appendix B: VM Instruction Set (ISA) Reference</a></div>
+      <div></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

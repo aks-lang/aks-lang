@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Appendix A: Complete Standard Library API Reference | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Appendix A: Complete Standard Library API Reference in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/appendix-a.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/appendix-a.html">
+  <meta property="og:title" content="Appendix A: Complete Standard Library API Reference | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Appendix A: Complete Standard Library API Reference in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/appendix-a.html">
+  <meta property="twitter:title" content="Appendix A: Complete Standard Library API Reference | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Appendix A: Complete Standard Library API Reference in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Appendix A: Complete Standard Library API Reference in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html" class="active">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Appendix A: Complete Built-in &amp; Standard Library API Reference</h1>
+<p>This appendix provides an exhaustive, categorized reference for all built-in functions, native dispatch methods, and standard library modules in the AKS runtime.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">A.1 Core Math, Trigonometry &amp; Numerics</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Function</th><th>Signature</th><th>Return</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>SquareRoot</code> / <code>sqrt</code></td><td><code>SquareRoot(x: float)</code></td><td><code>float</code></td><td>Returns the square root $\sqrt{x}$.</td></tr>
+<tr><td><code>Absolute</code> / <code>abs</code></td><td>`Absolute(x: int \</td><td>float)`</td><td>`int \</td><td>float`</td><td>Returns the absolute value $\</td><td>x\</td><td>$.</td></tr>
+<tr><td><code>Power</code> / <code>pow</code></td><td><code>Power(base, exp)</code></td><td><code>float</code></td><td>Computes $\text{base}^{\text{exp}}$.</td></tr>
+<tr><td><code>sin</code></td><td><code>sin(rad: float)</code></td><td><code>float</code></td><td>Trigonometric sine of angle in radians.</td></tr>
+<tr><td><code>cos</code></td><td><code>cos(rad: float)</code></td><td><code>float</code></td><td>Trigonometric cosine of angle in radians.</td></tr>
+<tr><td><code>tan</code></td><td><code>tan(rad: float)</code></td><td><code>float</code></td><td>Trigonometric tangent of angle in radians.</td></tr>
+<tr><td><code>log</code></td><td><code>log(x: float)</code></td><td><code>float</code></td><td>Natural logarithm $\ln(x)$.</td></tr>
+<tr><td><code>Ceiling</code> / <code>ceil</code></td><td><code>Ceiling(x: float)</code></td><td><code>int</code></td><td>Smallest integer greater than or equal to $x$.</td></tr>
+<tr><td><code>floor</code></td><td><code>floor(x: float)</code></td><td><code>int</code></td><td>Largest integer less than or equal to $x$.</td></tr>
+<tr><td><code>round</code></td><td><code>round(x: float)</code></td><td><code>int</code></td><td>Rounds float to nearest integer.</td></tr>
+<tr><td><code>trunc</code></td><td><code>trunc(x: float)</code></td><td><code>int</code></td><td>Truncates decimal part towards zero.</td></tr>
+<tr><td><code>Hypotenuse</code></td><td><code>Hypotenuse(a, b)</code></td><td><code>float</code></td><td>Returns $\sqrt{a^2 + b^2}$.</td></tr>
+<tr><td><code>cbrt</code></td><td><code>cbrt(x: float)</code></td><td><code>float</code></td><td>Cube root $\sqrt[3]{x}$.</td></tr>
+<tr><td><code>exp</code></td><td><code>exp(x: float)</code></td><td><code>float</code></td><td>Exponential $e^x$.</td></tr>
+<tr><td><code>erf</code> / <code>erfc</code></td><td><code>erf(x: float)</code></td><td><code>float</code></td><td>Error function and complementary error function.</td></tr>
+<tr><td><code>tgamma</code> / <code>lgamma</code></td><td><code>tgamma(x: float)</code></td><td><code>float</code></td><td>Gamma function and log-gamma $\ln(\Gamma(x))$.</td></tr>
+<tr><td><code>ToDegrees</code></td><td><code>ToDegrees(rad: float)</code></td><td><code>float</code></td><td>Converts radians to degrees ($x \times \frac{180}{\pi}$).</td></tr>
+<tr><td><code>ToRadians</code></td><td><code>ToRadians(deg: float)</code></td><td><code>float</code></td><td>Converts degrees to radians ($x \times \frac{\pi}{180}$).</td></tr>
+<tr><td><code>Minimum</code> / <code>min</code></td><td><code>Minimum(a, b)</code></td><td><code>any</code></td><td>Returns the smaller of two comparable values.</td></tr>
+<tr><td><code>Maximum</code> / <code>max</code></td><td><code>Maximum(a, b)</code></td><td><code>any</code></td><td>Returns the larger of two comparable values.</td></tr>
+<tr><td><code>GreatestCommonDivisor</code></td><td><code>GreatestCommonDivisor(a: int, b: int)</code></td><td><code>int</code></td><td>Greatest common divisor $\gcd(a, b)$.</td></tr>
+<tr><td><code>LeastCommonMultiple</code></td><td><code>LeastCommonMultiple(a: int, b: int)</code></td><td><code>int</code></td><td>Least common multiple $\text{lcm}(a, b)$.</td></tr>
+<tr><td><code>Factorial</code></td><td><code>Factorial(n: int)</code></td><td><code>int</code></td><td>Computes $n!$.</td></tr>
+<tr><td><code>nCr</code></td><td><code>nCr(n: int, r: int)</code></td><td><code>int</code></td><td>Combinations $\binom{n}{r} = \frac{n!}{r!(n-r)!}$.</td></tr>
+<tr><td><code>nPr</code></td><td><code>nPr(n: int, r: int)</code></td><td><code>int</code></td><td>Permutations $P(n, r) = \frac{n!}{(n-r)!}$.</td></tr>
+<tr><td><code>IsPrime</code></td><td><code>IsPrime(n: int)</code></td><td><code>bool</code></td><td>Deterministic small-integer primality test.</td></tr>
+<tr><td><code>BigIntAdd</code></td><td><code>BigIntAdd(a: str, b: str)</code></td><td><code>str</code></td><td>Arbitrary-precision integer addition.</td></tr>
+<tr><td><code>BigIntSub</code></td><td><code>BigIntSub(a: str, b: str)</code></td><td><code>str</code></td><td>Arbitrary-precision integer subtraction.</td></tr>
+<tr><td><code>BigIntMul</code></td><td><code>BigIntMul(a: str, b: str)</code></td><td><code>str</code></td><td>Arbitrary-precision integer multiplication.</td></tr>
+<tr><td><code>BigIntDiv</code></td><td><code>BigIntDiv(a: str, b: str)</code></td><td><code>str</code></td><td>Arbitrary-precision integer division.</td></tr>
+<tr><td><code>BigIntCmp</code></td><td><code>BigIntCmp(a: str, b: str)</code></td><td><code>int</code></td><td>Compares big integers ($-1, 0, 1$).</td></tr>
+<tr><td><code>ComplexNewC</code></td><td><code>ComplexNewC(re: float, im: float)</code></td><td><code>Complex128</code></td><td>Creates a new Complex128 struct (<code>.re</code>, <code>.im</code>).</td></tr>
+<tr><td><code>ComplexAddC</code></td><td><code>ComplexAddC(z1, z2)</code></td><td><code>Complex128</code></td><td>Complex addition: $(a+bi) + (c+di)$.</td></tr>
+<tr><td><code>ComplexMulC</code></td><td><code>ComplexMulC(z1, z2)</code></td><td><code>Complex128</code></td><td>Complex multiplication: $(a+bi) \times (c+di)$.</td></tr>
+<tr><td><code>ComplexDivC</code></td><td><code>ComplexDivC(z1, z2)</code></td><td><code>Complex128</code></td><td>Complex division: $(a+bi) / (c+di)$.</td></tr>
+<tr><td><code>ComplexAbsC</code></td><td><code>ComplexAbsC(z)</code></td><td><code>float</code></td><td>Complex magnitude $\sqrt{\text{re}^2 + \text{im}^2}$.</td></tr>
+<tr><td><code>ComplexArgC</code></td><td><code>ComplexArgC(z)</code></td><td><code>float</code></td><td>Complex phase angle $\text{atan2}(\text{im}, \text{re})$.</td></tr>
+<tr><td><code>ComplexConjC</code></td><td><code>ComplexConjC(z)</code></td><td><code>Complex128</code></td><td>Complex conjugate: $\text{re} - i \cdot \text{im}$.</td></tr>
+<tr><td><code>ComplexExpC</code></td><td><code>ComplexExpC(z)</code></td><td><code>Complex128</code></td><td>Complex exponential $e^z$.</td></tr>
+<tr><td><code>ComplexSqrtC</code></td><td><code>ComplexSqrtC(z)</code></td><td><code>Complex128</code></td><td>Principal complex square root.</td></tr>
+<tr><td><code>ComplexPowC</code></td><td><code>ComplexPowC(z, p: float)</code></td><td><code>Complex128</code></td><td>Complex power $z^p$.</td></tr>
+<tr><td><code>ComplexLogC</code></td><td><code>ComplexLogC(z)</code></td><td><code>Complex128</code></td><td>Complex natural logarithm $\ln(z)$.</td></tr>
+<tr><td><code>RationalNewC</code></td><td><code>RationalNewC(p: int, q: int)</code></td><td><code>Rational</code></td><td>Creates an exact fraction $\frac{p}{q}$.</td></tr>
+<tr><td><code>RationalAddC</code></td><td><code>RationalAddC(r1, r2)</code></td><td><code>Rational</code></td><td>Exact fraction addition with GCD reduction.</td></tr>
+<tr><td><code>RationalSubC</code></td><td><code>RationalSubC(r1, r2)</code></td><td><code>Rational</code></td><td>Exact fraction subtraction.</td></tr>
+<tr><td><code>RationalMulC</code></td><td><code>RationalMulC(r1, r2)</code></td><td><code>Rational</code></td><td>Exact fraction multiplication.</td></tr>
+<tr><td><code>RationalDivC</code></td><td><code>RationalDivC(r1, r2)</code></td><td><code>Rational</code></td><td>Exact fraction division.</td></tr>
+<tr><td><code>RationalSimplifyC</code></td><td><code>RationalSimplifyC(r)</code></td><td><code>Rational</code></td><td>Reduces fraction to simplest terms.</td></tr>
+<tr><td><code>FftForwardC</code></td><td><code>FftForwardC(real_arr, imag_arr)</code></td><td><code>struct</code></td><td>Forward Radix-2 Fast Fourier Transform.</td></tr>
+<tr><td><code>FftInverseC</code></td><td><code>FftInverseC(real_arr, imag_arr)</code></td><td><code>struct</code></td><td>Inverse Radix-2 Fast Fourier Transform.</td></tr>
+<tr><td><code>StatMeanC</code></td><td><code>StatMeanC(arr: [float])</code></td><td><code>float</code></td><td>Arithmetic mean of dataset.</td></tr>
+<tr><td><code>StatVarianceC</code></td><td><code>StatVarianceC(arr: [float])</code></td><td><code>float</code></td><td>Sample variance of dataset.</td></tr>
+<tr><td><code>StatStdDevC</code></td><td><code>StatStdDevC(arr: [float])</code></td><td><code>float</code></td><td>Standard deviation of dataset.</td></tr>
+<tr><td><code>StatSkewnessC</code></td><td><code>StatSkewnessC(arr: [float])</code></td><td><code>float</code></td><td>Third standardized moment (skewness).</td></tr>
+<tr><td><code>StatKurtosisC</code></td><td><code>StatKurtosisC(arr: [float])</code></td><td><code>float</code></td><td>Fourth standardized moment (kurtosis).</td></tr>
+<tr><td><code>StatPercentileC</code></td><td><code>StatPercentileC(arr, p: float)</code></td><td><code>float</code></td><td>$p$-th percentile value ($0.0 \le p \le 1.0$).</td></tr>
+<tr><td><code>RunningStatsNewC</code></td><td><code>RunningStatsNewC()</code></td><td><code>handle</code></td><td>Creates a Welford online statistics accumulator.</td></tr>
+<tr><td><code>RunningStatsPushC</code></td><td><code>RunningStatsPushC(h, val: float)</code></td><td><code>nil</code></td><td>Pushes new sample into running statistics in $O(1)$.</td></tr>
+<tr><td><code>RunningStatsMeanC</code></td><td><code>RunningStatsMeanC(h)</code></td><td><code>float</code></td><td>Returns current running mean.</td></tr>
+<tr><td><code>RunningStatsVarC</code></td><td><code>RunningStatsVarC(h)</code></td><td><code>float</code></td><td>Returns current running variance.</td></tr>
+<tr><td><code>MersenneTwisterNewC</code></td><td><code>MersenneTwisterNewC(seed: int)</code></td><td><code>handle</code></td><td>Initializes MT19937 64-bit RNG.</td></tr>
+<tr><td><code>MersenneTwisterNextC</code></td><td><code>MersenneTwisterNextC(h)</code></td><td><code>int</code></td><td>Generates 64-bit unsigned pseudo-random integer.</td></tr>
+<tr><td><code>MersenneTwisterUniformC</code></td><td><code>MersenneTwisterUniformC(h)</code></td><td><code>float</code></td><td>Generates uniform float in $[0.0, 1.0)$.</td></tr>
+<tr><td><code>MillerRabinC</code></td><td><code>MillerRabinC(n: int, rounds: int)</code></td><td><code>bool</code></td><td>Miller-Rabin probabilistic primality test.</td></tr>
+<tr><td><code>LinearSolveC</code></td><td><code>LinearSolveC(flat_matrix, b_vec)</code></td><td><code>[float]</code></td><td>Solves linear equation system $A\mathbf{x} = \mathbf{b}$ via LU.</td></tr>
+<tr><td><code>GaussQuadC</code></td><td><code>GaussQuadC(fn_ptr, a, b, order)</code></td><td><code>float</code></td><td>Gauss-Legendre quadrature numerical integration.</td></tr>
+<tr><td><code>LagrangeInterpC</code></td><td><code>LagrangeInterpC(xs, ys, target_x)</code></td><td><code>float</code></td><td>Lagrange polynomial interpolation.</td></tr>
+<tr><td><code>SplineInterpC</code></td><td><code>SplineInterpC(xs, ys, target_x)</code></td><td><code>float</code></td><td>Natural cubic spline interpolation.</td></tr>
+<tr><td><code>FastMatrixIdentity</code></td><td><code>FastMatrixIdentity(n: int)</code></td><td><code>[float]</code></td><td>Generates $N \times N$ identity matrix.</td></tr>
+<tr><td><code>FastMatrixMultiply</code></td><td><code>FastMatrixMultiply(A, B, N)</code></td><td><code>[float]</code></td><td>Fast row-major matrix product.</td></tr>
+<tr><td><code>FastMatrixTranspose</code></td><td><code>FastMatrixTranspose(A, rows, cols)</code></td><td><code>[float]</code></td><td>Transposes $M \times N$ matrix.</td></tr>
+<tr><td><code>MatrixLuRaw</code></td><td><code>MatrixLuRaw(A, n: int)</code></td><td><code>struct</code></td><td>In-place LU factorization with permutation vector.</td></tr>
+<tr><td><code>MatrixCholeskyRaw</code></td><td><code>MatrixCholeskyRaw(A, n: int)</code></td><td><code>[float]</code></td><td>Cholesky decomposition $L L^T$ for positive-definite matrices.</td></tr>
+<tr><td><code>MatrixInverseRaw</code></td><td><code>MatrixInverseRaw(A, n: int)</code></td><td><code>[float]</code></td><td>Computes matrix inverse $A^{-1}$.</td></tr>
+<tr><td><code>Math.Clamp</code> / <code>clamp</code></td><td><code>Math.Clamp(val, min, max)</code></td><td><code>any</code></td><td>Restricts value within <code>[min, max]</code> interval.</td></tr>
+<tr><td><code>Math.Lerp</code> / <code>lerp</code></td><td><code>Math.Lerp(a, b, t: float)</code></td><td><code>float</code></td><td>Linear interpolation between $a$ and $b$ by weight $t$.</td></tr>
+<tr><td><code>Math.Mean</code> / <code>Mean</code></td><td><code>Math.Mean(arr: [float])</code></td><td><code>float</code></td><td>Computes arithmetic mean of dataset.</td></tr>
+<tr><td><code>Math.Median</code> / <code>Median</code></td><td><code>Math.Median(arr: [float])</code></td><td><code>float</code></td><td>Returns median value of dataset.</td></tr>
+<tr><td><code>Math.Variance</code> / <code>Variance</code></td><td><code>Math.Variance(arr: [float])</code></td><td><code>float</code></td><td>Computes sample variance of dataset.</td></tr>
+<tr><td><code>Math.StdDev</code> / <code>StdDev</code></td><td><code>Math.StdDev(arr: [float])</code></td><td><code>float</code></td><td>Computes standard deviation $\sigma$.</td></tr>
+<tr><td><code>Math.Quantile</code> / <code>Quantile</code></td><td><code>Math.Quantile(arr, q: float)</code></td><td><code>float</code></td><td>Computes $q$-quantile ($0.0 \le q \le 1.0$) with linear interpolation.</td></tr>
+<tr><td><code>Math.Mode</code> / <code>Mode</code></td><td><code>Math.Mode(arr: [any])</code></td><td><code>any</code></td><td>Returns most frequently occurring element in collection.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">A.2 Data Structures &amp; Collection APIs</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Function</th><th>Signature</th><th>Return</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>Length</code> / <code>len</code></td><td><code>Length(container)</code></td><td><code>int</code></td><td>Element count in array, string, or map.</td></tr>
+<tr><td><code>Push</code> / <code>append</code></td><td><code>Push(arr, item)</code></td><td><code>nil</code></td><td>Appends item to dynamic array.</td></tr>
+<tr><td><code>Pop</code> / <code>pop</code></td><td><code>Pop(arr)</code></td><td><code>any</code></td><td>Removes and returns last element from array.</td></tr>
+<tr><td><code>Insert</code> / <code>insert</code></td><td><code>Insert(arr, idx, item)</code></td><td><code>nil</code></td><td>Inserts element at index <code>idx</code>.</td></tr>
+<tr><td><code>RemoveAt</code> / <code>remove</code></td><td><code>RemoveAt(arr, idx)</code></td><td><code>any</code></td><td>Removes element at index <code>idx</code>.</td></tr>
+<tr><td><code>Slice</code> / <code>slice</code></td><td><code>Slice(arr, start, end)</code></td><td><code>array</code></td><td>Extracts subarray from <code>start</code> to <code>end</code>.</td></tr>
+<tr><td><code>Reverse</code></td><td><code>Reverse(arr)</code></td><td><code>nil</code></td><td>In-place array element reversal.</td></tr>
+<tr><td><code>Sort</code></td><td><code>Sort(arr)</code></td><td><code>nil</code></td><td>In-place array quicksort.</td></tr>
+<tr><td><code>Join</code></td><td><code>Join(arr, delimiter: str)</code></td><td><code>str</code></td><td>Concatenates elements with delimiter.</td></tr>
+<tr><td><code>Set</code></td><td><code>Set()</code></td><td><code>Set</code></td><td>High-performance hash set (<code>.Add()</code>, <code>.Remove()</code>, <code>.Has()</code>, <code>.Size()</code>, <code>.Values()</code>).</td></tr>
+<tr><td><code>Deque</code></td><td><code>Deque()</code></td><td><code>Deque</code></td><td>Double-ended queue (<code>.PushFront()</code>, <code>.PushBack()</code>, <code>.PopFront()</code>, <code>.PopBack()</code>).</td></tr>
+<tr><td><code>PriorityQueue</code></td><td><code>PriorityQueue()</code></td><td><code>PriorityQueue</code></td><td>Binary heap priority queue (<code>.Push()</code>, <code>.Pop()</code>, <code>.Peek()</code>, <code>.Size()</code>).</td></tr>
+<tr><td><code>weak</code></td><td><code>weak(target)</code></td><td><code>WeakRef</code></td><td>Weak reference to struct or array (<code>.Alive()</code>, <code>.Upgrade() -&gt; Option</code>).</td></tr>
+<tr><td><code>split</code></td><td><code>split(s: str, delim: str)</code></td><td><code>[str]</code></td><td>Splits string into array by delimiter string.</td></tr>
+<tr><td><code>lines</code></td><td><code>lines(s: str)</code></td><td><code>[str]</code></td><td>Splits string into lines handling <code>\n</code> and <code>\r\n</code>.</td></tr>
+<tr><td><code>chars</code></td><td><code>chars(s: str)</code></td><td><code>[str]</code></td><td>Splits string into individual character array.</td></tr>
+<tr><td><code>trim</code></td><td><code>trim(s: str)</code></td><td><code>str</code></td><td>Trims leading and trailing whitespace.</td></tr>
+<tr><td><code>trim_start</code></td><td><code>trim_start(s: str)</code></td><td><code>str</code></td><td>Trims leading whitespace.</td></tr>
+<tr><td><code>trim_end</code></td><td><code>trim_end(s: str)</code></td><td><code>str</code></td><td>Trims trailing whitespace.</td></tr>
+<tr><td><code>repeat_str</code> / <code>repeat</code></td><td><code>repeat_str(s: str, count: int)</code></td><td><code>str</code></td><td>Repeats string <code>count</code> times.</td></tr>
+<tr><td><code>insert_at</code></td><td><code>insert_at(arr, idx, item)</code></td><td><code>nil</code></td><td>Inserts element at index <code>idx</code> (alias for <code>insert</code>).</td></tr>
+<tr><td><code>remove_at</code></td><td><code>remove_at(arr, idx)</code></td><td><code>any</code></td><td>Removes and returns element at index <code>idx</code> (alias for <code>remove</code>).</td></tr>
+<tr><td><code>LRUCache</code></td><td><code>LRUCache(capacity: int)</code></td><td><code>LRUCache</code></td><td>Least Recently Used cache (<code>.Put(k, v)</code>, <code>.Get(k)</code>, <code>.Has(k)</code>, <code>.Remove(k)</code>, <code>.Keys()</code>, <code>.Size()</code>, <code>.Clear()</code>).</td></tr>
+<tr><td><code>BitSet</code></td><td><code>BitSet(size: int)</code></td><td><code>BitSet</code></td><td>Dynamic bitset (<code>.Set(b)</code>, <code>.Clear(b)</code>, <code>.Get(b)</code>, <code>.Toggle(b)</code>, <code>.CountOnes()</code>, <code>.ToArray()</code>, <code>.And()</code>, <code>.Or()</code>, <code>.Xor()</code>, <code>.Not()</code>).</td></tr>
+<tr><td><code>Logger</code></td><td><code>Logger(name, min_lvl, fmt)</code></td><td><code>Logger</code></td><td>Multi-level diagnostic logger (<code>.Debug()</code>, <code>.Info()</code>, <code>.Warn()</code>, <code>.Error()</code>, <code>.Fatal()</code>, <code>.SetLevel()</code>, <code>.SetFormat()</code>).</td></tr>
+<tr><td><code>ToJson</code></td><td><code>ToJson(val: any)</code></td><td><code>str</code></td><td>Serializes any primitive, struct, array, or map to JSON string.</td></tr>
+<tr><td><code>FromJson</code></td><td><code>FromJson(json: str)</code></td><td><code>any</code></td><td>Deserializes JSON string into native values/maps/arrays.</td></tr>
+<tr><td><code>CancellationToken</code></td><td><code>CancellationToken()</code></td><td><code>CancellationToken</code></td><td>Cooperative task cancellation token (<code>.Cancel()</code>, <code>.IsCancellationRequested()</code>, <code>.Register()</code>).</td></tr>
+<tr><td><code>FenwickNewC</code></td><td><code>FenwickNewC(size: int)</code></td><td><code>handle</code></td><td>Creates Binary Indexed Tree.</td></tr>
+<tr><td><code>FenwickUpdateC</code></td><td><code>FenwickUpdateC(h, idx, val)</code></td><td><code>nil</code></td><td>Point addition in $O(\log N)$.</td></tr>
+<tr><td><code>FenwickQueryC</code></td><td><code>FenwickQueryC(h, idx)</code></td><td><code>int</code></td><td>Prefix sum query in $O(\log N)$.</td></tr>
+<tr><td><code>SegTreeNewC</code></td><td><code>SegTreeNewC(size: int)</code></td><td><code>handle</code></td><td>Creates Dynamic Segment Tree.</td></tr>
+<tr><td><code>SegTreeUpdateC</code></td><td><code>SegTreeUpdateC(h, idx, val)</code></td><td><code>nil</code></td><td>Segment tree point update in $O(\log N)$.</td></tr>
+<tr><td><code>SegTreeQueryC</code></td><td><code>SegTreeQueryC(h, left, right)</code></td><td><code>int</code></td><td>Range sum query in $O(\log N)$.</td></tr>
+<tr><td><code>DSUNewC</code></td><td><code>DSUNewC(size: int)</code></td><td><code>handle</code></td><td>Creates Disjoint Set Union structure.</td></tr>
+<tr><td><code>DSUUnionC</code></td><td><code>DSUUnionC(h, a, b)</code></td><td><code>nil</code></td><td>Merges sets containing $a$ and $b$.</td></tr>
+<tr><td><code>DSUFindC</code></td><td><code>DSUFindC(h, a)</code></td><td><code>int</code></td><td>Returns representative root of set containing $a$.</td></tr>
+<tr><td><code>DSUSameC</code></td><td><code>DSUSameC(h, a, b)</code></td><td><code>bool</code></td><td>Tests if $a$ and $b$ are in the same set.</td></tr>
+<tr><td><code>MinMaxHeapNewC</code></td><td><code>MinMaxHeapNewC()</code></td><td><code>handle</code></td><td>Creates double-ended Min-Max Priority Heap.</td></tr>
+<tr><td><code>MinMaxHeapPushC</code></td><td><code>MinMaxHeapPushC(h, val)</code></td><td><code>nil</code></td><td>Inserts value into Min-Max heap in $O(\log N)$.</td></tr>
+<tr><td><code>MinMaxHeapPopMinC</code></td><td><code>MinMaxHeapPopMinC(h)</code></td><td><code>int</code></td><td>Pops smallest element in $O(\log N)$.</td></tr>
+<tr><td><code>MinMaxHeapPopMaxC</code></td><td><code>MinMaxHeapPopMaxC(h)</code></td><td><code>int</code></td><td>Pops largest element in $O(\log N)$.</td></tr>
+<tr><td><code>SkipListNewC</code></td><td><code>SkipListNewC()</code></td><td><code>handle</code></td><td>Creates multi-level probabilistic SkipList.</td></tr>
+<tr><td><code>SkipListInsertC</code></td><td><code>SkipListInsertC(h, key, val)</code></td><td><code>nil</code></td><td>Inserts key-value pair in $O(\log N)$.</td></tr>
+<tr><td><code>SkipListContainsC</code></td><td><code>SkipListContainsC(h, key)</code></td><td><code>bool</code></td><td>Searches for key in $O(\log N)$.</td></tr>
+<tr><td><code>SkipListDeleteC</code></td><td><code>SkipListDeleteC(h, key)</code></td><td><code>nil</code></td><td>Deletes key in $O(\log N)$.</td></tr>
+<tr><td><code>TreapNewC</code></td><td><code>TreapNewC()</code></td><td><code>handle</code></td><td>Creates Cartesian randomized binary search tree.</td></tr>
+<tr><td><code>TreapInsertC</code></td><td><code>TreapInsertC(h, key, val)</code></td><td><code>nil</code></td><td>Inserts key in $O(\log N)$.</td></tr>
+<tr><td><code>TreapContainsC</code></td><td><code>TreapContainsC(h, key)</code></td><td><code>bool</code></td><td>Looks up key in $O(\log N)$.</td></tr>
+<tr><td><code>TreapDeleteC</code></td><td><code>TreapDeleteC(h, key)</code></td><td><code>nil</code></td><td>Deletes key from Treap.</td></tr>
+<tr><td><code>CuckooFilterNewC</code></td><td><code>CuckooFilterNewC(cap: int)</code></td><td><code>handle</code></td><td>Creates Cuckoo probabilistic membership filter.</td></tr>
+<tr><td><code>CuckooFilterInsertC</code></td><td><code>CuckooFilterInsertC(h, item)</code></td><td><code>nil</code></td><td>Inserts fingerprint into bucket table.</td></tr>
+<tr><td><code>CuckooFilterContainsC</code></td><td><code>CuckooFilterContainsC(h, item)</code></td><td><code>bool</code></td><td>Tests set membership in $O(1)$.</td></tr>
+<tr><td><code>CuckooFilterDeleteC</code></td><td><code>CuckooFilterDeleteC(h, item)</code></td><td><code>nil</code></td><td>Deletes element from filter in $O(1)$.</td></tr>
+<tr><td><code>FastBloomFilterNewC</code></td><td><code>FastBloomFilterNewC(cap: int)</code></td><td><code>handle</code></td><td>Creates fast standard Bloom Filter.</td></tr>
+<tr><td><code>FastBloomFilterAddC</code></td><td><code>FastBloomFilterAddC(h, item)</code></td><td><code>nil</code></td><td>Hashes and adds item to bit filter.</td></tr>
+<tr><td><code>FastBloomFilterCheckC</code></td><td><code>FastBloomFilterCheckC(h, item)</code></td><td><code>bool</code></td><td>Tests item membership with low false positive.</td></tr>
+<tr><td><code>HamtMapNewC</code></td><td><code>HamtMapNewC()</code></td><td><code>handle</code></td><td>Creates persistent Hash Array Mapped Trie.</td></tr>
+<tr><td><code>HamtMapInsertC</code></td><td><code>HamtMapInsertC(h, key, val)</code></td><td><code>handle</code></td><td>Inserts key returning new persistent HAMT root.</td></tr>
+<tr><td><code>HamtMapGetC</code></td><td><code>HamtMapGetC(h, key)</code></td><td><code>any</code></td><td>Looks up value in HAMT in $O(1)$.</td></tr>
+<tr><td><code>SuffixArrayBuildC</code></td><td><code>SuffixArrayBuildC(text: str)</code></td><td><code>handle</code></td><td>Constructs Suffix Array for string.</td></tr>
+<tr><td><code>SuffixArraySearchC</code></td><td><code>SuffixArraySearchC(text, sa, pattern)</code></td><td><code>int</code></td><td>Binary searches pattern in $O(M \log N)$.</td></tr>
+<tr><td><code>SuffixArrayLcpC</code></td><td><code>SuffixArrayLcpC(h)</code></td><td><code>[int]</code></td><td>Computes Longest Common Prefix array.</td></tr>
+<tr><td><code>WaveletTreeNewC</code></td><td><code>WaveletTreeNewC(arr: [int])</code></td><td><code>handle</code></td><td>Constructs succinct Wavelet Tree.</td></tr>
+<tr><td><code>WaveletTreeRankC</code></td><td><code>WaveletTreeRankC(h, val, end)</code></td><td><code>int</code></td><td>Counts frequency of <code>val</code> in prefix <code>[0..end]</code>.</td></tr>
+<tr><td><code>RadixTreeNewC</code></td><td><code>RadixTreeNewC()</code></td><td><code>handle</code></td><td>Constructs compressed Radix Tree for prefix routing.</td></tr>
+<tr><td><code>RadixTreeInsertC</code></td><td><code>RadixTreeInsertC(h, key, val)</code></td><td><code>nil</code></td><td>Inserts key into Radix Tree.</td></tr>
+<tr><td><code>RadixTreeFindC</code></td><td><code>RadixTreeFindC(h, key)</code></td><td><code>any</code></td><td>Looks up key in Radix Tree.</td></tr>
+<tr><td><code>CircularByteBufferNewC</code></td><td><code>CircularByteBufferNewC(cap)</code></td><td><code>handle</code></td><td>Creates high-speed FIFO circular ring byte buffer.</td></tr>
+<tr><td><code>CircularByteBufferWriteC</code></td><td><code>CircularByteBufferWriteC(h, data)</code></td><td><code>int</code></td><td>Pushes bytes into circular buffer.</td></tr>
+<tr><td><code>CircularByteBufferReadC</code></td><td><code>CircularByteBufferReadC(h, len)</code></td><td><code>[int]</code></td><td>Reads bytes out of circular buffer.</td></tr>
+<tr><td><code>BitSet256NewC</code></td><td><code>BitSet256NewC()</code></td><td><code>handle</code></td><td>Creates 256-bit SIMD-aligned BitSet.</td></tr>
+<tr><td><code>BitSet256SetC</code></td><td><code>BitSet256SetC(h, bit_idx)</code></td><td><code>nil</code></td><td>Sets bit index (0..255).</td></tr>
+<tr><td><code>BitSet256TestC</code></td><td><code>BitSet256TestC(h, bit_idx)</code></td><td><code>bool</code></td><td>Tests bit state.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">A.3 Cryptography, Hashing &amp; Security APIs</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Function</th><th>Signature</th><th>Return</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>CryptoCrc32C</code></td><td><code>CryptoCrc32C(bytes: [int])</code></td><td><code>int</code></td><td>Computes IEEE 802.3 32-bit CRC.</td></tr>
+<tr><td><code>CryptoXxHashC</code></td><td><code>CryptoXxHashC(bytes: [int])</code></td><td><code>int</code></td><td>Computes xxHash3 64-bit non-cryptographic hash.</td></tr>
+<tr><td><code>CryptoSipHash</code></td><td><code>CryptoSipHash(bytes, k0, k1)</code></td><td><code>int</code></td><td>Computes SipHash-2-4 keyed hash.</td></tr>
+<tr><td><code>CryptoSha256</code></td><td>`CryptoSha256(data: str \</td><td>[int])`</td><td><code>str</code></td><td>Computes SHA-256 cryptographic digest.</td></tr>
+<tr><td><code>CryptoSha512_256</code></td><td><code>CryptoSha512_256(data)</code></td><td><code>str</code></td><td>Computes SHA-512/256 digest.</td></tr>
+<tr><td><code>CryptoSha3</code></td><td><code>CryptoSha3(data)</code></td><td><code>str</code></td><td>Computes SHA-3 (Keccak-256) digest.</td></tr>
+<tr><td><code>CryptoBlake2</code></td><td><code>CryptoBlake2(data)</code></td><td><code>str</code></td><td>Computes BLAKE2b 256-bit digest.</td></tr>
+<tr><td><code>MD5</code></td><td><code>MD5(data: str)</code></td><td><code>str</code></td><td>Computes legacy MD5 message digest.</td></tr>
+<tr><td><code>Scrypt</code></td><td><code>Scrypt(pwd, salt, N, r, p, len)</code></td><td><code>str</code></td><td>Memory-hard Scrypt key derivation.</td></tr>
+<tr><td><code>CryptoHmac</code></td><td><code>CryptoHmac(key, message)</code></td><td><code>str</code></td><td>Computes HMAC-SHA256 authentication tag.</td></tr>
+<tr><td><code>CryptoCmacAes</code></td><td><code>CryptoCmacAes(key, message)</code></td><td><code>str</code></td><td>Computes CMAC-AES authentication code.</td></tr>
+<tr><td><code>CryptoPbkdf2C</code></td><td><code>CryptoPbkdf2C(pwd, salt, iters, len)</code></td><td><code>[int]</code></td><td>Derives cryptographic key via PBKDF2.</td></tr>
+<tr><td><code>CryptoArgon2</code></td><td><code>CryptoArgon2(pwd, salt, mem, iters)</code></td><td><code>str</code></td><td>Computes Argon2id password hash.</td></tr>
+<tr><td><code>CryptoHkdf</code></td><td><code>CryptoHkdf(ikm, salt, info, len)</code></td><td><code>[int]</code></td><td>Derives subkeys via RFC 5869 HKDF.</td></tr>
+<tr><td><code>CryptoAesCbcEncryptC</code></td><td><code>CryptoAesCbcEncryptC(k, iv, txt)</code></td><td><code>[int]</code></td><td>Encrypts plaintext with AES-CBC &amp; PKCS#7.</td></tr>
+<tr><td><code>CryptoAesCbcDecryptC</code></td><td><code>CryptoAesCbcDecryptC(k, iv, data)</code></td><td><code>str</code></td><td>Decrypts ciphertext with AES-CBC &amp; PKCS#7.</td></tr>
+<tr><td><code>CryptoChaCha20</code></td><td><code>CryptoChaCha20(k, nonce, data)</code></td><td><code>[int]</code></td><td>Encrypts/decrypts with ChaCha20 stream cipher.</td></tr>
+<tr><td><code>CryptoXChaCha20Poly1305</code></td><td><code>CryptoXChaCha20Poly1305(k, n, d, aad)</code></td><td><code>[int]</code></td><td>Authenticated encryption via XChaCha20-Poly1305.</td></tr>
+<tr><td><code>CryptoX25519C</code></td><td><code>CryptoX25519C(priv, pub)</code></td><td><code>[int]</code></td><td>Computes Curve25519 / X25519 shared secret.</td></tr>
+<tr><td><code>CryptoEd25519Sign</code></td><td><code>CryptoEd25519Sign(priv, msg)</code></td><td><code>str</code></td><td>Signs document using Ed25519 private key.</td></tr>
+<tr><td><code>CryptoEd25519Verify</code></td><td><code>CryptoEd25519Verify(pub, msg, sig)</code></td><td><code>bool</code></td><td>Verifies Ed25519 digital signature.</td></tr>
+<tr><td><code>CryptoTotpC</code></td><td><code>CryptoTotpC(secret_b32, step)</code></td><td><code>str</code></td><td>Generates RFC 6238 6-digit TOTP token.</td></tr>
+<tr><td><code>SecureRandom</code></td><td><code>SecureRandom()</code></td><td><code>float</code></td><td>Cryptographically secure random float in $[0.0, 1.0)$.</td></tr>
+<tr><td><code>SecureRandomBytes</code></td><td><code>SecureRandomBytes(count: int)</code></td><td><code>[int]</code></td><td>Generates CSPRNG random byte array.</td></tr>
+<tr><td><code>SecureRandomI64</code></td><td><code>SecureRandomI64()</code></td><td><code>int</code></td><td>Generates 64-bit signed cryptographic random integer.</td></tr>
+<tr><td><code>SecureRandomUuid</code></td><td><code>SecureRandomUuid()</code></td><td><code>str</code></td><td>Generates RFC 4122 v4 UUID string.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">A.4 SIMD Hardware Acceleration &amp; Bit Operations</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Function</th><th>Signature</th><th>Return</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>SimdDotProductFmaC</code></td><td><code>SimdDotProductFmaC(a, b)</code></td><td><code>float</code></td><td>AVX2 Fused Multiply-Add vector dot product.</td></tr>
+<tr><td><code>SimdMatrixMultiplyC</code></td><td><code>SimdMatrixMultiplyC(A, B, N)</code></td><td><code>[float]</code></td><td>Tiled AVX2 matrix multiplication ($N \times N$).</td></tr>
+<tr><td><code>SimdCrc32cC</code></td><td><code>SimdCrc32cC(bytes: [int])</code></td><td><code>int</code></td><td>SSE4.2 hardware-accelerated CRC32C.</td></tr>
+<tr><td><code>SimdBitScanFwdC</code></td><td><code>SimdBitScanFwdC(mask: int)</code></td><td><code>int</code></td><td>Finds least significant set bit (<code>_BitScanForward64</code>).</td></tr>
+<tr><td><code>SimdBitScanRevC</code></td><td><code>SimdBitScanRevC(mask: int)</code></td><td><code>int</code></td><td>Finds most significant set bit (<code>_BitScanReverse64</code>).</td></tr>
+<tr><td><code>SimdVec16u8SaturatingAddC</code></td><td><code>SimdVec16u8SaturatingAddC(a, b)</code></td><td><code>[int]</code></td><td>16-lane 8-bit unsigned saturating vector addition.</td></tr>
+<tr><td><code>SimdBroadcastF64C</code></td><td><code>SimdBroadcastF64C(val: float)</code></td><td><code>Vec4d</code></td><td>Broadcasts float across all 4 lanes of a Vec4d.</td></tr>
+<tr><td><code>SimdConvertI32ToF32C</code></td><td><code>SimdConvertI32ToF32C(arr)</code></td><td><code>[float]</code></td><td>Converts 8 x int32 to 8 x float32 in hardware.</td></tr>
+<tr><td><code>SimdStringMatchC</code></td><td><code>SimdStringMatchC(haystack, needle)</code></td><td><code>int</code></td><td>32-byte AVX2 parallel substring search.</td></tr>
+<tr><td><code>FastBmi2PextC</code></td><td><code>FastBmi2PextC(src, mask)</code></td><td><code>int</code></td><td>BMI2 parallel bit extract (<code>PEXT</code>).</td></tr>
+<tr><td><code>FastBmi2PdepC</code></td><td><code>FastBmi2PdepC(src, mask)</code></td><td><code>int</code></td><td>BMI2 parallel bit deposit (<code>PDEP</code>).</td></tr>
+<tr><td><code>BitClz</code></td><td><code>BitClz(val: int)</code></td><td><code>int</code></td><td>Count leading zeros in 64-bit integer.</td></tr>
+<tr><td><code>BitCtz</code></td><td><code>BitCtz(val: int)</code></td><td><code>int</code></td><td>Count trailing zeros in 64-bit integer.</td></tr>
+<tr><td><code>BitByteSwap</code></td><td><code>BitByteSwap(val: int)</code></td><td><code>int</code></td><td>Reverses byte order (endian swap).</td></tr>
+<tr><td><code>BitRotl</code> / <code>BitRotr</code></td><td><code>BitRotl(val, shift)</code></td><td><code>int</code></td><td>Bitwise circular rotation left / right.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">A.5 Networking, Sockets &amp; Web Protocols</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Function</th><th>Signature</th><th>Return</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>SocketConnectSync</code></td><td><code>SocketConnectSync(host, port)</code></td><td><code>int</code></td><td>Connects TCP socket synchronously, returning handle.</td></tr>
+<tr><td><code>SocketAcceptSync</code></td><td><code>SocketAcceptSync(server_h)</code></td><td><code>int</code></td><td>Accepts incoming client TCP connection.</td></tr>
+<tr><td><code>SocketSendSync</code></td><td><code>SocketSendSync(sock, data)</code></td><td><code>int</code></td><td>Sends payload synchronously across TCP socket.</td></tr>
+<tr><td><code>SocketReceiveSync</code></td><td><code>SocketReceiveSync(sock, max_len)</code></td><td><code>str</code></td><td>Receives up to <code>max_len</code> bytes from TCP socket.</td></tr>
+<tr><td><code>SocketClose</code></td><td><code>SocketClose(sock)</code></td><td><code>nil</code></td><td>Closes socket descriptor.</td></tr>
+<tr><td><code>UdpMulticastJoinC</code></td><td><code>UdpMulticastJoinC(sock, group_ip)</code></td><td><code>bool</code></td><td>Joins IP multicast group (<code>IP_ADD_MEMBERSHIP</code>).</td></tr>
+<tr><td><code>UdpMulticastSendC</code></td><td><code>UdpMulticastSendC(sock, ip, port, data)</code></td><td><code>nil</code></td><td>Transmits datagram to multicast group.</td></tr>
+<tr><td><code>Http11ParserNewC</code></td><td><code>Http11ParserNewC()</code></td><td><code>handle</code></td><td>Creates HTTP/1.1 stream parser.</td></tr>
+<tr><td><code>Http11ParserFeedC</code></td><td><code>Http11ParserFeedC(h, raw_chunk)</code></td><td><code>struct</code></td><td>Feeds chunk, returning parsed headers and body.</td></tr>
+<tr><td><code>WsFrameEncodeC</code></td><td><code>WsFrameEncodeC(opcode, data, mask)</code></td><td><code>[int]</code></td><td>Encodes RFC 6455 WebSocket binary frame.</td></tr>
+<tr><td><code>WsFrameDecodeC</code></td><td><code>WsFrameDecodeC(frame_bytes)</code></td><td><code>struct</code></td><td>Decodes RFC 6455 WebSocket frame (<code>.opcode</code>, <code>.payload</code>).</td></tr>
+<tr><td><code>Socks5ConnectC</code></td><td><code>Socks5ConnectC(p_ip, p_port, d_host, d_port)</code></td><td><code>int</code></td><td>Handshakes with SOCKS5 proxy, establishing tunnel.</td></tr>
+<tr><td><code>SmtpSendC</code></td><td><code>SmtpSendC(h, port, u, p, from, to, subj, body)</code></td><td><code>bool</code></td><td>Dispatches email via SMTP with EHLO/AUTH.</td></tr>
+<tr><td><code>NtpQueryTimeC</code></td><td><code>NtpQueryTimeC(ntp_server)</code></td><td><code>int</code></td><td>Queries atomic time via RFC 4330 SNTP/UDP.</td></tr>
+<tr><td><code>DnsResolveRawC</code></td><td><code>DnsResolveRawC(hostname, type)</code></td><td><code>str</code></td><td>Resolves DNS query record.</td></tr>
+<tr><td><code>IcmpPingSendC</code></td><td><code>IcmpPingSendC(ip_str, timeout_ms)</code></td><td><code>bool</code></td><td>Sends ICMP IPv4 Echo Request ping.</td></tr>
+<tr><td><code>Icmp6PingSendC</code></td><td><code>Icmp6PingSendC(ipv6_str, timeout_ms)</code></td><td><code>bool</code></td><td>Sends ICMP IPv6 Echo Request ping.</td></tr>
+<tr><td><code>WinHttpOpenC</code></td><td><code>WinHttpOpenC(user_agent)</code></td><td><code>handle</code></td><td>Opens Windows WinHTTP session handle.</td></tr>
+<tr><td><code>WinHttpSendRequestC</code></td><td><code>WinHttpSendRequestC(conn, verb, path, body)</code></td><td><code>struct</code></td><td>Sends HTTPS request and reads response body.</td></tr>
+<tr><td><code>HttpServer</code></td><td><code>HttpServer(port: int)</code></td><td><code>HttpServer</code></td><td>Async HTTP server with routing (<code>.Get()</code>, <code>.Post()</code>, <code>.Put()</code>, <code>.Delete()</code>, <code>.Use()</code>, <code>.Static()</code>).</td></tr>
+<tr><td><code>Response</code></td><td><code>Response.Text() / .Json() / .Html()</code></td><td><code>HttpResponseObj</code></td><td>Standard HTTP response builder with status code and headers.</td></tr>
+<tr><td><code>HttpClient</code> / <code>Http</code></td><td><code>Http.Get(url) / Http.Post(url, h, b)</code></td><td><code>HttpResponseObj</code></td><td>Async HTTP client (<code>.get(url)</code>, <code>.post(url, headers, body)</code>).</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">A.6 Windows OS, File System &amp; Kernel Subsystems</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Function</th><th>Signature</th><th>Return</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>OsClipboardSetC</code> / <code>ClipboardSet</code></td><td><code>OsClipboardSetC(text: str)</code></td><td><code>bool</code></td><td>Writes text to Windows OS clipboard.</td></tr>
+<tr><td><code>OsClipboardGetC</code> / <code>ClipboardGet</code></td><td><code>OsClipboardGetC()</code></td><td><code>str</code></td><td>Reads text from Windows OS clipboard.</td></tr>
+<tr><td><code>OsClipboardClearC</code></td><td><code>OsClipboardClearC()</code></td><td><code>bool</code></td><td>Clears Windows OS clipboard buffer.</td></tr>
+<tr><td><code>OsProcessSnapshotC</code></td><td><code>OsProcessSnapshotC()</code></td><td><code>[struct]</code></td><td>Toolhelp32 process snapshot enumeration.</td></tr>
+<tr><td><code>OsModuleEnumC</code></td><td><code>OsModuleEnumC(pid: int)</code></td><td><code>[str]</code></td><td>PSAPI enumeration of loaded DLL modules.</td></tr>
+<tr><td><code>OsWindowEnumC</code></td><td><code>OsWindowEnumC()</code></td><td><code>[struct]</code></td><td>Traverses visible desktop top-level windows.</td></tr>
+<tr><td><code>OsConsoleRawModeC</code></td><td><code>OsConsoleRawModeC(mode: int)</code></td><td><code>int</code></td><td>Switches between virtual terminal raw and cooked console mode.</td></tr>
+<tr><td><code>OsFiberCreateC</code></td><td><code>OsFiberCreateC(stack_size: int)</code></td><td><code>handle</code></td><td>Creates Win32 user-mode cooperative Fiber.</td></tr>
+<tr><td><code>OsTokenPrivilegesC</code></td><td><code>OsTokenPrivilegesC()</code></td><td><code>[struct]</code></td><td>Enumerates process token privileges (e.g. <code>SeDebugPrivilege</code>).</td></tr>
+<tr><td><code>OsHeapWalkC</code></td><td><code>OsHeapWalkC()</code></td><td><code>[struct]</code></td><td>Walks Win32 private heap memory chunks.</td></tr>
+<tr><td><code>OsVirtualProtectC</code></td><td><code>OsVirtualProtectC(addr, size, prot)</code></td><td><code>int</code></td><td>Modifies page permissions (<code>VirtualProtect</code>).</td></tr>
+<tr><td><code>OsVirtualQueryC</code></td><td><code>OsVirtualQueryC(addr)</code></td><td><code>struct</code></td><td>Queries page memory state (<code>VirtualQuery</code>).</td></tr>
+<tr><td><code>OsWow64QueryC</code></td><td><code>OsWow64QueryC()</code></td><td><code>struct</code></td><td>Queries Wow64 machine architecture attributes.</td></tr>
+<tr><td><code>OsNamedEventCreateC</code></td><td><code>OsNamedEventCreateC(name, manual)</code></td><td><code>handle</code></td><td>Creates named cross-process synchronization event.</td></tr>
+<tr><td><code>OsNamedEventSetC</code></td><td><code>OsNamedEventSetC(event_h)</code></td><td><code>nil</code></td><td>Signals named event to listening processes.</td></tr>
+<tr><td><code>OsNamedEventWaitC</code></td><td><code>OsNamedEventWaitC(event_h, timeout)</code></td><td><code>bool</code></td><td>Waits on named event with timeout in milliseconds.</td></tr>
+<tr><td><code>OsNamedEventCloseC</code></td><td><code>OsNamedEventCloseC(event_h)</code></td><td><code>nil</code></td><td>Closes named event handle.</td></tr>
+<tr><td><code>NtfsAdsWriteC</code></td><td><code>NtfsAdsWriteC(file, stream, data)</code></td><td><code>int</code></td><td>Writes to NTFS Alternate Data Stream.</td></tr>
+<tr><td><code>NtfsAdsReadC</code></td><td><code>NtfsAdsReadC(file, stream)</code></td><td><code>str</code></td><td>Reads from NTFS Alternate Data Stream.</td></tr>
+<tr><td><code>EtwEmitC</code></td><td><code>EtwEmitC(provider_guid, evt_name)</code></td><td><code>bool</code></td><td>Emits structured telemetry event to ETW.</td></tr>
+<tr><td><code>PdhQueryC</code></td><td><code>PdhQueryC(counter_path: str)</code></td><td><code>float</code></td><td>Queries Windows PDH real-time performance counter.</td></tr>
+<tr><td><code>FileSystemReadText</code> / <code>ReadFile</code></td><td><code>ReadFile(path: str)</code></td><td><code>str</code></td><td>Reads complete text file.</td></tr>
+<tr><td><code>FileSystemWriteText</code> / <code>WriteFile</code></td><td><code>WriteFile(path, text)</code></td><td><code>nil</code></td><td>Writes text file to disk.</td></tr>
+<tr><td><code>RemoveFile</code></td><td><code>RemoveFile(path: str)</code></td><td><code>bool</code></td><td>Deletes file from disk.</td></tr>
+<tr><td><code>MakeDirectory</code></td><td><code>MakeDirectory(path: str)</code></td><td><code>bool</code></td><td>Creates directory on disk.</td></tr>
+<tr><td><code>FileSystemSize</code></td><td><code>FileSystemSize(path: str)</code></td><td><code>int</code></td><td>Returns file size in bytes.</td></tr>
+<tr><td><code>FileSystemModifiedTime</code></td><td><code>FileSystemModifiedTime(path)</code></td><td><code>int</code></td><td>Returns file modification epoch timestamp.</td></tr>
+<tr><td><code>FileSystemIsDir</code></td><td><code>FileSystemIsDir(path: str)</code></td><td><code>bool</code></td><td>Checks if path is a directory.</td></tr>
+<tr><td><code>FileSystemIsFile</code></td><td><code>FileSystemIsFile(path: str)</code></td><td><code>bool</code></td><td>Checks if path is a regular file.</td></tr>
+<tr><td><code>FileLockAcquireExclusive</code></td><td><code>FileLockAcquireExclusive(file)</code></td><td><code>bool</code></td><td>Locks file against concurrent access.</td></tr>
+<tr><td><code>FileLockRelease</code></td><td><code>FileLockRelease(file)</code></td><td><code>nil</code></td><td>Releases file lock.</td></tr>
+<tr><td><code>FileWatcherNew</code></td><td><code>FileWatcherNew(dir_path)</code></td><td><code>handle</code></td><td>Starts directory filesystem watcher.</td></tr>
+<tr><td><code>FileWatcherPoll</code></td><td><code>FileWatcherPoll(h)</code></td><td><code>[struct]</code></td><td>Polls for filesystem change notifications.</td></tr>
+<tr><td><code>HardLinkCreate</code></td><td><code>HardLinkCreate(src, dst)</code></td><td><code>bool</code></td><td>Creates NTFS hardlink.</td></tr>
+<tr><td><code>SymLinkCreateFile</code></td><td><code>SymLinkCreateFile(src, dst)</code></td><td><code>bool</code></td><td>Creates NTFS file symlink.</td></tr>
+<tr><td><code>ProcessSpawn</code></td><td><code>ProcessSpawn(cmd: str)</code></td><td><code>handle</code></td><td>Spawns child OS process.</td></tr>
+<tr><td><code>ProcessWait</code></td><td><code>ProcessWait(proc_h)</code></td><td><code>int</code></td><td>Waits for process termination, returning exit code.</td></tr>
+<tr><td><code>ProcessKill</code></td><td><code>ProcessKill(proc_h)</code></td><td><code>bool</code></td><td>Forcefully terminates process.</td></tr>
+<tr><td><code>ProcessWorkingSet</code></td><td><code>ProcessWorkingSet(pid: int)</code></td><td><code>int</code></td><td>Queries process working set size in bytes.</td></tr>
+<tr><td><code>JobObjectCreate</code></td><td><code>JobObjectCreate(name: str)</code></td><td><code>handle</code></td><td>Creates Windows Job Object for process group management.</td></tr>
+<tr><td><code>JobObjectAssignProcess</code></td><td><code>JobObjectAssignProcess(job, proc)</code></td><td><code>bool</code></td><td>Assigns child process to Job Object.</td></tr>
+<tr><td><code>JobObjectSetMemoryLimit</code></td><td><code>JobObjectSetMemoryLimit(job, max_bytes)</code></td><td><code>bool</code></td><td>Sets hard RAM limit for process group.</td></tr>
+<tr><td><code>ZipArchiveCreateC</code></td><td><code>ZipArchiveCreateC(zip_path, files)</code></td><td><code>bool</code></td><td>Creates PKZIP standard archive containing listed files or struct records.</td></tr>
+<tr><td><code>ZipArchiveListC</code></td><td><code>ZipArchiveListC(zip_path)</code></td><td><code>[str]</code></td><td>Lists file entry paths stored within a ZIP archive.</td></tr>
+<tr><td><code>ZipArchiveExtractC</code></td><td><code>ZipArchiveExtractC(zip_path, dest_dir)</code></td><td><code>int</code></td><td>Extracts all member files from ZIP archive to target directory.</td></tr>
+<tr><td><code>File.Open</code></td><td><code>File.Open(path, mode)</code></td><td><code>File</code></td><td>Opens file stream (<code>.ReadLine()</code>, <code>.ReadBytes()</code>, <code>.Write()</code>, <code>.Seek()</code>, <code>.Close()</code>).</td></tr>
+<tr><td><code>File.ReadAllText</code></td><td><code>File.ReadAllText(path)</code></td><td><code>str</code></td><td>Reads entire file into string.</td></tr>
+<tr><td><code>File.WriteAllText</code></td><td><code>File.WriteAllText(path, text)</code></td><td><code>bool</code></td><td>Atomically writes text string to file.</td></tr>
+<tr><td><code>File.ReadLines</code></td><td><code>File.ReadLines(path)</code></td><td><code>[str]</code></td><td>Reads file into array of lines.</td></tr>
+<tr><td><code>File.WriteAllLines</code></td><td><code>File.WriteAllLines(path, lines)</code></td><td><code>bool</code></td><td>Writes array of lines to file.</td></tr>
+<tr><td><code>File.Exists</code></td><td><code>File.Exists(path)</code></td><td><code>bool</code></td><td>Returns true if file exists on disk.</td></tr>
+<tr><td><code>date_utc</code></td><td><code>date_utc(ts, fmt: str)</code></td><td><code>str</code></td><td>Formats timestamp according to strftime format in UTC.</td></tr>
+<tr><td><code>DateComponentsUtc</code></td><td><code>DateComponentsUtc(ts)</code></td><td><code>DateParts</code></td><td>Returns UTC struct with <code>.year</code>, <code>.month</code>, <code>.day</code>, <code>.hour</code>, <code>.minute</code>, <code>.second</code>.</td></tr>
+<tr><td><code>DateComponentsLocal</code></td><td><code>DateComponentsLocal(ts)</code></td><td><code>DateParts</code></td><td>Returns local timezone struct with date and time components.</td></tr>
+<tr><td><code>DateTime</code></td><td><code>DateTime(ts, is_utc: bool)</code></td><td><code>DateTime</code></td><td>Datetime struct (<code>.Year()</code>, <code>.Month()</code>, <code>.Day()</code>, <code>.Format()</code>, <code>.ToIsoString()</code>).</td></tr>
+<tr><td><code>DateTimeNowUtc</code></td><td><code>DateTimeNowUtc()</code></td><td><code>DateTime</code></td><td>Returns current UTC datetime object.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">A.7 Media, Audio &amp; Graphics</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Function</th><th>Signature</th><th>Return</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>WavFileParseC</code></td><td><code>WavFileParseC(filepath: str)</code></td><td><code>struct</code></td><td>Parses RIFF/WAVE audio headers (<code>.sample_rate</code>, <code>.channels</code>, <code>.bit_depth</code>).</td></tr>
+<tr><td><code>BmpFileParseC</code></td><td><code>BmpFileParseC(filepath: str)</code></td><td><code>struct</code></td><td>Decodes Windows BMP/DIB image metadata (<code>.width</code>, <code>.height</code>, <code>.bpp</code>).</td></tr>
+<tr><td><code>GdiBitmapCreateC</code></td><td><code>GdiBitmapCreateC(w: int, h: int)</code></td><td><code>struct</code></td><td>Allocates 32-bit GDI DIB section bitmap (<code>.w</code>, <code>.h</code>, <code>.hbmp</code>, <code>.hdc</code>).</td></tr>
+<tr><td><code>GdiBitmapSetPixelC</code></td><td><code>GdiBitmapSetPixelC(bmp, x, y, color_rgb)</code></td><td><code>nil</code></td><td>Sets RGB pixel color at coordinate $(x, y)$.</td></tr>
+<tr><td><code>GdiBitmapSaveC</code></td><td><code>GdiBitmapSaveC(bmp, filename)</code></td><td><code>bool</code></td><td>Saves GDI canvas to uncompressed BMP file.</td></tr>
+<tr><td><code>WinmmAudioPlayC</code></td><td><code>WinmmAudioPlayC(pcm_bytes, sample_rate)</code></td><td><code>bool</code></td><td>Direct low-latency wave audio playback via WinMM <code>waveOutWrite</code>.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">A.8 Concurrency, Lock-Free &amp; Memory Reclamation</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Function</th><th>Signature</th><th>Return</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>MutexNewC</code></td><td><code>MutexNewC()</code></td><td><code>handle</code></td><td>Creates mutual exclusion lock.</td></tr>
+<tr><td><code>MutexLockC</code></td><td><code>MutexLockC(mtx)</code></td><td><code>nil</code></td><td>Acquires exclusive lock.</td></tr>
+<tr><td><code>MutexUnlockC</code></td><td><code>MutexUnlockC(mtx)</code></td><td><code>nil</code></td><td>Releases exclusive lock.</td></tr>
+<tr><td><code>SharedSpinlockNewC</code></td><td><code>SharedSpinlockNewC()</code></td><td><code>handle</code></td><td>Creates user-space test-and-set atomic spinlock.</td></tr>
+<tr><td><code>SharedSpinlockLockC</code></td><td><code>SharedSpinlockLockC(spin)</code></td><td><code>nil</code></td><td>Spins until lock is acquired.</td></tr>
+<tr><td><code>SharedSpinlockUnlockC</code></td><td><code>SharedSpinlockUnlockC(spin)</code></td><td><code>nil</code></td><td>Releases spinlock.</td></tr>
+<tr><td><code>ThreadBarrierNewC</code></td><td><code>ThreadBarrierNewC(count: int)</code></td><td><code>handle</code></td><td>Creates thread barrier for <code>count</code> threads.</td></tr>
+<tr><td><code>ThreadBarrierWaitC</code></td><td><code>ThreadBarrierWaitC(barrier)</code></td><td><code>nil</code></td><td>Blocks until all participating threads arrive.</td></tr>
+<tr><td><code>ConditionVariableNewC</code></td><td><code>ConditionVariableNewC()</code></td><td><code>handle</code></td><td>Creates Condition Variable.</td></tr>
+<tr><td><code>ConditionVariableSignalC</code></td><td><code>ConditionVariableSignalC(cv)</code></td><td><code>nil</code></td><td>Wakes one thread waiting on condition variable.</td></tr>
+<tr><td><code>ReadWriteLockNewC</code></td><td><code>ReadWriteLockNewC()</code></td><td><code>handle</code></td><td>Creates Read-Write Lock.</td></tr>
+<tr><td><code>LockFreeStackNewC</code></td><td><code>LockFreeStackNewC()</code></td><td><code>handle</code></td><td>Creates atomic Treiber stack using CAS.</td></tr>
+<tr><td><code>LockFreeStackPushC</code></td><td><code>LockFreeStackPushC(h, val)</code></td><td><code>nil</code></td><td>Pushes value atomically to stack head.</td></tr>
+<tr><td><code>LockFreeStackPopC</code></td><td><code>LockFreeStackPopC(h)</code></td><td><code>any</code></td><td>Pops value atomically from stack head.</td></tr>
+<tr><td><code>MpscQueueNewC</code></td><td><code>MpscQueueNewC(capacity: int)</code></td><td><code>handle</code></td><td>Creates Multi-Producer Single-Consumer queue.</td></tr>
+<tr><td><code>MpscQueuePushC</code></td><td><code>MpscQueuePushC(h, val)</code></td><td><code>nil</code></td><td>Pushes task to queue concurrently.</td></tr>
+<tr><td><code>MpscQueuePopC</code></td><td><code>MpscQueuePopC(h)</code></td><td><code>any</code></td><td>Consumer drains task from queue.</td></tr>
+<tr><td><code>StealingDequeNewC</code></td><td><code>StealingDequeNewC(cap: int)</code></td><td><code>handle</code></td><td>Creates Chase-Lev Work-Stealing Deque.</td></tr>
+<tr><td><code>StealingDequePushC</code></td><td><code>StealingDequePushC(h, task)</code></td><td><code>nil</code></td><td>Local worker pushes task to bottom.</td></tr>
+<tr><td><code>StealingDequePopC</code></td><td><code>StealingDequePopC(h)</code></td><td><code>any</code></td><td>Local worker pops task from bottom (LIFO).</td></tr>
+<tr><td><code>StealingDequeStealC</code></td><td><code>StealingDequeStealC(h)</code></td><td><code>any</code></td><td>Idle worker steals task from top (FIFO).</td></tr>
+<tr><td><code>HazardPointerDomainNewC</code></td><td><code>HazardPointerDomainNewC(threads)</code></td><td><code>handle</code></td><td>Initializes Hazard Pointer domain.</td></tr>
+<tr><td><code>HazardPointerAcquireC</code></td><td><code>HazardPointerAcquireC(dom, tid, addr)</code></td><td><code>nil</code></td><td>Registers hazard pointer protection on node.</td></tr>
+<tr><td><code>HazardPointerReleaseC</code></td><td><code>HazardPointerReleaseC(dom, tid)</code></td><td><code>nil</code></td><td>Clears hazard pointer slot.</td></tr>
+<tr><td><code>HazardPointerRetireC</code></td><td><code>HazardPointerRetireC(dom, addr)</code></td><td><code>int</code></td><td>Retires node, scanning hazard list for safe reclamation.</td></tr>
+<tr><td><code>OsIoCompletionPortCreateC</code></td><td><code>OsIoCompletionPortCreateC(threads)</code></td><td><code>handle</code></td><td>Creates Windows I/O Completion Port (IOCP).</td></tr>
+<tr><td><code>OsIoCompletionPortPostC</code></td><td><code>OsIoCompletionPortPostC(iocp, bytes, key, ov)</code></td><td><code>nil</code></td><td>Posts completion packet into IOCP queue.</td></tr>
+<tr><td><code>OsIoCompletionPortWaitC</code></td><td><code>OsIoCompletionPortWaitC(iocp, timeout_ms)</code></td><td><code>struct</code></td><td>Dequeues completion packet (<code>.bytes</code>, <code>.key</code>, <code>.overlapped</code>).</td></tr>
+<tr><td><code>AtomicI64New</code></td><td><code>AtomicI64New(init_val: int)</code></td><td><code>handle</code></td><td>Creates 64-bit atomic integer.</td></tr>
+<tr><td><code>AtomicI64Load</code></td><td><code>AtomicI64Load(h)</code></td><td><code>int</code></td><td>Atomic load with sequential consistency.</td></tr>
+<tr><td><code>AtomicI64Store</code></td><td><code>AtomicI64Store(h, val: int)</code></td><td><code>nil</code></td><td>Atomic store with sequential consistency.</td></tr>
+<tr><td><code>AtomicI64Add</code></td><td><code>AtomicI64Add(h, delta: int)</code></td><td><code>int</code></td><td>Atomic fetch-and-add.</td></tr>
+<tr><td><code>AtomicI64Cas</code></td><td><code>AtomicI64Cas(h, exp, desired)</code></td><td><code>bool</code></td><td>Atomic compare-and-swap.</td></tr>
+<tr><td><code>AtomicFence</code></td><td><code>AtomicFence()</code></td><td><code>nil</code></td><td>Emits full hardware CPU memory fence (<code>mfence</code>).</td></tr>
+<tr><td><code>ShmRingNewC</code></td><td><code>ShmRingNewC(name: str, cap: int)</code></td><td><code>struct</code></td><td>Creates high-speed lock-free SPSC shared-memory ring buffer.</td></tr>
+<tr><td><code>ShmRingPushC</code></td><td><code>ShmRingPushC(ring, data: str)</code></td><td><code>bool</code></td><td>Enqueues string/byte frame to shared memory ring without locks.</td></tr>
+<tr><td><code>ShmRingPopC</code></td><td><code>ShmRingPopC(ring)</code></td><td><code>str</code></td><td>Dequeues frame from shared memory ring buffer.</td></tr>
+<tr><td><code>ShmRingAvailableC</code></td><td><code>ShmRingAvailableC(ring)</code></td><td><code>int</code></td><td>Queries byte payload count available to consume in ring.</td></tr>
+<tr><td><code>ShmRingCloseC</code></td><td><code>ShmRingCloseC(ring)</code></td><td><code>bool</code></td><td>Unmaps and closes shared memory ring buffer mapping.</td></tr>
+<tr><td><code>nursery</code></td><td><code>nursery (n) { ... }</code></td><td><code>block</code></td><td>Structured concurrency block with guaranteed scope-bounded auto-join at exit.</td></tr>
+<tr><td><code>NurseryNew</code></td><td><code>NurseryNew()</code></td><td><code>Nursery</code></td><td>Creates nursery instance managing child fiber lifecycles.</td></tr>
+<tr><td><code>Nursery.Spawn</code></td><td><code>n.Spawn(worker)</code></td><td><code>task</code></td><td>Spawns worker fiber tracked by nursery scope.</td></tr>
+<tr><td><code>Nursery.SpawnArg</code></td><td><code>n.SpawnArg(worker, arg)</code></td><td><code>task</code></td><td>Spawns parameterized worker fiber tracked by nursery scope.</td></tr>
+<tr><td><code>Nursery.Track</code></td><td><code>n.Track(task)</code></td><td><code>task</code></td><td>Registers existing fiber task into nursery tracking list.</td></tr>
+<tr><td><code>Nursery.JoinAll</code></td><td><code>n.JoinAll()</code></td><td><code>array</code></td><td>Awaits all child fibers and returns results array.</td></tr>
+<tr><td><code>Nursery.CancelAll</code></td><td><code>n.CancelAll()</code></td><td><code>nil</code></td><td>Proactively signals cancellation to all child fibers.</td></tr>
+<tr><td><code>NurseryWaitAll</code></td><td><code>NurseryWaitAll(n)</code></td><td><code>array</code></td><td>Runtime auto-join dispatcher emitted at nursery scope exit.</td></tr>
+<tr><td><code>region</code></td><td><code>region (r) { ... }</code></td><td><code>block</code></td><td>Lexical memory region block with guaranteed $O(1)$ batch cleanup at exit.</td></tr>
+<tr><td><code>RegionNew</code></td><td><code>RegionNew(name: str)</code></td><td><code>RegionScope</code></td><td>Creates region scope backed by linear arena bump allocator.</td></tr>
+<tr><td><code>RegionScope.AllocArray</code></td><td><code>r.AllocArray(size: int)</code></td><td><code>array</code></td><td>Allocates fast arena array tied to region lifetime.</td></tr>
+<tr><td><code>RegionScope.AllocStruct</code></td><td><code>r.AllocStruct(tname: str)</code></td><td><code>struct</code></td><td>Allocates fast arena struct tied to region lifetime.</td></tr>
+<tr><td><code>RegionScope.Reset</code></td><td><code>r.Reset()</code></td><td><code>bool</code></td><td>Resets arena allocation bump pointer in $O(1)$ time for buffer reuse.</td></tr>
+<tr><td><code>RegionScope.AllocCount</code></td><td><code>r.AllocCount()</code></td><td><code>int</code></td><td>Returns count of active objects allocated in the region arena.</td></tr>
+<tr><td><code>RegionScope.AllocatedBytes</code></td><td><code>r.AllocatedBytes()</code></td><td><code>int</code></td><td>Returns total bytes consumed by the arena buffer and headers.</td></tr>
+<tr><td><code>RegionScope.Dispose</code></td><td><code>r.Dispose()</code></td><td><code>nil</code></td><td>Frees entire region arena buffer in $O(1)$ time.</td></tr>
+<tr><td><code>RegionExit</code></td><td><code>RegionExit(r)</code></td><td><code>nil</code></td><td>Runtime auto-cleanup dispatcher emitted at region scope exit.</td></tr>
+<tr><td><code>ArenaReset</code></td><td><code>ArenaReset(arena)</code></td><td><code>bool</code></td><td>Native C stdlib: Resets arena allocations and active count to 0.</td></tr>
+<tr><td><code>ArenaAllocCount</code></td><td><code>ArenaAllocCount(arena)</code></td><td><code>int</code></td><td>Native C stdlib: Queries active object count within target arena.</td></tr>
+<tr><td><code>ArenaAllocatedBytes</code></td><td><code>ArenaAllocatedBytes(arena)</code></td><td><code>int</code></td><td>Native C stdlib: Queries total bytes consumed by target arena.</td></tr>
+<tr><td><code>Task.Delay</code> / <code>TaskDelay</code></td><td><code>Task.Delay(ms: int)</code></td><td><code>task</code></td><td>Spawns background timer task completing after <code>ms</code> milliseconds.</td></tr>
+<tr><td><code>Task.WhenAll</code> / <code>TaskWhenAll</code></td><td><code>Task.WhenAll(tasks: [task])</code></td><td><code>[any]</code></td><td>Synchronously waits for all tasks in array and returns array of results.</td></tr>
+<tr><td><code>Task.WhenAny</code> / <code>TaskWhenAny</code></td><td><code>Task.WhenAny(tasks: [task])</code></td><td><code>{index, value}</code></td><td>Returns <code>{index, value}</code> of the first completed task from tasks array.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">A.11 Automatic Differentiation, Physical Units &amp; Geometric Vectors</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Function / Type</th><th>Signature</th><th>Return Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>Var</code></td><td><code>Var(val: float, tape_id: int = 0)</code></td><td><code>AutoVar</code></td><td>Creates leaf autodiff variable tracked on reverse-mode tape.</td></tr>
+<tr><td><code>AutoVar</code></td><td><code>AutoVar</code></td><td><code>struct</code></td><td>Autodiff node with <code>.val()</code>, <code>.grad()</code>, <code>.backward()</code>, <code>.Add()</code>, <code>.Sub()</code>, <code>.Mul()</code>, <code>.Div()</code>, <code>.Pow()</code>, <code>.Exp()</code>, <code>.Log()</code>, <code>.Sin()</code>, <code>.Cos()</code>, <code>.Tan()</code>, <code>.Relu()</code>, <code>.Sigmoid()</code>, <code>.Tanh()</code>, <code>.Sqrt()</code>.</td></tr>
+<tr><td><code>backward</code></td><td><code>backward(loss: AutoVar)</code></td><td><code>float</code></td><td>Executes $O(1)$ reverse topological backpropagation sweep from loss.</td></tr>
+<tr><td><code>grad_reverse</code></td><td><code>grad_reverse(f: fn, ...args)</code></td><td>`float \</td><td>arr`</td><td>High-level analytical gradient vector evaluator using reverse-mode tape.</td></tr>
+<tr><td><code>TapeNew</code></td><td><code>TapeNew()</code></td><td><code>int</code></td><td>Allocates new isolated computational graph tape slot.</td></tr>
+<tr><td><code>TapeFree</code></td><td><code>TapeFree(tape_id: int)</code></td><td><code>nil</code></td><td>Deallocates computational tape memory buffers.</td></tr>
+<tr><td><code>TapeDefault</code></td><td><code>TapeDefault()</code></td><td><code>int</code></td><td>Returns default computational tape ID (0).</td></tr>
+<tr><td><code>TapeReset</code></td><td><code>TapeReset(tape_id: int)</code></td><td><code>nil</code></td><td>Resets tape count to 0 without reallocating underlying buffers.</td></tr>
+<tr><td><code>TapeVar</code></td><td><code>TapeVar(tape_id, val)</code></td><td><code>int</code></td><td>Low-level C built-in: allocates leaf variable node on tape.</td></tr>
+<tr><td><code>TapeOp</code></td><td><code>TapeOp(tape_id, op, lhs, rhs, aux)</code></td><td><code>int</code></td><td>Low-level C built-in: allocates operator node and computes forward value.</td></tr>
+<tr><td><code>TapeGetVal</code></td><td><code>TapeGetVal(tape_id, nid)</code></td><td><code>float</code></td><td>Low-level C built-in: retrieves forward evaluation value of tape node.</td></tr>
+<tr><td><code>TapeGetGrad</code></td><td><code>TapeGetGrad(tape_id, nid)</code></td><td><code>float</code></td><td>Low-level C built-in: retrieves propagated adjoint gradient of tape node.</td></tr>
+<tr><td><code>TapeBackward</code></td><td><code>TapeBackward(tape_id, loss_nid)</code></td><td><code>float</code></td><td>Low-level C built-in: executes reverse topological gradient sweep.</td></tr>
+<tr><td><code>Dual</code></td><td><code>Dual(val: float, grad: float)</code></td><td><code>struct</code></td><td>Dual number forward-mode auto-diff wrapper with <code>.Add()</code>, <code>.Mul()</code>, <code>.val</code>, <code>.grad</code>.</td></tr>
+<tr><td><code>DualNew</code></td><td><code>DualNew(val: float, deriv: float)</code></td><td><code>struct</code></td><td>Allocates dual number carrying scalar value and derivative component.</td></tr>
+<tr><td><code>DualSin</code></td><td><code>DualSin(d: struct)</code></td><td><code>struct</code></td><td>Computes sine of dual number with automatic chain rule propagation ($\sin(x) + x&#x27; \cos(x) \epsilon$).</td></tr>
+<tr><td><code>grad</code></td><td><code>grad(f: fn, x: float)</code></td><td><code>float</code></td><td>Computes derivative $f&#x27;(x)$ using forward-mode automatic differentiation.</td></tr>
+<tr><td><code>jvp</code></td><td><code>jvp(f: fn, x: float, v: float)</code></td><td><code>float</code></td><td>Computes Jacobian-Vector Product $J_f(x) \cdot v$.</td></tr>
+<tr><td><code>MatrixNew</code></td><td><code>MatrixNew(rows: int, cols: int)</code></td><td><code>struct</code></td><td>Allocates zero-initialized 2D numeric matrix with <code>.Get(r, c)</code> and <code>.Set(r, c, v)</code>.</td></tr>
+<tr><td><code>MatrixFrom</code></td><td><code>MatrixFrom(rows: int, cols: int, data: arr)</code></td><td><code>struct</code></td><td>Allocates 2D matrix populated from row-major flattened array.</td></tr>
+<tr><td><code>Meter</code></td><td><code>Meter(mag: float)</code></td><td><code>struct</code></td><td>Length unit with magnitude and dimensional exponent $L=1$.</td></tr>
+<tr><td><code>Second</code></td><td><code>Second(mag: float)</code></td><td><code>struct</code></td><td>Time unit with magnitude and dimensional exponent $T=1$.</td></tr>
+<tr><td><code>Kilogram</code></td><td><code>Kilogram(mag: float)</code></td><td><code>struct</code></td><td>Mass unit with magnitude and dimensional exponent $M=1$.</td></tr>
+<tr><td><code>Speed</code></td><td><code>Speed(d, t)</code></td><td><code>struct</code></td><td>Velocity quantity ($L^1 \cdot T^{-1}$).</td></tr>
+<tr><td><code>Acceleration</code></td><td><code>Acceleration(v, t)</code></td><td><code>struct</code></td><td>Acceleration quantity ($L^1 \cdot T^{-2}$).</td></tr>
+<tr><td><code>Newton</code></td><td><code>Newton(m, a)</code></td><td><code>struct</code></td><td>Force quantity ($M^1 \cdot L^1 \cdot T^{-2}$).</td></tr>
+<tr><td><code>Joule</code></td><td><code>Joule(f, d)</code></td><td><code>struct</code></td><td>Work / Energy quantity ($M^1 \cdot L^2 \cdot T^{-2}$).</td></tr>
+<tr><td><code>Watt</code></td><td><code>Watt(w, t)</code></td><td><code>struct</code></td><td>Power quantity ($M^1 \cdot L^2 \cdot T^{-3}$).</td></tr>
+<tr><td><code>Vec2</code></td><td><code>Vec2(x: float, y: float)</code></td><td><code>struct</code></td><td>2D SIMD vector supporting component swizzles (<code>.yx</code>, <code>.xx</code>), <code>.Length()</code>, <code>.Normalize()</code>, <code>.Dot()</code>.</td></tr>
+<tr><td><code>Vec3</code></td><td><code>Vec3(x: float, y: float, z: float)</code></td><td><code>struct</code></td><td>3D SIMD vector supporting swizzles (<code>.zyx</code>, <code>.xy</code>), <code>.Cross()</code>, <code>.Dot()</code>, <code>.Normalize()</code>.</td></tr>
+<tr><td><code>Vec4</code></td><td><code>Vec4(x, y, z, w)</code></td><td><code>struct</code></td><td>4D SIMD vector supporting component swizzles (<code>.wzyx</code>, <code>.rgba</code>, <code>.xyz</code>).</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">A.12 Lazy Iterator Pipeline &amp; Option / Result Ergonomics</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Function / Type</th><th>Signature</th><th>Return Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>lazy</code></td><td><code>lazy(arr: array)</code></td><td><code>Iterator</code></td><td>Constructs a lazy pipeline wrapper over an array.</td></tr>
+<tr><td><code>range_iter</code></td><td><code>range_iter(start: int, end: int)</code></td><td><code>RangeIterator</code></td><td>Constructs lazy range sequence iterator from start to end.</td></tr>
+<tr><td><code>range_step</code></td><td><code>range_step(start, end, step)</code></td><td><code>RangeIterator</code></td><td>Constructs strided lazy range iterator.</td></tr>
+<tr><td><code>Iterator.Map</code></td><td><code>it.Map(fn(x) -&gt; y)</code></td><td><code>Iterator</code></td><td>Lazy element-wise transformation adapter.</td></tr>
+<tr><td><code>Iterator.Filter</code></td><td><code>it.Filter(fn(x) -&gt; bool)</code></td><td><code>Iterator</code></td><td>Lazy element selection predicate adapter.</td></tr>
+<tr><td><code>Iterator.Take</code></td><td><code>it.Take(n: int)</code></td><td><code>Iterator</code></td><td>Yields at most $n$ items from stream.</td></tr>
+<tr><td><code>Iterator.Skip</code></td><td><code>it.Skip(n: int)</code></td><td><code>Iterator</code></td><td>Skips first $n$ items from stream.</td></tr>
+<tr><td><code>Iterator.Zip</code></td><td><code>it.Zip(other: Iterator)</code></td><td><code>Iterator</code></td><td>Combines two iterators into <code>[a, b]</code> pairs.</td></tr>
+<tr><td><code>Iterator.Enumerate</code></td><td><code>it.Enumerate()</code></td><td><code>Iterator</code></td><td>Yields indexed pairs <code>[index, item]</code>.</td></tr>
+<tr><td><code>Iterator.StepBy</code></td><td><code>it.StepBy(step: int)</code></td><td><code>Iterator</code></td><td>Strides through iterator elements by step size.</td></tr>
+<tr><td><code>Iterator.Collect</code></td><td><code>it.Collect()</code></td><td><code>array</code></td><td>Materializes the lazy pipeline into a concrete array.</td></tr>
+<tr><td><code>Iterator.ForEach</code></td><td><code>it.ForEach(fn(x))</code></td><td><code>nil</code></td><td>Eagerly consumes each element with a callback.</td></tr>
+<tr><td><code>Iterator.Reduce</code></td><td><code>it.Reduce(init, fn(acc, x))</code></td><td><code>any</code></td><td>Folds pipeline into a single accumulator value.</td></tr>
+<tr><td><code>Iterator.Sum</code></td><td><code>it.Sum()</code></td><td>`int \</td><td>float`</td><td>Computes arithmetic sum of all elements.</td></tr>
+<tr><td><code>Iterator.Count</code></td><td><code>it.Count()</code></td><td><code>int</code></td><td>Counts total elements in stream.</td></tr>
+<tr><td><code>Iterator.Any</code></td><td><code>it.Any(predicate)</code></td><td><code>bool</code></td><td>Returns true if any element satisfies predicate (short-circuits).</td></tr>
+<tr><td><code>Iterator.All</code></td><td><code>it.All(predicate)</code></td><td><code>bool</code></td><td>Returns true if all elements satisfy predicate (short-circuits).</td></tr>
+<tr><td><code>Iterator.First</code></td><td><code>it.First()</code></td><td><code>Option</code></td><td>Returns <code>Some(first)</code> or <code>None</code> if stream is empty.</td></tr>
+<tr><td><code>Iterator.Find</code></td><td><code>it.Find(predicate)</code></td><td><code>Option</code></td><td>Returns <code>Some(elem)</code> matching predicate or <code>None</code>.</td></tr>
+<tr><td><code>Some</code></td><td><code>Some(val: any)</code></td><td><code>Option</code></td><td>Constructs <code>Option.Some(val)</code> instance.</td></tr>
+<tr><td><code>None</code></td><td><code>None</code></td><td><code>Option</code></td><td>Bare identifier evaluating to <code>Option.None</code>.</td></tr>
+<tr><td><code>Option.IsSome</code></td><td><code>opt.IsSome()</code></td><td><code>bool</code></td><td>Returns true if variant is <code>Some</code>.</td></tr>
+<tr><td><code>Option.IsNone</code></td><td><code>opt.IsNone()</code></td><td><code>bool</code></td><td>Returns true if variant is <code>None</code>.</td></tr>
+<tr><td><code>Option.Unwrap</code></td><td><code>opt.Unwrap()</code></td><td><code>any</code></td><td>Unwraps payload value, panicking if <code>None</code>.</td></tr>
+<tr><td><code>Option.UnwrapOr</code></td><td><code>opt.UnwrapOr(default)</code></td><td><code>any</code></td><td>Unwraps value or returns fallback if <code>None</code>.</td></tr>
+<tr><td><code>Option.Expect</code></td><td><code>opt.Expect(msg: str)</code></td><td><code>any</code></td><td>Unwraps value, panicking with custom message if <code>None</code>.</td></tr>
+<tr><td><code>Ok</code></td><td><code>Ok(val: any)</code></td><td><code>Result</code></td><td>Constructs <code>Result.Ok(val)</code> instance.</td></tr>
+<tr><td><code>Err</code></td><td><code>Err(err: any)</code></td><td><code>Result</code></td><td>Constructs <code>Result.Err(err)</code> instance.</td></tr>
+<tr><td><code>Result.IsOk</code></td><td><code>res.IsOk()</code></td><td><code>bool</code></td><td>Returns true if variant is <code>Ok</code>.</td></tr>
+<tr><td><code>Result.IsErr</code></td><td><code>res.IsErr()</code></td><td><code>bool</code></td><td>Returns true if variant is <code>Err</code>.</td></tr>
+<tr><td><code>Result.Unwrap</code></td><td><code>res.Unwrap()</code></td><td><code>any</code></td><td>Unwraps value, panicking with error message if <code>Err</code>.</td></tr>
+<tr><td><code>Result.UnwrapOr</code></td><td><code>res.UnwrapOr(default)</code></td><td><code>any</code></td><td>Unwraps value or returns fallback if <code>Err</code>.</td></tr>
+<tr><td><code>Result.Expect</code></td><td><code>res.Expect(msg: str)</code></td><td><code>any</code></td><td>Unwraps value, panicking with custom error prefix if <code>Err</code>.</td></tr>
+<tr><td><code>Result.MapErr</code></td><td><code>res.MapErr(fn(e))</code></td><td><code>Result</code></td><td>Maps error payload through transform function if <code>Err</code>.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">A.13 Systems Programming, Numeric Primitives &amp; Introspection</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Function / Keyword</th><th>Signature</th><th>Return Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>unsafe</code></td><td><code>unsafe { ... }</code></td><td><code>any</code></td><td>Bypasses borrow checker rules for low-level memory and raw FFI operations.</td></tr>
+<tr><td><code>SizeOf</code></td><td><code>SizeOf(typename: str)</code></td><td><code>int</code></td><td>Returns byte size of struct type matching target C ABI.</td></tr>
+<tr><td><code>AlignOf</code></td><td><code>AlignOf(typename: str)</code></td><td><code>int</code></td><td>Returns memory alignment requirement in bytes.</td></tr>
+<tr><td><code>OffsetOf</code></td><td><code>OffsetOf(typename, field)</code></td><td><code>int</code></td><td>Returns byte offset of struct field.</td></tr>
+<tr><td><code>IsSend</code></td><td><code>IsSend(val: any)</code></td><td><code>bool</code></td><td>Concurrency check: verifies value has no unshared cross-task references.</td></tr>
+<tr><td><code>IsSync</code></td><td><code>IsSync(val: any)</code></td><td><code>bool</code></td><td>Concurrency check: verifies value can be safely referenced concurrently.</td></tr>
+<tr><td><code>starts_with</code> / <code>StartsWith</code></td><td><code>starts_with(str, prefix)</code></td><td><code>bool</code></td><td>Checks if string begins with specified prefix.</td></tr>
+<tr><td><code>ends_with</code> / <code>EndsWith</code></td><td><code>ends_with(str, suffix)</code></td><td><code>bool</code></td><td>Checks if string terminates with specified suffix.</td></tr>
+<tr><td><code>contains</code> / <code>Contains</code></td><td><code>contains(str, substr)</code></td><td><code>bool</code></td><td>Checks if substring exists in source string.</td></tr>
+<tr><td><code>array_contains</code></td><td><code>array_contains(arr, val)</code></td><td><code>bool</code></td><td>Checks if value exists in array.</td></tr>
+<tr><td><code>abs</code></td><td><code>abs(x: num)</code></td><td><code>num</code></td><td>Absolute value of integer or float.</td></tr>
+<tr><td><code>min</code></td><td><code>min(a: num, b: num)</code></td><td><code>num</code></td><td>Minimum of two numbers.</td></tr>
+<tr><td><code>clamp</code></td><td><code>clamp(val, low, high)</code></td><td><code>num</code></td><td>Clamps numeric value to inclusive $[low, high]$ bounds.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">A.14 Modern Language Ergonomics &amp; Tooling</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Feature / Syntax</th><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><strong>Top-Level <code>const</code></strong></td><td><code>const MAX_RETRIES = 5;</code></td><td>Module-level immutable constant, accessible across all functions, inlined at compile time with zero runtime overhead.</td></tr>
+<tr><td><strong>Namespace Operator (<code>::</code>)</strong></td><td><code>Math::Clamp(val, 0, 10)</code></td><td>Resolves static functions and namespaced methods across types and modules (<code>Type::Method(...)</code>).</td></tr>
+<tr><td><strong>Error Propagation (<code>?</code>)</strong></td><td><code>let val = result?;</code></td><td>Postfix unwrapping operator for <code>Result</code> and <code>Option</code>; unwraps <code>Ok</code>/<code>Some</code> or early-returns <code>Err</code>/<code>None</code>.</td></tr>
+<tr><td><strong>Pattern Matching (<code>match</code>)</strong></td><td><code>match (val) { case 1 =&gt; { ... } default =&gt; { ... } }</code></td><td>Native branching over scalar values, strings, and enum discriminants with clean syntax.</td></tr>
+<tr><td><strong>HTML Doc Generator</strong></td><td><code>aks doc source.aks output.html</code></td><td>Generates a dark-mode styled HTML documentation page for functions, structs, enums, and constants.</td></tr>
+</tbody>
+</table></div>
+    
+    <nav class="chapter-nav">
+      <div><a href="chapter-20.html">&larr; Chapter 20: Practical Cookbook & Real-World Projects</a></div>
+      <div><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

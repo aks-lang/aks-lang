@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 11: Mathematics, Numerics & Scientific Computing | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Chapter 11: Mathematics, Numerics & Scientific Computing in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-11.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-11.html">
+  <meta property="og:title" content="Chapter 11: Mathematics, Numerics & Scientific Computing | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Chapter 11: Mathematics, Numerics & Scientific Computing in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-11.html">
+  <meta property="twitter:title" content="Chapter 11: Mathematics, Numerics & Scientific Computing | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Chapter 11: Mathematics, Numerics & Scientific Computing in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Chapter 11: Mathematics, Numerics & Scientific Computing in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html" class="active">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Chapter 11: Mathematics, Numerics &amp; Scientific Computing</h1>
+<p>Scientific, quantitative finance, simulation, and machine learning software require high-precision numerical foundations. AKS includes built-in native support for 128-bit complex arithmetic, exact rational fractions, Fast Fourier Transforms (FFT/IFFT), descriptive statistics, Welford online single-pass accumulators, the 64-bit Mersenne Twister RNG, Miller-Rabin primality testing, LU linear solvers, Gauss-Legendre quadrature integration, and spline interpolation.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">11.1 Complex128 Arithmetic</h2>
+<p>Complex numbers are represented as pairs of 64-bit double precision floating-point numbers ($z = \text{re} + i \cdot \text{im}$):</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let z1 = ComplexNewC(3.0, 4.0);
+let z2 = ComplexNewC(1.0, -2.0);
+
+// Addition: (3 + 4i) + (1 - 2i) = (4 + 2i)
+let z_sum = ComplexAddC(z1, z2);
+
+// Multiplication: (3 + 4i) * (1 - 2i) = (3 - 6i + 4i - 8i^2) = (11 - 2i)
+let z_prod = ComplexMulC(z1, z2);
+
+// Magnitude: |3 + 4i| = sqrt(3^2 + 4^2) = 5.0
+let magnitude = ComplexAbsC(z1);
+
+print(&quot;z1 Magnitude: &quot; + String(magnitude)); // 5.0
+print(&quot;z_prod = &quot; + String(z_prod.re) + &quot; + &quot; + String(z_prod.im) + &quot;i&quot;); // 11.0 + -2.0i</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">11.2 Exact Rational Fractions</h2>
+<p>Rational numbers eliminate floating-point rounding errors by representing numbers as exact integer fractions $\frac{p}{q}$ with automatic GCD Euclidean simplification:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let r1 = RationalNewC(1, 3); // 1/3
+let r2 = RationalNewC(1, 6); // 1/6
+
+// Exact addition: 1/3 + 1/6 = 2/6 + 1/6 = 3/6 = 1/2
+let r_sum = RationalAddC(r1, r2);
+print(&quot;Exact Rational Sum: &quot; + String(r_sum.num) + &quot;/&quot; + String(r_sum.den)); // 1/2</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">11.3 Fast Fourier Transform (FFT &amp; IFFT)</h2>
+<p>The Cooley-Tukey Radix-2 algorithm computes the Discrete Fourier Transform of an $N$-point signal in $O(N \log N)$ time:</p>
+<p>$$X_k = \sum_{n=0}^{N-1} x_n \cdot e^{-i 2\pi k n / N}$$</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let signal_real = [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0];
+let signal_imag = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+
+// Compute Forward FFT
+let spectrum = FftForwardC(signal_real, signal_imag);
+
+// Reconstruct original signal via Inverse FFT
+let reconstructed = FftInverseC(spectrum.real, spectrum.imag);
+print(&quot;Reconstructed First Sample: &quot; + String(reconstructed.real[0])); // 1.0</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">11.4 Statistics &amp; Welford Online Accumulators</h2>
+<h3 class="doc-h3">11.4.1 Batch Statistics</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let samples = [10.0, 12.0, 23.0, 23.0, 16.0, 23.0, 21.0, 16.0];
+
+print(&quot;Mean: &quot; + String(StatMeanC(samples)));
+print(&quot;Variance: &quot; + String(StatVarianceC(samples)));
+print(&quot;Standard Deviation: &quot; + String(StatStdDevC(samples)));
+print(&quot;90th Percentile: &quot; + String(StatPercentileC(samples, 0.90)));</code></pre></div>
+<h3 class="doc-h3">11.4.2 Welford Online Single-Pass Algorithm</h3>
+<p>Welford&#x27;s algorithm computes the running sample mean and variance incrementally in a single pass without storing all previous data points, preventing numerical cancellation errors:</p>
+<p>$$M_k = M_{k-1} + \frac{x_k - M_{k-1}}{k}, \quad S_k = S_{k-1} + (x_k - M_{k-1})(x_k - M_k)$$</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let welford = RunningStatsNewC();
+
+RunningStatsPushC(welford, 100.5);
+RunningStatsPushC(welford, 102.3);
+RunningStatsPushC(welford, 98.7);
+
+print(&quot;Running Mean: &quot; + String(RunningStatsMeanC(welford)));
+print(&quot;Running Variance: &quot; + String(RunningStatsVarC(welford)));</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">11.5 Random Number Generation &amp; Primality Testing</h2>
+<h3 class="doc-h3">11.5.1 64-Bit Mersenne Twister (MT19937-64)</h3>
+<p>Generates high-quality pseudo-random numbers with a colossal period of $2^{19937} - 1$:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let rng = MersenneTwisterNewC(123456789);
+
+let rand_u64 = MersenneTwisterNextC(rng);
+let rand_uniform = MersenneTwisterUniformC(rng); // [0.0, 1.0)
+
+print(&quot;Generated 64-bit int: &quot; + String(rand_u64));
+print(&quot;Uniform float: &quot; + String(rand_uniform));</code></pre></div>
+<h3 class="doc-h3">11.5.2 Miller-Rabin Probabilistic Primality Test</h3>
+<p>Tests large integers for primality in $O(k \log^3 n)$:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let candidate = 104729; // 10,000th prime
+let is_prime = MillerRabinC(candidate, 20); // 20 test rounds
+print(&quot;Is 104729 prime? &quot; + String(is_prime)); // true</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">11.6 Linear Algebra &amp; Numerical Calculus</h2>
+<h3 class="doc-h3">11.6.1 Solving Linear Systems $A\mathbf{x} = \mathbf{b}$ via LU Decomposition</h3>
+<p>Solves systems of $N$ linear equations using LU factorization with partial pivoting:</p>
+<p>$$\begin{bmatrix} 2 &amp; 1 \\ 5 &amp; 7 \end{bmatrix} \begin{bmatrix} x_0 \\ x_1 \end{bmatrix} = \begin{bmatrix} 11 \\ 13 \end{bmatrix}$$</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let matrix_A = [2.0, 1.0, 5.0, 7.0]; // Flattened 2x2 matrix
+let vector_b = [11.0, 13.0];
+
+let solution_x = LinearSolveC(matrix_A, vector_b);
+print(&quot;x0 = &quot; + String(solution_x[0]) + &quot;, x1 = &quot; + String(solution_x[1])); // x0 = 7.111, x1 = -3.222</code></pre></div>
+<h3 class="doc-h3">11.6.2 Gauss-Legendre Quadrature Numerical Integration</h3>
+<p>Computes the definite integral $\int_a^b f(x) \, dx$ using Legendre polynomial nodes and weights:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn integrand(x) {
+    return x * x; // Integrate x^2 from 0 to 3: exact = 9.0
+}
+
+let integral = GaussQuadC(integrand, 0.0, 3.0, 5); // 5th-order quadrature
+print(&quot;Definite integral of x^2 on [0, 3]: &quot; + String(integral)); // ~9.000000</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">11.7 Native Automatic Differentiation &amp; Computational Tape Engine</h2>
+<p>AKS features native, zero-overhead <strong>Automatic Differentiation (AD)</strong> offering both <strong>Reverse-Mode Automatic Differentiation</strong> (computational graph tape with $O(1)$ reverse pass backpropagation across $N$ inputs, beating PyTorch without GIL overhead) and <strong>Forward-Mode Dual Numbers</strong>.</p>
+<h3 class="doc-h3">11.7.1 Reverse-Mode Autodiff (<code>Var</code>, <code>backward</code>, <code>grad_reverse</code>)</h3>
+<p>Reverse-mode automatic differentiation records operations onto an ultra-fast in-memory computational tape. After evaluating the forward pass to produce a scalar objective or loss $L$, calling <code>loss.backward()</code> executes a reverse topological traversal that computes the exact analytical gradients $\frac{\partial L}{\partial x_i}$ for all input variables in a single backward sweep.</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// Allocate tracked autodiff variables on the native computational tape
+let x = Var(3.0);
+let y = Var(4.0);
+
+// Forward pass: build the computational graph
+// loss = x^2 * y + 2 * y^3
+let term1 = x.Mul(x).Mul(y);
+let term2 = y.Mul(y).Mul(y).Mul(2.0);
+let loss = term1.Add(term2);
+
+// Backward pass: reverse topological backpropagation in O(1) time
+loss.backward();
+
+// Query exact analytical partial derivatives
+print(&quot;Loss value: &quot; + String(loss.val()));  // 164.0
+print(&quot;dz/dx:      &quot; + String(x.grad()));     // 24.0 (2 * 3 * 4 = 24.0)
+print(&quot;dz/dy:      &quot; + String(y.grad()));     // 105.0 (9 + 6 * 16 = 105.0)</code></pre></div>
+<p>Supported tape operations include:</p>
+<ul class="doc-list">
+<li><strong>Arithmetic</strong>: <code>.Add()</code>, <code>.Sub()</code>, <code>.Mul()</code>, <code>.Div()</code>, <code>.Neg()</code>, <code>.Pow()</code></li>
+<li><strong>Transcendental &amp; Activations</strong>: <code>.Exp()</code>, <code>.Log()</code>, <code>.Sin()</code>, <code>.Cos()</code>, <code>.Tan()</code>, <code>.Relu()</code>, <code>.Sigmoid()</code>, <code>.Tanh()</code>, <code>.Sqrt()</code></li>
+</ul>
+<h4 class="doc-h4">High-Level Analytical Multivariable Gradients (<code>grad_reverse</code>)</h4>
+<p>For functional programming and vector optimization, <code>grad_reverse(f, ...args)</code> automatically constructs the computational tape, executes the forward pass, backpropagates gradients, and returns the full analytical gradient vector in a single invocation:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let quad = fn(a, b) {
+    return a.Mul(a).Add(b.Mul(b).Mul(2.0)); // a^2 + 2b^2
+};
+
+// Returns exact gradient vector [2a, 4b] = [10.0, 12.0] in a single sweep
+let gradients = grad_reverse(quad, 5.0, 3.0);
+print(&quot;Gradients: [&quot; + String(gradients[0]) + &quot;, &quot; + String(gradients[1]) + &quot;]&quot;);</code></pre></div>
+<h4 class="doc-h4">Gradient Descent Machine Learning Loop</h4>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// Minimize loss f(w) = (w - 7)^2 via reverse-mode autodiff
+let w = 0.0;
+let lr = 0.2;
+let step = 0;
+while (step &lt; 25) {
+    TapeReset(0);
+    let var_w = Var(w);
+    let loss = var_w.Sub(7.0).Pow(2.0);
+    loss.backward();
+    w = w - (lr * var_w.grad());
+    step++;
+}
+print(&quot;Optimized w: &quot; + String(w)); // 7.0 (exact global optimum)</code></pre></div>
+<div class="section-divider"></div>
+<h3 class="doc-h3">11.7.2 Forward-Mode Dual Numbers</h3>
+<p>Dual numbers extend real numbers by an infinitesimal quantity $\epsilon$ such that $\epsilon^2 = 0$. Every dual number carries both a primary value and its first derivative:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let d1 = Dual(3.0, 1.0);
+let d2 = Dual(2.0, 0.0);
+
+let sum = d1.Add(d2);
+let prod = d1.Mul(d2);
+print(&quot;Sum val: &quot; + String(sum.val) + &quot;, grad: &quot; + String(sum.grad)); // 5.0, 1.0</code></pre></div>
+<h3 class="doc-h3">11.7.3 Forward-Mode Gradients (<code>grad</code>) and Jacobian-Vector Products (<code>jvp</code>)</h3>
+<p>For directional derivatives and multi-variate vector functions:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let f = fn(x) { return x * x + (3.0 * x) + 5.0; };
+let df_at_4 = grad(f, 4.0); // 11.0
+
+let j = jvp(fn(x) { return x * x; }, 3.0, 2.0); // 12.0</code></pre></div>
+<h3 class="doc-h3">11.7.4 Standard Numeric Primitives</h3>
+<p>For common scalar arithmetic, AKS includes optimized numeric utilities directly in the standard prelude:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">assert(abs(-42) == 42);
+assert(abs(-3.14) == 3.14);
+
+assert(min(10, 20) == 10);
+assert(max(10, 20) == 20);
+
+// Clamping values within inclusive [low, high] bounds
+assert(clamp(5, 10, 20) == 10);
+assert(clamp(15, 10, 20) == 15);
+assert(clamp(25, 10, 20) == 20);</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">11.8 Summary &amp; Next Steps</h2>
+<p>In this chapter, we explored:</p>
+<p>1. Complex128 arithmetic operations and magnitude calculations.</p>
+<p>2. Exact Rational fractions with GCD reduction.</p>
+<p>3. Fast Fourier Transforms (FFT &amp; IFFT).</p>
+<p>4. Descriptive statistics and Welford online single-pass variance.</p>
+<p>5. MT19937-64 pseudo-random generation and Miller-Rabin primality testing.</p>
+<p>6. LU linear system solvers and Gauss-Legendre quadrature integration.</p>
+<p>7. Native Reverse-Mode Automatic Differentiation Tape Engine (<code>Var</code>, <code>backward</code>, <code>grad_reverse</code>, <code>TapeReset</code>).</p>
+<p>8. Forward-Mode Dual Numbers, <code>grad</code>, and Jacobian-Vector Products (<code>jvp</code>).</p>
+<p>9. Standard prelude numeric primitives (<code>abs</code>, <code>min</code>, <code>max</code>, <code>clamp</code>).</p>
+<p>Proceed to <a href="chapter-12.html">Chapter 12: Parsing, Serialization &amp; Config Engines</a> to explore JSON, CSV, TOML, MsgPack, Protobuf, CBOR, and TAR archives.</p>
+    
+    <nav class="chapter-nav">
+      <div><a href="chapter-10.html">&larr; Chapter 10: Advanced Pure Data Structures</a></div>
+      <div><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

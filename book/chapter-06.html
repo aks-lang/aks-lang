@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 06: Type System & Static Mode | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Chapter 06: Type System & Static Mode in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-06.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-06.html">
+  <meta property="og:title" content="Chapter 06: Type System & Static Mode | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Chapter 06: Type System & Static Mode in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-06.html">
+  <meta property="twitter:title" content="Chapter 06: Type System & Static Mode | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Chapter 06: Type System & Static Mode in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Chapter 06: Type System & Static Mode in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html" class="active">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Chapter 06: The AKS Type System &amp; Static Mode</h1>
+<p>AKS features a dual type system: a dynamic, rapid-prototyping mode for interactive development, and a strict Hindley-Milner static mode (<code>--strict-types</code> / <code>--static</code>) for compile-time safety and zero-cost AOT optimization. This chapter examines type inference, dependent fixed-size arrays, Algebraic Data Types (ADTs), union/intersection types, traits, and monomorphization.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">6.1 Dynamic vs Static Mode</h2>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Feature</th><th>Dynamic Mode (Default)</th><th>Static Mode (<code>--static</code> / <code>--strict-types</code>)</th></tr></thead><tbody>
+<tr><td><strong>Type Checking</strong></td><td>Runtime type tags in <code>AKSValue</code></td><td>Compile-time Hindley-Milner inference</td></tr>
+<tr><td><strong>Execution Engine</strong></td><td>Bytecode VM / Tiered JIT</td><td>Unboxed LLVM IR / Native AOT</td></tr>
+<tr><td><strong>Array Types</strong></td><td>Dynamic heap arrays (<code>[T]</code>)</td><td>Dynamic <code>[T]</code> + Fixed-size <code>[T; N]</code></td></tr>
+<tr><td><strong>Function Dispatch</strong></td><td>Dynamic slot lookup</td><td>Direct native function calls / vtables</td></tr>
+<tr><td><strong>Memory Overhead</strong></td><td>16-byte tagged unions</td><td>Raw unboxed C structs (e.g. 8-byte ints)</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">6.2 The Hindley-Milner Type Inference Engine (<code>src/typer.c</code>)</h2>
+<p>In static mode, AKS infers the most general type for every expression using the <strong>Hindley-Milner (Algorithm W)</strong> type inference algorithm with Robinson&#x27;s unification.</p>
+<div class="mermaid">
+flowchart LR
+    SourceAST[&quot;AST Expressions&quot;] --&gt; GenConstraints[&quot;Generate Type Constraints&quot;]
+    GenConstraints --&gt; Unify[&quot;Robinson Unification Algorithm&quot;]
+    Unify --&gt; SubTable[&quot;Substitution Graph&quot;]
+    SubTable --&gt; ConcreteTypes[&quot;Concrete Typed AST&quot;]
+</div>
+<h3 class="doc-h3">6.2.1 How Type Inference Works</h3>
+<p>Consider this function without explicit type annotations:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn compute_area(length, width) {
+    return length * width;
+}</code></pre></div>
+<p>1. The typer assigns fresh type variables: $\alpha_{\text{length}}$, $\alpha_{\text{width}}$, and $\alpha_{\text{ret}}$.</p>
+<p>2. The multiplication operator <code>*</code> introduces the constraint: $\alpha_{\text{length}} = \alpha_{\text{width}} = \alpha_{\text{ret}} \in \{\text{int}, \text{float}\}$.</p>
+<p>3. When called as <code>compute_area(10, 20)</code>, the typer unifies $\alpha_{\text{length}} = \text{int}$, generating a specialized monomorphic function <code>compute_area(int, int) -&gt; int</code>.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">6.3 Dependent Types &amp; Fixed-Size Arrays (<code>[T; N]</code>)</h2>
+<p>In static mode, AKS supports fixed-size dependent array types where the length $N$ is part of the type signature:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// Buffer holding exactly 4 integers
+let kernel_weights: [float; 4] = [0.25, 0.25, 0.25, 0.25];
+
+fn apply_convolution(input_window: [float; 4]) -&gt; float {
+    let sum = 0.0;
+    for (w in input_window) {
+        sum += w;
+    }
+    return sum;
+}
+
+// Passing an array with a mismatched size triggers a compile-time error:
+// let bad_input: [float; 3] = [1.0, 2.0, 3.0];
+// apply_convolution(bad_input); 
+// Compile error: Expected type &#x27;[float; 4]&#x27;, but found &#x27;[float; 3]&#x27;</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">6.4 Algebraic Data Types (ADTs) &amp; Enums</h2>
+<p>Algebraic Data Types allow modeling domain data that can take one of several distinct variants, each potentially carrying different payloads:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">enum NetworkEvent {
+    Connected(str),                       // IP address
+    DataReceived([int]),                  // Byte payload
+    Disconnected(int),                    // Error code
+    Heartbeat                             // Unit variant with no payload
+}
+
+fn handle_network_event(event: NetworkEvent) {
+    match (event) {
+        NetworkEvent::Connected(ip) =&gt; {
+            print(&quot;Client connected from: &quot; + ip);
+        },
+        NetworkEvent::DataReceived(bytes) =&gt; {
+            print(&quot;Received &quot; + String(Length(bytes)) + &quot; bytes.&quot;);
+        },
+        NetworkEvent::Disconnected(code) =&gt; {
+            print(&quot;Client disconnected with status code: &quot; + String(code));
+        },
+        NetworkEvent::Heartbeat =&gt; {
+            print(&quot;Heartbeat ping received.&quot;);
+        }
+    }
+}</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">6.5 Union (<code>A | B</code>) &amp; Intersection (<code>A &amp; B</code>) Types</h2>
+<ul class="doc-list">
+<li><strong>Union Types (<code>A | B</code>)</strong>: Specifies that a value can be either type <code>A</code> or type <code>B</code>:</li>
+</ul>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn parse_port(input: str | int) -&gt; int {
+    if (type(input) == &quot;str&quot;) {
+        return Int(input);
+    }
+    return input;
+}</code></pre></div>
+<ul class="doc-list">
+<li><strong>Intersection Types (<code>A &amp; B</code>)</strong>: Requires a value to satisfy both type contracts simultaneously:</li>
+</ul>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">trait Serializable {
+    fn serialize(self) -&gt; str;
+}
+
+trait Loggable {
+    fn log_identity(self);
+}
+
+fn process_record(entity: Serializable &amp; Loggable) {
+    entity.log_identity();
+    let data = entity.serialize();
+    print(&quot;Serialized payload: &quot; + data);
+}</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">6.6 Traits, Interfaces &amp; Monomorphization</h2>
+<p>Traits define shared interfaces and behavioral contracts across different structs.</p>
+<h3 class="doc-h3">6.6.1 Defining &amp; Implementing Traits</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">trait GeometricArea {
+    fn calculate_area(self) -&gt; float;
+}
+
+struct Circle {
+    radius: float
+}
+
+struct Rectangle {
+    width: float,
+    height: float
+}
+
+impl GeometricArea for Circle {
+    fn calculate_area(self) -&gt; float {
+        return 3.141592653589793 * self.radius * self.radius;
+    }
+}
+
+impl GeometricArea for Rectangle {
+    fn calculate_area(self) -&gt; float {
+        return self.width * self.height;
+    }
+}
+
+fn print_shape_area(shape: GeometricArea) {
+    print(&quot;Shape Area: &quot; + String(shape.calculate_area()));
+}
+
+fn main() {
+    let c = Circle { radius: 5.0 };
+    let r = Rectangle { width: 4.0, height: 6.0 };
+
+    print_shape_area(c); // 78.5398...
+    print_shape_area(r); // 24.0
+}
+
+main();</code></pre></div>
+<h3 class="doc-h3">6.6.2 Static Monomorphization in LLVM AOT</h3>
+<p>When compiling with <code>--static</code>, the compiler replaces dynamic trait method dispatch with <strong>monomorphization</strong>. It emits specialized native functions (<code>print_shape_area_Circle</code>, <code>print_shape_area_Rectangle</code>) with direct, inlinable CALL instructions, eliminating virtual method table (vtable) overhead.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">6.7 Physical Unit Types &amp; Zero-Cost Dimensional Analysis</h2>
+<p>AKS incorporates first-class physical unit types and automated dimensional verification, guaranteeing that physics and engineering equations are dimensionally consistent at compile-time and runtime.</p>
+<h3 class="doc-h3">6.7.1 SI Base Dimensions &amp; Constructors</h3>
+<p>Units are represented through SI base dimensional exponents $(M, L, T, \dots)$ attached to numeric magnitudes:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let d1 = Meter(100.0);   // Length: L^1 (100.0 m)
+let d2 = Meter(50.0);    // Length: L^1 (50.0 m)
+let t  = Second(10.0);   // Time:   T^1 (10.0 s)
+let m  = Kilogram(2.0);  // Mass:   M^1 (2.0 kg)</code></pre></div>
+<h3 class="doc-h3">6.7.2 Dimensional Arithmetic &amp; Propagation</h3>
+<p>Derived quantities automatically compute their resulting dimensional exponents:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// Velocity: L^1 * T^(-1)
+let v = Speed(d1, t); // 10.0 m/s
+
+// Acceleration: L^1 * T^(-2)
+let a = Acceleration(v, Second(2.0)); // 5.0 m/s^2
+
+// Force (F = m * a): M^1 * L^1 * T^(-2)
+let force = Newton(m, a); // 10.0 N
+
+// Work / Energy (W = F * d): M^1 * L^2 * T^(-2)
+let work = Joule(force, d1); // 1000.0 J
+
+// Power (P = W / t): M^1 * L^2 * T^(-3)
+let power = Watt(work, t); // 100.0 W
+
+print(&quot;Power output: &quot; + String(power.magnitude) + &quot; W&quot;);
+print(&quot;Unit dimensions: kg=&quot; + String(power.unit.kg) + &quot; m=&quot; + String(power.unit.m) + &quot; s=&quot; + String(power.unit.s));</code></pre></div>
+<p>Attempting to add dimensionally incompatible quantities (e.g. <code>Meter(10.0).Add(Second(5.0))</code>) triggers a static <code>DimensionMismatchError</code>.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">6.8 Persistent Incremental Type Checking &amp; Signature Caching</h2>
+<p>In large-scale codebases, re-inferring Hindley-Milner types across every function on every file save wastes significant developer time. AKS provides persistent incremental type checking via <code>--incremental</code> (and enabled by default in interactive toolchains).</p>
+<div class="mermaid">
+flowchart TD
+    Edit[&quot;Source File Edit&quot;] --&gt; Hash[&quot;Compute AST Body Hash (FNV-1a)&quot;]
+    Hash --&gt; CacheCheck{&quot;Signature Cache Hit in .akscache/?&quot;}
+    CacheCheck --&gt;|Hash Match &amp; Deps Valid| Skip[&quot;Skip Type Inference (Re-use Inferred Sig)&quot;]
+    CacheCheck --&gt;|Mismatch or Dirty| FullType[&quot;Run Hindley-Milner Inference Engine&quot;]
+    FullType --&gt; UpdateCache[&quot;Serialize Updated Signatures (AKSIG1)&quot;]
+    Skip --&gt; TypeCheckDone[&quot;Incremental Type Check Completed (&lt; 20ms)&quot;]
+    UpdateCache --&gt; TypeCheckDone
+</div>
+<h3 class="doc-h3">6.8.1 Signature Cache Architecture (<code>src/typer.c</code> &amp; <code>include/typer.h</code>)</h3>
+<p>1. <strong>Binary Signature Format (<code>AKSIG1\0</code>)</strong>:</p>
+<p>Stored at <code>.akscache/signatures.bin</code>, persisting:</p>
+<ul class="doc-list">
+<li>Function symbol name and mangled signature.</li>
+<li>64-bit FNV-1a hash of the function AST body.</li>
+<li>Inferred parameter types and return type.</li>
+<li>List of callee symbol dependencies.</li>
+</ul>
+<p>2. <strong>Dependency Validation (<code>TyperIsSigValid</code>)</strong>:</p>
+<p>When function $A$ calls function $B$, $A$ depends transitively on $B$&#x27;s signature. If $B$&#x27;s return type or parameter list changes, $A$&#x27;s cache entry is automatically invalidated and re-typed, preventing subtle signature drift.</p>
+<p>3. <strong>Performance Impact</strong>:</p>
+<p>Reduces iterative re-checking overhead from 800ms down to under 20ms—delivering a <strong>50–80% speedup</strong> on everyday development edit cycles.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">6.9 Multi-Error Recovery &amp; Rich Diagnostics</h2>
+<p>Rather than aborting compilation upon encountering the first syntax or type error, the AKS compiler (<code>src/compiler.c</code>), parser (<code>src/parser.c</code>), and type checker (<code>src/typer.c</code>) implement resilient diagnostic collection and rich error reporting:</p>
+<ul class="doc-list">
+<li><strong>Error Threshold</strong>: Collects up to <strong>50 distinct diagnostics</strong> in a single compilation pass before terminating.</li>
+<li><strong>Statement Synchronization (<code>ParseSynchronize</code>)</strong>:</li>
+</ul>
+<p>When a syntax error or unexpected token is encountered during AST parsing, the parser does not abort or generate cascading downstream errors. Instead, <code>ParseSynchronize</code> advances the lexer token stream until finding a statement boundary or synchronization token (<code>;</code>, <code>}</code>, <code>let</code>, <code>fn</code>, <code>struct</code>, <code>if</code>, <code>while</code>, <code>return</code>), re-synchronizing the parser state so subsequent statements and definitions can be correctly analyzed.</p>
+<ul class="doc-list">
+<li><strong>Source-Line Context &amp; Visual Carets (<code>^~~~</code>)</strong>:</li>
+</ul>
+<p>Diagnostics display the offending source line alongside a visual caret marker pointing directly to the column offset and highlighting token width:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">  Error in tests/TestErrorRecovery.aks:4:11: Expected &#x27;;&#x27; after statement
+      let x = 10 let y = 20;
+                 ^~~~</code></pre></div>
+<ul class="doc-list">
+<li><strong>Fuzzy &quot;Did you mean?&quot; Suggestions (Levenshtein Distance)</strong>:</li>
+</ul>
+<p>When an unknown identifier, function, type, or struct member is encountered, the compiler and type checker compute Levenshtein string edit distances against all valid candidate symbols in scope:</p>
+<ul class="doc-list">
+<li><strong>Unknown Local Variables &amp; Parameters</strong>: Suggests closest in-scope identifiers:</li>
+</ul>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">    Error in script.aks:8:14: Unknown identifier &#x27;user_cont&#x27;. Did you mean &#x27;user_count&#x27;?
+        print(user_cont);
+              ^~~~~~~~~</code></pre></div>
+<ul class="doc-list">
+<li><strong>Unresolved Function Calls</strong>: Suggests closest declared or standard library functions (e.g. calling <code>SquareRot(x)</code> suggests <code>SquareRoot</code>).</li>
+<li><strong>Unknown Types</strong>: Suggests valid primitive types or declared struct/enum types (e.g. <code>floatt</code> suggests <code>float</code>, <code>Vector2d</code> suggests <code>Vector2D</code>).</li>
+<li><strong>Struct Member Fields</strong>: Suggests valid field members on the receiver struct (e.g. <code>p.magntude</code> suggests <code>p.magnitude</code>).</li>
+<li><strong>Synthetic Fallback Types</strong>: In static mode, fallback types (<code>TypeAny</code> / <code>TypeError</code>) are inserted at failed unification sites to prevent spurious secondary error cascades down the AST.</li>
+</ul>
+<div class="section-divider"></div>
+<h2 class="doc-h2">6.10 Summary &amp; Next Steps</h2>
+<p>In this chapter, we explored:</p>
+<p>1. Dynamic mode vs strict static mode (<code>--static</code>, <code>--strict-types</code>).</p>
+<p>2. Hindley-Milner type inference, constraint solving, and Robinson unification.</p>
+<p>3. Fixed-size dependent array types (<code>[T; N]</code>).</p>
+<p>4. Algebraic Data Types (ADTs) and pattern matching exhaustiveness.</p>
+<p>5. Union and intersection types.</p>
+<p>6. Traits, vtables, and LLVM AOT monomorphization.</p>
+<p>7. Physical unit types and dimensional analysis.</p>
+<p>8. Persistent incremental type checking and binary signature caching (<code>.akscache/signatures.bin</code>).</p>
+<p>9. Multi-error statement synchronization (<code>ParseSynchronize</code>), caret rendering (<code>^~~~</code>), and fuzzy Levenshtein suggestions.</p>
+<p>Proceed to <a href="chapter-07.html">Chapter 07: Memory Model, Ownership &amp; Borrow Checker</a> to examine affine borrow checking, move semantics, and Non-Lexical Lifetimes.</p>
+    
+    <nav class="chapter-nav">
+      <div><a href="chapter-05.html">&larr; Chapter 05: Collections, Structs & Object Architecture</a></div>
+      <div><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

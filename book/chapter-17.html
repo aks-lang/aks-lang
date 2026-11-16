@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 17: Media, Graphics & Audio Subsystems | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Chapter 17: Media, Graphics & Audio Subsystems in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-17.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-17.html">
+  <meta property="og:title" content="Chapter 17: Media, Graphics & Audio Subsystems | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Chapter 17: Media, Graphics & Audio Subsystems in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-17.html">
+  <meta property="twitter:title" content="Chapter 17: Media, Graphics & Audio Subsystems | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Chapter 17: Media, Graphics & Audio Subsystems in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Chapter 17: Media, Graphics & Audio Subsystems in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html" class="active">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Chapter 17: Media, Graphics &amp; Audio Subsystems</h1>
+<p>Real-time audio processing, signal synthesis, image decoding, and desktop graphics rendering require direct interaction with media hardware. AKS provides native integration with RIFF/WAVE audio decoders, Windows Multimedia (<code>winmm.dll</code>) low-latency PCM playback, BMP/DIB image decoders, and the Windows Graphics Device Interface (GDI) for 32-bit bitmap manipulation.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">17.1 Audio Processing &amp; RIFF/WAVE Header Parsing</h2>
+<p>AKS parses uncompressed standard RIFF/WAVE audio headers to extract sampling rate, channel count, bit depth, and raw PCM data offsets:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let audio_file = &quot;assets/alert.wav&quot;;
+let wave_info = WavFileParseC(audio_file);
+
+print(&quot;WAV File Metadata:&quot;);
+print(&quot;Sample Rate: &quot; + String(wave_info.sample_rate) + &quot; Hz&quot;);
+print(&quot;Channels:    &quot; + String(wave_info.channels));
+print(&quot;Bit Depth:   &quot; + String(wave_info.bit_depth) + &quot;-bit&quot;);
+print(&quot;Data Size:   &quot; + String(wave_info.data_size) + &quot; bytes&quot;);</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">17.2 Real-Time Algorithmic Audio Synthesis &amp; WinMM Playback</h2>
+<p>Generates dynamic waveforms (sine, sawtooth, square) and streams PCM audio directly to the Windows default playback endpoint using <code>waveOutWrite</code>:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn synthesize_sine_tone(frequency_hz: float, duration_sec: float, sample_rate: int = 44100) -&gt; [int] {
+    let total_samples = Int(Float(sample_rate) * duration_sec);
+    let pcm_buffer = [];
+    let pi_2 = 6.283185307179586;
+
+    for (let i = 0; i &lt; total_samples; i += 1) {
+        let t = Float(i) / Float(sample_rate);
+        let sample_float = Sin(pi_2 * frequency_hz * t); // Range [-1.0, 1.0]
+        
+        // Quantize to 16-bit signed integer [-32768, 32767]
+        let sample_i16 = Int(sample_float * 30000.0);
+        
+        // Push 16-bit little-endian bytes
+        Push(pcm_buffer, sample_i16 &amp; 0xFF);
+        Push(pcm_buffer, (sample_i16 &gt;&gt; 8) &amp; 0xFF);
+    }
+    return pcm_buffer;
+}
+
+fn main() {
+    print(&quot;Generating Concert A4 (440 Hz) pure tone...&quot;);
+    let pcm_bytes = synthesize_sine_tone(440.0, 1.0); // 1-second audio tone
+
+    print(&quot;Streaming audio to WinMM WaveOut engine...&quot;);
+    let success = WinmmAudioPlayC(pcm_bytes, 44100);
+    print(&quot;Audio Playback Status: &quot; + String(success));
+}
+
+main();</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">17.3 Image Decoding (BMP / DIB)</h2>
+<p>Decodes uncompressed 24-bit and 32-bit Windows Bitmap (BMP) files:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let bmp_path = &quot;assets/logo.bmp&quot;;
+let bmp_metadata = BmpFileParseC(bmp_path);
+
+print(&quot;BMP Image Dimensions: &quot; + String(bmp_metadata.width) + &quot;x&quot; + String(bmp_metadata.height));
+print(&quot;Bits Per Pixel:       &quot; + String(bmp_metadata.bpp));</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">17.4 Windows GDI 32-Bit DIB Section Graphics</h2>
+<p>Allocates a hardware-backed 32-bit DIB section bitmap for fast off-screen pixel rendering:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// Create 200x200 32-bit RGBA drawing canvas
+let canvas = GdiBitmapCreateC(200, 200);
+
+// Draw a gradient pattern
+for (let y = 0; y &lt; 200; y += 1) {
+    for (let x = 0; x &lt; 200; x += 1) {
+        // Compute RGB color: Red varies with X, Blue varies with Y
+        let r = x % 256;
+        let g = 128;
+        let b = y % 256;
+        let color_rgb = (r &lt;&lt; 16) | (g &lt;&lt; 8) | b;
+        
+        GdiBitmapSetPixelC(canvas, x, y, color_rgb);
+    }
+}
+
+// Save rendered canvas directly to disk
+GdiBitmapSaveC(canvas, &quot;output_gradient.bmp&quot;);
+print(&quot;Bitmap rendered and saved successfully to output_gradient.bmp.&quot;);</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">17.5 Summary &amp; Next Steps</h2>
+<p>In this chapter, we explored:</p>
+<p>1. Parsing RIFF/WAVE audio headers.</p>
+<p>2. Synthesizing PCM audio waveforms and low-latency playback via WinMM <code>waveOut</code>.</p>
+<p>3. Decoding Windows BMP images.</p>
+<p>4. GDI 32-bit DIB section graphics rendering and saving images to disk.</p>
+<p>Proceed to <a href="chapter-18.html">Chapter 18: Foreign Function Interface (FFI) &amp; Native Interoperability</a> to explore calling C, Rust, Python, and COM components from AKS.</p>
+    
+    <nav class="chapter-nav">
+      <div><a href="chapter-16.html">&larr; Chapter 16: Windows OS Kernel & Systems Integration</a></div>
+      <div><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

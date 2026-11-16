@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 04: Functions, Closures & Error Handling | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Chapter 04: Functions, Closures & Error Handling in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-04.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-04.html">
+  <meta property="og:title" content="Chapter 04: Functions, Closures & Error Handling | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Chapter 04: Functions, Closures & Error Handling in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-04.html">
+  <meta property="twitter:title" content="Chapter 04: Functions, Closures & Error Handling | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Chapter 04: Functions, Closures & Error Handling in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Chapter 04: Functions, Closures & Error Handling in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html" class="active">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Chapter 04: Functions, Closures, Stack Frames &amp; Error Handling</h1>
+<p>Functions represent the primary unit of code abstraction, execution encapsulation, and stack frame management in AKS. This chapter covers function declarations, closures, upvalue lifetime lifting, virtual machine <code>CallFrame</code> stack layout, structured exception handling, panics, and algebraic error models.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">4.1 Function Declarations &amp; Signatures</h2>
+<p>In AKS, functions are declared using the <code>fn</code> keyword:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn calculate_kinetic_energy(mass: float, velocity: float) -&gt; float {
+    return 0.5 * mass * (velocity ** 2.0);
+}
+
+let ke = calculate_kinetic_energy(1200.0, 28.0);
+print(&quot;Kinetic Energy: &quot; + String(ke) + &quot; Joules&quot;);</code></pre></div>
+<h3 class="doc-h3">4.1.1 Default &amp; Optional Parameters</h3>
+<p>Function parameters can specify default values. Parameters with default values are evaluated if the caller omits the argument:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn initialize_socket_connection(host: str, port: int = 8080, timeout_ms: int = 5000) {
+    print(&quot;Connecting to &quot; + host + &quot;:&quot; + String(port) + &quot; (Timeout: &quot; + String(timeout_ms) + &quot;ms)&quot;);
+}
+
+initialize_socket_connection(&quot;127.0.0.1&quot;);             // port=8080, timeout_ms=5000
+initialize_socket_connection(&quot;10.0.0.1&quot;, 443);         // port=443,  timeout_ms=5000
+initialize_socket_connection(&quot;192.168.1.1&quot;, 22, 1000); // port=22,   timeout_ms=1000</code></pre></div>
+<h3 class="doc-h3">4.1.2 Variadic Arguments (<code>...args</code>)</h3>
+<p>Functions can accept an arbitrary number of arguments using the rest parameter syntax <code>...args</code>, which bundles extra arguments into a dynamic array:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn calculate_sum(...numbers) {
+    let total = 0;
+    for (num in numbers) {
+        total += num;
+    }
+    return total;
+}
+
+print(calculate_sum(10, 20, 30, 40)); // 100</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">4.2 First-Class Functions &amp; Higher-Order Pipelines</h2>
+<p>In AKS, functions are first-class values: they can be assigned to variables, passed as arguments to other functions, returned from functions, and stored inside structs or arrays:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn transform_dataset(arr, transform_fn) {
+    let result = [];
+    for (item in arr) {
+        Push(result, transform_fn(item));
+    }
+    return result;
+}
+
+let raw_data = [1, 2, 3, 4, 5];
+let squared = transform_dataset(raw_data, fn(x) { return x * x; });
+print(squared); // [1, 4, 9, 16, 25]</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">4.3 Closures &amp; Upvalue Lifetime Management</h2>
+<p>A <strong>closure</strong> is a function that retains access to variables declared in its enclosing lexical scope even after that enclosing scope has finished execution.</p>
+<h3 class="doc-h3">4.3.1 The Upvalue Problem</h3>
+<p>When an outer function returns, its local stack frame is discarded. If an inner closure references an outer variable, accessing that stack location directly would cause dangling pointer corruption.</p>
+<p>AKS solves this with <strong>Upvalues</strong>:</p>
+<div class="mermaid">
+flowchart TD
+    subgraph &quot;Stack Frame Active (Open Upvalue)&quot;
+        StackSlot[&quot;Evaluation Stack Slot (Variable &#x27;counter&#x27;)&quot;]
+        OpenUpval[&quot;AKSUpvalue (location -&gt; StackSlot)&quot;]
+        Closure1[&quot;AKSClosure -&gt; OpenUpval&quot;]
+        OpenUpval --&gt; StackSlot
+    end
+    
+    subgraph &quot;Stack Frame Destroyed (Closed Upvalue)&quot;
+        ClosedVal[&quot;Heap Storage (Value copied)&quot;]
+        ClosedUpval[&quot;AKSUpvalue (location -&gt; &amp;ClosedVal)&quot;]
+        Closure2[&quot;AKSClosure -&gt; ClosedUpval&quot;]
+        ClosedUpval --&gt; ClosedVal
+    end
+</div>
+<p>1. <strong>Open Upvalue</strong>: While the outer function is still executing on the stack, the upvalue points directly to the evaluation stack slot.</p>
+<p>2. <strong>Closing the Upvalue</strong>: When the outer function returns, the VM automatically moves the value from the stack slot into dedicated heap storage and updates the internal reference. The inner closure can now safely execute indefinitely.</p>
+<h3 class="doc-h3">4.3.2 Closure Example</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn make_accumulator(initial_value) {
+    let sum = initial_value;
+    
+    // Returns closure capturing &#x27;sum&#x27; upvalue
+    return fn(delta) {
+        sum += delta;
+        return sum;
+    };
+}
+
+let acc = make_accumulator(100);
+print(acc(15)); // 115
+print(acc(25)); // 140</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">4.4 The Virtual Machine Call Stack (<code>CallFrame</code>)</h2>
+<p>Each time a function or closure is invoked, the virtual machine pushes a new <code>CallFrame</code> onto the call frame stack (<code>src/vm.c</code>):</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">c</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-c">typedef struct {
+    AKSClosure *closure; // Pointer to the executing closure
+    uint8_t *ip;         // Current instruction pointer in the bytecode
+    AKSValue *slots;     // Pointer to the base of this frame&#x27;s local variables on the evaluation stack
+} CallFrame;</code></pre></div>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">Virtual Machine Evaluation Stack Layout during nested function call:
++------------------------------------+ &lt;--- Evaluation Stack Base (Slot 0: Script)
+| Slot 0: global / script locals     |
++------------------------------------+
+| Slot 1: Caller argument 0 (arg1)   | &lt;--- Frame 1 (Caller Slots Base)
+| Slot 2: Caller local variable (x)  |
++------------------------------------+
+| Slot 3: Callee function closure    | &lt;--- Frame 2 (Callee Slots Base)
+| Slot 4: Callee argument 0 (a)      |
+| Slot 5: Callee local variable (y)  | &lt;--- Top of Stack (stacktop)
++------------------------------------+</code></pre></div>
+<ul class="doc-list">
+<li><strong>Slot Independence</strong>: Inside the callee, local variable instructions (<code>OPLOAD 0</code>, <code>OPSTORE 1</code>) compute addresses relative to <code>frame-&gt;slots</code>, achieving $O(1)$ local variable access with zero hash table lookups.</li>
+<li><strong>Recursion Safety</strong>: The VM enforces a maximum call depth limit (default 1,024 frames) to prevent stack overflow crashes.</li>
+</ul>
+<div class="section-divider"></div>
+<h2 class="doc-h2">4.5 Error Handling Architectures</h2>
+<p>AKS provides two complementary error handling mechanisms:</p>
+<p>1. Structured Exceptions (<code>try</code>/<code>catch</code>/<code>finally</code>) &amp; Panics for unrecoverable errors.</p>
+<p>2. Algebraic Data Types (<code>Option&lt;T&gt;</code> and <code>Result&lt;T, E&gt;</code>) for predictable domain errors.</p>
+<h3 class="doc-h3">4.5.1 Structured Exceptions (<code>try</code>, <code>catch</code>, <code>finally</code>, <code>throw</code>)</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn parse_configuration(raw_text) {
+    if (Length(raw_text) == 0) {
+        throw &quot;ConfigError: Configuration buffer cannot be empty.&quot;;
+    }
+    return { &quot;status&quot;: &quot;loaded&quot; };
+}
+
+fn safe_loader() {
+    try {
+        let config = parse_configuration(&quot;&quot;);
+        print(config);
+    } catch (err) {
+        print(&quot;Caught Exception: &quot; + String(err));
+    } finally {
+        print(&quot;Cleanup: File handles released.&quot;);
+    }
+}
+
+safe_loader();</code></pre></div>
+<h3 class="doc-h3">4.5.2 Explicit <code>panic()</code> &amp; Panic Hooks</h3>
+<p>For unrecoverable integrity failures, <code>panic(message)</code> halts execution immediately, dumping a full call frame stack trace and the source line numbers:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn divide_memory_pages(total_bytes, page_size) {
+    if (page_size == 0) {
+        panic(&quot;DivisionByZero: Page size cannot be zero.&quot;);
+    }
+    return total_bytes / page_size;
+}</code></pre></div>
+<h3 class="doc-h3">4.5.3 First-Class <code>Option</code> &amp; <code>Result</code> Ergonomics</h3>
+<p>AKS provides native algebraic data types for robust error handling without exceptions. <code>Option</code> represents optional presence, while <code>Result</code> represents either success or an error:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// Top-level constructors
+let opt = Some(42);
+let empty = None; // Bare None identifier compiles to Option.None
+
+let ok_res = Ok(&quot;data loaded&quot;);
+let err_res = Err(&quot;disk read failure&quot;);
+
+// Boolean inspection methods
+assert(opt.IsSome());
+assert(empty.IsNone());
+assert(ok_res.IsOk());
+assert(err_res.IsErr());
+
+// Safe unwrapping and fallbacks
+let val = opt.Unwrap();               // 42 (panics if None)
+let fallback = empty.UnwrapOr(100);    // 100
+let ensured = opt.Expect(&quot;critical&quot;); // 42
+
+// Transforming error payloads
+let mapped = err_res.MapErr(fn(e) { return &quot;IO Error: &quot; + e; });</code></pre></div>
+<h3 class="doc-h3">4.5.4 The Postfix Try-Propagation Operator (<code>?</code>)</h3>
+<p>The <code>?</code> operator unwraps successful values or early-returns failure from the enclosing function:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn fetch_user_avatar(user_id: int) -&gt; Result {
+    let user = find_user(user_id)?;     // Early-returns Err if user not found
+    let profile = user.profile?;        // Unwraps profile or early-returns Err/None
+    let url = profile.avatar_url?;
+    return Ok(url);
+}</code></pre></div>
+<h3 class="doc-h3">4.5.5 Guaranteed Scope Cleanup: <code>defer</code></h3>
+<p>The <code>defer</code> statement schedules a statement or block to execute unconditionally when the enclosing function or block exits, regardless of whether exit occurs via normal return or error unwinding:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn process_transaction(file_path: string) {
+    let file = FileOpen(file_path, &quot;r&quot;);
+    defer FileClose(file); // Guaranteed to execute on function exit!
+
+    let lock = AcquireLock();
+    defer ReleaseLock(lock); // Multiple defers execute in LIFO (reverse) order!
+
+    // File and lock are deterministically released at scope exit
+    ReadPayload(file);
+}</code></pre></div>
+<h3 class="doc-h3">4.5.6 Transactional Error Cleanup: <code>errdefer</code></h3>
+<p>The <code>errdefer</code> statement executes its cleanup block <strong>only</strong> if the function or block exits via an error, panic, or unhandled exception. If execution succeeds normally, <code>errdefer</code> actions are cancelled:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn create_user_account(name: string) -&gt; Result {
+    let tx = DatabaseBegin();
+    errdefer DatabaseRollback(tx); // Only runs if an error or early return occurs!
+
+    let user_id = InsertUser(tx, name)?;
+    InsertDefaultSettings(tx, user_id)?;
+
+    DatabaseCommit(tx);
+    return Ok(user_id);
+}</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">4.6 The Algebraic Effect System</h2>
+<p>AKS features a first-class <strong>Algebraic Effect System</strong>, allowing programs to decouple the declaration and invocation of computational effects from their concrete runtime interpretations. Unlike traditional exceptions which terminate stack frames unconditionally, algebraic effects permit <strong>one-shot resumptions</strong> that yield a value back to the call site and continue execution seamlessly.</p>
+<h3 class="doc-h3">4.6.1 Declaring &amp; Performing Effects</h3>
+<p>Effects are declared using the <code>effect</code> keyword:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">effect State {
+    fn Get() -&gt; any;
+    fn Put(v: any);
+}
+
+effect Logger {
+    fn Log(msg: string) -&gt; string;
+}
+
+fn compute_pipeline(x: int) -&gt; int {
+    // Both scoped (Logger.Log) and direct (Log) invocations are supported:
+    perform Logger.Log(&quot;Starting computation for x = &quot; + String(x));
+    let current_offset = perform State.Get();
+    let total = x * 2 + current_offset;
+    perform State.Put(total);
+    perform Logger.Log(&quot;Updated state to &quot; + String(total));
+    return total;
+}</code></pre></div>
+<h3 class="doc-h3">4.6.2 Effect Handlers &amp; Delimited Continuations</h3>
+<p>Handlers intercept effects dynamically through <code>handle (expr) with { ... }</code> blocks. Within each effect arm, <code>resume &lt;val&gt;</code> yields execution back into the suspended computation:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let initial_state = 10;
+let final_result = handle (compute_pipeline(5)) with {
+    State.Get() =&gt; {
+        resume initial_state;
+    },
+    State.Put(v) =&gt; {
+        initial_state = v;
+        resume nil;
+    },
+    Logger.Log(msg) =&gt; {
+        print(&quot;[AUDIT]: &quot; + msg);
+        resume &quot;logged&quot;;
+    }
+};
+
+print(&quot;Final computed value: &quot; + String(final_result)); // 20
+print(&quot;Final state variable: &quot; + String(initial_state)); // 20</code></pre></div>
+<p>Effects can be nested arbitrarily, providing composable, testable abstractions for asynchronous I/O, transactional state, dependency injection, and probabilistic simulation.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">4.7 Verified Function Contracts</h2>
+<p>AKS provides native <strong>Design-by-Contract</strong> specifications through <code>requires</code> (preconditions) and <code>ensures</code> (postconditions) clauses attached directly to function signatures.</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn SafeDivide(a: int, b: int) -&gt; int
+    requires b != 0
+    ensures result != null
+{
+    return a / b;
+}
+
+fn Clamp(val: int, minVal: int, maxVal: int) -&gt; int
+    requires minVal &lt;= maxVal
+    ensures result &gt;= minVal
+    ensures result &lt;= maxVal
+{
+    if (val &lt; minVal) { return minVal; }
+    if (val &gt; maxVal) { return maxVal; }
+    return val;
+}</code></pre></div>
+<ul class="doc-list">
+<li><strong>Runtime Enforcement</strong>: In standard debug and execution modes, contract violations immediately abort and raise descriptive invariant exceptions.</li>
+<li><strong>Static Verification</strong>: In static mode (<code>--strict-types</code>), the compiler uses SMT/Z3 solvers when available to prove contract satisfaction ahead-of-time, eliminating runtime assertions for proven invariants.</li>
+<li><strong>The <code>result</code> Identifier</strong>: Inside <code>ensures</code> postconditions, <code>result</code> binds to the evaluated return value of the function.</li>
+</ul>
+<div class="section-divider"></div>
+<h2 class="doc-h2">4.8 Summary &amp; Next Steps</h2>
+<p>In this chapter, we covered:</p>
+<p>1. Function declarations, default parameters, and variadic rest arguments.</p>
+<p>2. First-class higher-order function pipelines.</p>
+<p>3. Closures, open vs closed upvalues, and heap migration mechanics.</p>
+<p>4. VM <code>CallFrame</code> stack layout, relative slot addressing, and call depth limits.</p>
+<p>5. Structured exception handling, panic hooks, and algebraic <code>Result</code> patterns.</p>
+<p>6. First-class algebraic effects, handlers, and delimited resumptions (<code>handle ... with</code>, <code>resume</code>).</p>
+<p>7. Verified function contracts (<code>requires</code>, <code>ensures</code>) with compile-time and runtime validation.</p>
+<p>Proceed to <a href="chapter-05.html">Chapter 05: Collections, Structs &amp; Object Architecture</a> to explore dynamic arrays, Robin Hood hash maps, and struct object models.</p>
+    
+    <nav class="chapter-nav">
+      <div><a href="chapter-03.html">&larr; Chapter 03: Control Flow, Loops & Pattern Matching</a></div>
+      <div><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

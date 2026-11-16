@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 18: Foreign Function Interface & Native Interop | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Chapter 18: Foreign Function Interface & Native Interop in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-18.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-18.html">
+  <meta property="og:title" content="Chapter 18: Foreign Function Interface & Native Interop | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Chapter 18: Foreign Function Interface & Native Interop in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-18.html">
+  <meta property="twitter:title" content="Chapter 18: Foreign Function Interface & Native Interop | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Chapter 18: Foreign Function Interface & Native Interop in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Chapter 18: Foreign Function Interface & Native Interop in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html" class="active">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Chapter 18: Foreign Function Interface (FFI) &amp; Native Interoperability</h1>
+<p>Interoperability with existing software ecosystems is crucial for systems languages. AKS provides a comprehensive Foreign Function Interface (FFI) allowing seamless integration with C libraries, Rust shared objects, Python runtimes, and Windows COM automation without writing intermediate C boilerplate wrappers.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">18.1 C FFI &amp; Dynamic Library Loading</h2>
+<p>AKS allows dynamic loading of shared libraries (<code>.dll</code> on Windows, <code>.so</code> on Linux, <code>.dylib</code> on macOS) using <code>LoadLibrary</code> / <code>BindFunction</code>:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// Load standard OS user32 library
+let user32 = LoadLibrary(&quot;user32.dll&quot;);
+
+if (user32 != nil) {
+    // Bind native MessageBoxA function: int MessageBoxA(HWND, LPCSTR, LPCSTR, UINT)
+    let MessageBoxA = BindFunction(user32, &quot;MessageBoxA&quot;, &quot;int&quot;, [&quot;int&quot;, &quot;str&quot;, &quot;str&quot;, &quot;int&quot;]);
+    
+    // Invoke native Windows API
+    MessageBoxA(0, &quot;Hello from native AKS C FFI!&quot;, &quot;AKS Native Interop&quot;, 0);
+    
+    FreeLibrary(user32);
+}</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">18.2 Memory Buffers &amp; Struct Marshalling</h2>
+<p>When interfacing with native C structs, AKS provides raw memory allocation and typed peek/poke operations:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">c</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-c">// Target C Struct:
+// struct HardwareSensorPacket {
+//     int32_t sensor_id;      // offset 0
+//     float   temperature;    // offset 4
+//     int32_t status_flags;   // offset 8
+// };</code></pre></div>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// Allocate 12-byte contiguous memory block for struct
+let buffer = MemoryAlloc(12);
+
+// Pack fields:
+PokeI32(buffer, 0, 1001);     // sensor_id at offset 0
+PokeF32(buffer, 4, 36.6);     // temperature at offset 4
+PokeI32(buffer, 8, 0x0001);   // status_flags at offset 8
+
+// Unpack fields:
+let id = PeekI32(buffer, 0);
+let temp = PeekF32(buffer, 4);
+let flags = PeekI32(buffer, 8);
+
+print(&quot;Unpacked C Struct: ID=&quot; + String(id) + &quot;, Temp=&quot; + String(temp) + &quot; C, Flags=0x&quot; + Hex(flags));
+
+MemoryFree(buffer);</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">18.3 Rust Interoperability</h2>
+<p>Rust libraries compiled as C-compatible dynamic libraries (<code>cdylib</code>) can be called directly from AKS with zero overhead.</p>
+<h3 class="doc-h3">Rust Shared Library (<code>math_engine.rs</code>)</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">rust</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-rust">// Cargo.toml: [lib] crate-type = [&quot;cdylib&quot;]
+#[no_mangle]
+pub extern &quot;C&quot; fn rust_fast_multiply(a: i64, b: i64) -&gt; i64 {
+    a * b
+}</code></pre></div>
+<h3 class="doc-h3">Calling Rust from AKS</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let rust_lib = LoadLibrary(&quot;math_engine.dll&quot;);
+let fast_mul = BindFunction(rust_lib, &quot;rust_fast_multiply&quot;, &quot;int&quot;, [&quot;int&quot;, &quot;int&quot;]);
+
+let result = fast_mul(12345, 67890);
+print(&quot;Result computed inside Rust engine: &quot; + String(result));</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">18.4 Python Embedding &amp; C-API Interop</h2>
+<p>AKS can embed the standard Python runtime (<code>python3.dll</code>), allowing execution of Python scripts and bidirectional object exchange:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// Initialize Python environment
+let py = PythonInit();
+
+if (py != nil) {
+    // Execute arbitrary Python code
+    PythonExec(py, &quot;&quot;&quot;
+import math
+def calculate_hypot(x, y):
+    return math.sqrt(x*x + y*y)
+&quot;&quot;&quot;);
+
+    // Call Python function from AKS
+    let result = PythonCall(py, &quot;calculate_hypot&quot;, [6.0, 8.0]);
+    print(&quot;Result computed via Python C-API: &quot; + String(result)); // 10.0
+    
+    PythonFinalize(py);
+}</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">18.5 Windows COM Automation (Component Object Model)</h2>
+<p>Interacts with Windows COM components through <code>IDispatch</code>:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let shell = ComCreateObject(&quot;WScript.Shell&quot;);
+
+if (shell != nil) {
+    // Query Windows system environment variable via COM
+    let win_dir = ComCall(shell, &quot;ExpandEnvironmentStrings&quot;, [&quot;%WINDIR%&quot;]);
+    print(&quot;Windows Directory (via COM): &quot; + String(win_dir));
+}</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">18.6 Summary &amp; Next Steps</h2>
+<p>In this chapter, we explored:</p>
+<p>1. Dynamic loading of shared libraries (<code>.dll</code>, <code>.so</code>) and function binding.</p>
+<p>2. Direct memory allocation and binary struct marshalling (<code>PokeI32</code>/<code>PeekI32</code>).</p>
+<p>3. Zero-cost calling of Rust <code>cdylib</code> native functions.</p>
+<p>4. Embedding the Python C-API runtime and executing Python code.</p>
+<p>5. Windows COM automation using <code>IDispatch</code>.</p>
+<p>Proceed to <a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem &amp; Internals</a> to explore the Language Server Protocol (LSP), Debug Adapter Protocol (DAP), linter, formatter, package manager, and compiler backends.</p>
+    
+    <nav class="chapter-nav">
+      <div><a href="chapter-17.html">&larr; Chapter 17: Media, Graphics & Audio Subsystems</a></div>
+      <div><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

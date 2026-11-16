@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 08: Concurrency, Async, Fibers & Parallelism | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Chapter 08: Concurrency, Async, Fibers & Parallelism in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-08.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-08.html">
+  <meta property="og:title" content="Chapter 08: Concurrency, Async, Fibers & Parallelism | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Chapter 08: Concurrency, Async, Fibers & Parallelism in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-08.html">
+  <meta property="twitter:title" content="Chapter 08: Concurrency, Async, Fibers & Parallelism | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Chapter 08: Concurrency, Async, Fibers & Parallelism in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Chapter 08: Concurrency, Async, Fibers & Parallelism in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html" class="active">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Chapter 08: Concurrency, Async, Fibers &amp; Parallelism</h1>
+<p>Modern software must leverage multi-core CPUs while managing thousands of concurrent I/O connections without thread exhaustion. AKS provides a tiered concurrency model: asynchronous microtasks (<code>spawn</code>/<code>await</code>), cooperative user-mode Win32 Fibers (<code>OsFiber</code>), typed message-passing channels (<code>chan</code>), and low-level thread synchronization primitives.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">8.1 Concurrency Models in AKS</h2>
+<div class="mermaid">
+flowchart TD
+    App[&quot;AKS Application&quot;]
+    
+    App --&gt; AsyncTasks[&quot;Async Microtasks (spawn / await)&quot;]
+    App --&gt; Fibers[&quot;Win32 Fibers (OsFiber / Cooperative)&quot;]
+    App --&gt; Channels[&quot;Message-Passing Channels (chan)&quot;]
+    App --&gt; OSThreads[&quot;OS Threads &amp; ThreadPools&quot;]
+    
+    OSThreads --&gt; SyncPrimitives[&quot;Mutex / Spinlock / RWLock / Barriers&quot;]
+</div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">8.2 Asynchronous Microtasks (<code>spawn</code> &amp; <code>await</code>)</h2>
+<p>Asynchronous microtasks represent lightweight, non-blocking units of work managed by the VM event loop:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn fetch_database_metric(metric_name: str) {
+    print(&quot;Starting async query for: &quot; + metric_name);
+    // Simulates non-blocking async operation
+    let result = &quot;MetricData[&quot; + metric_name + &quot;]=99.4&quot;;
+    return result;
+}
+
+fn main() {
+    print(&quot;Spawning asynchronous database tasks...&quot;);
+    
+    // Spawns tasks onto the event loop
+    let task1 = spawn fetch_database_metric(&quot;cpu_load&quot;);
+    let task2 = spawn fetch_database_metric(&quot;memory_usage&quot;);
+    
+    // Await results
+    let res1 = await task1;
+    let res2 = await task2;
+    
+    print(&quot;Completed: &quot; + res1);
+    print(&quot;Completed: &quot; + res2);
+}
+
+main();</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">8.3 Cooperative User-Mode Win32 Fibers (<code>OsFiber</code>)</h2>
+<p>Fibers are lightweight execution units scheduled in user mode rather than kernel mode. Switching between fibers requires no kernel transitions or page table swaps, taking only a few CPU cycles:</p>
+<div class="mermaid">
+flowchart LR
+    Thread[&quot;OS Kernel Thread&quot;] --&gt; FiberA[&quot;Fiber A (Active Stack)&quot;]
+    FiberA -- &quot;OsFiberSwitchC(B)&quot; --&gt; FiberB[&quot;Fiber B (Suspended Stack)&quot;]
+    FiberB -- &quot;OsFiberSwitchC(A)&quot; --&gt; FiberA
+</div>
+<h3 class="doc-h3">8.3.1 Fiber Lifecycle Management</h3>
+<ul class="doc-list">
+<li><strong><code>OsFiberCreateC(stack_size, fn, param)</code></strong>: Allocates a private execution stack (default 64 KB) and initializes a fiber execution context.</li>
+<li><strong><code>OsFiberSwitchC(target_fiber)</code></strong>: Performs a user-mode CPU register swap, yielding execution immediately to the target fiber.</li>
+<li><strong><code>OsFiberDeleteC(fiber)</code></strong>: Deallocates the fiber stack.</li>
+</ul>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// fiber_demo.aks
+fn fiber_worker(param) {
+    print(&quot;Inside Fiber Worker! Received param: &quot; + String(param));
+    // Yield execution back to caller fiber
+    OsFiberSwitchC(param);
+    print(&quot;Resumed Fiber Worker!&quot;);
+}
+
+fn main() {
+    print(&quot;Creating user-mode Win32 Fiber...&quot;);
+    let fiber_h = OsFiberCreateC(65536, fiber_worker, 0);
+    
+    print(&quot;Switching context to Fiber...&quot;);
+    OsFiberSwitchC(fiber_h);
+    
+    print(&quot;Returned to main thread context.&quot;);
+    OsFiberDeleteC(fiber_h);
+}
+
+main();</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">8.4 Typed Channels (<code>chan</code>)</h2>
+<p>Channels facilitate safe, structured communication between concurrent routines using message passing:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn producer(ch) {
+    for (let i = 1; i &lt;= 3; i += 1) {
+        ChannelSend(ch, &quot;Message #&quot; + String(i));
+    }
+}
+
+fn consumer(ch) {
+    for (let i = 1; i &lt;= 3; i += 1) {
+        let msg = ChannelReceive(ch);
+        print(&quot;Consumer received: &quot; + msg);
+    }
+}
+
+fn main() {
+    let ch = Channel(4); // Bounded buffer of capacity 4
+    
+    spawn producer(ch);
+    spawn consumer(ch);
+}
+
+main();</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">8.5 Thread Synchronization Primitives</h2>
+<p>When multiple OS threads share memory structures, AKS provides hardware and OS synchronization primitives:</p>
+<h3 class="doc-h3">8.5.1 Mutexes &amp; Shared Spinlocks</h3>
+<ul class="doc-list">
+<li><strong>Kernel Mutex (<code>MutexNewC</code>)</strong>: OS-managed lock. If contended, the waiting thread enters kernel sleep, freeing the CPU core.</li>
+<li><strong>Shared Spinlock (<code>SharedSpinlockNewC</code>)</strong>: User-space atomic test-and-set spinlock. Ideal for short, low-latency critical sections where thread sleep overhead exceeds spin time.</li>
+</ul>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let mtx = MutexNewC();
+
+MutexLockC(mtx);
+// Critical section: update shared state
+print(&quot;Protected resource update.&quot;);
+MutexUnlockC(mtx);</code></pre></div>
+<h3 class="doc-h3">8.5.2 Thread Barriers (<code>ThreadBarrierNewC</code>)</h3>
+<p>Synchronizes a designated number of threads at a rendezvous point. No thread proceeds until all participants have arrived at the barrier:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let barrier = ThreadBarrierNewC(4); // 4 participating threads
+
+// Inside worker threads:
+// ThreadBarrierWaitC(barrier); // Blocks until 4th thread arrives</code></pre></div>
+<h3 class="doc-h3">8.5.3 Condition Variables (<code>ConditionVariableNewC</code>)</h3>
+<p>Allows threads to suspend execution until notified that a specific state condition has been satisfied:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let cv = ConditionVariableNewC();
+
+// Signaling thread:
+ConditionVariableSignalC(cv); // Wakes one waiting worker</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">8.6 The Actor Model &amp; State-Isolated Mailboxes</h2>
+<p>To eliminate shared-memory data races entirely without manual lock orchestration, AKS implements the <strong>Actor Model</strong>. Actors encapsulate private state, processing sequential messages received via lock-free concurrent mailboxes.</p>
+<h3 class="doc-h3">8.6.1 Declaring &amp; Spawning Actors</h3>
+<p>Actors are defined with the <code>actor</code> keyword, enclosing encapsulated fields and handling methods:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">actor BankAccount {
+    balance: float;
+
+    fn Deposit(amount: float) -&gt; float {
+        self.balance += amount;
+        return self.balance;
+    }
+
+    fn Withdraw(amount: float) -&gt; float {
+        if (self.balance &gt;= amount) {
+            self.balance -= amount;
+        }
+        return self.balance;
+    }
+
+    fn GetBalance() -&gt; float {
+        return self.balance;
+    }
+}</code></pre></div>
+<h3 class="doc-h3">8.6.2 Asynchronous Messaging &amp; Request-Reply</h3>
+<p>Actors communicate through actor references (<code>aref</code>):</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// Spawn an actor instance onto the scheduler
+let account = BankAccount.Spawn({ balance: 1000.0 });
+print(&quot;Account active: &quot; + String(account.IsAlive()));
+
+// Asynchronous fire-and-forget message (non-blocking)
+account.Send({ type: &quot;Deposit&quot;, amount: 250.0 });
+
+// Synchronous request-reply with timeout (ms)
+let current_balance = account.Call({ type: &quot;GetBalance&quot; }, 1000);
+print(&quot;Current Balance: $&quot; + String(current_balance)); // $1250.0
+
+// Gracefully terminate actor fiber
+account.Stop();</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">8.6 Structured Concurrency: Nurseries &amp; Lexical Regions</h2>
+<p>Unstructured concurrency (e.g. Go goroutines, C++ raw threads) often leads to orphaned background workers, leaked file descriptors, and silently abandoned failures. AKS solves this by enforcing <strong>Structured Concurrency</strong> through scope-bounded <strong>Nurseries</strong> and <strong>Lexical Region Scopes</strong>.</p>
+<h3 class="doc-h3">Nurseries (<code>nursery</code>)</h3>
+<p>A <code>nursery</code> establishes a lexical boundary around concurrent task execution. The language runtime guarantees that <strong>no spawned fiber can outlive the nursery scope</strong>: execution cannot leave the block until every child fiber has completed or been joined.</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// Structured Nursery block: execution blocks at &#x27;}&#x27; until all child tasks finish
+nursery (n) {
+    n.Spawn(task_worker_1);
+    n.SpawnArg(task_worker_2, payload);
+    
+    // Dynamically track existing spawned tasks
+    let t = spawn background_compute();
+    n.Track(t);
+}
+// Guaranteed Invariant: 100% of tasks spawned inside n have completed here!</code></pre></div>
+<p>If an error or cancellation occurs within the nursery, <code>n.CancelAll()</code> can proactively signal all active sibling tasks.</p>
+<h3 class="doc-h3">Lexical Region Memory Scopes (<code>region</code>)</h3>
+<p>Region scopes integrate structured memory management with task execution. A <code>region</code> binds an arena bump-allocator that cleans up in $O(1)$ batch time at scope exit:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">region (r) {
+    // Fast contiguous allocations tied to the lexical region
+    let buffer = r.AllocArray(1024);
+    let scratch = r.AllocStruct(&quot;ScratchState&quot;);
+    // Work with buffer and scratch...
+}
+// All region allocations are instantaneously deallocated in O(1) batch time</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">8.7 Summary &amp; Next Steps</h2>
+<p>In this chapter, we explored:</p>
+<p>1. Asynchronous microtasks with <code>spawn</code> and <code>await</code>.</p>
+<p>2. Win32 user-mode Fibers (<code>OsFiber</code>) and user-space context switching.</p>
+<p>3. Message-passing communication via typed channels (<code>chan</code>).</p>
+<p>4. Synchronization primitives: Mutexes, Spinlocks, Barriers, Condition Variables, and RWLocks.</p>
+<p>5. The Actor Model: isolated state, lock-free mailboxes, non-blocking <code>Send</code>, and request-reply <code>Call</code>.</p>
+<p>6. Structured Concurrency: scope-bounded <code>nursery</code> blocks with guaranteed zero task leaks and lexical <code>region</code> scopes.</p>
+<p>Proceed to <a href="chapter-09.html">Chapter 09: Lock-Free Concurrency, Data Structures &amp; Memory Reclamation</a> to explore hardware atomic CAS instructions, lock-free queues, and Hazard Pointers.</p>
+    
+    <nav class="chapter-nav">
+      <div><a href="chapter-07.html">&larr; Chapter 07: Memory Model, Ownership & Borrow Checker</a></div>
+      <div><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

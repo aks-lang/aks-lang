@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Installation & Quickstart Guide | AKS Programming Language</title>
+  <meta name="description" content="Download and install the AKS programming language on Windows, Linux, and macOS with official binaries, GUI installers, and shell commands.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/install/index.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/install/index.html">
+  <meta property="og:title" content="Installation & Quickstart Guide | AKS Programming Language">
+  <meta property="og:description" content="Download and install the AKS programming language on Windows, Linux, and macOS with official binaries, GUI installers, and shell commands.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/install/index.html">
+  <meta property="twitter:title" content="Installation & Quickstart Guide | AKS Programming Language">
+  <meta property="twitter:description" content="Download and install the AKS programming language on Windows, Linux, and macOS with official binaries, GUI installers, and shell commands.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Download and install the AKS programming language on Windows, Linux, and macOS with official binaries, GUI installers, and shell commands.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<main class="section-container" style="max-width: 900px;">
+  <div class="section-header">
+    <div class="hero-tag">Official Distribution</div>
+    <h1 class="doc-h1">Install AKS Programming Language</h1>
+    <p class="section-subtitle">Get up and running with the AKS compiler, language server, and tools in seconds.</p>
+  </div>
+
+  <div class="bench-card" style="margin-bottom: 2.5rem;">
+    <h2 class="doc-h2" style="margin-top: 0;">Windows Installation</h2>
+    <p>Choose from the native GUI standalone installer or the automated PowerShell script:</p>
+    
+    <div style="margin: 1.5rem 0;">
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases/download/v1.2.5/aks-installer-v1.2.5.exe" class="btn-primary">Download Native Windows GUI Installer (.exe)</a>
+    </div>
+
+    <p style="margin-top: 1.5rem;">Or install via PowerShell:</p>
+    <div class="install-box">
+      <span class="install-cmd">iwr -useb https://raw.githubusercontent.com/Anoop-Kumar-Sharma/aks-lang/main/install.ps1 | iex</span>
+      <button class="copy-btn" onclick="copyInstall(this, 'iwr -useb https://raw.githubusercontent.com/Anoop-Kumar-Sharma/aks-lang/main/install.ps1 | iex')">Copy</button>
+    </div>
+  </div>
+
+  <div class="bench-card" style="margin-bottom: 2.5rem;">
+    <h2 class="doc-h2" style="margin-top: 0;">Linux & macOS Installation</h2>
+    <p>Install via the official POSIX installation script:</p>
+    
+    <div class="install-box">
+      <span class="install-cmd">curl -fsSL https://raw.githubusercontent.com/Anoop-Kumar-Sharma/aks-lang/main/install.sh | bash</span>
+      <button class="copy-btn" onclick="copyInstall(this, 'curl -fsSL https://raw.githubusercontent.com/Anoop-Kumar-Sharma/aks-lang/main/install.sh | bash')">Copy</button>
+    </div>
+  </div>
+
+  <div class="bench-card">
+    <h2 class="doc-h2" style="margin-top: 0;">Verify Installation</h2>
+    <div class="code-wrapper">
+      <pre><code class="language-cmd">aks --version
+aks new my_project
+cd my_project
+aks run src/main.aks</code></pre>
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

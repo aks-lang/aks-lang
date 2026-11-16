@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 07: Memory Model, Ownership & Borrow Checker | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Chapter 07: Memory Model, Ownership & Borrow Checker in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-07.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-07.html">
+  <meta property="og:title" content="Chapter 07: Memory Model, Ownership & Borrow Checker | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Chapter 07: Memory Model, Ownership & Borrow Checker in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-07.html">
+  <meta property="twitter:title" content="Chapter 07: Memory Model, Ownership & Borrow Checker | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Chapter 07: Memory Model, Ownership & Borrow Checker in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Chapter 07: Memory Model, Ownership & Borrow Checker in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html" class="active">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Chapter 07: Memory Model, Ownership &amp; Borrow Checker</h1>
+<p>AKS incorporates an affine borrow checker and hybrid memory architecture. It allows developers to enjoy automatic reference counting during rapid prototyping while enforcing strict compile-time ownership, move semantics, and zero-cost static deallocation when building high-performance systems.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">7.1 The Dual-Tier Memory Architecture</h2>
+<div class="mermaid">
+flowchart TD
+    subgraph &quot;Dynamic Runtime Tier&quot;
+        RefCounter[&quot;Deterministic Refcounting (ValRetain / ValRelease)&quot;]
+        HeapObj[&quot;AKSObject (64-byte aligned heap)&quot;]
+        RefCounter --&gt; HeapObj
+    end
+    
+    subgraph &quot;Static Mode Tier (--borrow-check / --static)&quot;
+        BorrowChecker[&quot;Affine Borrow Checker &amp; NLL&quot;]
+        StaticAnalysis[&quot;Static Refcount Elimination&quot;]
+        DirectStack[&quot;Stack-Allocated / Unboxed Memory (0 Overheads)&quot;]
+        
+        BorrowChecker --&gt; StaticAnalysis --&gt; DirectStack
+    end
+</div>
+<p>1. <strong>Dynamic Tier (Default)</strong>: Memory is reclaimed deterministically as soon as an object&#x27;s reference count drops to zero (<code>refcount == 0</code>), eliminating non-deterministic stop-the-world garbage collection pauses.</p>
+<p>2. <strong>Static Tier (<code>--borrow-check</code> / <code>--static</code>)</strong>: The compiler performs compile-time dataflow analysis. When a value&#x27;s lifetime is bounded statically, the compiler removes reference count increment/decrement operations (<code>ValRetain</code>/<code>ValRelease</code>), emitting unboxed stack allocations with zero runtime overhead.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">7.2 Move Semantics vs Copy Types</h2>
+<p>In static mode, AKS classifies every type as either a <strong><code>Copy</code> Type</strong> or a <strong>Move-Semantics Type</strong>:</p>
+<ul class="doc-list">
+<li><strong><code>Copy</code> Types (<code>int</code>, <code>float</code>, <code>bool</code>)</strong>: Primitive immediate types stored inline inside stack slots. Assigning a <code>Copy</code> variable creates a bitwise duplicate without invalidating the source variable.</li>
+<li><strong>Move-Semantics Types (<code>str</code>, <code>[T]</code>, <code>{K: V}</code>, <code>struct</code>)</strong>: Non-primitive structures own heap resources. Assigning a move-semantics variable transfers ownership to the new binding. Accessing the original variable afterward triggers a compile-time borrow checker error (<code>E0382</code>).</li>
+</ul>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// Move Semantics Example
+let source_buffer = [10, 20, 30, 40, 50];
+
+// Ownership of the array is MOVED to target_buffer
+let target_buffer = source_buffer;
+
+print(target_buffer); // Valid
+
+// In static mode (--borrow-check), the following line is rejected at compile time:
+// print(source_buffer); 
+// Compiler error on line 8: error[E0382]: Use of moved value `source_buffer`</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">7.3 Borrowing Rules &amp; Non-Lexical Lifetimes (NLL)</h2>
+<p>To share data without transferring ownership, AKS provides references via the <strong>borrowing mechanism</strong>.</p>
+<h3 class="doc-h3">7.3.1 The Fundamental Borrowing Rule: Aliasing XOR Mutability</h3>
+<p>At any given point in execution, a program may have:</p>
+<p>1. <strong>Any number of immutable references (<code>&amp;T</code>)</strong> to a resource, OR</p>
+<p>2. <strong>Exactly one mutable reference (<code>&amp;mut T</code>)</strong> to a resource.</p>
+<p>3. <em>Never both simultaneously.</em></p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let mut telemetry_data = [100, 200, 300];
+
+// Creating an immutable borrow
+let r1 = &amp;telemetry_data;
+let r2 = &amp;telemetry_data; // Valid: multiple immutable borrows allowed
+print(&quot;Telemetry sample: &quot; + String(r1[0]));
+
+// Creating a mutable borrow
+let r_mut = &amp;mut telemetry_data;
+Push(r_mut, 400); // Valid: exclusive mutable access</code></pre></div>
+<h3 class="doc-h3">7.3.2 Non-Lexical Lifetimes (NLL)</h3>
+<p>Unlike early compiler systems where a borrow&#x27;s lifetime lasted until the end of its enclosing curly-brace scope, AKS uses <strong>Non-Lexical Lifetimes (NLL)</strong>. A reference&#x27;s lifetime ends at the point of its <strong>last syntactic usage</strong>, allowing subsequent mutable borrows earlier in the same scope:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let mut dataset = [1, 2, 3];
+
+let read_ref = &amp;dataset;
+print(read_ref[0]); // Last use of `read_ref`! Lifetime of read_ref ends here.
+
+// Valid under NLL: `read_ref` is no longer active, so mutable borrow succeeds:
+let write_ref = &amp;mut dataset;
+Push(write_ref, 4);</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">7.4 Compile-Time Borrow Checker Error Codes</h2>
+<p>When <code>--borrow-check</code> is active, the compiler emits detailed diagnostics:</p>
+<h3 class="doc-h3">1. <code>error[E0382]</code>: Use of Moved Value</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn process_payload(data: [int]) {
+    print(&quot;Processing payload of &quot; + String(Length(data)) + &quot; items.&quot;);
+}
+
+let packet = [0xAA, 0xBB, 0xCC];
+process_payload(packet); // Ownership moved into function parameter
+
+// Error: `packet` used here after move
+// print(packet);</code></pre></div>
+<p><em>Solution</em>: Pass an immutable reference <code>process_payload(&amp;packet)</code> instead of moving ownership.</p>
+<h3 class="doc-h3">2. <code>error[E0499]</code>: Multiple Simultaneous Mutable Borrows</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let mut config_table = { &quot;port&quot;: 8080 };
+
+let m1 = &amp;mut config_table;
+// let m2 = &amp;mut config_table; // Compile error[E0499]: Cannot borrow `config_table` mutably more than once at a time</code></pre></div>
+<h3 class="doc-h3">3. <code>error[E0502]</code>: Simultaneous Mutable &amp; Immutable Borrows</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let mut hardware_state = [1, 0, 1];
+
+let view = &amp;hardware_state;
+// let mut_view = &amp;mut hardware_state; // Compile error[E0502]: Cannot borrow `hardware_state` mutably while immutably borrowed
+print(view);</code></pre></div>
+<h3 class="doc-h3">4. <code>error[E0515]</code>: Returning Reference to Local Variable</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">fn create_local_buffer() -&gt; &amp;[int] {
+    let local_arr = [10, 20, 30];
+    // return &amp;local_arr; // Compile error[E0515]: Cannot return reference to local variable `local_arr`
+    return local_arr; // Valid: Move ownership to caller
+}</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">7.5 Lexical Region Scopes &amp; Arena Allocation</h2>
+<p>For high-throughput systems workloads that create thousands of short-lived objects, AKS provides bump-pointer <strong>Region Scopes</strong> (<code>region (r)</code>). Objects allocated within a region bypass standard heap allocation overhead and are reclaimed in bulk:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">region (r) {
+    // Allocate high-speed bump-pointer collections
+    let buffer = r.AllocArray(1024);
+    let node = r.AllocStruct(&quot;TreeNode&quot;);
+
+    // Introspect active region memory usage
+    let object_count = r.AllocCount();       // Active object count (e.g. 2)
+    let memory_bytes = r.AllocatedBytes();   // Raw bytes consumed including headers
+
+    print(f&quot;Allocations: {object_count}, Consumed: {memory_bytes} bytes&quot;);
+
+    // O(1) bulk reset: Invalidates all allocations and resets bump pointer for reuse
+    r.Reset();
+    assert(r.AllocCount() == 0);
+
+    // Reuse arena without incurring OS re-allocation overhead
+    let reused_buffer = r.AllocArray(512);
+    assert(r.AllocCount() == 1);
+} // Scope exit: Total O(1) teardown of all allocated memory</code></pre></div>
+<p>Standard library native functions <code>ArenaReset()</code>, <code>ArenaAllocCount()</code>, and <code>ArenaAllocatedBytes()</code> allow direct management of <code>AKSArena</code> handles.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">7.6 Deterministic RAII &amp; The <code>Drop</code> Trait</h2>
+<p>When custom resources (file handles, network sockets, GPU buffers) must be deterministically released when their owner goes out of scope, types can implement the <code>Drop</code> trait:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">trait Drop {
+    fn drop(self);
+}
+
+struct ManagedFile {
+    handle: int;
+}
+
+impl ManagedFile {
+    fn drop(self) {
+        if (self.handle != 0) {
+            CloseHandle(self.handle);
+            print(f&quot;Handle {self.handle} closed via Drop trait.&quot;);
+        }
+    }
+}</code></pre></div>
+<p>When an instance of a type implementing <code>Drop</code> goes out of scope, the compiler automatically invokes <code>drop(self)</code> prior to deallocating the memory.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">7.7 Summary &amp; Next Steps</h2>
+<p>In this chapter, we explored:</p>
+<p>1. The dual-tier memory model: deterministic refcounting vs static ownership.</p>
+<p>2. Move semantics vs <code>Copy</code> types.</p>
+<p>3. Immutable (<code>&amp;T</code>) vs mutable (<code>&amp;mut T</code>) borrowing rules and Non-Lexical Lifetimes (NLL).</p>
+<p>4. Static reference count elimination.</p>
+<p>5. Diagnosing and resolving borrow checker error codes (<code>E0382</code>, <code>E0499</code>, <code>E0502</code>, <code>E0515</code>, <code>E0596</code>).</p>
+<p>6. Lexical region scopes (<code>region (r)</code>), bump-pointer arenas, allocation introspection (<code>AllocCount</code>, <code>AllocatedBytes</code>), and <code>Reset()</code> reuse.</p>
+<p>7. Deterministic RAII resource management via the <code>Drop</code> trait.</p>
+<p>Proceed to <a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers &amp; Parallelism</a> to explore asynchronous microtasks, Win32 Fibers, and thread synchronization.</p>
+    
+    <nav class="chapter-nav">
+      <div><a href="chapter-06.html">&larr; Chapter 06: Type System & Static Mode</a></div>
+      <div><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

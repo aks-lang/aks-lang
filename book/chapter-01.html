@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 01: Introduction & Systems Architecture | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Chapter 01: Introduction & Systems Architecture in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-01.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-01.html">
+  <meta property="og:title" content="Chapter 01: Introduction & Systems Architecture | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Chapter 01: Introduction & Systems Architecture in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-01.html">
+  <meta property="twitter:title" content="Chapter 01: Introduction & Systems Architecture | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Chapter 01: Introduction & Systems Architecture in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Chapter 01: Introduction & Systems Architecture in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html" class="active">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Chapter 01: Introduction &amp; Systems Architecture</h1>
+<p>AKS is a general-purpose, high-performance systems and application programming language engineered from the ground up for modern x86-64 and AArch64 hardware architectures. It bridges the gap between dynamic scripting productivity and low-level bare-metal systems programming through a unified, dual-tier compilation and execution pipeline.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">1.1 The Genesis &amp; Architectural Vision of AKS</h2>
+<p>Historically, software engineering forced developers into a false dichotomy:</p>
+<p>1. <strong>High-Level Dynamic Languages (Python, Ruby, JavaScript)</strong>:</p>
+<ul class="doc-list">
+<li><em>Strengths</em>: Instant prototyping, expressive syntax, dynamic typing, automatic memory management, interactive REPL workflows, rapid iteration cycles.</li>
+<li><em>Weaknesses</em>: Heavy interpreter overhead, unpredictable garbage collection pauses, large memory footprints, lack of fine-grained hardware and SIMD vector control, absence of compile-time type guarantees in mission-critical codebases.</li>
+</ul>
+<p>2. <strong>Low-Level Systems Languages (C, C++, Rust, Zig)</strong>:</p>
+<ul class="doc-list">
+<li><em>Strengths</em>: Maximum execution throughput, zero-cost abstractions, deterministic resource management, bare-metal hardware and operating system integration.</li>
+<li><em>Weaknesses</em>: Steep learning curves, complex build systems, strict ownership rules that slow down early experimental prototyping, longer compilation times.</li>
+</ul>
+<p>AKS eliminates this divide. During initial development, testing, and rapid scripting, AKS operates as a dynamic, interactive runtime with automatic reference counting, a fast register-and-stack hybrid bytecode virtual machine, and a tiered JIT compiler. When scaling to production or targeting embedded and systems environments, the exact same codebase can be compiled ahead-of-time (AOT) with strict Hindley-Milner type inference, compile-time affine borrow checking, and direct native code generation via LLVM IR or WebAssembly WAT.</p>
+<div class="mermaid">
+flowchart TD
+    Source[&quot;AKS Source Code (.aks)&quot;]
+    Lexer[&quot;Lexer (src/lexer.c)&quot;]
+    Parser[&quot;Recursive Descent &amp; Pratt Parser (src/parser.c)&quot;]
+    AST[&quot;Abstract Syntax Tree (src/ast.c)&quot;]
+    
+    Source --&gt; Lexer --&gt; Parser --&gt; AST
+    
+    AST --&gt; DynamicPath[&quot;Dynamic &amp; JIT Engine&quot;]
+    AST --&gt; StaticPath[&quot;Static Type &amp; AOT Engine&quot;]
+    
+    subgraph &quot;Dynamic Execution Tier&quot;
+        DynamicPath --&gt; Compiler[&quot;Bytecode Compiler (src/compiler.c)&quot;]
+        Compiler --&gt; Bytecode[&quot;AKS Bytecode Chunk&quot;]
+        Bytecode --&gt; VM[&quot;Stack/Register VM (src/vm.c)&quot;]
+        Bytecode --&gt; JIT[&quot;Tiered JIT (x86_64 / QBE / LLVM)&quot;]
+    end
+    
+    subgraph &quot;Static Ahead-of-Time Tier&quot;
+        StaticPath --&gt; Typer[&quot;HM Type Inference (src/typer.c)&quot;]
+        Typer --&gt; BorrowChecker[&quot;Affine Borrow Checker (src/compiler.c)&quot;]
+        BorrowChecker --&gt; AOTCodegen[&quot;LLVM IR / WAT Emitter (src/staticcodegen.c)&quot;]
+        AOTCodegen --&gt; NativeBin[&quot;Optimized Native Binary / .wasm&quot;]
+    end
+</div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">1.2 The Complete Compilation Pipeline</h2>
+<p>To write efficient software in AKS, one must understand how source text transforms into executing machine instructions. The AKS compiler pipeline proceeds through five distinct stages:</p>
+<h3 class="doc-h3">Stage 1: Lexical Analysis (<code>src/lexer.c</code>)</h3>
+<p>The Lexer converts raw UTF-8 source bytes into a discrete stream of typed <code>Token</code> structures. It strips whitespace and comments, interns string identifiers, and records exact source line and column numbers for precision diagnostic reporting:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">c</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-c">typedef struct {
+    TokenType type;     // TOKEN_LET, TOKEN_IDENTIFIER, TOKEN_INT, etc.
+    const char *start;  // Pointer into source buffer
+    int length;         // Length in bytes
+    int line;           // Source line number
+    int column;         // Source column number
+} Token;</code></pre></div>
+<h3 class="doc-h3">Stage 2: Recursive-Descent &amp; Pratt Parsing (<code>src/parser.c</code>)</h3>
+<p>The Parser consumes the token stream to construct a strongly typed Abstract Syntax Tree (AST). It combines traditional recursive-descent parsing for statements (<code>if</code>, <code>while</code>, <code>for</code>, <code>fn</code>, <code>struct</code>) with top-down operator precedence (Pratt parsing) for mathematical and logical expressions to handle complex operator associativity and precedence with zero recursion overhead.</p>
+<h3 class="doc-h3">Stage 3: AST Construction &amp; Semantic Analysis (<code>src/ast.c</code>)</h3>
+<p>Every AST node (<code>AstNode</code>) is allocated in a contiguous arena memory pool for cache locality. The AST preserves full type annotations, variable binding scopes, function prototypes, and structural attributes:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">c</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-c">typedef struct AstNode {
+    AstNodeType type;
+    int line;
+    int col;
+    union {
+        struct { char *name; struct AstNode *init; SType *type_ann; } var_decl;
+        struct { char *name; struct AstNode **params; int param_count; struct AstNode *body; } fn_decl;
+        struct { struct AstNode *cond; struct AstNode *then_b; struct AstNode *else_b; } if_stmt;
+        struct { OperatorType op; struct AstNode *left; struct AstNode *right; } binary_op;
+        // ...
+    } as;
+} AstNode;</code></pre></div>
+<h3 class="doc-h3">Stage 4: Bytecode Emission (<code>src/compiler.c</code>)</h3>
+<p>The compiler traverses the AST and generates a linear bytecode stream contained in an <code>AKSChunk</code>. The compiler performs constant folding (evaluating <code>3 + 7</code> $\to$ <code>10</code> at compile time), local variable stack slot allocation, jump offset patching, and upvalue capture analysis.</p>
+<h3 class="doc-h3">Stage 5: Virtual Machine &amp; JIT Execution (<code>src/vm.c</code>)</h3>
+<p>The Virtual Machine executes the compiled bytecode chunks using a contiguous evaluation stack and register cache. Hot loops are monitored via execution counters; when a loop exceeds execution thresholds, the tiered JIT compiler compiles the bytecode into native machine instructions on the fly.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">1.3 Core Runtime &amp; Virtual Machine Internals</h2>
+<h3 class="doc-h3">1.3.1 Value Representation (<code>AKSValue</code>)</h3>
+<p>In the dynamic runtime tier, every AKS entity is represented as an efficient tagged union value (<code>AKSValue</code>):</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">c</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-c">// Core AKSValue structure in include/value.h
+typedef enum {
+    VAL_NIL,
+    VAL_BOOL,
+    VAL_INT,
+    VAL_FLOAT,
+    VAL_OBJ
+} ValueType;
+
+typedef struct {
+    ValueType type;
+    union {
+        bool boolean;
+        int64_t integer;
+        double number;
+        struct AKSObject *obj;
+    } as;
+} AKSValue;</code></pre></div>
+<ul class="doc-list">
+<li><strong>Primitive Immediates</strong>: Integers (<code>int64_t</code>), double-precision floats (<code>double</code>), and Booleans (<code>bool</code>) are stored directly inline inside the 16-byte <code>AKSValue</code> union without any heap allocation or pointer indirection.</li>
+<li><strong>Heap Objects (<code>AKSObject</code>)</strong>: Strings, arrays, hash maps, structs, closures, fibers, and native handles point to a reference-counted header <code>AKSObject</code> allocated on 64-byte aligned boundaries for cache-line locality.</li>
+</ul>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">+-------------------+---------------------------------------+
+|  ValueType (8B)   |           Payload Union (8B)          |
++-------------------+---------------------------------------+
+| VAL_INT           | 64-bit Signed Integer (int64_t)       |
+| VAL_FLOAT         | 64-bit IEEE 754 Float (double)        |
+| VAL_BOOL          | Boolean (true / false)                |
+| VAL_OBJ           | Pointer to AKSObject (heap allocated) |
++-------------------+---------------------------------------+</code></pre></div>
+<h3 class="doc-h3">1.3.2 Heap Object Header (<code>AKSObject</code>)</h3>
+<p>All dynamic allocations in AKS share a common object header:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">c</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-c">typedef struct AKSObject {
+    ObjType type;         // OBJ_STRING, OBJ_ARRAY, OBJ_MAP, OBJ_STRUCT, OBJ_CLOSURE, etc.
+    uint32_t refcount;    // Deterministic reference counter
+    bool is_marked;       // Garbage collection / cycle detection marker
+    bool is_static_safe;  // Flag indicating refcount elimination by static analyzer
+    struct AKSObject *next; // Intrusive global allocation tracker for leak diagnostics
+} AKSObject;</code></pre></div>
+<h3 class="doc-h3">1.3.3 The Bytecode Execution Loop</h3>
+<p>The virtual machine (<code>src/vm.c</code>) implements an instruction dispatcher utilizing computed <code>goto</code> dispatch on supported compilers (GCC/Clang) and optimized switch tables on MSVC. The VM maintains a contiguous evaluation stack:</p>
+<ul class="doc-list">
+<li><strong>Evaluation Stack</strong>: A contiguous array of <code>AKSValue</code> slots (default capacity 65,536 elements, expandable dynamically).</li>
+<li><strong>Call Frame Stack</strong>: Maintains active call frames containing function metadata, return instruction pointers (<code>ip</code>), and base stack offsets for local variable lookups:</li>
+</ul>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">c</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-c">typedef struct {
+    AKSClosure *closure; // Pointer to active compiled closure
+    uint8_t *ip;         // Instruction pointer into bytecode stream
+    AKSValue *slots;     // Pointer to base local variable slot in evaluation stack
+} CallFrame;</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">1.4 Setting Up the Development Environment</h2>
+<h3 class="doc-h3">1.4.1 System Requirements</h3>
+<p>AKS runs natively on Windows (x86-64 and ARM64), Linux, and macOS. For Windows native builds, Microsoft Visual C++ (MSVC) or MinGW-w64 is supported.</p>
+<h3 class="doc-h3">1.4.2 Building from Source</h3>
+<p>To build all AKS compiler binaries, standard tools, and test suites from source in your local project directory:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">cmd</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-cmd">cd aks-lang
+build.bat</code></pre></div>
+<p>The build script compiles the following toolchain executables into the project root:</p>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Executable</th><th>Purpose</th><th>Key Subsystems</th></tr></thead><tbody>
+<tr><td><code>aks.exe</code></td><td>Compiler, VM &amp; CLI Runner</td><td>Bytecode compiler, VM, JIT engine, AOT generator, package manager, test runner.</td></tr>
+<tr><td><code>aksls.exe</code></td><td>Language Server Protocol (LSP)</td><td>Full IDE protocol server for VS Code and modern IDEs (diagnostics, autocomplete).</td></tr>
+<tr><td><code>aksfmt.exe</code></td><td>Code Formatter</td><td>AST-based code standardizer.</td></tr>
+<tr><td><code>akslint.exe</code></td><td>Static Linter &amp; Analyzer</td><td>Rule engine for detecting dead code, type mismatches, and anti-patterns.</td></tr>
+<tr><td><code>aks.dll</code></td><td>C Embedding Shared Library</td><td>Complete AKS engine exposed via C API for embedding inside host applications.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">1.5 The <code>aks</code> Command-Line Interface</h2>
+<p>The <code>aks</code> driver provides a comprehensive set of subcommands:</p>
+<h3 class="doc-h3">1. Running Source Files</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">bash</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-bash"># Execute a script via the dynamic VM
+aks run script.aks
+
+# Execute with strict type inference enabled
+aks run --strict-types script.aks
+
+# Execute with compile-time borrow checker enabled
+aks run --borrow-check script.aks
+
+# Execute with memory tracing and leak diagnostics
+aks run --trace-mem script.aks</code></pre></div>
+<h3 class="doc-h3">2. Interactive REPL (Read-Eval-Print Loop)</h3>
+<p>Launching <code>aks</code> without arguments opens the interactive shell:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">AKS Interactive REPL (v2026.1 - Windows x86_64)
+Type .help for command list, .exit to quit.
+&gt;&gt;&gt; let message = &quot;Welcome to AKS&quot;;
+&gt;&gt;&gt; let tokens = split(message, &quot; &quot;);
+&gt;&gt;&gt; print(tokens);
+[&quot;Welcome&quot;, &quot;to&quot;, &quot;AKS&quot;]
+&gt;&gt;&gt; </code></pre></div>
+<p>Useful REPL commands:</p>
+<ul class="doc-list">
+<li><code>.help</code> - Displays the command reference.</li>
+<li><code>.vars</code> - Dumps all active variables in the current environment with their types and values.</li>
+<li><code>.disasm &lt;fn&gt;</code> - Disassembles a function or code block into human-readable bytecode instructions.</li>
+<li><code>.clear</code> - Resets the global variable environment and heap state.</li>
+<li><code>.exit</code> - Gracefully terminates the REPL.</li>
+</ul>
+<h3 class="doc-h3">3. Ahead-of-Time (AOT) Code Generation</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">bash</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-bash"># Emit LLVM Intermediate Representation
+aks emit-ir --static -o program.ll program.aks
+
+# Emit WebAssembly Text (WAT)
+aks emit-wat -o program.wat program.aks</code></pre></div>
+<h3 class="doc-h3">4. Running Benchmarks and Test Suites</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">bash</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-bash"># Run a single benchmark file with microsecond timer precision
+aks bench benchmarks/matrix_multiply.aks
+
+# Run the full automated test suite (254+ test modules)
+aks test</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">1.6 Your First AKS Programs</h2>
+<p>Let us explore two fundamental programs to understand how AKS handles both simple scripting and structured systems tasks.</p>
+<h3 class="doc-h3">Example 1: Hello World &amp; String Manipulation</h3>
+<p>Create a file named <code>hello_world.aks</code>:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// hello_world.aks
+fn main() {
+    let name = &quot;Systems Programmer&quot;;
+    let greeting = &quot;Hello, &quot; + name + &quot;! Welcome to AKS.&quot;;
+    
+    print(greeting);
+    print(&quot;Length of greeting: &quot; + String(Length(greeting)));
+    
+    let uppercase_greeting = upper(greeting);
+    print(&quot;Uppercase: &quot; + uppercase_greeting);
+}
+
+main();</code></pre></div>
+<p>Run the program:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">bash</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-bash">aks run hello_world.aks</code></pre></div>
+<p>Output:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">Hello, Systems Programmer! Welcome to AKS.
+Length of greeting: 41
+Uppercase: HELLO, SYSTEMS PROGRAMMER! WELCOME TO AKS.
+Memory diagnostics: all runtime references clean. 0 leaks.</code></pre></div>
+<h3 class="doc-h3">Example 2: High-Performance Fibonacci with Microsecond Timing</h3>
+<p>This example demonstrates loop structures, 64-bit integer calculations, recursion, and the high-resolution hardware clock:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">// fibonacci.aks
+fn fib_iterative(n) {
+    if (n &lt;= 1) {
+        return n;
+    }
+    let a = 0;
+    let b = 1;
+    for (let i = 2; i &lt;= n; i += 1) {
+        let temp = a + b;
+        a = b;
+        b = temp;
+    }
+    return b;
+}
+
+fn main() {
+    let target = 50;
+    
+    let start_time = clock();
+    let result = fib_iterative(target);
+    let elapsed = clock() - start_time;
+    
+    print(&quot;Fibonacci(&quot; + String(target) + &quot;) = &quot; + String(result));
+    print(&quot;Calculated in: &quot; + String(elapsed) + &quot; seconds&quot;);
+}
+
+main();</code></pre></div>
+<p>Output:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">Fibonacci(50) = 12586269025
+Calculated in: 0.000004 seconds
+Memory diagnostics: all runtime references clean. 0 leaks.</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">1.7 Summary &amp; Next Steps</h2>
+<p>In this introductory chapter, we examined:</p>
+<p>1. The dual dynamic/static architecture of AKS.</p>
+<p>2. The complete 5-stage compilation pipeline from source bytes to machine code.</p>
+<p>3. The internal representation of values (<code>AKSValue</code>), object headers (<code>AKSObject</code>), and the VM stack machine.</p>
+<p>4. How to build, install, and utilize the <code>aks</code> toolchain.</p>
+<p>5. Writing, executing, and benchmarking basic AKS scripts.</p>
+<p>Proceed to <a href="chapter-02.html">Chapter 02: Language Basics, Lexical Structure &amp; Primitive Types</a> for an in-depth dive into variables, scoping rules, primitive representations, memory alignment, and operator semantics.</p>
+    
+    <nav class="chapter-nav">
+      <div></div>
+      <div><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

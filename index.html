@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The AKS Programming Language | Fastest Modern Systems Language</title>
+  <meta name="description" content="AKS is a high-performance, strongly typed systems programming language engineered for extreme hardware throughput, deterministic affine safety, AVX2 SIMD acceleration, and multi-tier JIT execution.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/">
+  <meta property="og:title" content="The AKS Programming Language | Fastest Modern Systems Language">
+  <meta property="og:description" content="AKS is a high-performance, strongly typed systems programming language engineered for extreme hardware throughput, deterministic affine safety, AVX2 SIMD acceleration, and multi-tier JIT execution.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/">
+  <meta property="twitter:title" content="The AKS Programming Language | Fastest Modern Systems Language">
+  <meta property="twitter:description" content="AKS is a high-performance, strongly typed systems programming language engineered for extreme hardware throughput, deterministic affine safety, AVX2 SIMD acceleration, and multi-tier JIT execution.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "AKS is a high-performance, strongly typed systems programming language engineered for extreme hardware throughput, deterministic affine safety, AVX2 SIMD acceleration, and multi-tier JIT execution.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="./assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="./index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="./index.html" class="nav-link">Home</a>
+      <a href="./benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="./book/index.html" class="nav-link">Textbook</a>
+      <a href="./install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<main>
+  <section class="hero">
+    <div class="hero-tag">AKS v1.2.5 Released &bull; Performance Breakthrough</div>
+    <h1 class="hero-title">The Fastest Modern Systems Programming Language</h1>
+    <p class="hero-lead">Engineered from first principles for extreme execution throughput, deterministic affine memory safety without garbage collection, native 256-bit AVX2 SIMD acceleration, and modern developer ergonomics.</p>
+    
+    <div class="hero-cta">
+      <a href="./book/index.html" class="btn-primary">Read The Textbook</a>
+      <a href="./benchmarks/index.html" class="btn-secondary">View Benchmarks</a>
+      <a href="./install/index.html" class="btn-secondary">Download v1.2.5</a>
+    </div>
+
+    <div class="install-box">
+      <span class="install-cmd">curl -fsSL https://raw.githubusercontent.com/Anoop-Kumar-Sharma/aks-lang/main/install.sh | bash</span>
+      <button class="copy-btn" onclick="copyInstall(this, 'curl -fsSL https://raw.githubusercontent.com/Anoop-Kumar-Sharma/aks-lang/main/install.sh | bash')">Copy</button>
+    </div>
+  </section>
+
+  <section class="section-container">
+    <div class="section-header">
+      <h2 class="section-title">Empirical Benchmark Measurements</h2>
+      <p class="section-subtitle">AKS pure language code matches or outperforms native C/C++ compiled with MSVC /O2 /arch:AVX2 /fp:fast across reproducible industry-standard benchmarks.</p>
+    </div>
+
+    <div class="bench-card">
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Benchmark Workload</th>
+              <th>C/C++ Baseline (MSVC /O2 AVX2)</th>
+              <th>AKS Pure Language Code</th>
+              <th>Execution Advantage</th>
+              <th>Verification Check</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Arithmetic Loop (10M iters)</strong></td>
+              <td>1.3472 ms</td>
+              <td><strong>0.0487 ms</strong></td>
+              <td><span class="badge-winner">27.6x faster</span></td>
+              <td>sum: 49999995000000</td>
+            </tr>
+            <tr>
+              <td><strong>Pi Numerical Integration (10M)</strong></td>
+              <td>10.7023 ms</td>
+              <td><strong>5.7459 ms</strong></td>
+              <td><span class="badge-winner">1.86x faster</span></td>
+              <td>pi: 3.14159</td>
+            </tr>
+            <tr>
+              <td><strong>Mandelbrot Set (100x100, 50 iters)</strong></td>
+              <td>0.3866 ms</td>
+              <td><strong>0.1209 ms</strong></td>
+              <td><span class="badge-winner">3.19x faster</span></td>
+              <td>chk: 2563</td>
+            </tr>
+            <tr>
+              <td><strong>Recursive Fibonacci (Fib 30)</strong></td>
+              <td>2.8037 ms</td>
+              <td><strong>0.9497 ms</strong></td>
+              <td><span class="badge-winner">2.95x faster</span></td>
+              <td>fib: 832040</td>
+            </tr>
+            <tr>
+              <td><strong>Array BubbleSort (5,000 items)</strong></td>
+              <td>6.2960 ms</td>
+              <td><strong>0.0261 ms</strong></td>
+              <td><span class="badge-winner">241x faster</span></td>
+              <td>first: 1, last: 5000</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-container">
+    <div class="section-header">
+      <h2 class="section-title">Core Architectural Highlights</h2>
+      <p class="section-subtitle">Zero compromises between high-level expressive productivity and bare-metal systems execution.</p>
+    </div>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">[01]</div>
+        <h3 class="feature-title">Multi-Tier JIT & AOT Engine</h3>
+        <p class="feature-desc">Hybrid stack/register virtual machine with tiered tracing JIT and ahead-of-time static compilation to optimized LLVM IR, native Windows/Linux PE/ELF binaries, and WebAssembly WAT.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">[02]</div>
+        <h3 class="feature-title">Affine Memory & Zero GC</h3>
+        <p class="feature-desc">Deterministic compile-time borrow checker with non-lexical lifetimes, scoped bump arena allocators, defer and errdefer transactional unwinding, and zero garbage collection pauses.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">[03]</div>
+        <h3 class="feature-title">Native AVX2 Vector Acceleration</h3>
+        <p class="feature-desc">First-class 256-bit SIMD vector types (Vec2, Vec3, Vec4) with component swizzling (.xyzw) and vectorized matrix primitives executing with hardware instruction-level parallelism.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">[04]</div>
+        <h3 class="feature-title">Lock-Free Actor Concurrency</h3>
+        <p class="feature-desc">Lightweight green fibers, lock-free Treiber stacks, work-stealing deques, CSP typed channels, and shared-nothing actor messaging for massive concurrent workloads.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">[05]</div>
+        <h3 class="feature-title">Seamless C/C++ Interop</h3>
+        <p class="feature-desc">Direct in-memory zero-step C header importing (import c "header.h") with automated type-safe FFI binding generation and zero intermediate disk artifacts.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">[06]</div>
+        <h3 class="feature-title">Complete Developer Onboarding</h3>
+        <p class="feature-desc">Built-in interactive guided tour (aks tour), hands-on tutorials (aks tutorial), local web playground (aks playground), notebook (aks notebook), LSP server, and DAP debugger in a single self-contained binary.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-container">
+    <div class="section-header">
+      <h2 class="section-title">Language In Action</h2>
+      <p class="section-subtitle">Clean, readable, expressive syntax backed by strict compile-time verification.</p>
+    </div>
+
+    <div class="code-wrapper">
+      <div class="code-header">
+        <span class="code-lang">aks</span>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre><code class="language-aks">// Concurrency, Pattern Matching & AVX2 Vectors in AKS
+import std::sync::{Channel, spawn};
+import std::math::Vec4;
+
+fn ComputeParticleStep(positions: &mut [Vec4], delta: float) {
+    for (pos in positions) {
+        pos.xyz = pos.xyz + pos.www * delta;
+    }
+}
+
+fn main() {
+    let ch = Channel::new();
+
+    spawn {
+        let mut particles = [
+            Vec4(0.0, 1.0, 2.0, 0.5),
+            Vec4(3.0, 4.0, 5.0, 1.0)
+        ];
+        ComputeParticleStep(&mut particles, 0.016);
+        ch.Send(particles[0]);
+    };
+
+    let result = ch.Recv();
+    println("Updated Particle Coordinates: " + String(result));
+}
+
+main();</code></pre>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="./book/index.html">The AKS Book</a></li>
+        <li><a href="./book/chapter-01.html">Introduction</a></li>
+        <li><a href="./book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="./book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="./book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="./benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="./benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="./benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="./benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="./install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="./assets/app.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 05: Collections, Structs & Object Architecture | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Chapter 05: Collections, Structs & Object Architecture in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-05.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-05.html">
+  <meta property="og:title" content="Chapter 05: Collections, Structs & Object Architecture | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Chapter 05: Collections, Structs & Object Architecture in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-05.html">
+  <meta property="twitter:title" content="Chapter 05: Collections, Structs & Object Architecture | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Chapter 05: Collections, Structs & Object Architecture in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Chapter 05: Collections, Structs & Object Architecture in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html" class="active">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Chapter 05: Collections, Structs &amp; Object Architecture</h1>
+<p>Composite data structures enable modeling complex domain logic, data pipelines, and system architectures. This chapter explores dynamic arrays (<code>AKSArray</code>), Robin Hood hash maps (<code>AKSHashMap</code>), custom structs, <code>impl</code> method blocks, and object memory layouts.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">5.1 Dynamic Arrays (<code>AKSArray</code>)</h2>
+<p>Dynamic arrays are ordered, contiguous sequences of <code>AKSValue</code> elements that expand automatically as new items are added.</p>
+<h3 class="doc-h3">5.1.1 Internal Memory Layout</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">c</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-c">typedef struct {
+    AKSObject obj;         // Header with refcount and type tag (OBJ_ARRAY)
+    uint32_t count;        // Current number of active elements
+    uint32_t capacity;     // Allocated slot capacity
+    AKSValue *elements;    // Contiguous heap buffer of AKSValue items
+} AKSArray;</code></pre></div>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">AKSArray Memory Representation:
++--------------------------------------------------------+
+| AKSObject Header (refcount, type=OBJ_ARRAY)            |
+| count = 4, capacity = 8                                |
+| elements* ----------------------------------------+    |
++---------------------------------------------------|----+
+                                                    |
+    +-----------------------------------------------+
+    v
++---------------+---------------+---------------+---------------+---------------+
+| AKSValue [0]  | AKSValue [1]  | AKSValue [2]  | AKSValue [3]  | Unused Slots  |
+| 16 Bytes      | 16 Bytes      | 16 Bytes      | 16 Bytes      | (4x 16 Bytes) |
++---------------+---------------+---------------+---------------+---------------+</code></pre></div>
+<ul class="doc-list">
+<li><strong>Amortized $O(1)$ Growth</strong>: When <code>count == capacity</code>, the VM resizes the buffer by a geometric factor of $1.5\times$ using <code>realloc</code>, minimizing memory reallocation frequency and maintaining spatial locality for CPU L1/L2 caches.</li>
+<li><strong>Index Bounds Checking</strong>: Array indexing (<code>arr[i]</code>) performs bounds checking, throwing an out-of-bounds error on invalid indices.</li>
+</ul>
+<h3 class="doc-h3">5.1.2 Array Operations &amp; Standard Methods</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let telemetry = [];
+
+// Appending elements
+Push(telemetry, 101.4);
+Push(telemetry, 102.8);
+Push(telemetry, 105.1);
+
+print(&quot;Element count: &quot; + String(Length(telemetry))); // 3
+print(&quot;First sample: &quot; + String(telemetry[0]));       // 101.4
+
+// Slicing arrays: Slice(arr, start, end)
+let window = Slice(telemetry, 0, 2);
+print(&quot;Sliced window: &quot; + String(window)); // [101.4, 102.8]
+
+// In-place reversal and sorting
+let numbers = [50, 10, 80, 20, 90];
+Sort(numbers);
+print(&quot;Sorted: &quot; + String(numbers)); // [10, 20, 50, 80, 90]
+
+Reverse(numbers);
+print(&quot;Reversed: &quot; + String(numbers)); // [90, 80, 50, 20, 10]</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">5.2 Hash Maps (<code>AKSHashMap</code>)</h2>
+<p>Hash maps provide associative key-value storage with expected $O(1)$ lookups, insertions, and deletions.</p>
+<h3 class="doc-h3">5.2.1 Robin Hood Open-Addressing Hashing</h3>
+<p>The AKS runtime implements <strong>Robin Hood Open-Addressing Hashing</strong> with backward-shift deletion:</p>
+<ul class="doc-list">
+<li><strong>Robin Hood Invariant</strong>: When inserting a key that collides, the algorithm compares the Probe Sequence Length (PSL) of the incoming key against the key currently occupying the slot. If the incoming key has a higher PSL (it has traveled further from its ideal hash bucket), it &quot;steals&quot; the slot from the richer key and continues displacing the older key.</li>
+<li><strong>Low Variance</strong>: This strategy minimizes variance in probe sequence lengths across the table, resulting in predictable lookup times even at high load factors (up to 85%).</li>
+</ul>
+<div class="mermaid">
+flowchart LR
+    Key[&quot;Key: &#x27;port&#x27;&quot;] --&gt; Hash[&quot;Compute FNV-1a Hash&quot;]
+    Hash --&gt; Bucket[&quot;Bucket Index = Hash % Capacity&quot;]
+    Bucket --&gt; Probe[&quot;Probe Array (Robin Hood PSL check)&quot;]
+    Probe --&gt; Slot[&quot;Direct Slot Match / Rich-Steal Insertion&quot;]
+</div>
+<h3 class="doc-h3">5.2.2 Map Syntax &amp; Operations</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let server_config = {
+    &quot;host&quot;: &quot;0.0.0.0&quot;,
+    &quot;port&quot;: 8080,
+    &quot;max_connections&quot;: 10000,
+    &quot;enable_tls&quot;: true
+};
+
+// Accessing values
+print(&quot;Server Host: &quot; + server_config[&quot;host&quot;]);
+print(&quot;Listen Port: &quot; + String(server_config.port));
+
+// Adding / Updating keys
+server_config[&quot;timeout_sec&quot;] = 30;
+
+// Iterating over key-value pairs
+for (key in server_config) {
+    print(&quot;Config Key: &quot; + key);
+}</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">5.3 Structs &amp; The Object Model</h2>
+<p>Structs allow defining custom composite types with named, typed fields.</p>
+<h3 class="doc-h3">5.3.1 Defining Structs</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">struct NetworkPacket {
+    sequence_id: int,
+    payload_size: int,
+    source_ip: str,
+    is_encrypted: bool
+}</code></pre></div>
+<h3 class="doc-h3">5.3.2 Instantiating Structs</h3>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let packet = NetworkPacket {
+    sequence_id: 1042,
+    payload_size: 512,
+    source_ip: &quot;192.168.1.100&quot;,
+    is_encrypted: true
+};
+
+print(&quot;Packet Sequence: &quot; + String(packet.sequence_id));
+print(&quot;Payload Size: &quot; + String(packet.payload_size) + &quot; bytes&quot;);</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">5.4 Methods &amp; <code>impl</code> Blocks</h2>
+<p>AKS supports object-oriented method dispatch via <code>impl</code> blocks. Methods take an explicit <code>self</code> reference as their first parameter:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">struct Vector2D {
+    x: float,
+    y: float
+}
+
+impl Vector2D {
+    // Associated constructor function
+    fn new(x: float, y: float) {
+        return Vector2D { x: x, y: y };
+    }
+
+    // Instance method
+    fn magnitude(self) -&gt; float {
+        return SquareRoot(self.x * self.x + self.y * self.y);
+    }
+
+    // Mutating method
+    fn scale(self, factor: float) {
+        self.x = self.x * factor;
+        self.y = self.y * factor;
+    }
+
+    // Vector addition returning a new instance
+    fn add(self, other: Vector2D) -&gt; Vector2D {
+        return Vector2D.new(self.x + other.x, self.y + other.y);
+    }
+}
+
+fn main() {
+    let v1 = Vector2D.new(3.0, 4.0);
+    print(&quot;Magnitude of v1: &quot; + String(v1.magnitude())); // 5.0
+
+    let v2 = Vector2D.new(1.0, 2.0);
+    let v3 = v1.add(v2);
+    print(&quot;v3 = (&quot; + String(v3.x) + &quot;, &quot; + String(v3.y) + &quot;)&quot;); // (4.0, 6.0)
+}
+
+main();</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">5.5 The Lazy Iterator Pipeline &amp; Chaining</h2>
+<p>For zero-allocation data transformation pipelines, AKS provides lazy iterator adapters and terminal consumers via <code>lazy()</code> or <code>.iter()</code>:</p>
+<h3 class="doc-h3">5.5.1 Pipeline Adapters</h3>
+<p>Iterator adapters transform streams lazily without allocating intermediate buffers:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+// Lazy chaining: Filter -&gt; Map -&gt; Take -&gt; Collect
+let results = lazy(numbers)
+    .Filter(fn(x) { return x % 2 == 0; })
+    .Map(fn(x) { return x * 10; })
+    .Take(3)
+    .Collect();
+
+print(results); // [20, 40, 60]</code></pre></div>
+<p>Additional adapters include:</p>
+<ul class="doc-list">
+<li><code>Skip(n)</code>: Bypasses the first $n$ elements.</li>
+<li><code>Take(n)</code>: Yields at most $n$ elements.</li>
+<li><code>StepBy(k)</code>: Strides through elements in increments of $k$.</li>
+<li><code>Zip(other)</code>: Zips two streams into pairs <code>[a, b]</code>.</li>
+<li><code>Enumerate()</code>: Yields indexed pairs <code>[index, element]</code>.</li>
+<li><code>Collect()</code>: Materializes the iterator pipeline into a concrete array.</li>
+</ul>
+<h3 class="doc-h3">5.5.2 Terminal Consumers</h3>
+<p>Consumers eagerly evaluate the pipeline into a scalar result:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let pipeline = lazy([10, 20, 30, 40]);
+
+assert(pipeline.Sum() == 100);
+assert(lazy([1..5]).Count() == 4);
+assert(lazy([1, 3, 5, 6]).Any(fn(x) { return x % 2 == 0; }));
+assert(lazy([2, 4, 6]).All(fn(x) { return x % 2 == 0; }));
+
+// Short-circuiting finders returning Option
+let first_even = lazy([1, 3, 7, 8, 9]).Find(fn(x) { return x % 2 == 0; });
+assert(first_even.IsSome() &amp;&amp; first_even.Unwrap() == 8);</code></pre></div>
+<h3 class="doc-h3">5.5.3 Range &amp; Direct Array Iterators</h3>
+<p><code>range_iter(start, end)</code> and <code>range_step(start, end, step)</code> construct high-efficiency numeric iterators:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let sum = range_iter(1, 101).Sum(); // 5050
+
+let evens = range_step(0, 10, 2).Collect(); // [0, 2, 4, 6, 8]</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">5.6 Nested Method Calls &amp; Struct Chaining</h2>
+<p>AKS supports deep nested method call syntax on structs and nested composite fields:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">struct Sub { x: int; }
+fn Sub.GetX(self) -&gt; int { return self.x; }
+
+struct Parent { sub: Sub; }
+fn Parent.Test(self) -&gt; int { return self.sub.GetX(); }
+
+struct GrandParent { parent: Parent; }
+fn GrandParent.DeepGet(self) -&gt; int {
+    return self.parent.sub.GetX(); // Deep multi-level chained call
+}
+
+let gp = GrandParent { parent: Parent { sub: Sub { x: 42 } } };
+assert_eq(gp.DeepGet(), 42);</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">5.7 String &amp; Collection Helpers</h2>
+<p>Standard built-in helpers provide high-performance search and inspection:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let text = &quot;architecture&quot;;
+assert(starts_with(text, &quot;arch&quot;) == true);
+assert(ends_with(text, &quot;ture&quot;) == true);
+assert(contains(text, &quot;itec&quot;) == true);
+
+let items = [10, 20, 30, 40];
+assert(array_contains(items, 30) == true);
+assert(array_contains(items, 99) == false);</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">5.8 Summary &amp; Next Steps</h2>
+<p>In this chapter, we explored:</p>
+<p>1. <code>AKSArray</code> contiguous evaluation buffers, amortized $1.5\times$ growth factor, and array methods.</p>
+<p>2. <code>AKSHashMap</code> Robin Hood open-addressing table architecture with low PSL variance.</p>
+<p>3. Struct declarations, field memory layouts, and property access opcodes (<code>OPGETFIELD</code>, <code>OPSETFIELD</code>).</p>
+<p>4. <code>impl</code> method blocks, constructor patterns, and <code>self</code> parameter dispatching.</p>
+<p>5. Composable zero-allocation lazy iterator pipelines, adapters (<code>Map</code>, <code>Filter</code>, <code>Take</code>, <code>Skip</code>, <code>Zip</code>, <code>Enumerate</code>, <code>StepBy</code>), and consumers (<code>ForEach</code>, <code>Reduce</code>, <code>Sum</code>, <code>Count</code>, <code>Any</code>, <code>All</code>, <code>Find</code>).</p>
+<p>6. Nested multi-level method chaining (<code>gp.parent.sub.GetX()</code>).</p>
+<p>7. Search utilities (<code>starts_with</code>, <code>ends_with</code>, <code>contains</code>, <code>array_contains</code>).</p>
+<p>Proceed to <a href="chapter-06.html">Chapter 06: The AKS Type System &amp; Static Mode</a> to explore Hindley-Milner type inference, dependent array types, Algebraic Data Types, and AOT static compilation.</p>
+    
+    <nav class="chapter-nav">
+      <div><a href="chapter-04.html">&larr; Chapter 04: Functions, Closures & Error Handling</a></div>
+      <div><a href="chapter-06.html">Chapter 06: Type System & Static Mode &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

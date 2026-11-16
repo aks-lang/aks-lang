@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 09: Lock-Free Concurrency & Memory Reclamation | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Chapter 09: Lock-Free Concurrency & Memory Reclamation in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-09.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-09.html">
+  <meta property="og:title" content="Chapter 09: Lock-Free Concurrency & Memory Reclamation | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Chapter 09: Lock-Free Concurrency & Memory Reclamation in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/chapter-09.html">
+  <meta property="twitter:title" content="Chapter 09: Lock-Free Concurrency & Memory Reclamation | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Chapter 09: Lock-Free Concurrency & Memory Reclamation in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Chapter 09: Lock-Free Concurrency & Memory Reclamation in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html" class="active">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Chapter 09: Lock-Free Concurrency, Data Structures &amp; Memory Reclamation</h1>
+<p>Lock-free programming eliminates mutex lock contention, deadlocks, and priority inversions by utilizing hardware atomic primitives. This chapter covers the hardware cache coherence foundation, the ABA problem, the Lock-Free Treiber Stack, MPSC Queues, the Chase-Lev Work-Stealing Deque, Hazard Pointers safe memory reclamation, and Windows I/O Completion Ports (IOCP).</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">9.1 Hardware Atomic Primitives &amp; Cache Coherence</h2>
+<p>Lock-free algorithms rely on hardware atomic instructions that operate directly at the CPU cache-line level (MESI/MOESI cache coherence protocols).</p>
+<h3 class="doc-h3">9.1.1 Compare-And-Swap (CAS)</h3>
+<p>The fundamental atomic primitive is <strong>Compare-And-Swap (CAS)</strong> (the <code>lock cmpxchg</code> instruction on x86-64). CAS atomically checks if a memory location holds an expected value; if so, it updates the location to a desired value:</p>
+<p>$$\text{CAS}(\text{address}, \text{expected}, \text{desired}) \to \begin{cases} \text{true}, &amp; \text{if } *\text{address} == \text{expected} \ (\text{updated}) \\ \text{false}, &amp; \text{otherwise} \ (\text{unchanged}) \end{cases}$$</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let atomic_counter = AtomicI64New(100);
+
+// Atomically exchange value if it equals 100
+let success = AtomicI64Cas(atomic_counter, 100, 200);
+print(&quot;CAS Success: &quot; + String(success)); // true
+print(&quot;Updated Value: &quot; + String(AtomicI64Load(atomic_counter))); // 200</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">9.2 The ABA Problem &amp; Hazard Pointers Memory Reclamation</h2>
+<h3 class="doc-h3">9.2.1 The ABA Problem</h3>
+<p>In lock-free pointer-based structures, thread $T_1$ reads pointer $A$. Thread $T_2$ pops $A$, frees it, allocates node $B$, and then allocates a new node that happens to reuse memory address $A$. When $T_1$ performs a CAS on $A$, the CAS succeeds because the pointer address matches $A$, unaware that the node contents have changed.</p>
+<h3 class="doc-h3">9.2.2 Hazard Pointers Solution</h3>
+<p>AKS provides a <strong>Hazard Pointer Domain</strong> (<code>HazardPointerDomainNewC</code>). Before accessing a node, a reader registers the node&#x27;s pointer in a thread-local hazard pointer slot. When a node is popped, it is retired rather than immediately freed. The memory reclamation scanner inspects all hazard slots across all active threads, ensuring a node is only physically freed when no thread holds an active reference to it:</p>
+<div class="mermaid">
+flowchart TD
+    Reader[&quot;Reader Thread (T1)&quot;] --&gt; SetHazard[&quot;Register Node A in Hazard Slot&quot;]
+    PopThread[&quot;Writer Thread (T2)&quot;] --&gt; PopNode[&quot;Pop Node A &amp; Retire(A)&quot;]
+    PopNode --&gt; ScanDomain[&quot;Hazard Reclamation Scan&quot;]
+    ScanDomain -- &quot;A protected by T1&quot; --&gt; KeepMemory[&quot;Defer Free (Keep Node A)&quot;]
+    Reader --&gt; ClearHazard[&quot;Clear Hazard Slot&quot;]
+    ClearHazard --&gt; ScanDomain2[&quot;Subsequent Scan&quot;] --&gt; FreeMemory[&quot;Physical MemoryFree(A)&quot;]
+</div>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let domain = HazardPointerDomainNewC(8); // 8 worker threads
+
+// Reader marks node address as protected:
+HazardPointerAcquireC(domain, 0, 0x100040);
+
+// Writer pops and marks node for deferred reclamation:
+let retired_count = HazardPointerRetireC(domain, 0x100040);
+
+// Reader releases protection:
+HazardPointerReleaseC(domain, 0);</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">9.3 Lock-Free Treiber Stack</h2>
+<p>The Treiber Stack achieves thread-safe push and pop operations without any mutex locks using an atomic CAS loop:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let stack = LockFreeStackNewC();
+
+// Concurrently push values
+LockFreeStackPushC(stack, 1001);
+LockFreeStackPushC(stack, 1002);
+
+// Concurrently pop values
+let v1 = LockFreeStackPopC(stack);
+let v2 = LockFreeStackPopC(stack);
+
+print(&quot;Popped item: &quot; + String(v1)); // 1002
+print(&quot;Popped item: &quot; + String(v2)); // 1001</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">9.4 Multi-Producer Single-Consumer (MPSC) Queue</h2>
+<p>The MPSC Queue provides a high-throughput, lock-free ring buffer where multiple producer threads can push tasks simultaneously while a dedicated consumer thread drains tasks sequentially:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let mpsc = MpscQueueNewC(1024); // Capacity 1024 items
+
+// Multiple worker threads push tasks concurrently:
+MpscQueuePushC(mpsc, &quot;TASK_INGEST_LOGS&quot;);
+MpscQueuePushC(mpsc, &quot;TASK_COMPUTE_STATS&quot;);
+
+// Dedicated consumer thread pops tasks:
+let task = MpscQueuePopC(mpsc);
+print(&quot;Consumer processing: &quot; + String(task));</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">9.5 Chase-Lev Work-Stealing Deque</h2>
+<p>The Chase-Lev Deque is the foundation of high-performance task schedulers (such as Go runtime, Tokio, and Rayon).</p>
+<ul class="doc-list">
+<li><strong>Local Worker</strong>: Pushes and pops tasks from the <strong>bottom</strong> of the deque in LIFO order (exploiting CPU cache locality).</li>
+<li><strong>Stealer Workers</strong>: Idle threads steal tasks from the <strong>top</strong> of the deque in FIFO order using atomic CAS:</li>
+</ul>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let deque = StealingDequeNewC(256);
+
+// Local worker thread:
+StealingDequePushC(deque, &quot;LOCAL_TASK_1&quot;);
+StealingDequePushC(deque, &quot;LOCAL_TASK_2&quot;);
+
+// Idle thief thread steals from top:
+let stolen_task = StealingDequeStealC(deque);
+print(&quot;Stealer worker executed: &quot; + String(stolen_task)); // &quot;LOCAL_TASK_1&quot;</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">9.6 Windows I/O Completion Ports (IOCP)</h2>
+<p>Windows IOCP is the highest-performance asynchronous I/O and task dispatching mechanism in the Windows NT kernel:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">aks</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-aks">let iocp = OsIoCompletionPortCreateC(4); // Bind to 4 worker threads
+
+// Post completion packet to IOCP kernel queue
+OsIoCompletionPortPostC(iocp, 512, 101, 0);
+
+// Worker thread waits for packet:
+let packet = OsIoCompletionPortWaitC(iocp, 1000); // 1000ms timeout
+print(&quot;IOCP Packet Dequeued: Bytes=&quot; + String(packet.bytes) + &quot;, Key=&quot; + String(packet.key));</code></pre></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">9.7 Summary &amp; Next Steps</h2>
+<p>In this chapter, we explored:</p>
+<p>1. Hardware atomic Compare-And-Swap (CAS) instructions and cache coherence.</p>
+<p>2. The ABA problem and Hazard Pointers safe memory reclamation.</p>
+<p>3. Lock-free Treiber Stacks and MPSC Queues.</p>
+<p>4. The Chase-Lev Work-Stealing Deque algorithm.</p>
+<p>5. Windows I/O Completion Ports (IOCP) kernel event queues.</p>
+<p>Proceed to <a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a> to explore Fenwick Trees, Segment Trees, DSU, SkipLists, Treaps, and Wavelet Trees.</p>
+    
+    <nav class="chapter-nav">
+      <div><a href="chapter-08.html">&larr; Chapter 08: Concurrency, Async, Fibers & Parallelism</a></div>
+      <div><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+

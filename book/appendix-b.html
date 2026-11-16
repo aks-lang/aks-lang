@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Appendix B: VM Instruction Set (ISA) Reference | The AKS Programming Language Book</title>
+  <meta name="description" content="Technical documentation and complete textbook chapter for Appendix B: VM Instruction Set (ISA) Reference in the AKS programming language.">
+  <meta name="keywords" content="aks programming language, aks language, aks-lang, systems programming language, fastest programming language, anoop kumar sharma, jit compiler, borrow checker, simd, avx2, llvm">
+  <meta name="author" content="Anoop Kumar Sharma">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://anoop-kumar-sharma.github.io/aks-lang/book/appendix-b.html">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/appendix-b.html">
+  <meta property="og:title" content="Appendix B: VM Instruction Set (ISA) Reference | The AKS Programming Language Book">
+  <meta property="og:description" content="Technical documentation and complete textbook chapter for Appendix B: VM Instruction Set (ISA) Reference in the AKS programming language.">
+  <meta property="og:site_name" content="AKS Programming Language">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://anoop-kumar-sharma.github.io/aks-lang/book/appendix-b.html">
+  <meta property="twitter:title" content="Appendix B: VM Instruction Set (ISA) Reference | The AKS Programming Language Book">
+  <meta property="twitter:description" content="Technical documentation and complete textbook chapter for Appendix B: VM Instruction Set (ISA) Reference in the AKS programming language.">
+
+  <!-- Structured Data / JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AKS Programming Language",
+    "alternateName": ["AKS", "AKS Language", "aks-lang"],
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Technical documentation and complete textbook chapter for Appendix B: VM Instruction Set (ISA) Reference in the AKS programming language.",
+    "url": "https://anoop-kumar-sharma.github.io/aks-lang",
+    "author": {
+      "@type": "Person",
+      "name": "Anoop Kumar Sharma"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</head>
+
+<body>
+<header class="site-header">
+  <div class="nav-container">
+    <a href="../index.html" class="brand-link">
+      <span class="brand-badge">AKS</span>
+      <span class="brand-name">Language</span>
+      <span class="brand-ver">v1.2.5</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html" class="nav-link">Home</a>
+      <a href="../benchmarks/index.html" class="nav-link">Benchmarks</a>
+      <a href="../book/index.html" class="nav-link">Textbook</a>
+      <a href="../install/index.html" class="nav-link">Install</a>
+      <a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener" class="nav-link github-btn">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+
+<div class="book-layout">
+  <aside class="book-sidebar">
+    <div class="sidebar-title">The AKS Textbook</div>
+    <ul class="sidebar-nav">
+      <li><a href="chapter-01.html">Chapter 01: Introduction & Systems Architecture</a></li>
+<li><a href="chapter-02.html">Chapter 02: Language Basics & Lexical Structure</a></li>
+<li><a href="chapter-03.html">Chapter 03: Control Flow, Loops & Pattern Matching</a></li>
+<li><a href="chapter-04.html">Chapter 04: Functions, Closures & Error Handling</a></li>
+<li><a href="chapter-05.html">Chapter 05: Collections, Structs & Object Architecture</a></li>
+<li><a href="chapter-06.html">Chapter 06: Type System & Static Mode</a></li>
+<li><a href="chapter-07.html">Chapter 07: Memory Model, Ownership & Borrow Checker</a></li>
+<li><a href="chapter-08.html">Chapter 08: Concurrency, Async, Fibers & Parallelism</a></li>
+<li><a href="chapter-09.html">Chapter 09: Lock-Free Concurrency & Memory Reclamation</a></li>
+<li><a href="chapter-10.html">Chapter 10: Advanced Pure Data Structures</a></li>
+<li><a href="chapter-11.html">Chapter 11: Mathematics, Numerics & Scientific Computing</a></li>
+<li><a href="chapter-12.html">Chapter 12: Parsing, Serialization & Config Engines</a></li>
+<li><a href="chapter-13.html">Chapter 13: Cryptography & Security Engine</a></li>
+<li><a href="chapter-14.html">Chapter 14: SIMD Hardware Acceleration & HPC</a></li>
+<li><a href="chapter-15.html">Chapter 15: Networking, Sockets & Web Protocols</a></li>
+<li><a href="chapter-16.html">Chapter 16: Windows OS Kernel & Systems Integration</a></li>
+<li><a href="chapter-17.html">Chapter 17: Media, Graphics & Audio Subsystems</a></li>
+<li><a href="chapter-18.html">Chapter 18: Foreign Function Interface & Native Interop</a></li>
+<li><a href="chapter-19.html">Chapter 19: Developer Tooling, Ecosystem & Internals</a></li>
+<li><a href="chapter-20.html">Chapter 20: Practical Cookbook & Real-World Projects</a></li>
+<li><a href="appendix-a.html">Appendix A: Complete Standard Library API Reference</a></li>
+<li><a href="appendix-b.html" class="active">Appendix B: VM Instruction Set (ISA) Reference</a></li>
+<li><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference</a></li>
+    </ul>
+  </aside>
+
+  <main class="book-content">
+    <h1 class="doc-h1">Appendix B: Virtual Machine Instruction Set &amp; Opcode Reference</h1>
+<p>This appendix details the complete Bytecode Instruction Set Architecture (ISA) implemented by the AKS stack/register-hybrid virtual machine (<code>src/vm.c</code>) and generated by the bytecode compiler (<code>src/compiler.c</code>), defined in <a href="file:///c:/Users/winsiderss/Downloads/aks-lang/include/opcode.h"><code>include/opcode.h</code></a>.</p>
+<div class="section-divider"></div>
+<h2 class="doc-h2">B.1 Virtual Machine Execution Model &amp; Subsystems</h2>
+<p>The AKS Virtual Machine operates on a contiguous evaluation stack of 16-byte <code>AKSValue</code> NaN-tagged union structures, optimized with specialized fast paths and dynamic native JIT compilation.</p>
+<ul class="doc-list">
+<li><strong>Stack Pointer (<code>stacktop</code>)</strong>: Points to the slot immediately above the top active value on the stack.</li>
+<li><strong>Instruction Pointer (<code>ip</code>)</strong>: Points to the next bytecode byte in the compiled chunk&#x27;s bytecode stream.</li>
+<li><strong>Call Frame (<code>CallFrame</code>)</strong>: Encapsulates the active closure pointer, instruction pointer, and base local slot window for the currently executing function.</li>
+</ul>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">[Bytecode Instruction Encoding Format]
++---------------+-----------------------------+
+| Opcode (1B)   | Operands (0, 1, 2, 4 or 8B) |
++---------------+-----------------------------+</code></pre></div>
+<h3 class="doc-h3">B.1.1 Modular Subsystem Architecture</h3>
+<p>The execution engine is organized into dedicated, cohesive subsystems:</p>
+<ul class="doc-list">
+<li><strong><code>src/vm.c</code></strong>: Core VM state lifecycle, value stack management, call-frame mechanics, and primary opcode dispatch loop.</li>
+<li><strong><code>src/vm_tasks.inc.c</code></strong>: Fiber scheduling, work-stealing deque, lock-free channels, mutexes, condition variables, semaphores, and task arenas.</li>
+<li><strong><code>src/vm_stdlib.inc.c</code></strong>: Full standard library native execution dispatcher (<code>ExecuteStdlib</code>), SIMD vector operations, cryptographic algorithms, math routines, and OS interop.</li>
+<li><strong><code>src/vm_jit.inc.c</code></strong>: Tracing JIT hot-loop backedge tracking (50 backedge threshold), loop trace synthesis, function call-site tiering, and in-memory native x64 execution.</li>
+</ul>
+<h3 class="doc-h3">B.1.2 Dispatch Loop Optimizations &amp; In-Place Fast Paths</h3>
+<ul class="doc-list">
+<li><strong>In-Place Increment/Decrement</strong>: <code>OPINC</code> and <code>OPDEC</code> evaluate local slot integers directly in-place, eliminating the overhead of popping from the stack, re-tagging, and re-pushing.</li>
+<li><strong>Specialized Arithmetic</strong>: Fast integer/float bypasses skip general dynamic type resolution for numeric registers.</li>
+<li><strong>Hot-Loop Tracing JIT</strong>: Loops that iterate over 50 times in both the stack VM (<code>OPJMPBACK</code> / backward <code>OPJUMP</code>) and register VM (<code>do_regopjmp</code>) are compiled on-the-fly into native x64 machine code (<code>VirtualAlloc</code> with <code>PAGE_EXECUTE_READWRITE</code>), executing directly on the CPU with condition bailout back to the interpreter.</li>
+<li><strong>Function Call-Site Tiering</strong>: Frequently invoked function call sites in both stack VM (<code>OPCALL</code>, <code>OPCALLDYNAMIC</code>) and register VM (<code>do_regopcall</code>, <code>do_regopcalldynamic</code>) automatically tier up to native x64 machine code, with caller frame restore (<code>task-&gt;framecount--</code>) and return stacktop synchronization upon native exit.</li>
+</ul>
+<div class="section-divider"></div>
+<h2 class="doc-h2">B.2 Complete Opcode Catalog (74 Instructions)</h2>
+<h3 class="doc-h3">1. Literals, Immediates &amp; Stack Operations</h3>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Opcode</th><th>Hex</th><th>Operands</th><th>Stack Transition</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>OPHALT</code></td><td><code>0x00</code></td><td>None</td><td><code>[] -&gt; []</code></td><td>Terminates VM execution cleanly.</td></tr>
+<tr><td><code>OPPUSHINT</code></td><td><code>0x01</code></td><td><code>val: i64</code></td><td><code>[] -&gt; [int]</code></td><td>Pushes 64-bit signed integer immediate onto evaluation stack.</td></tr>
+<tr><td><code>OPPUSHFLOAT</code></td><td><code>0x02</code></td><td><code>val: f64</code></td><td><code>[] -&gt; [float]</code></td><td>Pushes 64-bit IEEE 754 floating-point immediate onto stack.</td></tr>
+<tr><td><code>OPPUSHSTR</code></td><td><code>0x03</code></td><td><code>idx: u16</code></td><td><code>[] -&gt; [str]</code></td><td>Loads string constant from chunk pool at 16-bit index <code>idx</code>.</td></tr>
+<tr><td><code>OPPUSHBOOL</code></td><td><code>0x04</code></td><td><code>val: u8</code></td><td><code>[] -&gt; [bool]</code></td><td>Pushes boolean immediate (<code>0</code> = false, <code>1</code> = true) onto stack.</td></tr>
+<tr><td><code>OPPUSHNULL</code></td><td><code>0x05</code></td><td>None</td><td><code>[] -&gt; [null]</code></td><td>Pushes <code>VALNULL</code> onto evaluation stack.</td></tr>
+<tr><td><code>OPDUP</code></td><td><code>0x0A</code></td><td>None</td><td><code>[v] -&gt; [v, v]</code></td><td>Duplicates top value on evaluation stack.</td></tr>
+<tr><td><code>OPPOP</code></td><td><code>0x0B</code></td><td>None</td><td><code>[v] -&gt; []</code></td><td>Pops and releases top value from evaluation stack.</td></tr>
+<tr><td><code>OPPUSHFN</code></td><td><code>0x2A</code></td><td><code>fn_id: u16</code></td><td><code>[] -&gt; [fn]</code></td><td>Pushes function pointer with function index <code>fn_id</code> onto stack.</td></tr>
+<tr><td><code>OPPUSHREF</code></td><td><code>0x42</code></td><td><code>slot: u16</code></td><td><code>[] -&gt; [&amp;slot]</code></td><td>Pushes tracked reference to stack local slot <code>slot</code>.</td></tr>
+<tr><td><code>OPDEREF</code></td><td><code>0x43</code></td><td>None</td><td><code>[ref] -&gt; [val]</code></td><td>Dereferences tracked reference pointer, pushing target value.</td></tr>
+<tr><td><code>OPINVALIDATE</code></td><td><code>0x44</code></td><td><code>slot: u16</code></td><td><code>[] -&gt; []</code></td><td>Marks local variable slot <code>slot</code> as moved/invalidated.</td></tr>
+</tbody>
+</table></div>
+<h3 class="doc-h3">2. Variable &amp; Scope Management</h3>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Opcode</th><th>Hex</th><th>Operands</th><th>Stack Transition</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>OPLOAD</code></td><td><code>0x06</code></td><td><code>slot: u16</code></td><td><code>[] -&gt; [val]</code></td><td>Loads local variable from active stack slot <code>slot</code> and pushes copy.</td></tr>
+<tr><td><code>OPLOADGLOBAL</code></td><td><code>0x07</code></td><td><code>gsid: u16</code></td><td><code>[] -&gt; [val]</code></td><td>Reads global variable with string pool identifier <code>gsid</code>.</td></tr>
+<tr><td><code>OPSTORE</code></td><td><code>0x08</code></td><td><code>slot: u16</code></td><td><code>[val] -&gt; []</code></td><td>Pops top value and stores into local slot <code>slot</code>.</td></tr>
+<tr><td><code>OPSTOREGLOBAL</code></td><td><code>0x09</code></td><td><code>gsid: u16</code></td><td><code>[val] -&gt; []</code></td><td>Pops top value and stores into global variable slot <code>gsid</code>.</td></tr>
+</tbody>
+</table></div>
+<h3 class="doc-h3">3. Console I/O &amp; Interactive REPL</h3>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Opcode</th><th>Hex</th><th>Operands</th><th>Stack Transition</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>OPPRINTLN</code></td><td><code>0x0C</code></td><td>None</td><td><code>[val] -&gt; []</code></td><td>Prints top value to standard output followed by newline.</td></tr>
+<tr><td><code>OPINPUTSTR</code></td><td><code>0x0D</code></td><td>None</td><td><code>[] -&gt; [str]</code></td><td>Reads line of text from standard input, pushing string.</td></tr>
+<tr><td><code>OPPRINTREPL</code></td><td><code>0x33</code></td><td>None</td><td><code>[val] -&gt; []</code></td><td>Formats and prints expression value in interactive REPL session.</td></tr>
+</tbody>
+</table></div>
+<h3 class="doc-h3">4. Arithmetic, Unary &amp; Bitwise Operations</h3>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Opcode</th><th>Hex</th><th>Operands</th><th>Stack Transition</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>OPADD</code></td><td><code>0x0E</code></td><td>None</td><td><code>[a, b] -&gt; [a + b]</code></td><td>Computes $a + b$ or string concatenation.</td></tr>
+<tr><td><code>OPSUB</code></td><td><code>0x0F</code></td><td>None</td><td><code>[a, b] -&gt; [a - b]</code></td><td>Subtracts $b$ from $a$.</td></tr>
+<tr><td><code>OPMUL</code></td><td><code>0x10</code></td><td>None</td><td><code>[a, b] -&gt; [a * b]</code></td><td>Multiplies $a$ by $b$.</td></tr>
+<tr><td><code>OPDIV</code></td><td><code>0x11</code></td><td>None</td><td><code>[a, b] -&gt; [a / b]</code></td><td>Floating-point or integer division.</td></tr>
+<tr><td><code>OPMOD</code></td><td><code>0x12</code></td><td>None</td><td><code>[a, b] -&gt; [a % b]</code></td><td>Computes integer remainder.</td></tr>
+<tr><td><code>OPNEG</code></td><td><code>0x1C</code></td><td>None</td><td><code>[a] -&gt; [-a]</code></td><td>Unary arithmetic negation.</td></tr>
+<tr><td><code>OPINC</code></td><td><code>0x28</code></td><td>None</td><td><code>[a] -&gt; [a + 1]</code></td><td>In-place increment optimization.</td></tr>
+<tr><td><code>OPDEC</code></td><td><code>0x29</code></td><td>None</td><td><code>[a] -&gt; [a - 1]</code></td><td>In-place decrement optimization.</td></tr>
+<tr><td><code>OPSHL</code></td><td><code>0x36</code></td><td>None</td><td><code>[a, b] -&gt; [a &lt;&lt; b]</code></td><td>Bitwise binary shift left.</td></tr>
+<tr><td><code>OPSHR</code></td><td><code>0x37</code></td><td>None</td><td><code>[a, b] -&gt; [a &gt;&gt; b]</code></td><td>Bitwise arithmetic shift right.</td></tr>
+<tr><td><code>OPBITAND</code></td><td><code>0x38</code></td><td>None</td><td><code>[a, b] -&gt; [a &amp; b]</code></td><td>Bitwise binary AND.</td></tr>
+<tr><td><code>OPBITOR</code></td><td><code>0x39</code></td><td>None</td><td>`[a, b] -&gt; [a \</td><td>b]`</td><td>Bitwise binary OR.</td></tr>
+<tr><td><code>OPBITXOR</code></td><td><code>0x3A</code></td><td>None</td><td><code>[a, b] -&gt; [a ^ b]</code></td><td>Bitwise binary XOR.</td></tr>
+<tr><td><code>OPBITNOT</code></td><td><code>0x3B</code></td><td>None</td><td><code>[a] -&gt; [~a]</code></td><td>Bitwise unary NOT (one&#x27;s complement).</td></tr>
+</tbody>
+</table></div>
+<h3 class="doc-h3">5. Comparisons &amp; Relational Operations</h3>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Opcode</th><th>Hex</th><th>Operands</th><th>Stack Transition</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>OPEQ</code></td><td><code>0x13</code></td><td>None</td><td><code>[a, b] -&gt; [bool]</code></td><td>Tests structural and value equality ($a == b$).</td></tr>
+<tr><td><code>OPNEQ</code></td><td><code>0x14</code></td><td>None</td><td><code>[a, b] -&gt; [bool]</code></td><td>Tests inequality ($a != b$).</td></tr>
+<tr><td><code>OPLT</code></td><td><code>0x15</code></td><td>None</td><td><code>[a, b] -&gt; [bool]</code></td><td>Tests less-than ($a &lt; b$).</td></tr>
+<tr><td><code>OPGT</code></td><td><code>0x16</code></td><td>None</td><td><code>[a, b] -&gt; [bool]</code></td><td>Tests greater-than ($a &gt; b$).</td></tr>
+<tr><td><code>OPLTE</code></td><td><code>0x17</code></td><td>None</td><td><code>[a, b] -&gt; [bool]</code></td><td>Tests less-than-or-equal ($a \le b$).</td></tr>
+<tr><td><code>OPGTE</code></td><td><code>0x18</code></td><td>None</td><td><code>[a, b] -&gt; [bool]</code></td><td>Tests greater-than-or-equal ($a \ge b$).</td></tr>
+<tr><td><code>OPAND</code></td><td><code>0x19</code></td><td>None</td><td><code>[a, b] -&gt; [bool]</code></td><td>Logical boolean AND.</td></tr>
+<tr><td><code>OPOR</code></td><td><code>0x1A</code></td><td>None</td><td><code>[a, b] -&gt; [bool]</code></td><td>Logical boolean OR.</td></tr>
+<tr><td><code>OPNOT</code></td><td><code>0x1B</code></td><td>None</td><td><code>[a] -&gt; [bool]</code></td><td>Logical boolean inversion ($!a$).</td></tr>
+<tr><td><code>OPCOALESCE</code></td><td><code>0x2F</code></td><td><code>offset: i32</code></td><td><code>[a] -&gt; [a]</code></td><td>Null-coalescing jump: skips default expression if non-null.</td></tr>
+<tr><td><code>OPRANGE</code></td><td><code>0x30</code></td><td>None</td><td><code>[start, end] -&gt; [range]</code></td><td>Allocates range literal object <code>start..end</code>.</td></tr>
+</tbody>
+</table></div>
+<h3 class="doc-h3">6. Control Flow &amp; Branching</h3>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Opcode</th><th>Hex</th><th>Operands</th><th>Stack Transition</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>OPJUMP</code></td><td><code>0x1D</code></td><td><code>offset: i32</code></td><td><code>[] -&gt; []</code></td><td>Unconditional relative jump (<code>ip += offset</code>).</td></tr>
+<tr><td><code>OPJUMPIFFALSE</code></td><td><code>0x1E</code></td><td><code>offset: i32</code></td><td><code>[cond] -&gt; []</code></td><td>Pops condition; if falsy, performs relative jump.</td></tr>
+<tr><td><code>OPJUMPIFNULL</code></td><td><code>0x31</code></td><td><code>offset: i32</code></td><td><code>[val] -&gt; [val]</code></td><td>Checks top value; if null, performs relative jump.</td></tr>
+</tbody>
+</table></div>
+<h3 class="doc-h3">7. Functions, Calls &amp; Concurrency</h3>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Opcode</th><th>Hex</th><th>Operands</th><th>Stack Transition</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>OPCALL</code></td><td><code>0x1F</code></td><td><code>fn_id: u16, argc: u8</code></td><td><code>[arg1..N] -&gt; [res]</code></td><td>Calls resolved function <code>fn_id</code> with <code>argc</code> arguments. Features JIT call-site auto-tiering.</td></tr>
+<tr><td><code>OPRETURN</code></td><td><code>0x20</code></td><td>None</td><td><code>[] -&gt; []</code></td><td>Returns <code>null</code> from current function frame.</td></tr>
+<tr><td><code>OPRETURNVAL</code></td><td><code>0x21</code></td><td>None</td><td><code>[ret_val] -&gt; [ret_val]</code></td><td>Returns top value from current function frame.</td></tr>
+<tr><td><code>OPCALLDYNAMIC</code></td><td><code>0x2B</code></td><td><code>argc: u8</code></td><td><code>[callee, arg1..N] -&gt; [res]</code></td><td>Calls first-class function pointer or closure dynamically. Features JIT call-site auto-tiering.</td></tr>
+<tr><td><code>OPTAILCALL</code></td><td><code>0x32</code></td><td><code>fn_id: u16, argc: u8</code></td><td><code>[arg1..N] -&gt; [...]</code></td><td>Performs proper tail call elimination reusing active frame.</td></tr>
+<tr><td><code>OPSPAWN</code></td><td><code>0x34</code></td><td><code>fn_id: u16, argc: u8</code></td><td><code>[arg1..N] -&gt; [task]</code></td><td>Spawns function onto work-stealing fiber scheduler pool.</td></tr>
+<tr><td><code>OPAWAIT</code></td><td><code>0x35</code></td><td>None</td><td><code>[task] -&gt; [result]</code></td><td>Cooperatively yields execution until task completes.</td></tr>
+<tr><td><code>OPAPPLY</code></td><td><code>0x3C</code></td><td><code>argc: u8</code></td><td><code>[fn, arr] -&gt; [res]</code></td><td>Unpacks array elements as arguments and invokes function.</td></tr>
+<tr><td><code>OPRESTARGS</code></td><td><code>0x3D</code></td><td><code>fixed_cnt: u8</code></td><td><code>[...] -&gt; [...]</code></td><td>Packs variadic trailing arguments into an array.</td></tr>
+</tbody>
+</table></div>
+<h3 class="doc-h3">8. Composite Structures (Arrays, Tuples, Structs)</h3>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Opcode</th><th>Hex</th><th>Operands</th><th>Stack Transition</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>OPNEWARR</code></td><td><code>0x22</code></td><td><code>count: u16</code></td><td><code>[e1..eN] -&gt; [array]</code></td><td>Allocates <code>AKSArray</code> initialized with top <code>count</code> items.</td></tr>
+<tr><td><code>OPARRGET</code></td><td><code>0x23</code></td><td>None</td><td><code>[arr, idx] -&gt; [val]</code></td><td>Reads element by integer index from array.</td></tr>
+<tr><td><code>OPARRSET</code></td><td><code>0x24</code></td><td>None</td><td><code>[arr, idx, val] -&gt; []</code></td><td>Mutates array element at specified index.</td></tr>
+<tr><td><code>OPNEWSTRUCT</code></td><td><code>0x25</code></td><td><code>name_sid: u16</code></td><td><code>[] -&gt; [struct]</code></td><td>Allocates empty <code>AKSStruct</code> with type name from string pool.</td></tr>
+<tr><td><code>OPGETFIELD</code></td><td><code>0x26</code></td><td><code>field_sid: u16</code></td><td><code>[struct] -&gt; [val]</code></td><td>Looks up struct field value by field name string id.</td></tr>
+<tr><td><code>OPSETFIELD</code></td><td><code>0x27</code></td><td><code>field_sid: u16</code></td><td><code>[struct, val] -&gt; []</code></td><td>Sets struct field value by field name string id.</td></tr>
+<tr><td><code>OPNEWTUPLE</code></td><td><code>0x40</code></td><td><code>count: u16</code></td><td><code>[e1..eN] -&gt; [tuple]</code></td><td>Allocates immutable fixed-size tuple.</td></tr>
+<tr><td><code>OPCLONESTRUCT</code></td><td><code>0x41</code></td><td>None</td><td><code>[struct] -&gt; [copy]</code></td><td>Performs fast deep copy of struct instance.</td></tr>
+</tbody>
+</table></div>
+<h3 class="doc-h3">9. Exceptions, Dynamic Typing, Conversions &amp; Native Stubs</h3>
+<div class="table-responsive"><table class="data-table">
+<thead><tr><th>Opcode</th><th>Hex</th><th>Operands</th><th>Stack Transition</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>OPTRYPUSH</code></td><td><code>0x2C</code></td><td><code>offset: i32</code></td><td><code>[] -&gt; []</code></td><td>Pushes exception handler catch target offset.</td></tr>
+<tr><td><code>OPTRYPOP</code></td><td><code>0x2D</code></td><td>None</td><td><code>[] -&gt; []</code></td><td>Unregisters current innermost exception handler.</td></tr>
+<tr><td><code>OPTHROW</code></td><td><code>0x2E</code></td><td>None</td><td><code>[err] -&gt; []</code></td><td>Raises exception and unwinds VM stack to handler.</td></tr>
+<tr><td><code>OPTYPEOF</code></td><td><code>0x3E</code></td><td>None</td><td><code>[val] -&gt; [str]</code></td><td>Returns runtime type name string for value.</td></tr>
+<tr><td><code>OPSELECT</code></td><td><code>0x3F</code></td><td><code>chan_cnt: u8</code></td><td><code>[chans..] -&gt; [idx, msg]</code></td><td>Non-blocking multi-channel event multiplexing.</td></tr>
+<tr><td><code>OPCASTINT</code></td><td><code>0x45</code></td><td>None</td><td><code>[val] -&gt; [int]</code></td><td>Coerces top value to 64-bit integer.</td></tr>
+<tr><td><code>OPCASTFLOAT</code></td><td><code>0x46</code></td><td>None</td><td><code>[val] -&gt; [float]</code></td><td>Coerces top value to 64-bit float.</td></tr>
+<tr><td><code>OPCASTBOOL</code></td><td><code>0x47</code></td><td>None</td><td><code>[val] -&gt; [bool]</code></td><td>Coerces top value to boolean.</td></tr>
+<tr><td><code>OPCASTSTR</code></td><td><code>0x48</code></td><td>None</td><td><code>[val] -&gt; [str]</code></td><td>Coerces top value to string.</td></tr>
+<tr><td><code>OPASM</code></td><td><code>0x49</code></td><td><code>idx: u16</code></td><td><code>[...] -&gt; [...]</code></td><td>Executes raw inline native assembler stub.</td></tr>
+</tbody>
+</table></div>
+<div class="section-divider"></div>
+<h2 class="doc-h2">B.3 Disassembling Bytecode</h2>
+<p>You can inspect the generated bytecode for any AKS function using the interactive REPL&#x27;s <code>.disasm</code> command:</p>
+<div class="code-wrapper"><div class="code-header"><span class="code-lang">text</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div><pre><code class="language-text">&gt;&gt;&gt; fn add_values(x, y) { return x + y; }
+&gt;&gt;&gt; .disasm add_values
+Bytecode Chunk: add_values
+0000    OPLOAD              0
+0003    OPLOAD              1
+0006    OPADD
+0007    OPRETURNVAL</code></pre></div>
+    
+    <nav class="chapter-nav">
+      <div><a href="appendix-a.html">&larr; Appendix A: Complete Standard Library API Reference</a></div>
+      <div><a href="appendix-c.html">Appendix C: Compiler Flags & CLI Diagnostics Reference &rarr;</a></div>
+    </nav>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-container">
+    <div class="footer-col">
+      <div class="footer-brand">
+        <span class="brand-badge">AKS</span>
+        <span class="brand-name">Language</span>
+      </div>
+      <p class="footer-desc">High-performance systems & application language engineered from first principles for extreme throughput, deterministic safety, and AVX2 SIMD acceleration.</p>
+      <p class="footer-copy">Copyright &copy; 2026 Anoop Kumar Sharma. All rights reserved.</p>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Documentation</h4>
+      <ul class="footer-list">
+        <li><a href="../book/index.html">The AKS Book</a></li>
+        <li><a href="../book/chapter-01.html">Introduction</a></li>
+        <li><a href="../book/chapter-07.html">Memory Model & Borrow Checker</a></li>
+        <li><a href="../book/chapter-14.html">SIMD Acceleration</a></li>
+        <li><a href="../book/appendix-a.html">Standard Library API</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Performance</h4>
+      <ul class="footer-list">
+        <li><a href="../benchmarks/index.html">Empirical Benchmarks</a></li>
+        <li><a href="../benchmarks/index.html#mandelbrot">AVX2 Mandelbrot</a></li>
+        <li><a href="../benchmarks/index.html#sorting">Register Array Sort</a></li>
+        <li><a href="../benchmarks/index.html#fib">Tail Recursion Fib</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4 class="footer-heading">Community & Code</h4>
+      <ul class="footer-list">
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang" target="_blank" rel="noopener">GitHub Repository</a></li>
+        <li><a href="https://github.com/Anoop-Kumar-Sharma/aks-lang/releases" target="_blank" rel="noopener">Latest Releases (v1.2.5)</a></li>
+        <li><a href="../install/index.html">Installation Guide</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+<script src="../assets/app.js"></script>
+</body>
+</html>
+
