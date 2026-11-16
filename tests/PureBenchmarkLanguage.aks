@@ -1,0 +1,127 @@
+fn PureArithmeticLoop(n) {
+    let mut sum = 0;
+    let mut i = 0;
+    while (i < n) {
+        sum = sum + i;
+        i = i + 1;
+    }
+    return sum;
+}
+
+fn PurePiCalculation(n) {
+    let step = 1.0 / n;
+    let mut sum = 0.0;
+    let mut i = 0;
+    while (i < n) {
+        let x = (i + 0.5) * step;
+        sum = sum + 4.0 / (1.0 + x * x);
+        i = i + 1;
+    }
+    return sum * step;
+}
+
+fn PureMandelbrot(width, height, max_iters) {
+    let dx = 2.5 / width;
+    let dy = 2.5 / height;
+    let mut count = 0;
+    let mut y = 0;
+    while (y < height) {
+        let ci = -1.25 + y * dy;
+        let mut x = 0;
+        while (x < width) {
+            let cr = -2.0 + x * dx;
+            let mut zr = 0.0;
+            let mut zi = 0.0;
+            let mut it = 0;
+            while (it < max_iters) {
+                let zr2 = zr * zr;
+                let zi2 = zi * zi;
+                if (zr2 + zi2 > 4.0) {
+                    it = max_iters + 1;
+                } else {
+                    zi = 2.0 * zr * zi + ci;
+                    zr = zr2 - zi2 + cr;
+                    it = it + 1;
+                }
+            }
+            if (it == max_iters) {
+                count = count + 1;
+            }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return count;
+}
+
+fn PureFib(n) {
+    if (n <= 1) {
+        return n;
+    }
+    return PureFib(n - 1) + PureFib(n - 2);
+}
+
+fn PureBubbleSort(arr, n) {
+    let mut i = 0;
+    while (i < n - 1) {
+        let mut j = 0;
+        while (j < n - i - 1) {
+            if (arr[j] > arr[j + 1]) {
+                let t = arr[j];
+                arr[j] = arr[j + 1];
+                arr[j + 1] = t;
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+}
+
+fn RunBenchmark() {
+    println("Starting Pure Language Code Measurements");
+    println("");
+
+    // 1. Arithmetic Loop
+    let t0 = TimerNowNanos();
+    let sum = PureArithmeticLoop(10000000);
+    let t1 = TimerNowNanos();
+    let ms_loop = (t1 - t0) / 1000000.0;
+    println("Language Arithmetic Loop (10M): " + ms_loop + " ms (sum: " + sum + ")");
+
+    // 2. Pi Numerical Integration
+    let t2 = TimerNowNanos();
+    let pi = PurePiCalculation(10000000);
+    let t3 = TimerNowNanos();
+    let ms_pi = (t3 - t2) / 1000000.0;
+    println("Language Pi Numerical Integration (10M): " + ms_pi + " ms (pi: " + pi + ")");
+
+    // 3. Mandelbrot Set
+    let t4 = TimerNowNanos();
+    let mandel = PureMandelbrot(100, 100, 50);
+    let t5 = TimerNowNanos();
+    let ms_mandel = (t5 - t4) / 1000000.0;
+    println("Language Mandelbrot (100x100): " + ms_mandel + " ms (chk: " + mandel + ")");
+
+    // 4. Recursive Fibonacci
+    let t6 = TimerNowNanos();
+    let fib = PureFib(30);
+    let t7 = TimerNowNanos();
+    let ms_fib = (t7 - t6) / 1000000.0;
+    println("Language Recursive Fib(30): " + ms_fib + " ms (fib: " + fib + ")");
+
+    // 5. Array Sort
+    let sort_size = 5000;
+    let mut arr = [];
+    let mut si = 0;
+    while (si < sort_size) {
+        append(arr, sort_size - si);
+        si = si + 1;
+    }
+    let t8 = TimerNowNanos();
+    PureBubbleSort(arr, sort_size);
+    let t9 = TimerNowNanos();
+    let ms_sort = (t9 - t8) / 1000000.0;
+    println("Language Array Sort (5,000 elements): " + ms_sort + " ms (first: " + arr[0] + ", last: " + arr[sort_size - 1] + ")");
+}
+
+RunBenchmark();
