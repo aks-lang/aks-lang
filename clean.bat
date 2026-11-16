@@ -40,11 +40,22 @@ del /f /q *.svg 2>nul
 del /f /q tests\*.svg 2>nul
 rd /s /q templibrarydir 2>nul
 rd /s /q LibraryTestDir 2>nul
+rd /s /q .aks_cache 2>nul
+rd /s /q .akscache 2>nul
+rd /s /q obj 2>nul
 
-:: 3. Remove compiled test executables in tests/ directory
+:: 3. Remove compiled test executables in tests/ directory and test leftovers
 del /f /q tests\*.exe 2>nul
 del /f /q tests\*.exp 2>nul
 del /f /q tests\*.lib 2>nul
+del /f /q tests\*.dll 2>nul
+del /f /q tests\TestProtocols 2>nul
+del /f /q test_loop.exe 2>nul
+del /f /q NativeBenchmarkProof.exe 2>nul
+del /f /q aks-installer*.exe 2>nul
+del /f /q aks-linux-x64 2>nul
+del /f /q libaks.so 2>nul
+del /f /q aks aksls aksfmt akslint 2>nul
 
 :: 4. Remove residual build files (pdb, ilk, exp)
 del /f /q *.ilk 2>nul
