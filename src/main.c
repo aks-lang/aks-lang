@@ -2418,6 +2418,26 @@ static int ExecuteRunBinary(const char *binarypath) {
     return vmresult ? 0 : 1;
 }
 
+static const char *FindVcvarsall(void) {
+    static const char *paths[] = {
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\VC\\Auxiliary\\Build\\vcvarsall.bat",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat",
+        "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat",
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat",
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional\\VC\\Auxiliary\\Build\\vcvarsall.bat",
+        NULL
+    };
+    for (int i = 0; paths[i]; i++) {
+        FILE *ft = fopen(paths[i], "r");
+        if (ft) {
+            fclose(ft);
+            return paths[i];
+        }
+    }
+    return NULL;
+}
+
 static int ExecuteCompileAot(const char *sourcepath, const char *outputpath) {
     char *rawsource = ReadFileToStr(sourcepath);
     if (!rawsource) {
@@ -2544,7 +2564,7 @@ static int ExecuteCompileAot(const char *sourcepath, const char *outputpath) {
             snprintf(targetflags, sizeof(targetflags), "-target %s", resolved);
         }
 
-        char optflag[32] = "-O3";
+        char optflag[64] = "-O3 -march=native -ffast-math -DNDEBUG";
         char dbgflag[64] = "";
         char sanflag[64] = "";
         extern const char *gBuildProfile;
@@ -2572,19 +2592,18 @@ static int ExecuteCompileAot(const char *sourcepath, const char *outputpath) {
             res = system(buildcmd);
         }
         if (res != 0) {
-            char cl_opt[32] = "/O2";
+            char cl_opt[64] = "/O2 /Oi /Ot /fp:fast /arch:AVX2 /DNDEBUG /GS- /Gy";
             char cl_dbg[64] = "";
-            char cl_lto[32] = "";
+            char cl_lto[32] = "/GL";
             char cl_san[32] = "";
             if (strcmp(gBuildProfile, "debug") == 0) {
                 strcpy(cl_opt, "/Od");
                 strcpy(cl_dbg, "/Zi /DDEBUG");
+                strcpy(cl_lto, "");
             } else if (strcmp(gBuildProfile, "profiling") == 0) {
                 strcpy(cl_opt, "/O2");
                 strcpy(cl_dbg, "/Zi /DPROFILING");
-            }
-            if (gLto) {
-                strcpy(cl_lto, "/GL");
+                strcpy(cl_lto, "");
             }
             if (gSanitizeAddress) {
                 strcpy(cl_san, "/fsanitize=address");
@@ -2597,9 +2616,25 @@ static int ExecuteCompileAot(const char *sourcepath, const char *outputpath) {
             snprintf(win_src, sizeof(win_src), "%s", targetcpath);
             for (char *p = win_src; *p; p++) if (*p == '/') *p = '\\';
             
-            snprintf(buildcmd, sizeof(buildcmd), "cl %s %s %s %s %s /Fe:\"%s\" user32.lib gdi32.lib shell32.lib",
+            snprintf(buildcmd, sizeof(buildcmd), "cl %s %s %s %s %s /Fe:\"%s\" user32.lib gdi32.lib shell32.lib /link /OPT:REF /OPT:ICF >nul 2>nul",
                      cl_opt, cl_dbg, cl_san, cl_lto, win_src, win_out);
             res = system(buildcmd);
+
+            if (res != 0) {
+                const char *vcvars = FindVcvarsall();
+                if (vcvars) {
+                    FILE *bf = fopen("_aks_build.bat", "w");
+                    if (bf) {
+                        fprintf(bf, "@echo off\n");
+                        fprintf(bf, "call \"%s\" x64 >nul 2>nul\n", vcvars);
+                        fprintf(bf, "cl %s %s %s %s %s /Fe:\"%s\" user32.lib gdi32.lib shell32.lib /link /OPT:REF /OPT:ICF >nul 2>nul\n",
+                                cl_opt, cl_dbg, cl_san, cl_lto, win_src, win_out);
+                        fclose(bf);
+                        res = system("cmd.exe /c _aks_build.bat");
+                        remove("_aks_build.bat");
+                    }
+                }
+            }
             
             char clean_obj[256];
             snprintf(clean_obj, sizeof(clean_obj), "%s", win_src);
@@ -3016,10 +3051,11 @@ int main(int argc, char **argv) {
                 }
                 if (is_static) {
                     printf("[build] Compiling static standalone binary '%s' -> '%s'...\n", srcfile, outfile);
+                    return ExecuteCompileAot(srcfile, outfile);
                 } else {
                     printf("[build] Building '%s' -> '%s'...\n", srcfile, outfile);
+                    return CreateDirectExecutable(srcfile, outfile) ? 0 : 1;
                 }
-                return CreateDirectExecutable(srcfile, outfile) ? 0 : 1;
             } else {
                 extern int PkgBuild(int is_bundle);
                 return PkgBuild(is_static);
@@ -3218,12 +3254,32 @@ int main(int argc, char **argv) {
                 }
             }
             return CreateDirectExecutable(srcfile, outfile) ? 0 : 1;
-        } else if (strcmp(command, "compile-aot") == 0) {
-            if (argc < 4) {
+        } else if (strcmp(command, "compile-aot") == 0 || strcmp(command, "aot") == 0) {
+            const char *srcfile = NULL;
+            const char *outfile = NULL;
+            for (int i = 2; i < argc; i++) {
+                if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+                    outfile = argv[i+1];
+                    i++;
+                } else if (argv[i][0] != '-') {
+                    if (!srcfile) srcfile = argv[i];
+                    else if (!outfile) outfile = argv[i];
+                }
+            }
+            if (!srcfile) {
                 PrintUsage(argv[0]);
                 return 1;
             }
-            return ExecuteCompileAot(argv[2], argv[3]);
+            char default_out[256];
+            if (!outfile) {
+                snprintf(default_out, sizeof(default_out), "%s.exe", srcfile);
+                char *dot = strrchr(default_out, '.');
+                if (dot && dot != default_out && *(dot - 1) != '/' && *(dot - 1) != '\\') {
+                    strcpy(dot, ".exe");
+                }
+                outfile = default_out;
+            }
+            return ExecuteCompileAot(srcfile, outfile);
         } else if (strcmp(command, "wasm") == 0) {
             if (argc < 3) {
                 fprintf(stderr, "Usage: %s wasm <file.aks> [-o output.wat]\n", argv[0]);

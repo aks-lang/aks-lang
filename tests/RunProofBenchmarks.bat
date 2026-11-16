@@ -10,13 +10,20 @@ if %errorlevel% neq 0 (
     )
 )
 
-echo Building native compiled baseline...
+echo Building native compiled baselines...
 cl.exe /O2 /Oi /Ot /arch:AVX2 /fp:fast /DNDEBUG /W3 /Fe:tests\NativeBenchmarkProof.exe tests\NativeBenchmarkProof.c >nul
 if %errorlevel% neq 0 (
     echo Compilation of native benchmark failed.
     exit /b 1
 )
 
+cl.exe /O2 /Oi /Ot /arch:AVX2 /fp:fast /DNDEBUG /W3 /Fe:tests\NativePiProof.exe tests\NativePiProof.c >nul
+if %errorlevel% neq 0 (
+    echo Compilation of native Pi benchmark failed.
+    exit /b 1
+)
+
+echo.
 echo Running native compiled baseline...
 echo.
 tests\NativeBenchmarkProof.exe
@@ -26,6 +33,12 @@ echo.
 echo Running AKS runtime empirical proof...
 echo.
 aks.exe run --jit tests\TestSpeedProof.aks
+if %errorlevel% neq 0 exit /b 1
+
+echo.
+echo Running billion-value Pi benchmark...
+echo.
+aks.exe run tests\TestPiProof.aks
 if %errorlevel% neq 0 exit /b 1
 
 echo.

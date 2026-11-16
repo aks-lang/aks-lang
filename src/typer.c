@@ -1344,6 +1344,22 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             SType *rt = InferNode(ctx, env, n->binop.right);
             const char *op = n->binop.op;
             if (!op) { result = lt; break; }
+
+            /* Bidirectional type propagation for untyped identifiers */
+            if (lt && lt->kind == STYPE_UNKNOWN && rt && rt->kind != STYPE_UNKNOWN) {
+                if (n->binop.left && n->binop.left->type == NIDENT && n->binop.left->sval) {
+                    EnvSet(env, n->binop.left->sval, rt);
+                    n->binop.left->stype = rt;
+                    lt = rt;
+                }
+            } else if (rt && rt->kind == STYPE_UNKNOWN && lt && lt->kind != STYPE_UNKNOWN) {
+                if (n->binop.right && n->binop.right->type == NIDENT && n->binop.right->sval) {
+                    EnvSet(env, n->binop.right->sval, lt);
+                    n->binop.right->stype = lt;
+                    rt = lt;
+                }
+            }
+
             /* Comparison operators always return bool */
             if (strcmp(op, "==") == 0 || strcmp(op, "!=") == 0 ||
                 strcmp(op, "<") == 0  || strcmp(op, ">") == 0  ||
@@ -1369,6 +1385,26 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
                enabling strength reduction and identity elimination
                before any IR is emitted. */
             TyperConstFold(c, n);
+            break;
+        }
+
+        case NCHAINEDCMP: {
+            for (int i = 0; i < n->chainedcmp.count; i++) {
+                if (n->chainedcmp.exprs[i]) InferNode(ctx, env, n->chainedcmp.exprs[i]);
+            }
+            result = StypeInternGet(c, STYPE_BOOL, "bool");
+            break;
+        }
+
+        case NINC:
+        case NDEC: {
+            SType *sub_t = InferNode(ctx, env, n->incdec.expr);
+            if (sub_t && sub_t->kind == STYPE_UNKNOWN && n->incdec.expr && n->incdec.expr->type == NIDENT && n->incdec.expr->sval) {
+                sub_t = StypeInternGet(c, STYPE_INT, "int");
+                EnvSet(env, n->incdec.expr->sval, sub_t);
+                n->incdec.expr->stype = sub_t;
+            }
+            result = sub_t ? sub_t : StypeInternGet(c, STYPE_INT, "int");
             break;
         }
 
@@ -1747,7 +1783,7 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             /* Incremental signature cache verification */
             uint64_t body_hash = TyperComputeNodeHash(n->fn.body);
             FnSigEntry *cached = n->fn.name ? TyperLookupSig(n->fn.name) : NULL;
-            if (cached && cached->is_valid && cached->body_hash == body_hash && TyperIsSigValid(cached)) {
+            if (!c->is_static_mode && cached && cached->is_valid && cached->body_hash == body_hash && TyperIsSigValid(cached)) {
                 if (cached->ret_type) ret_t = cached->ret_type;
                 result = StypeMakeFn(c, cached->param_types, cached->param_count, ret_t);
                 n->stype = result;
@@ -1778,6 +1814,16 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             }
             if (ret_t->kind == STYPE_UNKNOWN && !ctx->has_value_return) {
                 ret_t = StypeInternGet(c, STYPE_VOID, "void");
+            }
+
+            for (int i = 0; i < n->fn.pc && i < 32; i++) {
+                const char *pname = (n->fn.pnames) ? n->fn.pnames[i] : NULL;
+                if (pname) {
+                    SType *inferred_pt = EnvGet(inner, pname);
+                    if (inferred_pt && inferred_pt->kind != STYPE_UNKNOWN) {
+                        param_stypes[i] = inferred_pt;
+                    }
+                }
             }
 
             /* Save signature to cache */
@@ -2131,6 +2177,15 @@ static void TyperOptimizeAST(Node *n) {
             if (n->forn.post) TyperOptimizeAST(n->forn.post);
             if (n->forn.body) TyperOptimizeAST(n->forn.body);
             break;
+        case NCHAINEDCMP:
+            for (int i = 0; i < n->chainedcmp.count; i++) {
+                if (n->chainedcmp.exprs[i]) TyperOptimizeAST(n->chainedcmp.exprs[i]);
+            }
+            break;
+        case NINC:
+        case NDEC:
+            if (n->incdec.expr) TyperOptimizeAST(n->incdec.expr);
+            break;
         default:
             break;
     }
@@ -2268,8 +2323,10 @@ int TyperRun(Compiler *c, Node *program) {
     ctx.env = &root;
     ctx.current_fn_ret = StypeInternGet(c, STYPE_VOID, "void");
 
-    /* Load incremental signature cache if present */
-    TyperLoadSigCache(c, ".akscache/signatures.bin");
+    /* Load incremental signature cache if present (disabled in static mode) */
+    if (!c || !c->is_static_mode) {
+        TyperLoadSigCache(c, ".akscache/signatures.bin");
+    }
 
     /* Pre-intern primitive types */
     StypeInternGet(c, STYPE_INT, "int");
@@ -2306,7 +2363,7 @@ int TyperRun(Compiler *c, Node *program) {
     int total_errs = ctx.error_count + (c ? c->error_count : 0);
     if (total_errs > 0) {
         fprintf(stderr, "Type checking failed: %d error(s) found.\n", total_errs);
-    } else {
+    } else if (!c || !c->is_static_mode) {
         TyperSaveSigCache(c, ".akscache/signatures.bin");
     }
     return (ctx.had_error || (c && c->haderror)) ? 0 : 1;

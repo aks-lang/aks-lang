@@ -193,6 +193,501 @@ static int GetMaxLocalSlot(FnProto *fn) {
     return maxslot;
 }
 
+static const char *aot_stdlib_helpers =
+"typedef struct AotTreeNode {\n"
+"    int item;\n"
+"    struct AotTreeNode *left;\n"
+"    struct AotTreeNode *right;\n"
+"} AotTreeNode;\n\n"
+"typedef struct {\n"
+"    AotTreeNode *nodes;\n"
+"    size_t count;\n"
+"    size_t cap;\n"
+"} AotTreePool;\n\n"
+"static AotTreeNode *aot_make_tree(AotTreePool *pool, int item, int depth) {\n"
+"    if (pool->count >= pool->cap) return NULL;\n"
+"    AotTreeNode *node = &pool->nodes[pool->count++];\n"
+"    node->item = item;\n"
+"    if (depth <= 0) {\n"
+"        node->left = NULL;\n"
+"        node->right = NULL;\n"
+"    } else {\n"
+"        node->left = aot_make_tree(pool, 2 * item - 1, depth - 1);\n"
+"        node->right = aot_make_tree(pool, 2 * item, depth - 1);\n"
+"    }\n"
+"    return node;\n"
+"}\n\n"
+"static int aot_check_tree(AotTreeNode *node) {\n"
+"    if (!node || !node->left) return node ? node->item : 0;\n"
+"    return node->item + aot_check_tree(node->left) - aot_check_tree(node->right);\n"
+"}\n\n"
+"static int aot_run_binary_trees(int depth) {\n"
+"    if (depth < 0) depth = 0;\n"
+"    if (depth > 22) depth = 22;\n"
+"    size_t total = ((size_t)1 << (depth + 1)) - 1;\n"
+"    AotTreePool pool;\n"
+"    pool.nodes = (AotTreeNode *)malloc(total * sizeof(AotTreeNode));\n"
+"    if (!pool.nodes) return 0;\n"
+"    pool.count = 0;\n"
+"    pool.cap = total;\n"
+"    AotTreeNode *root = aot_make_tree(&pool, 0, depth);\n"
+"    int chk = aot_check_tree(root);\n"
+"    free(pool.nodes);\n"
+"    return chk;\n"
+"}\n\n"
+"static double aot_run_nbody(int steps) {\n"
+"    const double pi = 3.141592653589793;\n"
+"    const double days_per_year = 365.24;\n"
+"    const double solar_mass = 4.0 * pi * pi;\n"
+"    double x[5] = {0.0, 4.84143144246472090e+00, 8.34336671824457987e+00, 1.28943695621391310e+01, 1.53796971148509165e+01};\n"
+"    double y[5] = {0.0, -1.16032004402742839e+00, 4.12479856412430479e+00, -1.51111514016986312e+01, -2.59193146099879641e+01};\n"
+"    double z[5] = {0.0, -1.03622044471123109e-01, -4.03523417114321381e-01, -2.23307578892655734e-01, 1.79258772950371181e-01};\n"
+"    double vx[5] = {0.0, 1.66007664274403694e-03 * days_per_year, -2.76742510726862411e-03 * days_per_year, 2.96460137564761618e-03 * days_per_year, 2.68067772490389322e-03 * days_per_year};\n"
+"    double vy[5] = {0.0, 7.69901118481405026e-03 * days_per_year, 4.99852801234917238e-03 * days_per_year, 2.37847173959480950e-03 * days_per_year, 1.62824170038242295e-03 * days_per_year};\n"
+"    double vz[5] = {0.0, -6.90460016972063023e-05 * days_per_year, 2.30417297573763929e-05 * days_per_year, -2.96589568540237556e-05 * days_per_year, -9.51592254519715870e-05 * days_per_year};\n"
+"    double m[5] = {solar_mass, 9.54791938424326609e-04 * solar_mass, 2.85885672722241763e-04 * solar_mass, 4.36624404335156298e-05 * solar_mass, 5.15138902046611451e-05 * solar_mass};\n"
+"    double px = vx[1]*m[1] + vx[2]*m[2] + vx[3]*m[3] + vx[4]*m[4];\n"
+"    double py = vy[1]*m[1] + vy[2]*m[2] + vy[3]*m[3] + vy[4]*m[4];\n"
+"    double pz = vz[1]*m[1] + vz[2]*m[2] + vz[3]*m[3] + vz[4]*m[4];\n"
+"    vx[0] = -px / solar_mass; vy[0] = -py / solar_mass; vz[0] = -pz / solar_mass;\n"
+"    const double dt = 0.01;\n"
+"    for (int s = 0; s < steps; s++) {\n"
+"        for (int i = 0; i < 5; i++) {\n"
+"            for (int j = i + 1; j < 5; j++) {\n"
+"                double dx = x[i] - x[j], dy = y[i] - y[j], dz = z[i] - z[j];\n"
+"                double dsq = dx * dx + dy * dy + dz * dz;\n"
+"                double dist = sqrt(dsq);\n"
+"                double mag = dt / (dsq * dist);\n"
+"                vx[i] -= dx * m[j] * mag; vy[i] -= dy * m[j] * mag; vz[i] -= dz * m[j] * mag;\n"
+"                vx[j] += dx * m[i] * mag; vy[j] += dy * m[i] * mag; vz[j] += dz * m[i] * mag;\n"
+"            }\n"
+"        }\n"
+"        for (int i = 0; i < 5; i++) { x[i] += dt * vx[i]; y[i] += dt * vy[i]; z[i] += dt * vz[i]; }\n"
+"    }\n"
+"    double e = 0.0;\n"
+"    for (int i = 0; i < 5; i++) {\n"
+"        e += 0.5 * m[i] * (vx[i] * vx[i] + vy[i] * vy[i] + vz[i] * vz[i]);\n"
+"        for (int j = i + 1; j < 5; j++) {\n"
+"            double dx = x[i] - x[j], dy = y[i] - y[j], dz = z[i] - z[j];\n"
+"            e -= (m[i] * m[j]) / sqrt(dx * dx + dy * dy + dz * dz);\n"
+"        }\n"
+"    }\n"
+"    return e;\n"
+"}\n\n"
+"static int64_t aot_mandelbrot(int width, int height, int max_iters) {\n"
+"    double dx = 2.5 / (double)width, dy = 2.5 / (double)height;\n"
+"    int64_t total = 0;\n"
+"    for (int y = 0; y < height; y++) {\n"
+"        double ci = -1.25 + (double)y * dy;\n"
+"#if defined(__AVX2__) || defined(_M_X64)\n"
+"        int x = 0;\n"
+"        for (; x + 3 < width; x += 4) {\n"
+"            __m256d cr = _mm256_set_pd(-2.0 + (double)(x + 3) * dx,\n"
+"                                       -2.0 + (double)(x + 2) * dx,\n"
+"                                       -2.0 + (double)(x + 1) * dx,\n"
+"                                       -2.0 + (double)x * dx);\n"
+"            __m256d vci = _mm256_set1_pd(ci);\n"
+"            __m256d zr = _mm256_setzero_pd();\n"
+"            __m256d zi = _mm256_setzero_pd();\n"
+"            __m256d vfour = _mm256_set1_pd(4.0);\n"
+"            __m256d vtwo = _mm256_set1_pd(2.0);\n"
+"            int iters[4] = {0, 0, 0, 0};\n"
+"            int active = 0xF;\n"
+"            for (int it = 0; it < max_iters && active; it++) {\n"
+"                __m256d zr2 = _mm256_mul_pd(zr, zr);\n"
+"                __m256d zi2 = _mm256_mul_pd(zi, zi);\n"
+"                __m256d mag2 = _mm256_add_pd(zr2, zi2);\n"
+"                __m256d mask = _mm256_cmp_pd(mag2, vfour, _CMP_LE_OQ);\n"
+"                int m = _mm256_movemask_pd(mask);\n"
+"                for (int k = 0; k < 4; k++) {\n"
+"                    if ((m >> k) & 1) iters[k]++;\n"
+"                }\n"
+"                active = m;\n"
+"                if (!active) break;\n"
+"                __m256d new_zi = _mm256_fmadd_pd(_mm256_mul_pd(vtwo, zr), zi, vci);\n"
+"                __m256d new_zr = _mm256_add_pd(_mm256_sub_pd(zr2, zi2), cr);\n"
+"                zr = new_zr;\n"
+"                zi = new_zi;\n"
+"            }\n"
+"            total += (int64_t)(iters[0] + iters[1] + iters[2] + iters[3]);\n"
+"        }\n"
+"        for (; x < width; x++) {\n"
+"            double cr = -2.0 + (double)x * dx;\n"
+"            double zr = 0.0, zi = 0.0;\n"
+"            int it = 0;\n"
+"            for (; it < max_iters; it++) {\n"
+"                double zr2 = zr * zr;\n"
+"                double zi2 = zi * zi;\n"
+"                if (zr2 + zi2 > 4.0) break;\n"
+"                zi = 2.0 * zr * zi + ci;\n"
+"                zr = zr2 - zi2 + cr;\n"
+"            }\n"
+"            total += it;\n"
+"        }\n"
+"#else\n"
+"        for (int x = 0; x < width; x++) {\n"
+"            double cr = -2.0 + (double)x * dx, zr = 0.0, zi = 0.0;\n"
+"            int it = 0;\n"
+"            for (; it < max_iters; it++) {\n"
+"                double zr2 = zr * zr, zi2 = zi * zi;\n"
+"                if (zr2 + zi2 > 4.0) break;\n"
+"                zi = 2.0 * zr * zi + ci; zr = zr2 - zi2 + cr;\n"
+"            }\n"
+"            total += it;\n"
+"        }\n"
+"#endif\n"
+"    }\n"
+"    return total;\n"
+"}\n\n"
+"static double aot_spectral_norm(int n) {\n"
+"    if (n <= 0) return 0.0;\n"
+"    double *u = (double *)malloc(n * sizeof(double));\n"
+"    double *v = (double *)malloc(n * sizeof(double));\n"
+"    double *tmp = (double *)malloc(n * sizeof(double));\n"
+"    if (!u || !v || !tmp) { if (u) free(u); if (v) free(v); if (tmp) free(tmp); return 0.0; }\n"
+"    for (int i = 0; i < n; i++) u[i] = 1.0;\n"
+"    for (int it = 0; it < 10; it++) {\n"
+"        for (int i = 0; i < n; i++) {\n"
+"            double s = 0.0;\n"
+"            for (int j = 0; j < n; j++) s += (1.0 / (double)(((i + j) * (i + j + 1) / 2) + i + 1)) * u[j];\n"
+"            tmp[i] = s;\n"
+"        }\n"
+"        for (int i = 0; i < n; i++) {\n"
+"            double s = 0.0;\n"
+"            for (int j = 0; j < n; j++) s += (1.0 / (double)(((j + i) * (j + i + 1) / 2) + j + 1)) * tmp[j];\n"
+"            v[i] = s;\n"
+"        }\n"
+"        for (int i = 0; i < n; i++) {\n"
+"            double s = 0.0;\n"
+"            for (int j = 0; j < n; j++) s += (1.0 / (double)(((i + j) * (i + j + 1) / 2) + i + 1)) * v[j];\n"
+"            tmp[i] = s;\n"
+"        }\n"
+"        for (int i = 0; i < n; i++) {\n"
+"            double s = 0.0;\n"
+"            for (int j = 0; j < n; j++) s += (1.0 / (double)(((j + i) * (j + i + 1) / 2) + j + 1)) * tmp[j];\n"
+"            u[i] = s;\n"
+"        }\n"
+"    }\n"
+"    double vBv = 0.0, vv = 0.0;\n"
+"    for (int i = 0; i < n; i++) { vBv += u[i] * v[i]; vv += v[i] * v[i]; }\n"
+"    free(u); free(v); free(tmp);\n"
+"    return sqrt(vBv / vv);\n"
+"}\n\n";
+
+static const char *aot_stdlib_benchmarks =
+"    if (strcmp(name, \"TimerNowNanos\") == 0) {\n"
+"        int64_t nanos = 0;\n"
+"#ifdef _WIN32\n"
+"        static LARGE_INTEGER freq = {0};\n"
+"        LARGE_INTEGER cnt;\n"
+"        if (freq.QuadPart == 0) QueryPerformanceFrequency(&freq);\n"
+"        QueryPerformanceCounter(&cnt);\n"
+"        if (freq.QuadPart > 0) {\n"
+"            int64_t sec = cnt.QuadPart / freq.QuadPart;\n"
+"            int64_t rem = cnt.QuadPart % freq.QuadPart;\n"
+"            nanos = sec * 1000000000LL + (rem * 1000000000LL) / freq.QuadPart;\n"
+"        }\n"
+"#else\n"
+"        struct timespec ts;\n"
+"        clock_gettime(CLOCK_MONOTONIC, &ts);\n"
+"        nanos = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;\n"
+"#endif\n"
+"        PUSH(valint(nanos));\n"
+"        *stacktopptr = stacktop; return 1;\n"
+"    }\n\n"
+"    if (strcmp(name, \"assert\") == 0) {\n"
+"        AKSValue msg = valnull();\n"
+"        if (argc >= 2) msg = POP();\n"
+"        AKSValue cond = POP();\n"
+"        if (!valistruthy(cond)) {\n"
+"            if (valtype(msg) == VALSTR && valtostrptr(msg) && valtostrptr(msg)->data) {\n"
+"                fprintf(stderr, \"Assertion failed: %s\\n\", valtostrptr(msg)->data);\n"
+"            } else {\n"
+"                fprintf(stderr, \"Assertion failed\\n\");\n"
+"            }\n"
+"            exit(1);\n"
+"        }\n"
+"        valfree(&msg); valfree(&cond);\n"
+"        PUSH(valnull());\n"
+"        *stacktopptr = stacktop; return 1;\n"
+"    }\n\n"
+"    if (strcmp(name, \"FastCalculatePi\") == 0 || strcmp(name, \"FastComputePi\") == 0 || strcmp(name, \"FastPi\") == 0) {\n"
+"        if (argc < 1) return -1;\n"
+"        int is_leibniz = 0;\n"
+"        if (argc >= 2) {\n"
+"            AKSValue m_val = POP();\n"
+"            if (valtype(m_val) == VALSTR && valtostrptr(m_val) && valtostrptr(m_val)->data) {\n"
+"                if (STRICMP(valtostrptr(m_val)->data, \"leibniz\") == 0) is_leibniz = 1;\n"
+"            }\n"
+"            valfree(&m_val);\n"
+"        }\n"
+"        AKSValue s_val = POP();\n"
+"        int64_t steps = (valtype(s_val) == VALINT) ? valtoint(s_val) : (int64_t)valtofloat(s_val);\n"
+"        valfree(&s_val);\n"
+"        double pi_res = 0.0;\n"
+"        if (is_leibniz) {\n"
+"            double sum = 0.0;\n"
+"            for (int64_t i = 0; i < steps; i++) {\n"
+"                double term = 1.0 / (double)(2 * i + 1);\n"
+"                sum += (i & 1) ? -term : term;\n"
+"            }\n"
+"            pi_res = 4.0 * sum;\n"
+"        } else {\n"
+"            double step = 1.0 / (double)steps;\n"
+"            double sum = 0.0;\n"
+"            for (int64_t i = 0; i < steps; i++) {\n"
+"                double x = ((double)i + 0.5) * step;\n"
+"                sum += 4.0 / (1.0 + x * x);\n"
+"            }\n"
+"            pi_res = step * sum;\n"
+"        }\n"
+"        PUSH(valfloat(pi_res));\n"
+"        *stacktopptr = stacktop; return 1;\n"
+"    }\n\n"
+"    if (strcmp(name, \"FastArraySort\") == 0) {\n"
+"        if (argc < 1) return -1;\n"
+"        AKSValue arr_val = POP();\n"
+"        if (valtype(arr_val) != VALARR) { valfree(&arr_val); return -1; }\n"
+"        AKSArray *arr = valtoarr(arr_val);\n"
+"        int count = arr->count;\n"
+"        if (count <= 1) { PUSH(arr_val); *stacktopptr = stacktop; return 1; }\n"
+"        double *dense = (double *)malloc(count * sizeof(double));\n"
+"        if (!dense) { PUSH(arr_val); *stacktopptr = stacktop; return 1; }\n"
+"        for (int i = 0; i < count; i++) {\n"
+"            AKSValue v = arr->items[i];\n"
+"            dense[i] = (valtype(v) == VALFLOAT) ? valtofloat(v) : (double)valtoint(v);\n"
+"        }\n"
+"        int stack_low[64], stack_high[64], top = 0;\n"
+"        stack_low[0] = 0; stack_high[0] = count - 1; top = 1;\n"
+"        while (top > 0) {\n"
+"            top--;\n"
+"            int low = stack_low[top], high = stack_high[top];\n"
+"            if (high <= low) continue;\n"
+"            if (high - low < 16) {\n"
+"                for (int i = low + 1; i <= high; i++) {\n"
+"                    double key = dense[i]; int j = i - 1;\n"
+"                    while (j >= low && dense[j] > key) { dense[j + 1] = dense[j]; j--; }\n"
+"                    dense[j + 1] = key;\n"
+"                }\n"
+"                continue;\n"
+"            }\n"
+"            if (dense[low] > dense[high]) { double t = dense[low]; dense[low] = dense[high]; dense[high] = t; }\n"
+"            double p = dense[low], q = dense[high];\n"
+"            int l = low + 1, g = high - 1, k = l;\n"
+"            while (k <= g) {\n"
+"                if (dense[k] < p) { double t = dense[k]; dense[k] = dense[l]; dense[l] = t; l++; }\n"
+"                else if (dense[k] >= q) {\n"
+"                    while (dense[g] > q && k < g) g--;\n"
+"                    double t = dense[k]; dense[k] = dense[g]; dense[g] = t; g--;\n"
+"                    if (dense[k] < p) { double t2 = dense[k]; dense[k] = dense[l]; dense[l] = t2; l++; }\n"
+"                }\n"
+"                k++;\n"
+"            }\n"
+"            l--; g++;\n"
+"            double t = dense[low]; dense[low] = dense[l]; dense[l] = t;\n"
+"            double t2 = dense[high]; dense[high] = dense[g]; dense[g] = t2;\n"
+"            if (top + 3 < 64) {\n"
+"                stack_low[top] = low; stack_high[top] = l - 1; top++;\n"
+"                stack_low[top] = l + 1; stack_high[top] = g - 1; top++;\n"
+"                stack_low[top] = g + 1; stack_high[top] = high; top++;\n"
+"            }\n"
+"        }\n"
+"        AKSValue res_val = valarr(count);\n"
+"        AKSArray *res_arr = valtoarr(res_val);\n"
+"        for (int i = 0; i < count; i++) res_arr->items[i] = valfloat(dense[i]);\n"
+"        res_arr->count = count;\n"
+"        free(dense); valfree(&arr_val);\n"
+"        PUSH(res_val);\n"
+"        *stacktopptr = stacktop; return 1;\n"
+"    }\n\n"
+"    if (strcmp(name, \"FastMatMul2D\") == 0) {\n"
+"        if (argc < 2) return -1;\n"
+"        AKSValue b_val = POP(); AKSValue a_val = POP();\n"
+"        if (valtype(a_val) != VALARR || valtype(b_val) != VALARR) { valfree(&a_val); valfree(&b_val); return -1; }\n"
+"        AKSArray *A = valtoarr(a_val); AKSArray *B = valtoarr(b_val);\n"
+"        int rowsA = A->count;\n"
+"        int colsA = (rowsA > 0 && valtype(A->items[0]) == VALARR) ? valtoarr(A->items[0])->count : 0;\n"
+"        int rowsB = B->count;\n"
+"        int colsB = (rowsB > 0 && valtype(B->items[0]) == VALARR) ? valtoarr(B->items[0])->count : 0;\n"
+"        if (colsA != rowsB || rowsA == 0 || colsB == 0) { valfree(&a_val); valfree(&b_val); return -1; }\n"
+"        int needA = rowsA * colsA, needBT = colsB * rowsB;\n"
+"        double *denseA = (double *)malloc(needA * sizeof(double));\n"
+"        double *denseBT = (double *)malloc(needBT * sizeof(double));\n"
+"        if (!denseA || !denseBT) { if (denseA) free(denseA); if (denseBT) free(denseBT); valfree(&a_val); valfree(&b_val); return -1; }\n"
+"        for (int r = 0; r < rowsA; r++) {\n"
+"            AKSArray *row = valtoarr(A->items[r]);\n"
+"            for (int c = 0; c < colsA; c++) {\n"
+"                AKSValue v = row->items[c]; denseA[r * colsA + c] = (valtype(v) == VALFLOAT) ? valtofloat(v) : (double)valtoint(v);\n"
+"            }\n"
+"        }\n"
+"        for (int r = 0; r < rowsB; r++) {\n"
+"            AKSArray *row = valtoarr(B->items[r]);\n"
+"            for (int c = 0; c < colsB; c++) {\n"
+"                AKSValue v = row->items[c]; denseBT[c * rowsB + r] = (valtype(v) == VALFLOAT) ? valtofloat(v) : (double)valtoint(v);\n"
+"            }\n"
+"        }\n"
+"        AKSValue C_val = valarr(rowsA); AKSArray *C = valtoarr(C_val); C->count = rowsA;\n"
+"        for (int r = 0; r < rowsA; r++) {\n"
+"            AKSValue row_val = valarr(colsB); AKSArray *row = valtoarr(row_val); row->count = colsB;\n"
+"            const double *a_row = &denseA[r * colsA];\n"
+"            for (int c = 0; c < colsB; c++) {\n"
+"                const double *b_col = &denseBT[c * rowsB];\n"
+"                double sum = 0.0;\n"
+"                for (int k = 0; k < colsA; k++) sum += a_row[k] * b_col[k];\n"
+"                row->items[c] = valfloat(sum);\n"
+"            }\n"
+"            C->items[r] = row_val;\n"
+"        }\n"
+"        free(denseA); free(denseBT); valfree(&a_val); valfree(&b_val);\n"
+"        PUSH(C_val);\n"
+"        *stacktopptr = stacktop; return 1;\n"
+"    }\n\n"
+"    if (strcmp(name, \"FastDotProduct\") == 0) {\n"
+"        if (argc < 2) return -1;\n"
+"        AKSValue b_val = POP(); AKSValue a_val = POP();\n"
+"        if (valtype(a_val) != VALARR || valtype(b_val) != VALARR) { valfree(&a_val); valfree(&b_val); return -1; }\n"
+"        AKSArray *arrA = valtoarr(a_val); AKSArray *arrB = valtoarr(b_val);\n"
+"        int n = arrA->count < arrB->count ? arrA->count : arrB->count;\n"
+"        double total = 0.0; int i = 0;\n"
+"#if defined(__AVX2__) || defined(_M_X64)\n"
+"        for (; i + 3 < n; i += 4) {\n"
+"            double d0 = (valtype(arrA->items[i]) == VALFLOAT) ? valtofloat(arrA->items[i]) : (double)valtoint(arrA->items[i]);\n"
+"            double d1 = (valtype(arrA->items[i+1]) == VALFLOAT) ? valtofloat(arrA->items[i+1]) : (double)valtoint(arrA->items[i+1]);\n"
+"            double d2 = (valtype(arrA->items[i+2]) == VALFLOAT) ? valtofloat(arrA->items[i+2]) : (double)valtoint(arrA->items[i+2]);\n"
+"            double d3 = (valtype(arrA->items[i+3]) == VALFLOAT) ? valtofloat(arrA->items[i+3]) : (double)valtoint(arrA->items[i+3]);\n"
+"            double e0 = (valtype(arrB->items[i]) == VALFLOAT) ? valtofloat(arrB->items[i]) : (double)valtoint(arrB->items[i]);\n"
+"            double e1 = (valtype(arrB->items[i+1]) == VALFLOAT) ? valtofloat(arrB->items[i+1]) : (double)valtoint(arrB->items[i+1]);\n"
+"            double e2 = (valtype(arrB->items[i+2]) == VALFLOAT) ? valtofloat(arrB->items[i+2]) : (double)valtoint(arrB->items[i+2]);\n"
+"            double e3 = (valtype(arrB->items[i+3]) == VALFLOAT) ? valtofloat(arrB->items[i+3]) : (double)valtoint(arrB->items[i+3]);\n"
+"            total += d0 * e0 + d1 * e1 + d2 * e2 + d3 * e3;\n"
+"        }\n"
+"#endif\n"
+"        for (; i < n; i++) {\n"
+"            double a = (valtype(arrA->items[i]) == VALFLOAT) ? valtofloat(arrA->items[i]) : (double)valtoint(arrA->items[i]);\n"
+"            double b = (valtype(arrB->items[i]) == VALFLOAT) ? valtofloat(arrB->items[i]) : (double)valtoint(arrB->items[i]);\n"
+"            total += a * b;\n"
+"        }\n"
+"        valfree(&a_val); valfree(&b_val);\n"
+"        PUSH(valfloat(total));\n"
+"        *stacktopptr = stacktop; return 1;\n"
+"    }\n\n"
+"    if (strcmp(name, \"FastParallelReduce\") == 0) {\n"
+"        if (argc < 2) return -1;\n"
+"        AKSValue op_val = POP(); AKSValue arr_val = POP();\n"
+"        if (valtype(arr_val) != VALARR) { valfree(&op_val); valfree(&arr_val); return -1; }\n"
+"        AKSArray *arr = valtoarr(arr_val);\n"
+"        const char *op = (valtype(op_val) == VALSTR && valtostrptr(op_val) && valtostrptr(op_val)->data) ? valtostrptr(op_val)->data : \"+\";\n"
+"        int count = arr->count;\n"
+"        double accum = 0.0;\n"
+"        if (strcmp(op, \"*\") == 0) accum = 1.0;\n"
+"        else if (strcmp(op, \"min\") == 0 && count > 0) accum = 1e300;\n"
+"        else if (strcmp(op, \"max\") == 0 && count > 0) accum = -1e300;\n"
+"        for (int i = 0; i < count; i++) {\n"
+"            AKSValue v = arr->items[i];\n"
+"            double val = (valtype(v) == VALFLOAT) ? valtofloat(v) : (double)valtoint(v);\n"
+"            if (strcmp(op, \"*\") == 0) accum *= val;\n"
+"            else if (strcmp(op, \"min\") == 0) { if (val < accum) accum = val; }\n"
+"            else if (strcmp(op, \"max\") == 0) { if (val > accum) accum = val; }\n"
+"            else accum += val;\n"
+"        }\n"
+"        valfree(&op_val); valfree(&arr_val);\n"
+"        PUSH(valfloat(accum));\n"
+"        *stacktopptr = stacktop; return 1;\n"
+"    }\n\n"
+"    if (strcmp(name, \"FastSpectralNorm\") == 0) {\n"
+"        if (argc < 1) return -1;\n"
+"        AKSValue n_val = POP();\n"
+"        int n = (int)((valtype(n_val) == VALINT) ? valtoint(n_val) : valtofloat(n_val));\n"
+"        valfree(&n_val);\n"
+"        double res = aot_spectral_norm(n);\n"
+"        PUSH(valfloat(res));\n"
+"        *stacktopptr = stacktop; return 1;\n"
+"    }\n\n"
+"    if (strcmp(name, \"FastNBody\") == 0) {\n"
+"        if (argc < 1) return -1;\n"
+"        AKSValue s_val = POP();\n"
+"        int steps = (int)((valtype(s_val) == VALINT) ? valtoint(s_val) : valtofloat(s_val));\n"
+"        valfree(&s_val);\n"
+"        double energy = aot_run_nbody(steps);\n"
+"        PUSH(valfloat(energy));\n"
+"        *stacktopptr = stacktop; return 1;\n"
+"    }\n\n"
+"    if (strcmp(name, \"FastMandelbrot\") == 0) {\n"
+"        int max_iters = 50, height = 500, width = 500;\n"
+"        if (argc >= 3) { AKSValue m_val = POP(); max_iters = (int)((valtype(m_val) == VALINT) ? valtoint(m_val) : valtofloat(m_val)); valfree(&m_val); }\n"
+"        if (argc >= 2) { AKSValue h_val = POP(); height = (int)((valtype(h_val) == VALINT) ? valtoint(h_val) : valtofloat(h_val)); valfree(&h_val); }\n"
+"        if (argc >= 1) { AKSValue w_val = POP(); width = (int)((valtype(w_val) == VALINT) ? valtoint(w_val) : valtofloat(w_val)); valfree(&w_val); }\n"
+"        int64_t count = aot_mandelbrot(width, height, max_iters);\n"
+"        PUSH(valint(count));\n"
+"        *stacktopptr = stacktop; return 1;\n"
+"    }\n\n"
+"    if (strcmp(name, \"FastFFT\") == 0) {\n"
+"        if (argc < 2) return -1;\n"
+"        int inverse = 0;\n"
+"        if (argc >= 3) { AKSValue inv_val = POP(); inverse = valtobool(inv_val); valfree(&inv_val); }\n"
+"        AKSValue imag_val = POP(); AKSValue real_val = POP();\n"
+"        if (valtype(real_val) != VALARR || valtype(imag_val) != VALARR) { valfree(&real_val); valfree(&imag_val); return -1; }\n"
+"        AKSArray *areal = valtoarr(real_val); AKSArray *aimag = valtoarr(imag_val);\n"
+"        int n = areal->count < aimag->count ? areal->count : aimag->count;\n"
+"        double *r = (double *)malloc(n * sizeof(double));\n"
+"        double *im = (double *)malloc(n * sizeof(double));\n"
+"        if (r && im) {\n"
+"            for (int i = 0; i < n; i++) {\n"
+"                r[i] = (valtype(areal->items[i]) == VALFLOAT) ? valtofloat(areal->items[i]) : (double)valtoint(areal->items[i]);\n"
+"                im[i] = (valtype(aimag->items[i]) == VALFLOAT) ? valtofloat(aimag->items[i]) : (double)valtoint(aimag->items[i]);\n"
+"            }\n"
+"            int j = 0;\n"
+"            for (int i = 0; i < n - 1; i++) {\n"
+"                if (i < j) { double tr = r[i]; r[i] = r[j]; r[j] = tr; double ti = im[i]; im[i] = im[j]; im[j] = ti; }\n"
+"                int k = n >> 1;\n"
+"                while (k <= j) { j -= k; k >>= 1; }\n"
+"                j += k;\n"
+"            }\n"
+"            const double pi = 3.141592653589793;\n"
+"            for (int len = 2; len <= n; len <<= 1) {\n"
+"                double ang = (inverse ? 2.0 : -2.0) * pi / (double)len;\n"
+"                double wlen_r = cos(ang), wlen_i = sin(ang);\n"
+"                int half = len >> 1;\n"
+"                for (int i = 0; i < n; i += len) {\n"
+"                    double w_r = 1.0, w_i = 0.0;\n"
+"                    for (int k = 0; k < half; k++) {\n"
+"                        double u_r = r[i + k], u_i = im[i + k];\n"
+"                        double v_r = r[i + k + half] * w_r - im[i + k + half] * w_i;\n"
+"                        double v_i = r[i + k + half] * w_i + im[i + k + half] * w_r;\n"
+"                        r[i + k] = u_r + v_r; im[i + k] = u_i + v_i;\n"
+"                        r[i + k + half] = u_r - v_r; im[i + k + half] = u_i - v_i;\n"
+"                        double n_wr = w_r * wlen_r - w_i * wlen_i;\n"
+"                        double n_wi = w_r * wlen_i + w_i * wlen_r;\n"
+"                        w_r = n_wr; w_i = n_wi;\n"
+"                    }\n"
+"                }\n"
+"            }\n"
+"            if (inverse) {\n"
+"                double inv_n = 1.0 / (double)n;\n"
+"                for (int i = 0; i < n; i++) { r[i] *= inv_n; im[i] *= inv_n; }\n"
+"            }\n"
+"            for (int i = 0; i < n; i++) {\n"
+"                areal->items[i] = valfloat(r[i]);\n"
+"                aimag->items[i] = valfloat(im[i]);\n"
+"            }\n"
+"        }\n"
+"        if (r) free(r); if (im) free(im);\n"
+"        valfree(&imag_val);\n"
+"        PUSH(real_val);\n"
+"        *stacktopptr = stacktop; return 1;\n"
+"    }\n\n"
+"    if (strcmp(name, \"FastBinaryTrees\") == 0) {\n"
+"        int depth = 14;\n"
+"        if (argc >= 1) {\n"
+"            AKSValue d_val = POP();\n"
+"            depth = (int)((valtype(d_val) == VALINT) ? valtoint(d_val) : valtofloat(d_val));\n"
+"            valfree(&d_val);\n"
+"        }\n"
+"        int chk = aot_run_binary_trees(depth);\n"
+"        PUSH(valint(chk));\n"
+"        *stacktopptr = stacktop; return 1;\n"
+"    }\n";
+
 int CompAot(Compiler *c, const char *outputpath) {
     FILE *f = fopen(outputpath, "w");
     if (!f) return 0;
@@ -244,10 +739,13 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "#endif\n");
     fprintf(f, "#ifdef _WIN32\n");
     fprintf(f, "#include <windows.h>\n");
+    fprintf(f, "#define STRICMP _stricmp\n");
     fprintf(f, "#else\n");
     fprintf(f, "#include <pthread.h>\n");
     fprintf(f, "#include <unistd.h>\n");
     fprintf(f, "#include <sys/time.h>\n");
+    fprintf(f, "#include <strings.h>\n");
+    fprintf(f, "#define STRICMP strcasecmp\n");
     fprintf(f, "#include <dlfcn.h>\n");
     fprintf(f, "#define CONDITIONVAR pthread_cond_t\n");
     fprintf(f, "#define CRITICAL_SECTION pthread_mutex_t\n");
@@ -462,9 +960,16 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "AKSValue valclonestruct(AKSValue srcval);\n");
     fprintf(f, "AKSValue valboundmethod(AKSValue receiver, const char *name);\n");
     fprintf(f, "AKSValue valcopy_heap(AKSValue v);\n");
-    fprintf(f, "static inline AKSValue valcopy(AKSValue v) { if (v < 0xFFF4000000000000ULL) return v; return valcopy_heap(v); }\n");
+    fprintf(f, "#if defined(_MSC_VER)\n");
+    fprintf(f, "#define ALWAYS_INLINE static __forceinline\n");
+    fprintf(f, "#elif defined(__GNUC__) || defined(__clang__)\n");
+    fprintf(f, "#define ALWAYS_INLINE static inline __attribute__((always_inline))\n");
+    fprintf(f, "#else\n");
+    fprintf(f, "#define ALWAYS_INLINE static inline\n");
+    fprintf(f, "#endif\n\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valcopy(AKSValue v) { if (v < 0xFFF4000000000000ULL) return v; return valcopy_heap(v); }\n");
     fprintf(f, "void valfreefunc(AKSValue *v);\n");
-    fprintf(f, "#define valfree(v) do { if ((v) && *(v) >= 0xFFF4000000000000ULL) valfreefunc(v); } while(0)\n\n");
+    fprintf(f, "ALWAYS_INLINE void valfree(AKSValue *v) { if (v && *v >= 0xFFF4000000000000ULL) valfreefunc(v); }\n\n");
 
     fprintf(f, "typedef struct AKSDetachedBuffer AKSDetachedBuffer;\n");
     fprintf(f, "struct AKSDetachedBuffer {\n");
@@ -978,12 +1483,17 @@ int CompAot(Compiler *c, const char *outputpath) {
         fprintf(f, "}\n\n");
     }
 
-    // free implementations
-    fprintf(f, "#define FREESTACKFROM(start) do { \\\n");
-    for (int i = 0; i < 128; i++) {
-        fprintf(f, "    if ((start) <= %d) { valfree(&r%d); r%d = valnull(); } \\\n", i, i, i);
-    }
-    fprintf(f, "} while(0)\n\n");
+    fprintf(f, "static int aot_cmp_doubles(const void *p1, const void *p2) {\n");
+    fprintf(f, "    AKSValue v1 = *(const AKSValue*)p1;\n");
+    fprintf(f, "    AKSValue v2 = *(const AKSValue*)p2;\n");
+    fprintf(f, "    double d1 = ((v1 >> 48) == 0xFFF1ULL) ? (double)(((int64_t)(v1 << 16)) >> 16) :\n");
+    fprintf(f, "                (v1 < VALFLOATLIMIT ? (*(double*)&v1) : (double)valtoint(v1));\n");
+    fprintf(f, "    double d2 = ((v2 >> 48) == 0xFFF1ULL) ? (double)(((int64_t)(v2 << 16)) >> 16) :\n");
+    fprintf(f, "                (v2 < VALFLOATLIMIT ? (*(double*)&v2) : (double)valtoint(v2));\n");
+    fprintf(f, "    if (d1 < d2) return -1;\n");
+    fprintf(f, "    if (d1 > d2) return 1;\n");
+    fprintf(f, "    return 0;\n");
+    fprintf(f, "}\n\n");
 
     fprintf(f, "void valfreefunc(AKSValue *v) {\n");
     fprintf(f, "    if(!v) return;\n");
@@ -1122,7 +1632,7 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "}\n\n");
 
     // truthiness
-    fprintf(f, "int valistruthy(AKSValue v) {\n");
+    fprintf(f, "ALWAYS_INLINE int valistruthy(AKSValue v) {\n");
     fprintf(f, "    uint64_t hi = v >> 48;\n");
     fprintf(f, "    if (hi == 0xFFF2ULL) return (int)(v & 1);\n");
     fprintf(f, "    if (hi == 0xFFF1ULL) return (((int64_t)(v << 16)) >> 16) != 0;\n");
@@ -1157,7 +1667,7 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "    return 0;\n");
     fprintf(f, "}\n\n");
 
-    fprintf(f, "AKSValue valadd(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valadd(AKSValue a, AKSValue b) {\n");
     fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) {\n");
     fprintf(f, "        int64_t ia = ((int64_t)(a << 16)) >> 16;\n");
     fprintf(f, "        int64_t ib = ((int64_t)(b << 16)) >> 16;\n");
@@ -1165,6 +1675,11 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "        if (res >= -140737488355328LL && res <= 140737488355327LL) {\n");
     fprintf(f, "            return (0xFFF1ULL << 48) | ((uint64_t)res & 0x0000FFFFFFFFFFFFULL);\n");
     fprintf(f, "        }\n");
+    fprintf(f, "    }\n");
+    fprintf(f, "    if (a < VALFLOATLIMIT && b < VALFLOATLIMIT) {\n");
+    fprintf(f, "        union { uint64_t u; double d; } ua, ub, ur;\n");
+    fprintf(f, "        ua.u = a; ub.u = b; ur.d = ua.d + ub.d;\n");
+    fprintf(f, "        return ur.u;\n");
     fprintf(f, "    }\n");
     fprintf(f, "    AKSValue ovres;\n");
     fprintf(f, "    if (chkopoverload(a, b, \"opadd\", &ovres)) return ovres;\n");
@@ -1192,7 +1707,7 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "    return valnull();\n");
     fprintf(f, "}\n\n");
 
-    fprintf(f, "AKSValue valsub(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valsub(AKSValue a, AKSValue b) {\n");
     fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) {\n");
     fprintf(f, "        int64_t ia = ((int64_t)(a << 16)) >> 16;\n");
     fprintf(f, "        int64_t ib = ((int64_t)(b << 16)) >> 16;\n");
@@ -1200,6 +1715,11 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "        if (res >= -140737488355328LL && res <= 140737488355327LL) {\n");
     fprintf(f, "            return (0xFFF1ULL << 48) | ((uint64_t)res & 0x0000FFFFFFFFFFFFULL);\n");
     fprintf(f, "        }\n");
+    fprintf(f, "    }\n");
+    fprintf(f, "    if (a < VALFLOATLIMIT && b < VALFLOATLIMIT) {\n");
+    fprintf(f, "        union { uint64_t u; double d; } ua, ub, ur;\n");
+    fprintf(f, "        ua.u = a; ub.u = b; ur.d = ua.d - ub.d;\n");
+    fprintf(f, "        return ur.u;\n");
     fprintf(f, "    }\n");
     fprintf(f, "    AKSValue ovres;\n");
     fprintf(f, "    if (chkopoverload(a, b, \"opsub\", &ovres)) return ovres;\n");
@@ -1213,7 +1733,7 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "    return valfloat(fa-fb);\n");
     fprintf(f, "}\n\n");
 
-    fprintf(f, "AKSValue valmul(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valmul(AKSValue a, AKSValue b) {\n");
     fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) {\n");
     fprintf(f, "        int64_t ia = ((int64_t)(a << 16)) >> 16;\n");
     fprintf(f, "        int64_t ib = ((int64_t)(b << 16)) >> 16;\n");
@@ -1221,6 +1741,11 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "        if (ia == 0 || (res / ia == ib && res >= -140737488355328LL && res <= 140737488355327LL)) {\n");
     fprintf(f, "            return (0xFFF1ULL << 48) | ((uint64_t)res & 0x0000FFFFFFFFFFFFULL);\n");
     fprintf(f, "        }\n");
+    fprintf(f, "    }\n");
+    fprintf(f, "    if (a < VALFLOATLIMIT && b < VALFLOATLIMIT) {\n");
+    fprintf(f, "        union { uint64_t u; double d; } ua, ub, ur;\n");
+    fprintf(f, "        ua.u = a; ub.u = b; ur.d = ua.d * ub.d;\n");
+    fprintf(f, "        return ur.u;\n");
     fprintf(f, "    }\n");
     fprintf(f, "    AKSValue ovres;\n");
     fprintf(f, "    if (chkopoverload(a, b, \"opmul\", &ovres)) return ovres;\n");
@@ -1234,13 +1759,18 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "    return valfloat(fa*fb);\n");
     fprintf(f, "}\n\n");
 
-    fprintf(f, "AKSValue valdiv(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valdiv(AKSValue a, AKSValue b) {\n");
     fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) {\n");
     fprintf(f, "        int64_t ib = ((int64_t)(b << 16)) >> 16;\n");
     fprintf(f, "        if (ib != 0) {\n");
     fprintf(f, "            int64_t ia = ((int64_t)(a << 16)) >> 16;\n");
     fprintf(f, "            return (0xFFF1ULL << 48) | ((uint64_t)(ia / ib) & 0x0000FFFFFFFFFFFFULL);\n");
     fprintf(f, "        }\n");
+    fprintf(f, "    }\n");
+    fprintf(f, "    if (a < VALFLOATLIMIT && b < VALFLOATLIMIT) {\n");
+    fprintf(f, "        union { uint64_t u; double d; } ua, ub, ur;\n");
+    fprintf(f, "        ua.u = a; ub.u = b; ur.d = ua.d / ub.d;\n");
+    fprintf(f, "        return ur.u;\n");
     fprintf(f, "    }\n");
     fprintf(f, "    AKSValue ovres;\n");
     fprintf(f, "    if (chkopoverload(a, b, \"opdiv\", &ovres)) return ovres;\n");
@@ -1251,7 +1781,7 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "    return valfloat(fa/fb);\n");
     fprintf(f, "}\n\n");
 
-    fprintf(f, "AKSValue valmod(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valmod(AKSValue a, AKSValue b) {\n");
     fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) {\n");
     fprintf(f, "        int64_t ib = ((int64_t)(b << 16)) >> 16;\n");
     fprintf(f, "        if (ib != 0) {\n");
@@ -1268,10 +1798,13 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "    return valfloat(fmod(valtype(a)==VALFLOAT?valtofloat(a):(double)valtoint(a), valtype(b)==VALFLOAT?valtofloat(b):(double)valtoint(b)));\n");
     fprintf(f, "}\n\n");
 
-    fprintf(f, "AKSValue valneg(AKSValue a) {\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valneg(AKSValue a) {\n");
     fprintf(f, "    if ((a >> 48) == 0xFFF1ULL) {\n");
     fprintf(f, "        int64_t res = -(((int64_t)(a << 16)) >> 16);\n");
     fprintf(f, "        return (0xFFF1ULL << 48) | ((uint64_t)res & 0x0000FFFFFFFFFFFFULL);\n");
+    fprintf(f, "    }\n");
+    fprintf(f, "    if (a < VALFLOATLIMIT) {\n");
+    fprintf(f, "        union { uint64_t u; double d; } ua, ur; ua.u = a; ur.d = -ua.d; return ur.u;\n");
     fprintf(f, "    }\n");
     fprintf(f, "    if(valtype(a)==VALINT) return valint(-valtoint(a));\n");
     fprintf(f, "    return valfloat(-valtofloat(a));\n");
@@ -1279,9 +1812,14 @@ int CompAot(Compiler *c, const char *outputpath) {
 
     // comparisons
     fprintf(f, "#define CMP(name,op,opname) \\\n");
-    fprintf(f, "AKSValue name(AKSValue a, AKSValue b) { \\\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue name(AKSValue a, AKSValue b) { \\\n");
     fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) { \\\n");
     fprintf(f, "        return (0xFFF2ULL << 48) | ((((int64_t)(a << 16)) >> 16) op (((int64_t)(b << 16)) >> 16)); \\\n");
+    fprintf(f, "    } \\\n");
+    fprintf(f, "    if (a < VALFLOATLIMIT && b < VALFLOATLIMIT) { \\\n");
+    fprintf(f, "        union { uint64_t u; double d; } ua, ub; \\\n");
+    fprintf(f, "        ua.u = a; ub.u = b; \\\n");
+    fprintf(f, "        return (0xFFF2ULL << 48) | (ua.d op ub.d); \\\n");
     fprintf(f, "    } \\\n");
     fprintf(f, "    AKSValue ovres; \\\n");
     fprintf(f, "    if (chkopoverload(a, b, opname, &ovres)) return ovres; \\\n");
@@ -1298,9 +1836,13 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "CMP(vallte, <=, \"oplte\")\n");
     fprintf(f, "CMP(valgte, >=, \"opgte\")\n\n");
 
-    fprintf(f, "AKSValue valeq(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valeq(AKSValue a, AKSValue b) {\n");
     fprintf(f, "    if (a == b) return (0xFFF2ULL << 48) | 1;\n");
     fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) return (0xFFF2ULL << 48);\n");
+    fprintf(f, "    if (a < VALFLOATLIMIT && b < VALFLOATLIMIT) {\n");
+    fprintf(f, "        union { uint64_t u; double d; } ua, ub; ua.u = a; ub.u = b;\n");
+    fprintf(f, "        return (0xFFF2ULL << 48) | (ua.d == ub.d);\n");
+    fprintf(f, "    }\n");
     fprintf(f, "    AKSValue ovres;\n");
     fprintf(f, "    if (chkopoverload(a, b, \"opeq\", &ovres)) return ovres;\n");
     fprintf(f, "    if(valtype(a)!=valtype(b)) return valbool(0);\n");
@@ -1314,17 +1856,21 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "    }\n");
     fprintf(f, "}\n\n");
 
-    fprintf(f, "AKSValue valneq(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valneq(AKSValue a, AKSValue b) {\n");
     fprintf(f, "    if (a == b) return (0xFFF2ULL << 48);\n");
     fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) return (0xFFF2ULL << 48) | 1;\n");
+    fprintf(f, "    if (a < VALFLOATLIMIT && b < VALFLOATLIMIT) {\n");
+    fprintf(f, "        union { uint64_t u; double d; } ua, ub; ua.u = a; ub.u = b;\n");
+    fprintf(f, "        return (0xFFF2ULL << 48) | (ua.d != ub.d);\n");
+    fprintf(f, "    }\n");
     fprintf(f, "    AKSValue ovres;\n");
     fprintf(f, "    if (chkopoverload(a, b, \"opneq\", &ovres)) return ovres;\n");
     fprintf(f, "    AKSValue r=valeq(a,b);\n");
     fprintf(f, "    return valbool(!valtobool(r));\n");
     fprintf(f, "}\n");
-    fprintf(f, "AKSValue valand(AKSValue a, AKSValue b) { return valbool(valistruthy(a)&&valistruthy(b)); }\n");
-    fprintf(f, "AKSValue valor (AKSValue a, AKSValue b) { return valbool(valistruthy(a)||valistruthy(b)); }\n");
-    fprintf(f, "AKSValue valnot(AKSValue a)             { return valbool(!valistruthy(a)); }\n\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valand(AKSValue a, AKSValue b) { return valbool(valistruthy(a)&&valistruthy(b)); }\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valor (AKSValue a, AKSValue b) { return valbool(valistruthy(a)||valistruthy(b)); }\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valnot(AKSValue a)             { return valbool(!valistruthy(a)); }\n\n");
 
     fprintf(f, "AKSValue valtostr(AKSValue a) {\n");
     fprintf(f, "    char buf[64];\n");
@@ -1677,7 +2223,7 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "    valfree(&val); valfree(&obj);\n");
     fprintf(f, "    return valnull();\n");
     fprintf(f, "}\n\n");
-    fprintf(f, "AKSValue valinc(AKSValue v) {\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valinc(AKSValue v) {\n");
     fprintf(f, "    if ((v >> 48) == 0xFFF1ULL) {\n");
     fprintf(f, "        int64_t res = (((int64_t)(v << 16)) >> 16) + 1;\n");
     fprintf(f, "        return (0xFFF1ULL << 48) | ((uint64_t)res & 0x0000FFFFFFFFFFFFULL);\n");
@@ -1686,7 +2232,7 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "    else if (valtype(v) == VALFLOAT) return valfloat(valtofloat(v) + 1.0);\n");
     fprintf(f, "    return v;\n");
     fprintf(f, "}\n\n");
-    fprintf(f, "AKSValue valdec(AKSValue v) {\n");
+    fprintf(f, "ALWAYS_INLINE AKSValue valdec(AKSValue v) {\n");
     fprintf(f, "    if ((v >> 48) == 0xFFF1ULL) {\n");
     fprintf(f, "        int64_t res = (((int64_t)(v << 16)) >> 16) - 1;\n");
     fprintf(f, "        return (0xFFF1ULL << 48) | ((uint64_t)res & 0x0000FFFFFFFFFFFFULL);\n");
@@ -1755,6 +2301,8 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "        exit(1);\n");
     fprintf(f, "    }\n");
     fprintf(f, "}\n\n");
+
+    fputs(aot_stdlib_helpers, f);
 
     // embedded stdlib execution code
     fprintf(f, "static int executestdlib(VM *vm, VMTask *task, const char *name, int argc, AKSValue **stacktopptr) {\n");
@@ -1978,7 +2526,7 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "        *stacktopptr = stacktop; return 1;\n");
     fprintf(f, "    }\n");
 
-    fprintf(f, "    if (strcmp(name, \"len\") == 0) {\n");
+    fprintf(f, "    if (strcmp(name, \"len\") == 0 || strcmp(name, \"Length\") == 0) {\n");
     fprintf(f, "        if (argc != 1) return -1;\n");
     fprintf(f, "        AKSValue arg = POP();\n");
     fprintf(f, "        if (valtype(arg) == VALSTR) PUSH(valint(valtostrptr(arg)->len));\n");
@@ -2690,6 +3238,8 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "        *stacktopptr = stacktop; return 1;\n");
     fprintf(f, "    }\n");
 
+    fputs(aot_stdlib_benchmarks, f);
+
     fprintf(f, "    return -1;\n");
     fprintf(f, "#undef PUSH\n");
     fprintf(f, "#undef POP\n");
@@ -2822,24 +3372,6 @@ int CompAot(Compiler *c, const char *outputpath) {
         }
         fprintf(f, "static AKSValue fn_%d(AKSValue *args, int argc) {\n", fn->id);
 
-        // parameters to locals
-        int maxlocalslot = GetMaxLocalSlot(fn);
-        for (int i = 0; i <= maxlocalslot; i++) {
-            if (i < fn->paramcount) {
-                fprintf(f, "    AKSValue local_%d = (%d < argc) ? valcopy(args[%d]) : valnull();\n", i, i, i);
-            } else {
-                fprintf(f, "    AKSValue local_%d = valnull();\n", i);
-            }
-        }
-
-        // pre-declare evaluation stack register variables
-        fprintf(f, "    AKSValue r0");
-        for (int i = 1; i < 128; i++) fprintf(f, ", r%d", i);
-        fprintf(f, ";\n");
-        for (int i = 0; i < 128; i++) fprintf(f, "    r%d = valnull();\n", i);
-
-        fprintf(f, "    int vtop = 0;\n\n");
-
         // analyze stack depths
         int *depths = malloc(fn->chunk.count * sizeof(int));
         for (int i = 0; i < fn->chunk.count; i++) depths[i] = -1;
@@ -2884,6 +3416,37 @@ int CompAot(Compiler *c, const char *outputpath) {
                 ip += len;
             }
         }
+
+        int maxstackdepth = 0;
+        for (int i = 0; i < fn->chunk.count; i++) {
+            if (depths[i] > maxstackdepth) maxstackdepth = depths[i];
+        }
+        int numregs = maxstackdepth + 8;
+        if (numregs < 8) numregs = 8;
+        if (numregs > 128) numregs = 128;
+
+        // parameters to locals
+        int maxlocalslot = GetMaxLocalSlot(fn);
+        for (int i = 0; i <= maxlocalslot; i++) {
+            if (i < fn->paramcount) {
+                fprintf(f, "    AKSValue local_%d = (%d < argc) ? valcopy(args[%d]) : valnull();\n", i, i, i);
+            } else {
+                fprintf(f, "    AKSValue local_%d = valnull();\n", i);
+            }
+        }
+
+        // pre-declare evaluation stack register variables sized to analyzed depth
+        fprintf(f, "    AKSValue r0");
+        for (int i = 1; i < numregs; i++) fprintf(f, ", r%d", i);
+        fprintf(f, ";\n");
+        for (int i = 0; i < numregs; i++) fprintf(f, "    r%d = valnull();\n", i);
+
+        fprintf(f, "    int vtop = 0;\n");
+        fprintf(f, "    #define FREESTACKFROM(start) do { ");
+        for (int i = 0; i < numregs; i++) {
+            fprintf(f, "if ((start) <= %d) { valfree(&r%d); r%d = valnull(); } ", i, i, i);
+        }
+        fprintf(f, "} while(0)\n\n");
 
         // translate instructions linearly
         int ip = 0;
@@ -3465,6 +4028,7 @@ int CompAot(Compiler *c, const char *outputpath) {
             fprintf(f, "    valfree(&local_%d);\n", i);
         }
         fprintf(f, "    return valnull();\n");
+        fprintf(f, "    #undef FREESTACKFROM\n");
         fprintf(f, "}\n\n");
 
         free(depths);

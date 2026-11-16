@@ -23,7 +23,7 @@ int gDebugBuild = 1; /* 1 = debug (bounds/overflow checks), 0 = release */
 /* Performance helpers */
 /* Returns arithmetic flags for integer ops: nsw+nuw in release, empty in debug */
 static const char *IntArithFlags(void) {
-    return gDebugBuild ? "" : " nsw nuw";
+    return gDebugBuild ? "" : " nsw";
 }
 /* Returns fast-math flags for float ops: fast in release, empty in debug */
 static const char *FpArithFlags(void) {
@@ -96,6 +96,71 @@ static void ScgAddStrDecl(SCGCtx *ctx, int id, const char *s) {
     ctx->str_decls[ctx->str_decl_count++] = decl;
 }
 
+static const char *EmitIncDec(SCGCtx *ctx, Node *n, char *out_reg, int out_reg_len, int is_inc, int is_prefix) {
+    if (!n) { snprintf(out_reg, out_reg_len, "0"); return "i64"; }
+    Node *expr = n->incdec.expr;
+    if (!expr) { snprintf(out_reg, out_reg_len, "0"); return "i64"; }
+    if (expr->type == NIDENT && expr->sval) {
+        int slot = -1;
+        for (int i = 0; i < ctx->slot_count; i++) {
+            if (strcmp(ctx->slot_names[i], expr->sval) == 0) { slot = i; break; }
+        }
+        if (slot >= 0) {
+            const char *slt = (ctx->slot_types[slot] == STYPE_FLOAT) ? "double" : "i64";
+            int old_id = ScgTmp(ctx);
+            fprintf(ctx->out, "  %%%d = load %s, %s* %%slot%d, align 8\n", old_id, slt, slt, slot);
+            int new_id = ScgTmp(ctx);
+            if (strcmp(slt, "double") == 0) {
+                fprintf(ctx->out, "  %%%d = %s%s double %%%d, 1.0\n",
+                        new_id, is_inc ? "fadd" : "fsub", FpArithFlags(), old_id);
+            } else {
+                fprintf(ctx->out, "  %%%d = %s%s i64 %%%d, 1\n",
+                        new_id, is_inc ? "add" : "sub", IntArithFlags(), old_id);
+            }
+            fprintf(ctx->out, "  store %s %%%d, %s* %%slot%d, align 8\n", slt, new_id, slt, slot);
+            int ret_id = is_prefix ? new_id : old_id;
+            snprintf(out_reg, out_reg_len, "%%%d", ret_id);
+            return slt;
+        } else {
+            int old_id = ScgTmp(ctx);
+            fprintf(ctx->out, "  %%%d = load i64, i64* @glb_%s, align 8\n", old_id, expr->sval);
+            int new_id = ScgTmp(ctx);
+            fprintf(ctx->out, "  %%%d = %s%s i64 %%%d, 1\n",
+                    new_id, is_inc ? "add" : "sub", IntArithFlags(), old_id);
+            fprintf(ctx->out, "  store i64 %%%d, i64* @glb_%s, align 8\n", new_id, expr->sval);
+            int ret_id = is_prefix ? new_id : old_id;
+            snprintf(out_reg, out_reg_len, "%%%d", ret_id);
+            return "i64";
+        }
+    } else if (expr->type == NINDEX) {
+        char arr_reg[64], idx_reg[64];
+        const char *arr_lt = EmitExprLLVM(ctx, expr->index.arr, arr_reg, sizeof(arr_reg));
+        EmitExprLLVM(ctx, expr->index.idx, idx_reg, sizeof(idx_reg));
+        int is_f = (strstr(arr_lt, "double") != NULL ||
+                    (expr->stype && expr->stype->kind == STYPE_FLOAT));
+        const char *elem_lt = is_f ? "double" : "i64";
+        int gep_id = ScgTmp(ctx);
+        fprintf(ctx->out, "  %%%d = getelementptr inbounds %s, %s* %s, i64 %s\n",
+                gep_id, elem_lt, elem_lt, arr_reg, idx_reg);
+        int old_id = ScgTmp(ctx);
+        fprintf(ctx->out, "  %%%d = load %s, %s* %%%d, align 8\n", old_id, elem_lt, elem_lt, gep_id);
+        int new_id = ScgTmp(ctx);
+        if (is_f) {
+            fprintf(ctx->out, "  %%%d = %s%s double %%%d, 1.0\n",
+                    new_id, is_inc ? "fadd" : "fsub", FpArithFlags(), old_id);
+        } else {
+            fprintf(ctx->out, "  %%%d = %s%s i64 %%%d, 1\n",
+                    new_id, is_inc ? "add" : "sub", IntArithFlags(), old_id);
+        }
+        fprintf(ctx->out, "  store %s %%%d, %s* %%%d, align 8\n", elem_lt, new_id, elem_lt, gep_id);
+        int ret_id = is_prefix ? new_id : old_id;
+        snprintf(out_reg, out_reg_len, "%%%d", ret_id);
+        return elem_lt;
+    }
+    snprintf(out_reg, out_reg_len, "0");
+    return "i64";
+}
+
 /* Expression emitter */
 
 static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg_len) {
@@ -105,6 +170,64 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
     const char *lt = LLVMType(t);
 
     switch (n->type) {
+        case NINC:
+            return EmitIncDec(ctx, n, out_reg, out_reg_len, 1, 1);
+        case NDEC:
+            return EmitIncDec(ctx, n, out_reg, out_reg_len, 0, 1);
+        case NCHAINEDCMP: {
+            int count = n->chainedcmp.count;
+            if (count < 2) { snprintf(out_reg, out_reg_len, "1"); return "i1"; }
+            char prev_reg[64];
+            const char *prev_lt = EmitExprLLVM(ctx, n->chainedcmp.exprs[0], prev_reg, sizeof(prev_reg));
+            char accum_reg[64] = "";
+            for (int i = 0; i < count - 1; i++) {
+                char next_reg[64];
+                const char *next_lt = EmitExprLLVM(ctx, n->chainedcmp.exprs[i + 1], next_reg, sizeof(next_reg));
+                const char *op = n->chainedcmp.ops[i] ? n->chainedcmp.ops[i] : "<";
+                int is_f = (strcmp(prev_lt, "double") == 0 || strcmp(next_lt, "double") == 0);
+                int cmp_id = ScgTmp(ctx);
+                if (is_f) {
+                    if (strcmp(prev_lt, "i64") == 0) {
+                        int cvt = ScgTmp(ctx);
+                        fprintf(ctx->out, "  %%%d = sitofp i64 %s to double\n", cvt, prev_reg);
+                        snprintf(prev_reg, sizeof(prev_reg), "%%%d", cvt);
+                    }
+                    if (strcmp(next_lt, "i64") == 0) {
+                        int cvt = ScgTmp(ctx);
+                        fprintf(ctx->out, "  %%%d = sitofp i64 %s to double\n", cvt, next_reg);
+                        snprintf(next_reg, sizeof(next_reg), "%%%d", cvt);
+                    }
+                    const char *fcmp = "olt";
+                    if (strcmp(op, "==") == 0)      fcmp = "oeq";
+                    else if (strcmp(op, "!=") == 0) fcmp = "une";
+                    else if (strcmp(op, "<") == 0)  fcmp = "olt";
+                    else if (strcmp(op, ">") == 0)  fcmp = "ogt";
+                    else if (strcmp(op, "<=") == 0) fcmp = "ole";
+                    else if (strcmp(op, ">=") == 0) fcmp = "oge";
+                    fprintf(ctx->out, "  %%%d = fcmp %s double %s, %s\n", cmp_id, fcmp, prev_reg, next_reg);
+                } else {
+                    const char *icmp = "slt";
+                    if (strcmp(op, "==") == 0)      icmp = "eq";
+                    else if (strcmp(op, "!=") == 0) icmp = "ne";
+                    else if (strcmp(op, "<") == 0)  icmp = "slt";
+                    else if (strcmp(op, ">") == 0)  icmp = "sgt";
+                    else if (strcmp(op, "<=") == 0) icmp = "sle";
+                    else if (strcmp(op, ">=") == 0) icmp = "sge";
+                    fprintf(ctx->out, "  %%%d = icmp %s i64 %s, %s\n", cmp_id, icmp, prev_reg, next_reg);
+                }
+                if (i == 0) {
+                    snprintf(accum_reg, sizeof(accum_reg), "%%%d", cmp_id);
+                } else {
+                    int and_id = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = and i1 %s, %%%d\n", and_id, accum_reg, cmp_id);
+                    snprintf(accum_reg, sizeof(accum_reg), "%%%d", and_id);
+                }
+                strncpy(prev_reg, next_reg, sizeof(prev_reg) - 1);
+                prev_lt = next_lt;
+            }
+            snprintf(out_reg, out_reg_len, "%s", accum_reg);
+            return "i1";
+        }
         case NINT: {
             snprintf(out_reg, out_reg_len, "%lld", (long long)n->ival);
             return "i64";
@@ -136,12 +259,8 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
             if (slot >= 0) {
                 const char *slt = (ctx->slot_types[slot] == STYPE_FLOAT) ? "double" :
                                   (ctx->slot_types[slot] == STYPE_BOOL) ? "i1" :
+                                  (ctx->slot_types[slot] == STYPE_STR) ? "i8*" :
                                   (lt ? lt : "i64");
-                if (ctx->is_direct[slot]) {
-                    /* Scalar param is register-promoted: no load needed */
-                    snprintf(out_reg, out_reg_len, "%%arg%d", ctx->direct_argidx[slot]);
-                    return slt;
-                }
                 int id = ScgTmp(ctx);
                 fprintf(ctx->out, "  %%%d = load %s, %s* %%slot%d, align 8\n", id, slt, slt, slot);
                 snprintf(out_reg, out_reg_len, "%%%d", id);
@@ -341,7 +460,7 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
                     fprintf(ctx->out, "  %%%d = mul%s i64 %s, %s\n", id, IntArithFlags(), la, ra);
                 }
             } else if (strcmp(op, "/") == 0) {
-                fprintf(ctx->out, "  %%%d = sdiv%s i64 %s, %s\n", id, gDebugBuild ? "" : " exact", la, ra);
+                fprintf(ctx->out, "  %%%d = sdiv i64 %s, %s\n", id, la, ra);
             } else if (strcmp(op, "%") == 0) {
                 fprintf(ctx->out, "  %%%d = srem i64 %s, %s\n", id, la, ra);
             } else if (strcmp(op, "&") == 0) {
@@ -519,7 +638,7 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
             char arr_reg[64], idx_reg[64];
             EmitExprLLVM(ctx, n->index.arr, arr_reg, sizeof(arr_reg));
             EmitExprLLVM(ctx, n->index.idx, idx_reg, sizeof(idx_reg));
-            const char *elem_lt = (t && t->inner) ? LLVMType(t->inner) : "i64";
+            const char *elem_lt = lt ? lt : ((n->index.arr && n->index.arr->stype && n->index.arr->stype->inner) ? LLVMType(n->index.arr->stype->inner) : "i64");
             /* compile-time bounds check for fixed-size arrays */
             if (gDebugBuild && n->index.arr && n->index.arr->stype &&
                 n->index.arr->stype->array_len > 0 && n->index.idx->type == NINT) {
@@ -590,10 +709,22 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
 static void EmitStmt(SCGCtx *ctx, Node *n) {
     if (!n) return;
     switch (n->type) {
+        case NCONSTDECL:
         case NVARDECL: {
             SType *t = n->stype;
             if (!t && n->decl.init && n->decl.init->stype) t = n->decl.init->stype;
             if (!t && n->decl.tname) t = TyperResolveName(ctx->comp, n->decl.tname);
+            char val_reg[64];
+            const char *vlt = NULL;
+            if (n->decl.init) {
+                vlt = EmitExprLLVM(ctx, n->decl.init, val_reg, sizeof(val_reg));
+            }
+            if (!t && vlt) {
+                if (strcmp(vlt, "double") == 0) t = StypeInternGet(ctx->comp, STYPE_FLOAT, "float");
+                else if (strcmp(vlt, "i1") == 0) t = StypeInternGet(ctx->comp, STYPE_BOOL, "bool");
+                else if (strcmp(vlt, "i8*") == 0) t = StypeInternGet(ctx->comp, STYPE_STR, "str");
+                else t = StypeInternGet(ctx->comp, STYPE_INT, "int");
+            }
             if (!t) t = StypeInternGet(ctx->comp, STYPE_INT, "int");
             const char *lt = LLVMType(t);
             int slot = ctx->slot_count;
@@ -604,8 +735,6 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
                 fprintf(ctx->out, "  %%slot%d = alloca %s, align 8\n", slot, lt);
             }
             if (n->decl.init) {
-                char val_reg[64];
-                const char *vlt = EmitExprLLVM(ctx, n->decl.init, val_reg, sizeof(val_reg));
                 if (strcmp(lt, "double") == 0 && strcmp(vlt, "i64") == 0) {
                     int cvt = ScgTmp(ctx);
                     fprintf(ctx->out, "  %%%d = sitofp i64 %s to double\n", cvt, val_reg);
@@ -619,15 +748,23 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
             }
             break;
         }
+        case NINC:
+        case NDEC: {
+            char dummy[64];
+            EmitIncDec(ctx, n, dummy, sizeof(dummy), n->type == NINC, 1);
+            break;
+        }
         case NASSIGN: {
             if (!n->assign.target || !n->assign.value) break;
             char val_reg[64];
             const char *vlt = EmitExprLLVM(ctx, n->assign.value, val_reg, sizeof(val_reg));
             if (n->assign.target->type == NIDENT && n->assign.target->sval) {
+                int found = 0;
                 for (int i = 0; i < ctx->slot_count; i++) {
                     if (strcmp(ctx->slot_names[i], n->assign.target->sval) == 0) {
                         const char *slt = (ctx->slot_types[i] == STYPE_FLOAT) ? "double" :
-                                          (ctx->slot_types[i] == STYPE_BOOL) ? "i1" : "i64";
+                                          (ctx->slot_types[i] == STYPE_BOOL) ? "i1" :
+                                          (ctx->slot_types[i] == STYPE_STR) ? "i8*" : "i64";
                         if (strcmp(slt, "double") == 0 && strcmp(vlt, "i64") == 0) {
                             int cvt = ScgTmp(ctx);
                             fprintf(ctx->out, "  %%%d = sitofp i64 %s to double\n", cvt, val_reg);
@@ -640,8 +777,12 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
                             vlt = "i64";
                         }
                         fprintf(ctx->out, "  store %s %s, %s* %%slot%d, align 8\n", slt, val_reg, slt, i);
+                        found = 1;
                         break;
                     }
+                }
+                if (!found) {
+                    fprintf(ctx->out, "  store %s %s, %s* @glb_%s, align 8\n", vlt, val_reg, vlt, n->assign.target->sval);
                 }
             } else if (n->assign.target->type == NINDEX) {
                 char arr_reg[64], idx_reg[64];
@@ -884,9 +1025,11 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
         }
         case NPRINT:
         case NEXPRSTMT: {
-            if (n->type == NEXPRSTMT && n->single.expr && n->single.expr->type == NASSIGN) {
-                EmitStmt(ctx, n->single.expr);
-                break;
+            if (n->type == NEXPRSTMT && n->single.expr) {
+                if (n->single.expr->type == NASSIGN || n->single.expr->type == NINC || n->single.expr->type == NDEC) {
+                    EmitStmt(ctx, n->single.expr);
+                    break;
+                }
             }
             char val[64]; const char *vlt = EmitExprLLVM(ctx, n->single.expr, val, sizeof(val));
             if (n->type == NPRINT) {
@@ -1072,9 +1215,14 @@ static void EmitFn(SCGCtx *ctx, Node *fn) {
         SType *ps_t = NULL;
         if (fn->fn.ptypes && fn->fn.ptypes[i]) {
             ps_t = TyperResolveName(ctx->comp, fn->fn.ptypes[i]);
+        }
+        if (!ps_t && fn->stype && fn->stype->kind == STYPE_FN && i < fn->stype->param_count) {
+            ps_t = fn->stype->params[i];
+        }
+        if (ps_t) {
             pt   = LLVMType(ps_t);
-            is_ptr = (ps_t && (ps_t->kind == STYPE_PTR || ps_t->kind == STYPE_REF ||
-                               ps_t->kind == STYPE_MUTREF || ps_t->kind == STYPE_ARRAY));
+            is_ptr = (ps_t->kind == STYPE_PTR || ps_t->kind == STYPE_REF ||
+                      ps_t->kind == STYPE_MUTREF || ps_t->kind == STYPE_ARRAY);
         }
         if (is_ptr) {
             /* noalias: alias analysis; nonnull: safe AKS pointers never null;
@@ -1093,40 +1241,28 @@ static void EmitFn(SCGCtx *ctx, Node *fn) {
     ctx->slot_count = 0;
     memset(ctx->slot_names, 0, sizeof(ctx->slot_names));
 
-    /* Allocate parameter slots.
-       Scalar types (i64/double/i1) are register-promoted: no alloca/store;
-       just record the arg index for direct use in emit_expr NIDENT.
-       Pointer types still get alloca+store (may be address-taken).       */
+    /* Allocate parameter slots */
     for (int i = 0; i < fn->fn.pc; i++) {
         const char *pt = "i64";
         int is_ptr = 0;
         SType *ps = NULL;
         if (fn->fn.ptypes && fn->fn.ptypes[i]) {
             ps = TyperResolveName(ctx->comp, fn->fn.ptypes[i]);
+        }
+        if (!ps && fn->stype && fn->stype->kind == STYPE_FN && i < fn->stype->param_count) {
+            ps = fn->stype->params[i];
+        }
+        if (ps) {
             pt = LLVMType(ps);
-            is_ptr = (ps && (ps->kind == STYPE_PTR || ps->kind == STYPE_REF ||
-                             ps->kind == STYPE_MUTREF || ps->kind == STYPE_ARRAY));
+            is_ptr = (ps->kind == STYPE_PTR || ps->kind == STYPE_REF ||
+                      ps->kind == STYPE_MUTREF || ps->kind == STYPE_ARRAY);
         }
         int slot = ctx->slot_count++;
         if (fn->fn.pnames && fn->fn.pnames[i])
             strncpy(ctx->slot_names[slot], fn->fn.pnames[i], 63);
         ctx->slot_types[slot] = ps ? (int)ps->kind : STYPE_INT;
-        int is_scalar = (strcmp(pt, "i64") == 0 ||
-                         strcmp(pt, "double") == 0 ||
-                         strcmp(pt, "i1") == 0);
-        if (!is_ptr && is_scalar && !gDebugBuild) {
-            /* Register-promote: mark direct, skip alloca entirely.
-               LLVM keeps value in a physical register  -  no stack traffic. */
-            ctx->is_direct[slot]     = 1;
-            ctx->direct_argidx[slot] = i;
-        } else {
-            /* Pointer or debug build: still need alloca for address-taking */
-            if (is_ptr)
-                fprintf(ctx->out, "  %%slot%d = alloca %s, align 8\n", slot, pt);
-            else
-                fprintf(ctx->out, "  %%slot%d = alloca %s, align 8\n", slot, pt);
-            fprintf(ctx->out, "  store %s %%arg%d, %s* %%slot%d, align 8\n", pt, i, pt, slot);
-        }
+        fprintf(ctx->out, "  %%slot%d = alloca %s, align 8\n", slot, pt);
+        fprintf(ctx->out, "  store %s %%arg%d, %s* %%slot%d, align 8\n", pt, i, pt, slot);
     }
 
     if (fn->fn.body) EmitStmt(ctx, fn->fn.body);
@@ -1577,6 +1713,9 @@ int StaticCodeGenEmitTarget(Compiler *c, Node *program, const char *outpath, con
         /* Emit C-compatible main entry point running top-level statements */
         ctx.slot_count = 0;
         memset(ctx.slot_names, 0, sizeof(ctx.slot_names));
+        memset(ctx.slot_types, 0, sizeof(ctx.slot_types));
+        memset(ctx.is_direct, 0, sizeof(ctx.is_direct));
+        memset(ctx.direct_argidx, 0, sizeof(ctx.direct_argidx));
         fprintf(f, "\ndefine i32 @main() {\n");
         fprintf(f, "entry:\n");
         if (st) {
