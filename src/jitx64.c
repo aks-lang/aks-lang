@@ -13,6 +13,7 @@
 
 #if (defined(__x86_64__) || defined(_M_X64)) && !defined(__aarch64__) && !defined(__arm64__)
 #include <immintrin.h>
+#endif
 
 typedef struct {
     void *helperadd;
@@ -431,6 +432,8 @@ int JITFastMandelBridge(AKSValue *stack, int *stacktopptr, AKSValue *locals, voi
     double dx = 2.5 / (double)width;
     double dy = 2.5 / (double)height;
     int64_t count = 0;
+
+#if (defined(__x86_64__) || defined(_M_X64)) && !defined(__aarch64__) && !defined(__arm64__)
     __m256d four = _mm256_set1_pd(4.0);
     __m256d two = _mm256_set1_pd(2.0);
     __m256i one = _mm256_set1_epi64x(1);
@@ -484,6 +487,26 @@ int JITFastMandelBridge(AKSValue *stack, int *stacktopptr, AKSValue *locals, voi
             if (it == max_iters) count++;
         }
     }
+#else
+    for (int64_t y = 0; y < height; y++) {
+        double ci = -1.25 + (double)y * dy;
+        for (int64_t x = 0; x < width; x++) {
+            double cr = -2.0 + (double)x * dx;
+            double zr = 0.0;
+            double zi = 0.0;
+            int64_t it = 0;
+            while (it < max_iters) {
+                double zr2 = zr * zr;
+                double zi2 = zi * zi;
+                if (zr2 + zi2 > 4.0) break;
+                zi = 2.0 * zr * zi + ci;
+                zr = zr2 - zi2 + cr;
+                it++;
+            }
+            if (it == max_iters) count++;
+        }
+    }
+#endif
     locals[-1] = ValInt(count);
     *stacktopptr = (int)(locals - stack);
     return -1;
@@ -563,6 +586,8 @@ int JITFastBubbleSortBridge(AKSValue *stack, int *stacktopptr, AKSValue *locals,
     *stacktopptr = (int)(locals - stack);
     return -1;
 }
+
+#if (defined(__x86_64__) || defined(_M_X64)) && !defined(__aarch64__) && !defined(__arm64__)
 
 // Emits loading a stack register value to a convention-specific target argument register
 static void JITEmitLoadArg(JITBuffer *buf, int vreg, int argidx) {
@@ -2793,31 +2818,16 @@ void *LoadX64TraceFromCache(const char *cachefile, int *outsize) {
     return exec;
 }
 #else
-#include "jitx64.h"
-#include <stddef.h>
-
-void JITBufferInit(JITBuffer *buf) {
-    buf->code = NULL;
-    buf->size = 0;
-    buf->cap = 0;
-}
-void JITBufferFree(JITBuffer *buf) {}
-void JITEmitByte(JITBuffer *buf, uint8_t b) {}
-void JITEmitBytes(JITBuffer *buf, const uint8_t *bytes, int count) {}
-void JITEmitWord(JITBuffer *buf, uint16_t w) {}
-void JITEmitDword(JITBuffer *buf, uint32_t dw) {}
-void JITEmitQword(JITBuffer *buf, uint64_t qw) {}
 void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, int stepcount, int startdepth) {
+    (void)vm; (void)fn; (void)startoffset; (void)trace; (void)stepcount; (void)startdepth;
     return NULL;
 }
 void *CompileX64Method(VM *vm, FnProto *fn) {
-    return NULL;
-}
-void JITCleanupFrame(AKSValue *stack, AKSValue *locals, int64_t vtop) {}
-void *GetJITCompiledFn(VM *vm, FnProto *fn, int targetoffset) {
+    (void)vm; (void)fn;
     return NULL;
 }
 void *LoadX64TraceFromCache(const char *cachefile, int *outsize) {
+    (void)cachefile;
     if (outsize) *outsize = 0;
     return NULL;
 }
