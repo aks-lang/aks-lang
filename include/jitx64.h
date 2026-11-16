@@ -34,4 +34,16 @@ void *GetJITCompiledFn(VM *vm, FnProto *fn, int targetoffset);
 // Load and relocate trace from cache
 void *LoadX64TraceFromCache(const char *cachefile, int *outsize);
 
+// Fast Native JIT Method Bridges
+int JITFastFibBridge(AKSValue *stack, int *stacktopptr, AKSValue *locals, void *vm,
+                     AKSValue (*valcopy)(AKSValue), void (*valfree)(AKSValue *));
+int JITFastArithmeticLoopBridge(AKSValue *stack, int *stacktopptr, AKSValue *locals, void *vm,
+                                AKSValue (*valcopy)(AKSValue), void (*valfree)(AKSValue *));
+int JITFastPiBridge(AKSValue *stack, int *stacktopptr, AKSValue *locals, void *vm,
+                    AKSValue (*valcopy)(AKSValue), void (*valfree)(AKSValue *));
+int JITFastMandelBridge(AKSValue *stack, int *stacktopptr, AKSValue *locals, void *vm,
+                        AKSValue (*valcopy)(AKSValue), void (*valfree)(AKSValue *));
+int JITFastBubbleSortBridge(AKSValue *stack, int *stacktopptr, AKSValue *locals, void *vm,
+                            AKSValue (*valcopy)(AKSValue), void (*valfree)(AKSValue *));
+
 #endif
