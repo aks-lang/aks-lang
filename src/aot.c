@@ -403,11 +403,7 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "    return (ValType)((v >> 48) - 0xFFF0);\n");
     fprintf(f, "}\n\n");
     fprintf(f, "static inline int64_t valtoint(AKSValue v) {\n");
-    fprintf(f, "    uint64_t payload = v & 0x0000FFFFFFFFFFFFULL;\n");
-    fprintf(f, "    if (payload & 0x0000800000000000ULL) {\n");
-    fprintf(f, "        return (int64_t)(payload | 0xFFFF000000000000ULL);\n");
-    fprintf(f, "    }\n");
-    fprintf(f, "    return (int64_t)payload;\n");
+    fprintf(f, "    return ((int64_t)(v << 16)) >> 16;\n");
     fprintf(f, "}\n\n");
     fprintf(f, "static inline double valtofloat(AKSValue v) {\n");
     fprintf(f, "    union { uint64_t u; double d; } u;\n");
@@ -465,9 +461,10 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "AKSValue valstruct_arena(const char *typename, void *arena);\n");
     fprintf(f, "AKSValue valclonestruct(AKSValue srcval);\n");
     fprintf(f, "AKSValue valboundmethod(AKSValue receiver, const char *name);\n");
-    fprintf(f, "AKSValue valcopy(AKSValue v);\n");
+    fprintf(f, "AKSValue valcopy_heap(AKSValue v);\n");
+    fprintf(f, "static inline AKSValue valcopy(AKSValue v) { if (v < 0xFFF4000000000000ULL) return v; return valcopy_heap(v); }\n");
     fprintf(f, "void valfreefunc(AKSValue *v);\n");
-    fprintf(f, "#define valfree(v) do { if ((v) && valtype(*(v)) >= VALSTR) valfreefunc(v); } while(0)\n\n");
+    fprintf(f, "#define valfree(v) do { if ((v) && *(v) >= 0xFFF4000000000000ULL) valfreefunc(v); } while(0)\n\n");
 
     fprintf(f, "typedef struct AKSDetachedBuffer AKSDetachedBuffer;\n");
     fprintf(f, "struct AKSDetachedBuffer {\n");
@@ -1112,7 +1109,7 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "}\n\n");
 
     // copy implementation
-    fprintf(f, "AKSValue valcopy(AKSValue v) {\n");
+    fprintf(f, "AKSValue valcopy_heap(AKSValue v) {\n");
     fprintf(f, "    if(valtype(v)==VALSTR) return valstr(valtostrptr(v)->data);\n");
     fprintf(f, "    if(valtype(v)==VALARR)  { valtoarr(v)->refcount++; return v; }\n");
     fprintf(f, "    if(valtype(v)==VALSTRUCT) { valtoobj(v)->refcount++; return v; }\n");
@@ -1126,13 +1123,14 @@ int CompAot(Compiler *c, const char *outputpath) {
 
     // truthiness
     fprintf(f, "int valistruthy(AKSValue v) {\n");
+    fprintf(f, "    uint64_t hi = v >> 48;\n");
+    fprintf(f, "    if (hi == 0xFFF2ULL) return (int)(v & 1);\n");
+    fprintf(f, "    if (hi == 0xFFF1ULL) return (((int64_t)(v << 16)) >> 16) != 0;\n");
+    fprintf(f, "    if (hi == 0xFFF3ULL) return 0;\n");
+    fprintf(f, "    if (v < VALFLOATLIMIT) { union { uint64_t u; double d; } u; u.u = v; return u.d != 0.0; }\n");
     fprintf(f, "    switch(valtype(v)) {\n");
-    fprintf(f, "        case VALBOOL:   return valtobool(v);\n");
-    fprintf(f, "        case VALINT:    return valtoint(v) != 0;\n");
-    fprintf(f, "        case VALFLOAT:  return valtofloat(v) != 0.0;\n");
     fprintf(f, "        case VALSTR: return valtostrptr(v)->len > 0;\n");
-    fprintf(f, "        case VALNULL:   return 0;\n");
-    fprintf(f, "        default:         return 1;\n");
+    fprintf(f, "        default:     return 1;\n");
     fprintf(f, "    }\n");
     fprintf(f, "}\n\n");
 
@@ -1160,6 +1158,14 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "}\n\n");
 
     fprintf(f, "AKSValue valadd(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) {\n");
+    fprintf(f, "        int64_t ia = ((int64_t)(a << 16)) >> 16;\n");
+    fprintf(f, "        int64_t ib = ((int64_t)(b << 16)) >> 16;\n");
+    fprintf(f, "        int64_t res = ia + ib;\n");
+    fprintf(f, "        if (res >= -140737488355328LL && res <= 140737488355327LL) {\n");
+    fprintf(f, "            return (0xFFF1ULL << 48) | ((uint64_t)res & 0x0000FFFFFFFFFFFFULL);\n");
+    fprintf(f, "        }\n");
+    fprintf(f, "    }\n");
     fprintf(f, "    AKSValue ovres;\n");
     fprintf(f, "    if (chkopoverload(a, b, \"opadd\", &ovres)) return ovres;\n");
     fprintf(f, "    if(valtype(a)==VALSTR || valtype(b)==VALSTR) {\n");
@@ -1187,6 +1193,14 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "}\n\n");
 
     fprintf(f, "AKSValue valsub(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) {\n");
+    fprintf(f, "        int64_t ia = ((int64_t)(a << 16)) >> 16;\n");
+    fprintf(f, "        int64_t ib = ((int64_t)(b << 16)) >> 16;\n");
+    fprintf(f, "        int64_t res = ia - ib;\n");
+    fprintf(f, "        if (res >= -140737488355328LL && res <= 140737488355327LL) {\n");
+    fprintf(f, "            return (0xFFF1ULL << 48) | ((uint64_t)res & 0x0000FFFFFFFFFFFFULL);\n");
+    fprintf(f, "        }\n");
+    fprintf(f, "    }\n");
     fprintf(f, "    AKSValue ovres;\n");
     fprintf(f, "    if (chkopoverload(a, b, \"opsub\", &ovres)) return ovres;\n");
     fprintf(f, "    if(valtype(a)==VALINT && valtype(b)==VALINT) {\n");
@@ -1200,6 +1214,14 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "}\n\n");
 
     fprintf(f, "AKSValue valmul(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) {\n");
+    fprintf(f, "        int64_t ia = ((int64_t)(a << 16)) >> 16;\n");
+    fprintf(f, "        int64_t ib = ((int64_t)(b << 16)) >> 16;\n");
+    fprintf(f, "        int64_t res = ia * ib;\n");
+    fprintf(f, "        if (ia == 0 || (res / ia == ib && res >= -140737488355328LL && res <= 140737488355327LL)) {\n");
+    fprintf(f, "            return (0xFFF1ULL << 48) | ((uint64_t)res & 0x0000FFFFFFFFFFFFULL);\n");
+    fprintf(f, "        }\n");
+    fprintf(f, "    }\n");
     fprintf(f, "    AKSValue ovres;\n");
     fprintf(f, "    if (chkopoverload(a, b, \"opmul\", &ovres)) return ovres;\n");
     fprintf(f, "    if(valtype(a)==VALINT && valtype(b)==VALINT) {\n");
@@ -1213,6 +1235,13 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "}\n\n");
 
     fprintf(f, "AKSValue valdiv(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) {\n");
+    fprintf(f, "        int64_t ib = ((int64_t)(b << 16)) >> 16;\n");
+    fprintf(f, "        if (ib != 0) {\n");
+    fprintf(f, "            int64_t ia = ((int64_t)(a << 16)) >> 16;\n");
+    fprintf(f, "            return (0xFFF1ULL << 48) | ((uint64_t)(ia / ib) & 0x0000FFFFFFFFFFFFULL);\n");
+    fprintf(f, "        }\n");
+    fprintf(f, "    }\n");
     fprintf(f, "    AKSValue ovres;\n");
     fprintf(f, "    if (chkopoverload(a, b, \"opdiv\", &ovres)) return ovres;\n");
     fprintf(f, "    double fa=valtype(a)==VALFLOAT?valtofloat(a):(double)valtoint(a);\n");
@@ -1223,6 +1252,13 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "}\n\n");
 
     fprintf(f, "AKSValue valmod(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) {\n");
+    fprintf(f, "        int64_t ib = ((int64_t)(b << 16)) >> 16;\n");
+    fprintf(f, "        if (ib != 0) {\n");
+    fprintf(f, "            int64_t ia = ((int64_t)(a << 16)) >> 16;\n");
+    fprintf(f, "            return (0xFFF1ULL << 48) | ((uint64_t)(ia %% ib) & 0x0000FFFFFFFFFFFFULL);\n");
+    fprintf(f, "        }\n");
+    fprintf(f, "    }\n");
     fprintf(f, "    AKSValue ovres;\n");
     fprintf(f, "    if (chkopoverload(a, b, \"opmod\", &ovres)) return ovres;\n");
     fprintf(f, "    if(valtype(a)==VALINT && valtype(b)==VALINT){\n");
@@ -1233,6 +1269,10 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "}\n\n");
 
     fprintf(f, "AKSValue valneg(AKSValue a) {\n");
+    fprintf(f, "    if ((a >> 48) == 0xFFF1ULL) {\n");
+    fprintf(f, "        int64_t res = -(((int64_t)(a << 16)) >> 16);\n");
+    fprintf(f, "        return (0xFFF1ULL << 48) | ((uint64_t)res & 0x0000FFFFFFFFFFFFULL);\n");
+    fprintf(f, "    }\n");
     fprintf(f, "    if(valtype(a)==VALINT) return valint(-valtoint(a));\n");
     fprintf(f, "    return valfloat(-valtofloat(a));\n");
     fprintf(f, "}\n\n");
@@ -1240,6 +1280,9 @@ int CompAot(Compiler *c, const char *outputpath) {
     // comparisons
     fprintf(f, "#define CMP(name,op,opname) \\\n");
     fprintf(f, "AKSValue name(AKSValue a, AKSValue b) { \\\n");
+    fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) { \\\n");
+    fprintf(f, "        return (0xFFF2ULL << 48) | ((((int64_t)(a << 16)) >> 16) op (((int64_t)(b << 16)) >> 16)); \\\n");
+    fprintf(f, "    } \\\n");
     fprintf(f, "    AKSValue ovres; \\\n");
     fprintf(f, "    if (chkopoverload(a, b, opname, &ovres)) return ovres; \\\n");
     fprintf(f, "    if(valtype(a)==VALINT && valtype(b)==VALINT) return valbool(valtoint(a) op valtoint(b)); \\\n");
@@ -1256,6 +1299,8 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "CMP(valgte, >=, \"opgte\")\n\n");
 
     fprintf(f, "AKSValue valeq(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "    if (a == b) return (0xFFF2ULL << 48) | 1;\n");
+    fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) return (0xFFF2ULL << 48);\n");
     fprintf(f, "    AKSValue ovres;\n");
     fprintf(f, "    if (chkopoverload(a, b, \"opeq\", &ovres)) return ovres;\n");
     fprintf(f, "    if(valtype(a)!=valtype(b)) return valbool(0);\n");
@@ -1270,6 +1315,8 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "}\n\n");
 
     fprintf(f, "AKSValue valneq(AKSValue a, AKSValue b) {\n");
+    fprintf(f, "    if (a == b) return (0xFFF2ULL << 48);\n");
+    fprintf(f, "    if (((a >> 48) == 0xFFF1ULL) & ((b >> 48) == 0xFFF1ULL)) return (0xFFF2ULL << 48) | 1;\n");
     fprintf(f, "    AKSValue ovres;\n");
     fprintf(f, "    if (chkopoverload(a, b, \"opneq\", &ovres)) return ovres;\n");
     fprintf(f, "    AKSValue r=valeq(a,b);\n");
@@ -1631,11 +1678,19 @@ int CompAot(Compiler *c, const char *outputpath) {
     fprintf(f, "    return valnull();\n");
     fprintf(f, "}\n\n");
     fprintf(f, "AKSValue valinc(AKSValue v) {\n");
+    fprintf(f, "    if ((v >> 48) == 0xFFF1ULL) {\n");
+    fprintf(f, "        int64_t res = (((int64_t)(v << 16)) >> 16) + 1;\n");
+    fprintf(f, "        return (0xFFF1ULL << 48) | ((uint64_t)res & 0x0000FFFFFFFFFFFFULL);\n");
+    fprintf(f, "    }\n");
     fprintf(f, "    if (valtype(v) == VALINT) return valint(valtoint(v) + 1);\n");
     fprintf(f, "    else if (valtype(v) == VALFLOAT) return valfloat(valtofloat(v) + 1.0);\n");
     fprintf(f, "    return v;\n");
     fprintf(f, "}\n\n");
     fprintf(f, "AKSValue valdec(AKSValue v) {\n");
+    fprintf(f, "    if ((v >> 48) == 0xFFF1ULL) {\n");
+    fprintf(f, "        int64_t res = (((int64_t)(v << 16)) >> 16) - 1;\n");
+    fprintf(f, "        return (0xFFF1ULL << 48) | ((uint64_t)res & 0x0000FFFFFFFFFFFFULL);\n");
+    fprintf(f, "    }\n");
     fprintf(f, "    if (valtype(v) == VALINT) return valint(valtoint(v) - 1);\n");
     fprintf(f, "    else if (valtype(v) == VALFLOAT) return valfloat(valtofloat(v) - 1.0);\n");
     fprintf(f, "    return v;\n");

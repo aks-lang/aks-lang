@@ -115,60 +115,63 @@ static AKSValue JITArm64HelperMod(AKSValue a, AKSValue b) {
 }
 
 static AKSValue JITArm64HelperLt(AKSValue a, AKSValue b) {
-    if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
-        return ValBool(ValToInt(a) < ValToInt(b));
+    if (ValIsInt(a) && ValIsInt(b)) {
+        return ValBool(ValToIntUnchecked(a) < ValToIntUnchecked(b));
     }
-    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
-    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
+    double fa = ValIsFloat(a) ? ValToFloat(a) : (double)ValToInt(a);
+    double fb = ValIsFloat(b) ? ValToFloat(b) : (double)ValToInt(b);
     return ValBool(fa < fb);
 }
 
 static AKSValue JITArm64HelperGt(AKSValue a, AKSValue b) {
-    if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
-        return ValBool(ValToInt(a) > ValToInt(b));
+    if (ValIsInt(a) && ValIsInt(b)) {
+        return ValBool(ValToIntUnchecked(a) > ValToIntUnchecked(b));
     }
-    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
-    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
+    double fa = ValIsFloat(a) ? ValToFloat(a) : (double)ValToInt(a);
+    double fb = ValIsFloat(b) ? ValToFloat(b) : (double)ValToInt(b);
     return ValBool(fa > fb);
 }
 
 static AKSValue JITArm64HelperEq(AKSValue a, AKSValue b) {
-    if (ValKind(a) == ValKind(b)) {
-        if (ValKind(a) == VALINT) return ValBool(ValToInt(a) == ValToInt(b));
-        if (ValKind(a) == VALFLOAT) return ValBool(ValToFloat(a) == ValToFloat(b));
-        if (ValKind(a) == VALBOOL) return ValBool(ValToBool(a) == ValToBool(b));
-        if (ValKind(a) == VALNULL) return ValBool(1);
-    }
-    return ValBool(a == b);
+    if (a == b) return ValBool(1);
+    if (ValIsInt(a) && ValIsInt(b)) return ValBool(0);
+    if (ValIsFloat(a) && ValIsFloat(b)) return ValBool(ValToFloat(a) == ValToFloat(b));
+    return ValBool(ValKind(a) == ValKind(b) && a == b);
 }
 
 static AKSValue JITArm64HelperInc(AKSValue a) {
-    if (ValKind(a) == VALINT) return ValInt(ValToInt(a) + 1);
-    if (ValKind(a) == VALFLOAT) return ValFloat(ValToFloat(a) + 1.0);
+    if (ValIsInt(a)) {
+        int64_t v = ValToIntUnchecked(a) + 1;
+        return ValInt(v);
+    }
+    if (ValIsFloat(a)) return ValFloat(ValToFloat(a) + 1.0);
     return a;
 }
 
 static AKSValue JITArm64HelperDec(AKSValue a) {
-    if (ValKind(a) == VALINT) return ValInt(ValToInt(a) - 1);
-    if (ValKind(a) == VALFLOAT) return ValFloat(ValToFloat(a) - 1.0);
+    if (ValIsInt(a)) {
+        int64_t v = ValToIntUnchecked(a) - 1;
+        return ValInt(v);
+    }
+    if (ValIsFloat(a)) return ValFloat(ValToFloat(a) - 1.0);
     return a;
 }
 
 static AKSValue JITArm64HelperLte(AKSValue a, AKSValue b) {
-    if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
-        return ValBool(ValToInt(a) <= ValToInt(b));
+    if (ValIsInt(a) && ValIsInt(b)) {
+        return ValBool(ValToIntUnchecked(a) <= ValToIntUnchecked(b));
     }
-    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
-    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
+    double fa = ValIsFloat(a) ? ValToFloat(a) : (double)ValToInt(a);
+    double fb = ValIsFloat(b) ? ValToFloat(b) : (double)ValToInt(b);
     return ValBool(fa <= fb);
 }
 
 static AKSValue JITArm64HelperGte(AKSValue a, AKSValue b) {
-    if (ValKind(a) == VALINT && ValKind(b) == VALINT) {
-        return ValBool(ValToInt(a) >= ValToInt(b));
+    if (ValIsInt(a) && ValIsInt(b)) {
+        return ValBool(ValToIntUnchecked(a) >= ValToIntUnchecked(b));
     }
-    double fa = (ValKind(a) == VALFLOAT) ? ValToFloat(a) : (double)ValToInt(a);
-    double fb = (ValKind(b) == VALFLOAT) ? ValToFloat(b) : (double)ValToInt(b);
+    double fa = ValIsFloat(a) ? ValToFloat(a) : (double)ValToInt(a);
+    double fb = ValIsFloat(b) ? ValToFloat(b) : (double)ValToInt(b);
     return ValBool(fa >= fb);
 }
 
@@ -178,10 +181,12 @@ static AKSValue JITArm64HelperNeq(AKSValue a, AKSValue b) {
 }
 
 static int JITArm64HelperIsTruthy(AKSValue v) {
-    return (ValKind(v) != VALNULL && 
-            !(ValKind(v) == VALBOOL && !ValToBool(v)) && 
-            !(ValKind(v) == VALINT && ValToInt(v) == 0) && 
-            !(ValKind(v) == VALFLOAT && ValToFloat(v) == 0.0));
+    uint64_t hi = v >> 48;
+    if (hi == 0xFFF2ULL) return (int)(v & 1);
+    if (hi == 0xFFF1ULL) return (((int64_t)(v << 16)) >> 16) != 0;
+    if (hi == 0xFFF3ULL) return 0;
+    if (v < VALFLOATLIMIT) return ValToFloat(v) != 0.0;
+    return 1;
 }
 
 // AArch64 instruction builders

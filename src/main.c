@@ -3539,9 +3539,9 @@ int main(int argc, char **argv) {
             printf("[static] LLVM IR written to: %s\n", ll_file);
             if (strcmp(subcmd, "build") == 0) {
                 /* Shell out to clang for native compilation
-                   -O2 in release, -O0 -g in debug */
+                   -O3 in release, -O0 -g in debug */
                 char clang_cmd[1024];
-                const char *opt = (gDebugBuild == 0) ? "-O2 -flto" : "-O0 -g";
+                const char *opt = (gDebugBuild == 0) ? "-O3 -flto" : "-O0 -g";
                 snprintf(clang_cmd, sizeof(clang_cmd),
                          "clang %s -o %s %s 2>&1", opt, outfile, ll_file);
                 printf("[static] Compiling: %s\n", clang_cmd);
@@ -3554,7 +3554,7 @@ int main(int argc, char **argv) {
             } else if (strcmp(subcmd, "run") == 0) {
                 /* Build then run */
                 char clang_cmd[1024];
-                const char *opt = (gDebugBuild == 0) ? "-O2" : "-O0 -g";
+                const char *opt = (gDebugBuild == 0) ? "-O3 -flto" : "-O0 -g";
                 snprintf(clang_cmd, sizeof(clang_cmd),
                          "clang %s -o %s %s 2>&1", opt, outfile, ll_file);
                 int r = system(clang_cmd);
