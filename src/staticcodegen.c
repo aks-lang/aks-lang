@@ -106,7 +106,8 @@ static const char *EmitIncDec(SCGCtx *ctx, Node *n, char *out_reg, int out_reg_l
             if (strcmp(ctx->slot_names[i], expr->sval) == 0) { slot = i; break; }
         }
         if (slot >= 0) {
-            const char *slt = (ctx->slot_types[slot] == STYPE_FLOAT) ? "double" : "i64";
+            const char *slt = ctx->slot_llvm_types[slot][0] ? ctx->slot_llvm_types[slot] :
+                              ((ctx->slot_types[slot] == STYPE_FLOAT) ? "double" : "i64");
             int old_id = ScgTmp(ctx);
             fprintf(ctx->out, "  %%%d = load %s, %s* %%slot%d, align 8\n", old_id, slt, slt, slot);
             int new_id = ScgTmp(ctx);
@@ -295,10 +296,12 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
                 if (strcmp(ctx->slot_names[i], n->sval) == 0) { slot = i; break; }
             }
             if (slot >= 0) {
-                const char *slt = (ctx->slot_types[slot] == STYPE_FLOAT) ? "double" :
-                                  (ctx->slot_types[slot] == STYPE_BOOL) ? "i1" :
-                                  (ctx->slot_types[slot] == STYPE_STR) ? "i8*" :
-                                  (lt ? lt : "i64");
+                const char *slt = ctx->slot_llvm_types[slot][0] ? ctx->slot_llvm_types[slot] :
+                                  ((ctx->slot_types[slot] == STYPE_FLOAT) ? "double" :
+                                   (ctx->slot_types[slot] == STYPE_BOOL) ? "i1" :
+                                   (ctx->slot_types[slot] == STYPE_STR) ? "i8*" :
+                                   (ctx->slot_types[slot] == STYPE_INT) ? "i64" :
+                                   (lt ? lt : "i64"));
                 int id = ScgTmp(ctx);
                 fprintf(ctx->out, "  %%%d = load %s, %s* %%slot%d, align 8\n", id, slt, slt, slot);
                 snprintf(out_reg, out_reg_len, "%%%d", id);
@@ -816,6 +819,7 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
             int slot = ctx->slot_count;
             if (slot < MAXLOCALS) {
                 strncpy(ctx->slot_names[slot], n->decl.name ? n->decl.name : "__tmp", 63);
+                strncpy(ctx->slot_llvm_types[slot], lt, 15);
                 ctx->slot_types[slot] = (int)t->kind;
                 ctx->slot_count++;
                 fprintf(ctx->out, "  %%slot%d = alloca %s, align 8\n", slot, lt);
@@ -848,9 +852,10 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
                 int found = 0;
                 for (int i = 0; i < ctx->slot_count; i++) {
                     if (strcmp(ctx->slot_names[i], n->assign.target->sval) == 0) {
-                        const char *slt = (ctx->slot_types[i] == STYPE_FLOAT) ? "double" :
-                                          (ctx->slot_types[i] == STYPE_BOOL) ? "i1" :
-                                          (ctx->slot_types[i] == STYPE_STR) ? "i8*" : "i64";
+                        const char *slt = ctx->slot_llvm_types[i][0] ? ctx->slot_llvm_types[i] :
+                                          ((ctx->slot_types[i] == STYPE_FLOAT) ? "double" :
+                                           (ctx->slot_types[i] == STYPE_BOOL) ? "i1" :
+                                           (ctx->slot_types[i] == STYPE_STR) ? "i8*" : "i64");
                         if (strcmp(slt, "double") == 0 && strcmp(vlt, "i64") == 0) {
                             int cvt = ScgTmp(ctx);
                             fprintf(ctx->out, "  %%%d = sitofp i64 %s to double\n", cvt, val_reg);
@@ -1025,6 +1030,7 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
                 int slot = ctx->slot_count;
                 if (slot < MAXLOCALS) {
                     strncpy(ctx->slot_names[slot], n->forin.var ? n->forin.var : "__idx", 63);
+                    strncpy(ctx->slot_llvm_types[slot], "i64", 15);
                     ctx->slot_types[slot] = STYPE_INT;
                     ctx->slot_count++;
                     fprintf(ctx->out, "  %%slot%d = alloca i64, align 8\n", slot);
@@ -1326,6 +1332,8 @@ static void EmitFn(SCGCtx *ctx, Node *fn) {
     /* Reset slot map */
     ctx->slot_count = 0;
     memset(ctx->slot_names, 0, sizeof(ctx->slot_names));
+    memset(ctx->slot_llvm_types, 0, sizeof(ctx->slot_llvm_types));
+    memset(ctx->slot_types, 0, sizeof(ctx->slot_types));
 
     /* Allocate parameter slots */
     for (int i = 0; i < fn->fn.pc; i++) {
@@ -1346,6 +1354,7 @@ static void EmitFn(SCGCtx *ctx, Node *fn) {
         int slot = ctx->slot_count++;
         if (fn->fn.pnames && fn->fn.pnames[i])
             strncpy(ctx->slot_names[slot], fn->fn.pnames[i], 63);
+        strncpy(ctx->slot_llvm_types[slot], pt, 15);
         ctx->slot_types[slot] = ps ? (int)ps->kind : STYPE_INT;
         fprintf(ctx->out, "  %%slot%d = alloca %s, align 8\n", slot, pt);
         fprintf(ctx->out, "  store %s %%arg%d, %s* %%slot%d, align 8\n", pt, i, pt, slot);
@@ -1805,6 +1814,7 @@ int StaticCodeGenEmitTarget(Compiler *c, Node *program, const char *outpath, con
         /* Emit C-compatible main entry point running top-level statements */
         ctx.slot_count = 0;
         memset(ctx.slot_names, 0, sizeof(ctx.slot_names));
+        memset(ctx.slot_llvm_types, 0, sizeof(ctx.slot_llvm_types));
         memset(ctx.slot_types, 0, sizeof(ctx.slot_types));
         memset(ctx.is_direct, 0, sizeof(ctx.is_direct));
         memset(ctx.direct_argidx, 0, sizeof(ctx.direct_argidx));

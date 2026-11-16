@@ -30,6 +30,7 @@ typedef struct SCGCtx {
     char       cur_fn[128];
     /* Local SSA slot map: variable name -> slot index */
     char       slot_names[MAXLOCALS][64];
+    char       slot_llvm_types[MAXLOCALS][16];
     int        slot_types[MAXLOCALS]; /* STypeKind */
     int        slot_count;
     /* Async state machine */

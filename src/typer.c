@@ -1841,6 +1841,7 @@ static SType *InferNode(TyperCtx *ctx, TypeEnv *env, Node *n) {
             ctx->in_const_fn = saved_const;
 
             result = StypeMakeFn(c, param_stypes, n->fn.pc, ret_t);
+            n->stype = result;
             EnvFreeLocal(inner); EnvPop(inner);
             if (n->fn.name) EnvSet(env, n->fn.name, result);
             break;
