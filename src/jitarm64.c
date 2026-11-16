@@ -261,6 +261,20 @@ static int IsArm64SupportedOp(uint8_t op) {
     }
 }
 
+static inline void EmitStoreAbsoluteVtop(JITArm64Buffer *buf, int vtop) {
+    // SUB X9, X21, X19   (0xCB1302A9: X9 = locals - stack in bytes)
+    JITArm64Emit32(buf, 0xCB1302A9);
+    // ASR X9, X9, #3     (0x9343FD29: X9 = slotsbase in elements)
+    JITArm64Emit32(buf, 0x9343FD29);
+    // ADD X9, X9, #vtop  (X9 = slotsbase + vtop)
+    if (vtop > 0) {
+        uint32_t add_inst = 0x91000000 | ((vtop & 0xFFF) << 10) | (9 << 5) | 9;
+        JITArm64Emit32(buf, add_inst);
+    }
+    // STR W9, [X20, #0]  (store 32-bit int to *vtopptr)
+    EmitStr32(buf, 9, 20, 0);
+}
+
 void *CompileArm64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, int stepcount, int startdepth) {
     if (!trace || stepcount <= 0) return NULL;
     for (int i = 0; i < stepcount; i++) {
@@ -301,156 +315,156 @@ void *CompileArm64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, 
         switch (step->op) {
             case OPPUSHINT: {
                 EmitMovImm64(&buf, 9, (uint64_t)ValInt(step->pushival));
-                EmitStr64(&buf, 9, 19, vtop * 8);
+                EmitStr64(&buf, 9, 21, vtop * 8);
                 vtop++;
                 break;
             }
             case OPPUSHFLOAT: {
                 EmitMovImm64(&buf, 9, (uint64_t)ValFloat(step->pushfval));
-                EmitStr64(&buf, 9, 19, vtop * 8);
+                EmitStr64(&buf, 9, 21, vtop * 8);
                 vtop++;
                 break;
             }
             case OPPUSHBOOL: {
                 EmitMovImm64(&buf, 9, (uint64_t)ValBool((int)step->pushival));
-                EmitStr64(&buf, 9, 19, vtop * 8);
+                EmitStr64(&buf, 9, 21, vtop * 8);
                 vtop++;
                 break;
             }
             case OPPUSHNULL: {
                 EmitMovImm64(&buf, 9, (uint64_t)ValNull());
-                EmitStr64(&buf, 9, 19, vtop * 8);
+                EmitStr64(&buf, 9, 21, vtop * 8);
                 vtop++;
                 break;
             }
             case OPLOAD: {
                 EmitLdr64(&buf, 9, 21, step->slot * 8);
-                EmitStr64(&buf, 9, 19, vtop * 8);
+                EmitStr64(&buf, 9, 21, vtop * 8);
                 vtop++;
                 break;
             }
             case OPSTORE: {
                 vtop--;
-                EmitLdr64(&buf, 9, 19, vtop * 8);
+                EmitLdr64(&buf, 9, 21, vtop * 8);
                 EmitStr64(&buf, 9, 21, step->slot * 8);
                 break;
             }
             case OPADD: {
                 vtop--;
-                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
-                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitLdr64(&buf, 0, 21, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 21, vtop * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperAdd);
                 EmitBlr(&buf, 9);
-                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 0, 21, (vtop - 1) * 8);
                 break;
             }
             case OPSUB: {
                 vtop--;
-                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
-                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitLdr64(&buf, 0, 21, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 21, vtop * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperSub);
                 EmitBlr(&buf, 9);
-                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 0, 21, (vtop - 1) * 8);
                 break;
             }
             case OPMUL: {
                 vtop--;
-                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
-                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitLdr64(&buf, 0, 21, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 21, vtop * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperMul);
                 EmitBlr(&buf, 9);
-                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 0, 21, (vtop - 1) * 8);
                 break;
             }
             case OPDIV: {
                 vtop--;
-                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
-                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitLdr64(&buf, 0, 21, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 21, vtop * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperDiv);
                 EmitBlr(&buf, 9);
-                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 0, 21, (vtop - 1) * 8);
                 break;
             }
             case OPMOD: {
                 vtop--;
-                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
-                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitLdr64(&buf, 0, 21, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 21, vtop * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperMod);
                 EmitBlr(&buf, 9);
-                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 0, 21, (vtop - 1) * 8);
                 break;
             }
             case OPINC: {
-                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitLdr64(&buf, 0, 21, (vtop - 1) * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperInc);
                 EmitBlr(&buf, 9);
-                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 0, 21, (vtop - 1) * 8);
                 break;
             }
             case OPDEC: {
-                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitLdr64(&buf, 0, 21, (vtop - 1) * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperDec);
                 EmitBlr(&buf, 9);
-                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 0, 21, (vtop - 1) * 8);
                 break;
             }
             case OPLT: {
                 vtop--;
-                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
-                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitLdr64(&buf, 0, 21, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 21, vtop * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperLt);
                 EmitBlr(&buf, 9);
-                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 0, 21, (vtop - 1) * 8);
                 break;
             }
             case OPGT: {
                 vtop--;
-                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
-                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitLdr64(&buf, 0, 21, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 21, vtop * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperGt);
                 EmitBlr(&buf, 9);
-                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 0, 21, (vtop - 1) * 8);
                 break;
             }
             case OPLTE: {
                 vtop--;
-                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
-                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitLdr64(&buf, 0, 21, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 21, vtop * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperLte);
                 EmitBlr(&buf, 9);
-                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 0, 21, (vtop - 1) * 8);
                 break;
             }
             case OPGTE: {
                 vtop--;
-                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
-                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitLdr64(&buf, 0, 21, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 21, vtop * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperGte);
                 EmitBlr(&buf, 9);
-                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 0, 21, (vtop - 1) * 8);
                 break;
             }
             case OPEQ: {
                 vtop--;
-                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
-                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitLdr64(&buf, 0, 21, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 21, vtop * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperEq);
                 EmitBlr(&buf, 9);
-                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 0, 21, (vtop - 1) * 8);
                 break;
             }
             case OPNEQ: {
                 vtop--;
-                EmitLdr64(&buf, 0, 19, (vtop - 1) * 8);
-                EmitLdr64(&buf, 1, 19, vtop * 8);
+                EmitLdr64(&buf, 0, 21, (vtop - 1) * 8);
+                EmitLdr64(&buf, 1, 21, vtop * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperNeq);
                 EmitBlr(&buf, 9);
-                EmitStr64(&buf, 0, 19, (vtop - 1) * 8);
+                EmitStr64(&buf, 0, 21, (vtop - 1) * 8);
                 break;
             }
             case OPDUP: {
-                EmitLdr64(&buf, 9, 19, (vtop - 1) * 8);
-                EmitStr64(&buf, 9, 19, vtop * 8);
+                EmitLdr64(&buf, 9, 21, (vtop - 1) * 8);
+                EmitStr64(&buf, 9, 21, vtop * 8);
                 vtop++;
                 break;
             }
@@ -465,8 +479,7 @@ void *CompileArm64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, 
                     int imm26 = rel_bytes / 4;
                     EmitB(&buf, imm26);
                 } else {
-                    EmitMovImm64(&buf, 9, (uint64_t)vtop);
-                    EmitStr32(&buf, 9, 20, 0);
+                    EmitStoreAbsoluteVtop(&buf, vtop);
                     EmitMovImm64(&buf, 0, (uint64_t)targetoffset);
                     patches[patchcount++] = buf.size;
                     EmitB(&buf, 0);
@@ -475,21 +488,24 @@ void *CompileArm64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, 
             }
             case OPJUMPIFFALSE: {
                 vtop--;
-                EmitLdr64(&buf, 0, 19, vtop * 8);
+                EmitLdr64(&buf, 0, 21, vtop * 8);
                 EmitMovImm64(&buf, 9, (uint64_t)(uintptr_t)JITArm64HelperIsTruthy);
                 EmitBlr(&buf, 9);
                 int targetoffset = (step->guardoutcome == 1) ? (step->ipoffset + 5) : (step->ipoffset + 5 + step->jumpoffset);
                 // If truthy (W0 != 0), jump over bailout block
-                // Bailout block length: 6 instructions (24 bytes) -> imm19 = 7
-                uint32_t cbnz = 0x35000000 | ((7 & 0x7FFFF) << 5) | 0;
-                JITArm64Emit32(&buf, cbnz);
+                int cbnz_pos = buf.size;
+                JITArm64Emit32(&buf, 0x35000000);
 
                 // Bailout block:
-                EmitMovImm64(&buf, 9, (uint64_t)vtop);
-                EmitStr32(&buf, 9, 20, 0);
+                EmitStoreAbsoluteVtop(&buf, vtop);
                 EmitMovImm64(&buf, 0, (uint64_t)targetoffset);
                 patches[patchcount++] = buf.size;
                 EmitB(&buf, 0);
+
+                // Patch CBNZ with exact relative branch offset
+                int target_pos = buf.size;
+                int diff_words = (target_pos - cbnz_pos) / 4;
+                *(uint32_t *)(buf.code + cbnz_pos) = 0x35000000 | ((diff_words & 0x7FFFF) << 5) | 0;
                 break;
             }
             default:
@@ -498,8 +514,7 @@ void *CompileArm64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, 
     }
 
     // Default exit path (success return)
-    EmitMovImm64(&buf, 9, (uint64_t)vtop);
-    EmitStr32(&buf, 9, 20, 0);
+    EmitStoreAbsoluteVtop(&buf, vtop);
 
     int lastoffset = startoffset;
     if (stepcount > 0) {
