@@ -40,6 +40,14 @@ static void EmitModuleHeader(SCGCtx *ctx, const char *source_path);
 
 static const char *LLVMType(SType *t) {
     if (!t) return "i64";
+    if (t->name && t->name[0]) {
+        if (strcmp(t->name, "double") == 0 || strcmp(t->name, "float") == 0 || strcmp(t->name, "f64") == 0) return "double";
+        if (strcmp(t->name, "f32") == 0) return "float";
+        if (strcmp(t->name, "bool") == 0) return "i1";
+        if (strcmp(t->name, "int") == 0 || strcmp(t->name, "i64") == 0 || strcmp(t->name, "long") == 0) return "i64";
+        if (strcmp(t->name, "i32") == 0) return "i32";
+        if (strcmp(t->name, "void") == 0) return "void";
+    }
     switch (t->kind) {
         case STYPE_INT:    return "i64";
         case STYPE_FLOAT:  return "double";
@@ -125,104 +133,44 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
             for (int i = 0; i < ctx->slot_count; i++) {
                 if (strcmp(ctx->slot_names[i], n->sval) == 0) { slot = i; break; }
             }
-            if (slot >= 0 && ctx->is_direct[slot]) {
-                /* Scalar param is register-promoted: no load needed  - 
-                   return %argN directly. Saves 1 instruction per use. */
-                const char *param_lt = lt ? lt : "i64";
-                snprintf(out_reg, out_reg_len, "%%arg%d", ctx->direct_argidx[slot]);
-                return param_lt;
+            if (slot >= 0) {
+                const char *slt = (ctx->slot_types[slot] == STYPE_FLOAT) ? "double" :
+                                  (ctx->slot_types[slot] == STYPE_BOOL) ? "i1" :
+                                  (lt ? lt : "i64");
+                if (ctx->is_direct[slot]) {
+                    /* Scalar param is register-promoted: no load needed */
+                    snprintf(out_reg, out_reg_len, "%%arg%d", ctx->direct_argidx[slot]);
+                    return slt;
+                }
+                int id = ScgTmp(ctx);
+                fprintf(ctx->out, "  %%%d = load %s, %s* %%slot%d, align 8\n", id, slt, slt, slot);
+                snprintf(out_reg, out_reg_len, "%%%d", id);
+                return slt;
             }
             int id = ScgTmp(ctx);
-            if (slot >= 0) {
-                fprintf(ctx->out, "  %%%d = load %s, %s* %%slot%d\n", id, lt, lt, slot);
-            } else {
-                fprintf(ctx->out, "  %%%d = load %s, %s* @glb_%s\n", id, lt, lt,
-                        n->sval ? n->sval : "unknown");
-            }
+            fprintf(ctx->out, "  %%%d = load %s, %s* @glb_%s, align 8\n", id, lt, lt,
+                    n->sval ? n->sval : "unknown");
             snprintf(out_reg, out_reg_len, "%%%d", id);
             return lt;
+        }
+        case NASSIGN: {
+            EmitStmt(ctx, n);
+            if (n->assign.target && n->assign.target->type == NIDENT && n->assign.target->sval) {
+                return EmitExprLLVM(ctx, n->assign.target, out_reg, out_reg_len);
+            }
+            snprintf(out_reg, out_reg_len, "0");
+            return "i64";
         }
         case NBINOP: {
             char la[64], ra[64];
             const char *llt = EmitExprLLVM(ctx, n->binop.left,  la, sizeof(la));
             const char *rlt = EmitExprLLVM(ctx, n->binop.right, ra, sizeof(ra));
-            const char *op  = n->binop.op;
+            const char *op  = n->binop.op ? n->binop.op : "+";
             int id = ScgTmp(ctx);
 
-            if (t && t->kind == STYPE_INT) {
-                if (strcmp(op, "+") == 0) {
-                    if (gDebugBuild) {
-                        int ov = ScgTmp(ctx), res = ScgTmp(ctx), ok = ScgTmp(ctx);
-                        int ok_lbl = ScgLbl(ctx), panic_lbl = ScgLbl(ctx);
-                        fprintf(ctx->out, "  %%%d = call {i64, i1} @llvm.sadd.with.overflow.i64(%s %s, %s %s)\n",
-                                ov, llt, la, rlt, ra);
-                        fprintf(ctx->out, "  %%%d = extractvalue {i64, i1} %%%d, 0\n", res, ov);
-                        fprintf(ctx->out, "  %%%d = extractvalue {i64, i1} %%%d, 1\n", ok, ov);
-                        fprintf(ctx->out, "  br i1 %%%d, label %%overflow%d, label %%ok%d\n", ok, panic_lbl, ok_lbl);
-                        fprintf(ctx->out, "overflow%d:\n", panic_lbl);
-                        fprintf(ctx->out, "  call void @aksrt_panic(i8* getelementptr ([17 x i8], [17 x i8]* @.overflow_msg, i64 0, i64 0))\n");
-                        fprintf(ctx->out, "  unreachable\n");
-                        fprintf(ctx->out, "ok%d:\n", ok_lbl);
-                        snprintf(out_reg, out_reg_len, "%%%d", res);
-                        return "i64";
-                    } else {
-                        fprintf(ctx->out, "  %%%d = add%s i64 %s, %s\n", id, IntArithFlags(), la, ra);
-                    }
-                } else if (strcmp(op, "-") == 0) {
-                    fprintf(ctx->out, "  %%%d = sub%s i64 %s, %s\n", id, IntArithFlags(), la, ra);
-                } else if (strcmp(op, "*") == 0) {
-                    fprintf(ctx->out, "  %%%d = mul%s i64 %s, %s\n", id, IntArithFlags(), la, ra);
-                } else if (strcmp(op, "/") == 0) {
-                    fprintf(ctx->out, "  %%%d = sdiv%s i64 %s, %s\n", id, gDebugBuild ? "" : " exact", la, ra);
-                } else if (strcmp(op, "%") == 0) {
-                    fprintf(ctx->out, "  %%%d = srem i64 %s, %s\n", id, la, ra);
-                } else if (strcmp(op, "&") == 0) {
-                    fprintf(ctx->out, "  %%%d = and i64 %s, %s\n",  id, la, ra);
-                } else if (strcmp(op, "|") == 0) {
-                    fprintf(ctx->out, "  %%%d = or i64 %s, %s\n",   id, la, ra);
-                } else if (strcmp(op, "^") == 0) {
-                    fprintf(ctx->out, "  %%%d = xor i64 %s, %s\n",  id, la, ra);
-                } else if (strcmp(op, "<<") == 0) {
-                    fprintf(ctx->out, "  %%%d = shl i64 %s, %s\n",  id, la, ra);
-                } else if (strcmp(op, ">>") == 0) {
-                    fprintf(ctx->out, "  %%%d = ashr i64 %s, %s\n", id, la, ra);
-                } else {
-                    /* Comparison -> i1 */
-                    const char *icmp = "eq";
-                    if (strcmp(op, "==") == 0)      icmp = "eq";
-                    else if (strcmp(op, "!=") == 0) icmp = "ne";
-                    else if (strcmp(op, "<") == 0)  icmp = "slt";
-                    else if (strcmp(op, ">") == 0)  icmp = "sgt";
-                    else if (strcmp(op, "<=") == 0) icmp = "sle";
-                    else if (strcmp(op, ">=") == 0) icmp = "sge";
-                    fprintf(ctx->out, "  %%%d = icmp %s i64 %s, %s\n", id, icmp, la, ra);
-                    snprintf(out_reg, out_reg_len, "%%%d", id);
-                    return "i1";
-                }
-            } else if (t && t->kind == STYPE_FLOAT) {
-                if (strcmp(op, "+") == 0)      fprintf(ctx->out, "  %%%d = fadd%s double %s, %s\n", id, FpArithFlags(), la, ra);
-                else if (strcmp(op, "-") == 0) fprintf(ctx->out, "  %%%d = fsub%s double %s, %s\n", id, FpArithFlags(), la, ra);
-                else if (strcmp(op, "*") == 0) fprintf(ctx->out, "  %%%d = fmul%s double %s, %s\n", id, FpArithFlags(), la, ra);
-                else if (strcmp(op, "/") == 0) fprintf(ctx->out, "  %%%d = fdiv%s double %s, %s\n", id, FpArithFlags(), la, ra);
-                else {
-                    const char *fcmp = "oeq";
-                    if (strcmp(op, "==") == 0)      fcmp = "oeq";
-                    else if (strcmp(op, "!=") == 0) fcmp = "une";
-                    else if (strcmp(op, "<") == 0)  fcmp = "olt";
-                    else if (strcmp(op, ">") == 0)  fcmp = "ogt";
-                    else if (strcmp(op, "<=") == 0) fcmp = "ole";
-                    else if (strcmp(op, ">=") == 0) fcmp = "oge";
-                    fprintf(ctx->out, "  %%%d = fcmp %s double %s, %s\n", id, fcmp, la, ra);
-                    snprintf(out_reg, out_reg_len, "%%%d", id);
-                    return "i1";
-                }
-            } else if (t && t->kind == STYPE_BOOL) {
-                if (strcmp(op, "&&") == 0)      fprintf(ctx->out, "  %%%d = and i1 %s, %s\n", id, la, ra);
-                else if (strcmp(op, "||") == 0) fprintf(ctx->out, "  %%%d = or i1 %s, %s\n",  id, la, ra);
-                else                            fprintf(ctx->out, "  %%%d = icmp eq i1 %s, %s\n", id, la, ra);
-            } else if (t && t->kind == STYPE_SIMD) {
-                /* Vector SIMD arithmetic: <4 x float> / <4 x i32> native vector registers */
-                const char *simd_t = LLVMType(t);
+            if ((t && t->kind == STYPE_SIMD) ||
+                (n->binop.left && n->binop.left->stype && n->binop.left->stype->kind == STYPE_SIMD)) {
+                const char *simd_t = LLVMType(t ? t : n->binop.left->stype);
                 if (strstr(simd_t, "float")) {
                     if (!strcmp(op, "+"))      fprintf(ctx->out, "  %%%d = fadd%s %s %s, %s\n", id, FpArithFlags(), simd_t, la, ra);
                     else if (!strcmp(op, "-")) fprintf(ctx->out, "  %%%d = fsub%s %s %s, %s\n", id, FpArithFlags(), simd_t, la, ra);
@@ -238,12 +186,179 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
                     else if (!strcmp(op, "<<")) fprintf(ctx->out, "  %%%d = shl%s %s %s, %s\n",  id, IntArithFlags(), simd_t, la, ra);
                     else if (!strcmp(op, ">>")) fprintf(ctx->out, "  %%%d = ashr %s %s, %s\n", id, simd_t, la, ra);
                 }
+                snprintf(out_reg, out_reg_len, "%%%d", id);
+                return simd_t;
+            }
+
+            int is_float = (strcmp(llt, "double") == 0 || strcmp(rlt, "double") == 0 ||
+                            (t && t->kind == STYPE_FLOAT) ||
+                            (n->binop.left && n->binop.left->stype && n->binop.left->stype->kind == STYPE_FLOAT) ||
+                            (n->binop.right && n->binop.right->stype && n->binop.right->stype->kind == STYPE_FLOAT));
+            if (is_float) {
+                if (strcmp(llt, "i64") == 0) {
+                    int cvt = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = sitofp i64 %s to double\n", cvt, la);
+                    snprintf(la, sizeof(la), "%%%d", cvt);
+                    llt = "double";
+                }
+                if (strcmp(rlt, "i64") == 0) {
+                    int cvt = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = sitofp i64 %s to double\n", cvt, ra);
+                    snprintf(ra, sizeof(ra), "%%%d", cvt);
+                    rlt = "double";
+                }
+                if (strcmp(op, "+") == 0) {
+                    fprintf(ctx->out, "  %%%d = fadd%s double %s, %s\n", id, FpArithFlags(), la, ra);
+                    snprintf(out_reg, out_reg_len, "%%%d", id);
+                    return "double";
+                } else if (strcmp(op, "-") == 0) {
+                    fprintf(ctx->out, "  %%%d = fsub%s double %s, %s\n", id, FpArithFlags(), la, ra);
+                    snprintf(out_reg, out_reg_len, "%%%d", id);
+                    return "double";
+                } else if (strcmp(op, "*") == 0) {
+                    fprintf(ctx->out, "  %%%d = fmul%s double %s, %s\n", id, FpArithFlags(), la, ra);
+                    snprintf(out_reg, out_reg_len, "%%%d", id);
+                    return "double";
+                } else if (strcmp(op, "/") == 0) {
+                    fprintf(ctx->out, "  %%%d = fdiv%s double %s, %s\n", id, FpArithFlags(), la, ra);
+                    snprintf(out_reg, out_reg_len, "%%%d", id);
+                    return "double";
+                } else {
+                    const char *fcmp = "oeq";
+                    if (strcmp(op, "==") == 0)      fcmp = "oeq";
+                    else if (strcmp(op, "!=") == 0) fcmp = "une";
+                    else if (strcmp(op, "<") == 0)  fcmp = "olt";
+                    else if (strcmp(op, ">") == 0)  fcmp = "ogt";
+                    else if (strcmp(op, "<=") == 0) fcmp = "ole";
+                    else if (strcmp(op, ">=") == 0) fcmp = "oge";
+                    fprintf(ctx->out, "  %%%d = fcmp %s double %s, %s\n", id, fcmp, la, ra);
+                    snprintf(out_reg, out_reg_len, "%%%d", id);
+                    return "i1";
+                }
+            }
+
+            if ((strcmp(llt, "i1") == 0 && strcmp(rlt, "i1") == 0) ||
+                strcmp(op, "&&") == 0 || strcmp(op, "||") == 0) {
+                if (strcmp(llt, "i1") != 0) {
+                    int cvt = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = icmp ne %s %s, 0\n", cvt, llt, la);
+                    snprintf(la, sizeof(la), "%%%d", cvt);
+                }
+                if (strcmp(rlt, "i1") != 0) {
+                    int cvt = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = icmp ne %s %s, 0\n", cvt, rlt, ra);
+                    snprintf(ra, sizeof(ra), "%%%d", cvt);
+                }
+                if (strcmp(op, "&&") == 0)      fprintf(ctx->out, "  %%%d = and i1 %s, %s\n", id, la, ra);
+                else if (strcmp(op, "||") == 0) fprintf(ctx->out, "  %%%d = or i1 %s, %s\n",  id, la, ra);
+                else if (strcmp(op, "==") == 0) fprintf(ctx->out, "  %%%d = icmp eq i1 %s, %s\n", id, la, ra);
+                else if (strcmp(op, "!=") == 0) fprintf(ctx->out, "  %%%d = icmp ne i1 %s, %s\n", id, la, ra);
+                else                            fprintf(ctx->out, "  %%%d = xor i1 %s, %s\n",  id, la, ra);
+                snprintf(out_reg, out_reg_len, "%%%d", id);
+                return "i1";
+            }
+
+            if (strcmp(llt, "i1") == 0) {
+                int z = ScgTmp(ctx);
+                fprintf(ctx->out, "  %%%d = zext i1 %s to i64\n", z, la);
+                snprintf(la, sizeof(la), "%%%d", z);
+                llt = "i64";
+            }
+            if (strcmp(rlt, "i1") == 0) {
+                int z = ScgTmp(ctx);
+                fprintf(ctx->out, "  %%%d = zext i1 %s to i64\n", z, ra);
+                snprintf(ra, sizeof(ra), "%%%d", z);
+                rlt = "i64";
+            }
+
+            if (strcmp(op, "==") == 0 || strcmp(op, "!=") == 0 ||
+                strcmp(op, "<") == 0  || strcmp(op, ">") == 0  ||
+                strcmp(op, "<=") == 0 || strcmp(op, ">=") == 0) {
+                const char *icmp = "eq";
+                if (strcmp(op, "==") == 0)      icmp = "eq";
+                else if (strcmp(op, "!=") == 0) icmp = "ne";
+                else if (strcmp(op, "<") == 0)  icmp = "slt";
+                else if (strcmp(op, ">") == 0)  icmp = "sgt";
+                else if (strcmp(op, "<=") == 0) icmp = "sle";
+                else if (strcmp(op, ">=") == 0) icmp = "sge";
+                fprintf(ctx->out, "  %%%d = icmp %s i64 %s, %s\n", id, icmp, la, ra);
+                snprintf(out_reg, out_reg_len, "%%%d", id);
+                return "i1";
+            }
+
+            if (strcmp(op, "+") == 0) {
+                if (gDebugBuild) {
+                    int ov = ScgTmp(ctx), res = ScgTmp(ctx), ok = ScgTmp(ctx);
+                    int ok_lbl = ScgLbl(ctx), panic_lbl = ScgLbl(ctx);
+                    fprintf(ctx->out, "  %%%d = call {i64, i1} @llvm.sadd.with.overflow.i64(i64 %s, i64 %s)\n",
+                            ov, la, ra);
+                    fprintf(ctx->out, "  %%%d = extractvalue {i64, i1} %%%d, 0\n", res, ov);
+                    fprintf(ctx->out, "  %%%d = extractvalue {i64, i1} %%%d, 1\n", ok, ov);
+                    fprintf(ctx->out, "  br i1 %%%d, label %%overflow%d, label %%ok%d\n", ok, panic_lbl, ok_lbl);
+                    fprintf(ctx->out, "overflow%d:\n", panic_lbl);
+                    fprintf(ctx->out, "  call void @aksrt_panic(i8* getelementptr ([17 x i8], [17 x i8]* @.overflow_msg, i64 0, i64 0))\n");
+                    fprintf(ctx->out, "  unreachable\n");
+                    fprintf(ctx->out, "ok%d:\n", ok_lbl);
+                    snprintf(out_reg, out_reg_len, "%%%d", res);
+                    return "i64";
+                } else {
+                    fprintf(ctx->out, "  %%%d = add%s i64 %s, %s\n", id, IntArithFlags(), la, ra);
+                }
+            } else if (strcmp(op, "-") == 0) {
+                if (gDebugBuild) {
+                    int ov = ScgTmp(ctx), res = ScgTmp(ctx), ok = ScgTmp(ctx);
+                    int ok_lbl = ScgLbl(ctx), panic_lbl = ScgLbl(ctx);
+                    fprintf(ctx->out, "  %%%d = call {i64, i1} @llvm.ssub.with.overflow.i64(i64 %s, i64 %s)\n",
+                            ov, la, ra);
+                    fprintf(ctx->out, "  %%%d = extractvalue {i64, i1} %%%d, 0\n", res, ov);
+                    fprintf(ctx->out, "  %%%d = extractvalue {i64, i1} %%%d, 1\n", ok, ov);
+                    fprintf(ctx->out, "  br i1 %%%d, label %%overflow%d, label %%ok%d\n", ok, panic_lbl, ok_lbl);
+                    fprintf(ctx->out, "overflow%d:\n", panic_lbl);
+                    fprintf(ctx->out, "  call void @aksrt_panic(i8* getelementptr ([17 x i8], [17 x i8]* @.overflow_msg, i64 0, i64 0))\n");
+                    fprintf(ctx->out, "  unreachable\n");
+                    fprintf(ctx->out, "ok%d:\n", ok_lbl);
+                    snprintf(out_reg, out_reg_len, "%%%d", res);
+                    return "i64";
+                } else {
+                    fprintf(ctx->out, "  %%%d = sub%s i64 %s, %s\n", id, IntArithFlags(), la, ra);
+                }
+            } else if (strcmp(op, "*") == 0) {
+                if (gDebugBuild) {
+                    int ov = ScgTmp(ctx), res = ScgTmp(ctx), ok = ScgTmp(ctx);
+                    int ok_lbl = ScgLbl(ctx), panic_lbl = ScgLbl(ctx);
+                    fprintf(ctx->out, "  %%%d = call {i64, i1} @llvm.smul.with.overflow.i64(i64 %s, i64 %s)\n",
+                            ov, la, ra);
+                    fprintf(ctx->out, "  %%%d = extractvalue {i64, i1} %%%d, 0\n", res, ov);
+                    fprintf(ctx->out, "  %%%d = extractvalue {i64, i1} %%%d, 1\n", ok, ov);
+                    fprintf(ctx->out, "  br i1 %%%d, label %%overflow%d, label %%ok%d\n", ok, panic_lbl, ok_lbl);
+                    fprintf(ctx->out, "overflow%d:\n", panic_lbl);
+                    fprintf(ctx->out, "  call void @aksrt_panic(i8* getelementptr ([17 x i8], [17 x i8]* @.overflow_msg, i64 0, i64 0))\n");
+                    fprintf(ctx->out, "  unreachable\n");
+                    fprintf(ctx->out, "ok%d:\n", ok_lbl);
+                    snprintf(out_reg, out_reg_len, "%%%d", res);
+                    return "i64";
+                } else {
+                    fprintf(ctx->out, "  %%%d = mul%s i64 %s, %s\n", id, IntArithFlags(), la, ra);
+                }
+            } else if (strcmp(op, "/") == 0) {
+                fprintf(ctx->out, "  %%%d = sdiv%s i64 %s, %s\n", id, gDebugBuild ? "" : " exact", la, ra);
+            } else if (strcmp(op, "%") == 0) {
+                fprintf(ctx->out, "  %%%d = srem i64 %s, %s\n", id, la, ra);
+            } else if (strcmp(op, "&") == 0) {
+                fprintf(ctx->out, "  %%%d = and i64 %s, %s\n",  id, la, ra);
+            } else if (strcmp(op, "|") == 0) {
+                fprintf(ctx->out, "  %%%d = or i64 %s, %s\n",   id, la, ra);
+            } else if (strcmp(op, "^") == 0) {
+                fprintf(ctx->out, "  %%%d = xor i64 %s, %s\n",  id, la, ra);
+            } else if (strcmp(op, "<<") == 0) {
+                fprintf(ctx->out, "  %%%d = shl i64 %s, %s\n",  id, la, ra);
+            } else if (strcmp(op, ">>") == 0) {
+                fprintf(ctx->out, "  %%%d = ashr i64 %s, %s\n", id, la, ra);
             } else {
                 fprintf(ctx->out, "  %%%d = add i64 %s, %s\n", id, la, ra);
             }
-            (void)llt; (void)rlt;
             snprintf(out_reg, out_reg_len, "%%%d", id);
-            return lt;
+            return "i64";
         }
         case NUNOP: {
             char va[64];
@@ -315,7 +430,47 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
                 snprintf(out_reg, out_reg_len, "0");
                 return "void";
             }
+            if (strcmp(fname_buf, "sqrt") == 0 && argc == 1) {
+                char a0[64];
+                if (strcmp(arg_types_arr[0], "i64") == 0) {
+                    int c = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = sitofp i64 %s to double\n", c, arg_regs[0]);
+                    snprintf(a0, sizeof(a0), "%%%d", c);
+                } else {
+                    snprintf(a0, sizeof(a0), "%s", arg_regs[0]);
+                }
+                int id = ScgTmp(ctx);
+                fprintf(ctx->out, "  %%%d = call double @llvm.sqrt.f64(double %s)\n", id, a0);
+                snprintf(out_reg, out_reg_len, "%%%d", id);
+                return "double";
+            }
+            if ((strcmp(fname_buf, "abs") == 0 || strcmp(fname_buf, "fabs") == 0) && argc == 1) {
+                int id = ScgTmp(ctx);
+                if (strcmp(arg_types_arr[0], "double") == 0) {
+                    fprintf(ctx->out, "  %%%d = call double @llvm.fabs.f64(double %s)\n", id, arg_regs[0]);
+                    snprintf(out_reg, out_reg_len, "%%%d", id);
+                    return "double";
+                } else {
+                    int s = ScgTmp(ctx), c = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = ashr i64 %s, 63\n", s, arg_regs[0]);
+                    fprintf(ctx->out, "  %%%d = add i64 %s, %%%d\n", c, arg_regs[0], s);
+                    fprintf(ctx->out, "  %%%d = xor i64 %%%d, %%%d\n", id, c, s);
+                    snprintf(out_reg, out_reg_len, "%%%d", id);
+                    return "i64";
+                }
+            }
             const char *ret_lt = lt ? lt : "i64";
+            if (!t || t->kind == STYPE_UNKNOWN) {
+                if (ctx->comp) {
+                    for (int i = 0; i < ctx->comp->fncount; i++) {
+                        if (strcmp(ctx->comp->fns[i]->name, fname_buf) == 0) {
+                            SType *fr = TyperResolveName(ctx->comp, ctx->comp->fns[i]->rettype);
+                            ret_lt = LLVMType(fr);
+                            break;
+                        }
+                    }
+                }
+            }
             int id = ScgTmp(ctx);
             int is_user_fn = (strncmp(fname_buf, "aksrt_", 6) != 0 && strncmp(fname_buf, "llvm.", 5) != 0);
             const char *cc = (!gDebugBuild && is_user_fn) ? "fastcc " : "";
@@ -436,7 +591,10 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
     if (!n) return;
     switch (n->type) {
         case NVARDECL: {
-            SType *t = n->stype ? n->stype : StypeInternGet(ctx->comp, STYPE_INT, "int");
+            SType *t = n->stype;
+            if (!t && n->decl.init && n->decl.init->stype) t = n->decl.init->stype;
+            if (!t && n->decl.tname) t = TyperResolveName(ctx->comp, n->decl.tname);
+            if (!t) t = StypeInternGet(ctx->comp, STYPE_INT, "int");
             const char *lt = LLVMType(t);
             int slot = ctx->slot_count;
             if (slot < MAXLOCALS) {
@@ -447,23 +605,41 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
             }
             if (n->decl.init) {
                 char val_reg[64];
-                EmitExprLLVM(ctx, n->decl.init, val_reg, sizeof(val_reg));
+                const char *vlt = EmitExprLLVM(ctx, n->decl.init, val_reg, sizeof(val_reg));
+                if (strcmp(lt, "double") == 0 && strcmp(vlt, "i64") == 0) {
+                    int cvt = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = sitofp i64 %s to double\n", cvt, val_reg);
+                    snprintf(val_reg, sizeof(val_reg), "%%%d", cvt);
+                } else if (strcmp(lt, "i64") == 0 && strcmp(vlt, "double") == 0) {
+                    int cvt = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = fptosi double %s to i64\n", cvt, val_reg);
+                    snprintf(val_reg, sizeof(val_reg), "%%%d", cvt);
+                }
                 fprintf(ctx->out, "  store %s %s, %s* %%slot%d, align 8\n", lt, val_reg, lt, slot);
             }
             break;
         }
         case NASSIGN: {
             if (!n->assign.target || !n->assign.value) break;
-            SType *t = n->assign.value->stype
-                ? n->assign.value->stype
-                : StypeInternGet(ctx->comp, STYPE_INT, "int");
-            const char *lt = LLVMType(t);
             char val_reg[64];
-            EmitExprLLVM(ctx, n->assign.value, val_reg, sizeof(val_reg));
+            const char *vlt = EmitExprLLVM(ctx, n->assign.value, val_reg, sizeof(val_reg));
             if (n->assign.target->type == NIDENT && n->assign.target->sval) {
                 for (int i = 0; i < ctx->slot_count; i++) {
                     if (strcmp(ctx->slot_names[i], n->assign.target->sval) == 0) {
-                        fprintf(ctx->out, "  store %s %s, %s* %%slot%d\n", lt, val_reg, lt, i);
+                        const char *slt = (ctx->slot_types[i] == STYPE_FLOAT) ? "double" :
+                                          (ctx->slot_types[i] == STYPE_BOOL) ? "i1" : "i64";
+                        if (strcmp(slt, "double") == 0 && strcmp(vlt, "i64") == 0) {
+                            int cvt = ScgTmp(ctx);
+                            fprintf(ctx->out, "  %%%d = sitofp i64 %s to double\n", cvt, val_reg);
+                            snprintf(val_reg, sizeof(val_reg), "%%%d", cvt);
+                            vlt = "double";
+                        } else if (strcmp(slt, "i64") == 0 && strcmp(vlt, "double") == 0) {
+                            int cvt = ScgTmp(ctx);
+                            fprintf(ctx->out, "  %%%d = fptosi double %s to i64\n", cvt, val_reg);
+                            snprintf(val_reg, sizeof(val_reg), "%%%d", cvt);
+                            vlt = "i64";
+                        }
+                        fprintf(ctx->out, "  store %s %s, %s* %%slot%d, align 8\n", slt, val_reg, slt, i);
                         break;
                     }
                 }
@@ -471,10 +647,11 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
                 char arr_reg[64], idx_reg[64];
                 EmitExprLLVM(ctx, n->assign.target->index.arr, arr_reg, sizeof(arr_reg));
                 EmitExprLLVM(ctx, n->assign.target->index.idx, idx_reg, sizeof(idx_reg));
+                const char *elem_lt = vlt ? vlt : "i64";
                 int gep_id = ScgTmp(ctx);
                 fprintf(ctx->out, "  %%%d = getelementptr inbounds %s, %s* %s, i64 %s\n",
-                        gep_id, lt, lt, arr_reg, idx_reg);
-                fprintf(ctx->out, "  store %s %s, %s* %%%d, align 8\n", lt, val_reg, lt, gep_id);
+                        gep_id, elem_lt, elem_lt, arr_reg, idx_reg);
+                fprintf(ctx->out, "  store %s %s, %s* %%%d, align 8\n", elem_lt, val_reg, elem_lt, gep_id);
             }
             break;
         }
@@ -495,7 +672,12 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
                 break;
             }
             char cond_reg[64];
-            EmitExprLLVM(ctx, n->ifn.cond, cond_reg, sizeof(cond_reg));
+            const char *clt = EmitExprLLVM(ctx, n->ifn.cond, cond_reg, sizeof(cond_reg));
+            if (strcmp(clt, "i1") != 0) {
+                int cid = ScgTmp(ctx);
+                fprintf(ctx->out, "  %%%d = icmp ne %s %s, 0\n", cid, clt, cond_reg);
+                snprintf(cond_reg, sizeof(cond_reg), "%%%d", cid);
+            }
             int then_lbl = ScgLbl(ctx), else_lbl = ScgLbl(ctx), end_lbl = ScgLbl(ctx);
             /* Branch-weight metadata: static heuristic  -  then-branch is 3x
                more likely (common for bounds checks / fast-path selection) */
@@ -517,10 +699,21 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
             int cond_lbl = ScgLbl(ctx), body_lbl = ScgLbl(ctx), end_lbl = ScgLbl(ctx);
             /* Assign loop metadata ID for vectorization/unrolling hints */
             int lmid = ctx->loop_meta_id++;
+            char saved_break[64], saved_cont[64];
+            strncpy(saved_break, ctx->cur_break_target, 63);
+            strncpy(saved_cont, ctx->cur_continue_target, 63);
+            snprintf(ctx->cur_break_target, sizeof(ctx->cur_break_target), "end%d", end_lbl);
+            snprintf(ctx->cur_continue_target, sizeof(ctx->cur_continue_target), "cond%d", cond_lbl);
+
             fprintf(ctx->out, "  br label %%cond%d\n", cond_lbl);
             fprintf(ctx->out, "cond%d:\n", cond_lbl);
             char cond_reg[64];
-            EmitExprLLVM(ctx, n->whilen.cond, cond_reg, sizeof(cond_reg));
+            const char *clt = EmitExprLLVM(ctx, n->whilen.cond, cond_reg, sizeof(cond_reg));
+            if (strcmp(clt, "i1") != 0) {
+                int cid = ScgTmp(ctx);
+                fprintf(ctx->out, "  %%%d = icmp ne %s %s, 0\n", cid, clt, cond_reg);
+                snprintf(cond_reg, sizeof(cond_reg), "%%%d", cid);
+            }
             fprintf(ctx->out, "  br i1 %s, label %%body%d, label %%end%d\n", cond_reg, body_lbl, end_lbl);
             fprintf(ctx->out, "body%d:\n", body_lbl);
             EmitStmt(ctx, n->whilen.body);
@@ -538,26 +731,40 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
                 fprintf(ctx->out, "  br label %%cond%d\n", cond_lbl);
             }
             fprintf(ctx->out, "end%d:\n", end_lbl);
+            strncpy(ctx->cur_break_target, saved_break, 63);
+            strncpy(ctx->cur_continue_target, saved_cont, 63);
             break;
         }
         case NFOR: {
-            int cond_lbl = ScgLbl(ctx), body_lbl = ScgLbl(ctx), end_lbl = ScgLbl(ctx);
+            int cond_lbl = ScgLbl(ctx), body_lbl = ScgLbl(ctx), post_lbl = ScgLbl(ctx), end_lbl = ScgLbl(ctx);
             int lmid = ctx->loop_meta_id++;
+            char saved_break[64], saved_cont[64];
+            strncpy(saved_break, ctx->cur_break_target, 63);
+            strncpy(saved_cont, ctx->cur_continue_target, 63);
+            snprintf(ctx->cur_break_target, sizeof(ctx->cur_break_target), "forend%d", end_lbl);
+            snprintf(ctx->cur_continue_target, sizeof(ctx->cur_continue_target), "forpost%d", post_lbl);
+
             if (n->forn.init) EmitStmt(ctx, n->forn.init);
             fprintf(ctx->out, "  br label %%forcond%d\n", cond_lbl);
             fprintf(ctx->out, "forcond%d:\n", cond_lbl);
             if (n->forn.cond) {
-                char cond_reg[64]; EmitExprLLVM(ctx, n->forn.cond, cond_reg, sizeof(cond_reg));
+                char cond_reg[64];
+                const char *clt = EmitExprLLVM(ctx, n->forn.cond, cond_reg, sizeof(cond_reg));
+                if (strcmp(clt, "i1") != 0) {
+                    int cid = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = icmp ne %s %s, 0\n", cid, clt, cond_reg);
+                    snprintf(cond_reg, sizeof(cond_reg), "%%%d", cid);
+                }
                 fprintf(ctx->out, "  br i1 %s, label %%forbody%d, label %%forend%d\n", cond_reg, body_lbl, end_lbl);
             } else {
                 fprintf(ctx->out, "  br label %%forbody%d\n", body_lbl);
             }
             fprintf(ctx->out, "forbody%d:\n", body_lbl);
             if (n->forn.body) EmitStmt(ctx, n->forn.body);
+            fprintf(ctx->out, "  br label %%forpost%d\n", post_lbl);
+            fprintf(ctx->out, "forpost%d:\n", post_lbl);
             if (n->forn.post) EmitStmt(ctx, n->forn.post);
-            /* Backedge with full vectorization + unroll + mustprogress metadata.
-               mustprogress = LLVM can assume loop terminates -> enables more
-               aggressive transforms that GCC/Clang need __builtin_expect for. */
+            /* Backedge with full vectorization + unroll + mustprogress metadata. */
             if (!gDebugBuild && ctx->loop_meta_count < 128) {
                 fprintf(ctx->out, "  br label %%forcond%d, !llvm.loop !aksloop%d\n", cond_lbl, lmid);
                 snprintf(ctx->loop_metas[ctx->loop_meta_count++], 255,
@@ -572,14 +779,103 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
                 fprintf(ctx->out, "  br label %%forcond%d\n", cond_lbl);
             }
             fprintf(ctx->out, "forend%d:\n", end_lbl);
+            strncpy(ctx->cur_break_target, saved_break, 63);
+            strncpy(ctx->cur_continue_target, saved_cont, 63);
+            break;
+        }
+        case NFORIN: {
+            if (n->forin.iter && n->forin.iter->type == NRANGE) {
+                Node *start_node = n->forin.iter->range.start;
+                Node *end_node = n->forin.iter->range.end;
+                int cond_lbl = ScgLbl(ctx), body_lbl = ScgLbl(ctx), post_lbl = ScgLbl(ctx), end_lbl = ScgLbl(ctx);
+                int lmid = ctx->loop_meta_id++;
+                char saved_break[64], saved_cont[64];
+                strncpy(saved_break, ctx->cur_break_target, 63);
+                strncpy(saved_cont, ctx->cur_continue_target, 63);
+                snprintf(ctx->cur_break_target, sizeof(ctx->cur_break_target), "forend%d", end_lbl);
+                snprintf(ctx->cur_continue_target, sizeof(ctx->cur_continue_target), "forpost%d", post_lbl);
+
+                int slot = ctx->slot_count;
+                if (slot < MAXLOCALS) {
+                    strncpy(ctx->slot_names[slot], n->forin.var ? n->forin.var : "__idx", 63);
+                    ctx->slot_types[slot] = STYPE_INT;
+                    ctx->slot_count++;
+                    fprintf(ctx->out, "  %%slot%d = alloca i64, align 8\n", slot);
+                }
+                char start_reg[64];
+                EmitExprLLVM(ctx, start_node, start_reg, sizeof(start_reg));
+                fprintf(ctx->out, "  store i64 %s, i64* %%slot%d, align 8\n", start_reg, slot);
+
+                char end_reg[64];
+                EmitExprLLVM(ctx, end_node, end_reg, sizeof(end_reg));
+
+                fprintf(ctx->out, "  br label %%forcond%d\n", cond_lbl);
+                fprintf(ctx->out, "forcond%d:\n", cond_lbl);
+                int cur_val_id = ScgTmp(ctx), cmp_id = ScgTmp(ctx);
+                fprintf(ctx->out, "  %%%d = load i64, i64* %%slot%d, align 8\n", cur_val_id, slot);
+                fprintf(ctx->out, "  %%%d = icmp slt i64 %%%d, %s\n", cmp_id, cur_val_id, end_reg);
+                fprintf(ctx->out, "  br i1 %%%d, label %%forbody%d, label %%forend%d\n", cmp_id, body_lbl, end_lbl);
+
+                fprintf(ctx->out, "forbody%d:\n", body_lbl);
+                if (n->forin.body) EmitStmt(ctx, n->forin.body);
+                fprintf(ctx->out, "  br label %%forpost%d\n", post_lbl);
+
+                fprintf(ctx->out, "forpost%d:\n", post_lbl);
+                int post_load = ScgTmp(ctx), post_inc = ScgTmp(ctx);
+                fprintf(ctx->out, "  %%%d = load i64, i64* %%slot%d, align 8\n", post_load, slot);
+                fprintf(ctx->out, "  %%%d = add%s i64 %%%d, 1\n", post_inc, IntArithFlags(), post_load);
+                fprintf(ctx->out, "  store i64 %%%d, i64* %%slot%d, align 8\n", post_inc, slot);
+
+                if (!gDebugBuild && ctx->loop_meta_count < 128) {
+                    fprintf(ctx->out, "  br label %%forcond%d, !llvm.loop !aksloop%d\n", cond_lbl, lmid);
+                    snprintf(ctx->loop_metas[ctx->loop_meta_count++], 255,
+                        "!aksloop%d = distinct !{!aksloop%d, "
+                        "!{!\"llvm.loop.vectorize.enable\", i1 true}, "
+                        "!{!\"llvm.loop.vectorize.width\", i32 8}, "
+                        "!{!\"llvm.loop.interleave.count\", i32 2}, "
+                        "!{!\"llvm.loop.unroll.count\", i32 4}, "
+                        "!{!\"llvm.loop.mustprogress\"}}",
+                        lmid, lmid);
+                } else {
+                    fprintf(ctx->out, "  br label %%forcond%d\n", cond_lbl);
+                }
+                fprintf(ctx->out, "forend%d:\n", end_lbl);
+                strncpy(ctx->cur_break_target, saved_break, 63);
+                strncpy(ctx->cur_continue_target, saved_cont, 63);
+            }
+            break;
+        }
+        case NBREAK: {
+            if (ctx->cur_break_target[0]) {
+                fprintf(ctx->out, "  br label %%%s\n", ctx->cur_break_target);
+            }
+            int dead = ScgLbl(ctx); fprintf(ctx->out, "dead%d:\n", dead);
+            break;
+        }
+        case NCONTINUE: {
+            if (ctx->cur_continue_target[0]) {
+                fprintf(ctx->out, "  br label %%%s\n", ctx->cur_continue_target);
+            }
+            int dead = ScgLbl(ctx); fprintf(ctx->out, "dead%d:\n", dead);
             break;
         }
         case NRETURN: {
             if (n->single.expr) {
-                SType *rt = n->single.expr->stype;
-                const char *rlt = LLVMType(rt);
-                char val[64]; EmitExprLLVM(ctx, n->single.expr, val, sizeof(val));
-                fprintf(ctx->out, "  ret %s %s\n", rlt, val);
+                char val[64];
+                const char *vlt = EmitExprLLVM(ctx, n->single.expr, val, sizeof(val));
+                if (ctx->cur_fn_ret_lt && strcmp(ctx->cur_fn_ret_lt, "double") == 0 && strcmp(vlt, "i64") == 0) {
+                    int cvt = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = sitofp i64 %s to double\n", cvt, val);
+                    snprintf(val, sizeof(val), "%%%d", cvt);
+                    vlt = "double";
+                } else if (ctx->cur_fn_ret_lt && strcmp(ctx->cur_fn_ret_lt, "i64") == 0 && strcmp(vlt, "double") == 0) {
+                    int cvt = ScgTmp(ctx);
+                    fprintf(ctx->out, "  %%%d = fptosi double %s to i64\n", cvt, val);
+                    snprintf(val, sizeof(val), "%%%d", cvt);
+                    vlt = "i64";
+                }
+                const char *final_ret_lt = ctx->cur_fn_ret_lt ? ctx->cur_fn_ret_lt : vlt;
+                fprintf(ctx->out, "  ret %s %s\n", final_ret_lt, val);
             } else {
                 fprintf(ctx->out, "  ret void\n");
             }
@@ -588,6 +884,10 @@ static void EmitStmt(SCGCtx *ctx, Node *n) {
         }
         case NPRINT:
         case NEXPRSTMT: {
+            if (n->type == NEXPRSTMT && n->single.expr && n->single.expr->type == NASSIGN) {
+                EmitStmt(ctx, n->single.expr);
+                break;
+            }
             char val[64]; const char *vlt = EmitExprLLVM(ctx, n->single.expr, val, sizeof(val));
             if (n->type == NPRINT) {
                 SType *et = n->single.expr ? n->single.expr->stype : NULL;
@@ -685,6 +985,8 @@ static int FnIsPureScan(Node *n) {
         case NASSIGN:  return 0;
         case NCALL:    return 0; /* calls may have side effects */
         case NPRINT:   return 0;
+        case NEXPRSTMT:
+            return FnIsPureScan(n->single.expr);
         case NBLOCK: case NPROGRAM:
             for (int i = 0; i < n->block.count; i++)
                 if (!FnIsPureScan(n->block.stmts[i])) return 0;
@@ -693,12 +995,9 @@ static int FnIsPureScan(Node *n) {
             return FnIsPureScan(n->ifn.cond) &&
                    FnIsPureScan(n->ifn.then) &&
                    FnIsPureScan(n->ifn.els);
-        case NWHILE:
-            return FnIsPureScan(n->whilen.cond) &&
-                   FnIsPureScan(n->whilen.body);
-        case NFOR:
-            return FnIsPureScan(n->forn.cond) &&
-                   FnIsPureScan(n->forn.body);
+        case NWHILE:   return 0;
+        case NFOR:     return 0;
+        case NFORIN:   return 0;
         case NRETURN:  return FnIsPureScan(n->single.expr);
         case NBINOP:   return FnIsPureScan(n->binop.left) &&
                               FnIsPureScan(n->binop.right);
@@ -729,6 +1028,7 @@ static void EmitFn(SCGCtx *ctx, Node *fn) {
             ? fn->stype->ret
             : StypeInternGet(ctx->comp, STYPE_VOID, "void"));
     const char *ret_lt = LLVMType(ret_t);
+    ctx->cur_fn_ret_lt = ret_lt;
 
     /* Detect pointer params */
     for (int i = 0; i < fn->fn.pc; i++) {
@@ -800,8 +1100,9 @@ static void EmitFn(SCGCtx *ctx, Node *fn) {
     for (int i = 0; i < fn->fn.pc; i++) {
         const char *pt = "i64";
         int is_ptr = 0;
+        SType *ps = NULL;
         if (fn->fn.ptypes && fn->fn.ptypes[i]) {
-            SType *ps = TyperResolveName(ctx->comp, fn->fn.ptypes[i]);
+            ps = TyperResolveName(ctx->comp, fn->fn.ptypes[i]);
             pt = LLVMType(ps);
             is_ptr = (ps && (ps->kind == STYPE_PTR || ps->kind == STYPE_REF ||
                              ps->kind == STYPE_MUTREF || ps->kind == STYPE_ARRAY));
@@ -809,6 +1110,7 @@ static void EmitFn(SCGCtx *ctx, Node *fn) {
         int slot = ctx->slot_count++;
         if (fn->fn.pnames && fn->fn.pnames[i])
             strncpy(ctx->slot_names[slot], fn->fn.pnames[i], 63);
+        ctx->slot_types[slot] = ps ? (int)ps->kind : STYPE_INT;
         int is_scalar = (strcmp(pt, "i64") == 0 ||
                          strcmp(pt, "double") == 0 ||
                          strcmp(pt, "i1") == 0);
@@ -822,8 +1124,8 @@ static void EmitFn(SCGCtx *ctx, Node *fn) {
             if (is_ptr)
                 fprintf(ctx->out, "  %%slot%d = alloca %s, align 8\n", slot, pt);
             else
-                fprintf(ctx->out, "  %%slot%d = alloca %s\n", slot, pt);
-            fprintf(ctx->out, "  store %s %%arg%d, %s* %%slot%d\n", pt, i, pt, slot);
+                fprintf(ctx->out, "  %%slot%d = alloca %s, align 8\n", slot, pt);
+            fprintf(ctx->out, "  store %s %%arg%d, %s* %%slot%d, align 8\n", pt, i, pt, slot);
         }
     }
 

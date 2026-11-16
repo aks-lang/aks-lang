@@ -595,7 +595,7 @@ SType *TyperResolveName(Compiler *c, const char *tname) {
         return StypeInternGet(c, STYPE_UNKNOWN, "any");
     if (strcmp(clean, "int") == 0 || strcmp(clean, "i64") == 0 || strcmp(clean, "i32") == 0)
         return StypeInternGet(c, STYPE_INT, "int");
-    if (strcmp(clean, "float") == 0 || strcmp(clean, "f64") == 0 || strcmp(clean, "f32") == 0)
+    if (strcmp(clean, "float") == 0 || strcmp(clean, "double") == 0 || strcmp(clean, "f64") == 0 || strcmp(clean, "f32") == 0)
         return StypeInternGet(c, STYPE_FLOAT, "float");
     if (strcmp(clean, "bool") == 0)
         return StypeInternGet(c, STYPE_BOOL, "bool");

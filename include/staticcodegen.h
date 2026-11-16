@@ -51,6 +51,11 @@ typedef struct SCGCtx {
     const char *pgo_profile;
     const char *pgo_use;
 
+    /* Return and loop targets */
+    const char *cur_fn_ret_lt;
+    char       cur_break_target[64];
+    char       cur_continue_target[64];
+
     /* Module-level string literal declarations emitted after functions */
     char     **str_decls;
     int        str_decl_count;

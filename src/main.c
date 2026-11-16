@@ -3334,6 +3334,10 @@ int main(int argc, char **argv) {
                 } else if (strcmp(argv[i], "--pgo-use") == 0 && i + 1 < argc) {
                     pgo_use = argv[i+1];
                     i++;
+                } else if (strcmp(argv[i], "--release") == 0) {
+                    gDebugBuild = 0;
+                } else if (strcmp(argv[i], "--debug") == 0) {
+                    gDebugBuild = 1;
                 }
             }
             char *rawsource = ReadFileToStr(srcfile);
