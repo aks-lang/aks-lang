@@ -140,8 +140,8 @@ static void TriggerJIT(VM *vm, FnProto *fn, int startoffset, int endoffset) {
           vm->jitloops[idx].libhandle = NULL;
           vm->jitloops[idx].jitfn = (void (*)(AKSValue *, int *, AKSValue *, void *))func;
           gVMProfiling.jit_tierings++;
-          fprintf(stderr, "[JIT] In-memory compiled hot loop at offset %d (mode %d)\n",
-                  startoffset, effective_jitmode);
+          fprintf(stderr, "[JIT] In-memory compiled hot loop at offset %d (mode %d) in fn %s\n",
+                  startoffset, effective_jitmode, fn->name ? fn->name : "unnamed");
           free(trace);
           MutexUnlockNative(vm->globallock);
           return;
@@ -1435,7 +1435,8 @@ static void ExecuteJITCompiled(VM *vm, VMTask *task, FnProto *fn,
       typedef int (*jitloopfnt)(AKSValue *, int *, AKSValue *, void *,
                                 AKSValue (*)(AKSValue), void (*)(AKSValue *));
       int resumeoffset = ((jitloopfnt)(void (*)(void))vm->jitloops[i].jitfn)(
-          task->stack, &top, task->stack + (*frameptr)->slotsbase, (void*)fn, ValCopy,
+          task->stack, &top, task->stack + (*frameptr)->slotsbase,
+          (vm->jitloops[i].targetoffset == -1 ? (void *)fn : (void *)vm), ValCopy,
           ValFreeFunc);
       *stacktopptr = task->stack + top;
       gVMProfiling.native_executions++;

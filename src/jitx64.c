@@ -284,6 +284,17 @@ static AKSValue JITHelperArrGet(AKSValue arrval, AKSValue idxval) {
         if (idx >= 0 && idx < a->count) {
             return ValCopy(a->items[idx]);
         }
+    } else if (ValKind(arrval) == VALSTR && ValIsInt(idxval) && !ValIsInvalidated(arrval)) {
+        int64_t idx = ValToIntUnchecked(idxval);
+        AKSString *s = ValToStrPtr(arrval);
+        if (s && s->data) {
+            int64_t count = s->len;
+            if (idx < 0) idx += count;
+            if (idx >= 0 && idx < count) {
+                char charstr[2] = { s->data[idx], '\0' };
+                return ValStrLen(charstr, 1);
+            }
+        }
     }
     return ValNull();
 }
@@ -1920,11 +1931,11 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
             continue;
         }
 
-        // 4. 64x unrolled induction loop pattern:
+        // 4. 64x unrolled induction loop pattern (disabled due to loop exit & NaN-tag corruption):
         int is_unroll_pattern = 0;
         int unroll_advance = 0;
         int accSlot = -1, idxSlot = -1;
-        if (i + 6 < stepcount &&
+        if (0 && i + 6 < stepcount &&
             trace[i].op == OPLOAD &&
             trace[i + 1].op == OPLOAD &&
             trace[i + 2].op == OPADD &&
@@ -1939,7 +1950,7 @@ void *CompileX64Trace(VM *vm, FnProto *fn, int startoffset, TraceStep *trace, in
             unroll_advance = 6;
             accSlot = trace[i].slot;
             idxSlot = trace[i + 1].slot;
-        } else if (i + 7 < stepcount &&
+        } else if (0 && i + 7 < stepcount &&
             trace[i].op == OPLOAD &&
             trace[i + 1].op == OPLOAD &&
             trace[i + 2].op == OPADD &&

@@ -11790,6 +11790,7 @@ enter_stack_interpreter: for (;;) {
         }
       }
       if (HasJITCompiled(callee, -1, vm)) {
+        frame->ip = ip;
         AKSValue *canarypos = stacktop - argc;
         for (AKSValue *p = stacktop; p > canarypos; p--) {
           *p = *(p - 1);
@@ -11815,7 +11816,6 @@ enter_stack_interpreter: for (;;) {
         task->framecount--;
         frame = &task->frames[task->framecount - 1];
         frameslots = task->stack + frame->slotsbase;
-        ip = frame->ip;
         break;
       }
       if (task->framecount >= MAXFRAMES) {
@@ -12049,6 +12049,7 @@ enter_stack_interpreter: for (;;) {
         }
       }
       if (HasJITCompiled(callee, -1, vm)) {
+        frame->ip = ip;
         AKSValue *canarypos = stacktop - argc;
         for (AKSValue *p = stacktop; p > canarypos; p--) {
           *p = *(p - 1);
@@ -12074,7 +12075,6 @@ enter_stack_interpreter: for (;;) {
         task->framecount--;
         frame = &task->frames[task->framecount - 1];
         frameslots = task->stack + frame->slotsbase;
-        ip = frame->ip;
         break;
       }
       if (task->framecount >= MAXFRAMES) {
