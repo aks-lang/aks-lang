@@ -1661,15 +1661,38 @@ void *CompileX64Method(VM *vm, FnProto *fn) {
         int len = GetJITOpLen(op);
         if (op == OPPUSHINT) {
             if (ip + 8 < fn->chunk.count) {
-                memcpy(&trace[stepcount].pushival, &fn->chunk.code[ip + 1], 8);
+                int64_t val = 0;
+                for (int b = 0; b < 8; b++) {
+                    val = (val << 8) | fn->chunk.code[ip + 1 + b];
+                }
+                trace[stepcount].pushival = val;
             }
         } else if (op == OPPUSHFLOAT) {
             if (ip + 8 < fn->chunk.count) {
-                memcpy(&trace[stepcount].pushfval, &fn->chunk.code[ip + 1], 8);
+                uint64_t val = 0;
+                for (int b = 0; b < 8; b++) {
+                    val = (val << 8) | fn->chunk.code[ip + 1 + b];
+                }
+                double fval;
+                memcpy(&fval, &val, 8);
+                trace[stepcount].pushfval = fval;
+            }
+        } else if (op == OPPUSHBOOL) {
+            if (ip + 1 < fn->chunk.count) {
+                trace[stepcount].pushival = fn->chunk.code[ip + 1];
             }
         } else if (op == OPLOAD || op == OPSTORE) {
             if (ip + 2 < fn->chunk.count) {
                 trace[stepcount].slot = (fn->chunk.code[ip + 1] << 8) | fn->chunk.code[ip + 2];
+            }
+        } else if (op == OPJUMP || op == OPJUMPIFFALSE || op == OPJUMPIFNULL ||
+                   op == OPCOALESCE || op == OPTRYPUSH) {
+            if (ip + 4 < fn->chunk.count) {
+                int32_t offset =
+                    (int32_t)((fn->chunk.code[ip + 1] << 24) |
+                              (fn->chunk.code[ip + 2] << 16) |
+                              (fn->chunk.code[ip + 3] << 8) | fn->chunk.code[ip + 4]);
+                trace[stepcount].jumpoffset = offset;
             }
         }
         ip += len;

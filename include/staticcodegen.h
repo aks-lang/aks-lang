@@ -12,6 +12,13 @@
 extern int gStaticMode;
 extern int gDebugBuild;
 
+typedef struct {
+    char name[64];
+    char ret_type[32];
+    int param_count;
+    char param_types[16][32];
+} ScgFnSig;
+
 /* Static codegen context */
 typedef struct SCGCtx {
     Compiler  *comp;
@@ -28,6 +35,10 @@ typedef struct SCGCtx {
     /* Async state machine */
     int        resume_count;
     int        in_async;
+    
+    /* Function signature registry for cross-call validation */
+    ScgFnSig   fn_sigs[256];
+    int        fn_sig_count;
     
     /* Loop vectorization metadata */
     int        loop_meta_id;           /* Counter for loop !meta IDs */

@@ -161,6 +161,44 @@ static const char *EmitIncDec(SCGCtx *ctx, Node *n, char *out_reg, int out_reg_l
     return "i64";
 }
 
+static void ScgRegisterFnSig(SCGCtx *ctx, Node *fn) {
+    if (!ctx || !fn || fn->type != NFNDECL || !fn->fn.name || ctx->fn_sig_count >= 256) return;
+    for (int i = 0; i < ctx->fn_sig_count; i++) {
+        if (strcmp(ctx->fn_sigs[i].name, fn->fn.name) == 0) return;
+    }
+    ScgFnSig *sig = &ctx->fn_sigs[ctx->fn_sig_count++];
+    strncpy(sig->name, fn->fn.name, sizeof(sig->name) - 1);
+    SType *ret_t = fn->fn.ret
+        ? TyperResolveName(ctx->comp, fn->fn.ret)
+        : ((fn->stype && fn->stype->kind == STYPE_FN && fn->stype->ret && fn->stype->ret->kind != STYPE_UNKNOWN)
+            ? fn->stype->ret
+            : StypeInternGet(ctx->comp, STYPE_VOID, "void"));
+    strncpy(sig->ret_type, LLVMType(ret_t), sizeof(sig->ret_type) - 1);
+    sig->param_count = fn->fn.pc < 16 ? fn->fn.pc : 16;
+    for (int i = 0; i < sig->param_count; i++) {
+        const char *pt = "i64";
+        SType *ps_t = NULL;
+        if (fn->fn.ptypes && fn->fn.ptypes[i]) {
+            ps_t = TyperResolveName(ctx->comp, fn->fn.ptypes[i]);
+        }
+        if (!ps_t && fn->stype && fn->stype->kind == STYPE_FN && i < fn->stype->param_count) {
+            ps_t = fn->stype->params[i];
+        }
+        if (ps_t) {
+            pt = LLVMType(ps_t);
+        }
+        strncpy(sig->param_types[i], pt, sizeof(sig->param_types[i]) - 1);
+    }
+}
+
+static ScgFnSig *ScgLookupFnSig(SCGCtx *ctx, const char *name) {
+    if (!ctx || !name) return NULL;
+    for (int i = 0; i < ctx->fn_sig_count; i++) {
+        if (strcmp(ctx->fn_sigs[i].name, name) == 0) return &ctx->fn_sigs[i];
+    }
+    return NULL;
+}
+
 /* Expression emitter */
 
 static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg_len) {
@@ -490,7 +528,13 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
                 else
                     fprintf(ctx->out, "  %%%d = sub%s i64 0, %s\n", id, IntArithFlags(), va);
             } else if (op && strcmp(op, "!") == 0) {
-                fprintf(ctx->out, "  %%%d = xor i1 %s, 1\n", id, va);
+                if (vlt && strcmp(vlt, "i1") == 0) {
+                    fprintf(ctx->out, "  %%%d = xor i1 %s, 1\n", id, va);
+                } else if (vlt && strcmp(vlt, "double") == 0) {
+                    fprintf(ctx->out, "  %%%d = fcmp oeq double %s, 0.0\n", id, va);
+                } else {
+                    fprintf(ctx->out, "  %%%d = icmp eq %s %s, 0\n", id, vlt ? vlt : "i64", va);
+                }
                 snprintf(out_reg, out_reg_len, "%%%d", id);
                 return "i1";
             } else {
@@ -578,8 +622,9 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
                     return "i64";
                 }
             }
-            const char *ret_lt = lt ? lt : "i64";
-            if (!t || t->kind == STYPE_UNKNOWN) {
+            ScgFnSig *sig = ScgLookupFnSig(ctx, fname_buf);
+            const char *ret_lt = sig ? sig->ret_type : (lt ? lt : "i64");
+            if (!sig && (!t || t->kind == STYPE_UNKNOWN)) {
                 if (ctx->comp) {
                     for (int i = 0; i < ctx->comp->fncount; i++) {
                         if (strcmp(ctx->comp->fns[i]->name, fname_buf) == 0) {
@@ -587,6 +632,47 @@ static const char *EmitExprLLVM(SCGCtx *ctx, Node *n, char *out_reg, int out_reg
                             ret_lt = LLVMType(fr);
                             break;
                         }
+                    }
+                }
+            }
+            if (sig) {
+                for (int i = 0; i < argc && i < sig->param_count; i++) {
+                    const char *target_pt = sig->param_types[i];
+                    if (target_pt && target_pt[0] && strcmp(arg_types_arr[i], target_pt) != 0) {
+                        if (strcmp(target_pt, "i64") == 0) {
+                            if (strcmp(arg_types_arr[i], "i1") == 0) {
+                                int cvt = ScgTmp(ctx);
+                                fprintf(ctx->out, "  %%%d = zext i1 %s to i64\n", cvt, arg_regs[i]);
+                                snprintf(arg_regs[i], 64, "%%%d", cvt);
+                            } else if (strcmp(arg_types_arr[i], "double") == 0) {
+                                int cvt = ScgTmp(ctx);
+                                fprintf(ctx->out, "  %%%d = fptosi double %s to i64\n", cvt, arg_regs[i]);
+                                snprintf(arg_regs[i], 64, "%%%d", cvt);
+                            } else if (strcmp(arg_types_arr[i], "i8*") == 0) {
+                                int cvt = ScgTmp(ctx);
+                                fprintf(ctx->out, "  %%%d = ptrtoint i8* %s to i64\n", cvt, arg_regs[i]);
+                                snprintf(arg_regs[i], 64, "%%%d", cvt);
+                            }
+                        } else if (strcmp(target_pt, "double") == 0) {
+                            if (strcmp(arg_types_arr[i], "i64") == 0) {
+                                int cvt = ScgTmp(ctx);
+                                fprintf(ctx->out, "  %%%d = sitofp i64 %s to double\n", cvt, arg_regs[i]);
+                                snprintf(arg_regs[i], 64, "%%%d", cvt);
+                            }
+                        } else if (strcmp(target_pt, "i1") == 0) {
+                            if (strcmp(arg_types_arr[i], "i64") == 0) {
+                                int cvt = ScgTmp(ctx);
+                                fprintf(ctx->out, "  %%%d = icmp ne i64 %s, 0\n", cvt, arg_regs[i]);
+                                snprintf(arg_regs[i], 64, "%%%d", cvt);
+                            }
+                        } else if (strcmp(target_pt, "i8*") == 0) {
+                            if (strcmp(arg_types_arr[i], "i64") == 0) {
+                                int cvt = ScgTmp(ctx);
+                                fprintf(ctx->out, "  %%%d = inttoptr i64 %s to i8*\n", cvt, arg_regs[i]);
+                                snprintf(arg_regs[i], 64, "%%%d", cvt);
+                            }
+                        }
+                        arg_types_arr[i] = target_pt;
                     }
                 }
             }
@@ -1633,6 +1719,12 @@ typedef struct {
 
 static void ScgEmitProgramWithImports(SCGCtx *ctx, Node *program, ScgModuleState *st) {
     if (!program || program->type != NPROGRAM) return;
+    for (int i = 0; i < program->block.count; i++) {
+        Node *stmt = program->block.stmts[i];
+        if (stmt && stmt->type == NFNDECL) {
+            ScgRegisterFnSig(ctx, stmt);
+        }
+    }
     for (int i = 0; i < program->block.count; i++) {
         Node *stmt = program->block.stmts[i];
         if (!stmt) continue;
