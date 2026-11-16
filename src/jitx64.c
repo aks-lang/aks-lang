@@ -10,9 +10,9 @@
 #else
 #include <sys/mman.h>
 #endif
-#include <immintrin.h>
 
-#if defined(__x86_64__) || defined(_M_X64)
+#if (defined(__x86_64__) || defined(_M_X64)) && !defined(__aarch64__) && !defined(__arm64__)
+#include <immintrin.h>
 
 typedef struct {
     void *helperadd;
